@@ -4,10 +4,10 @@
  * prerequisites) is handled by the caller via re-thrown errors.
  */
 
-import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync, realpathSync, cpSync, copyFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import * as http from 'node:http';
 
@@ -139,10 +139,28 @@ export function packMoflo({ repoRoot, workDir, tarballOverride, skipPack }) {
   return tarball;
 }
 
-export function installConsumer({ workDir, tarballPath }) {
+export function installConsumer({ workDir, tarballPath, warmDonor }) {
   section('Install into scratch consumer');
   const consumerDir = join(workDir, `consumer-${Date.now()}`);
   mkdirSync(consumerDir, { recursive: true });
+
+  // #1153 — warm-donor fast path. When CI restores a cached node_modules tree
+  // at <warmDonor>, copy it to the consumer dir and overlay the freshly-packed
+  // moflo tgz on top. Skips `npm install` entirely (~3m → ~30s on Windows).
+  // Any failure falls through to the cold path so a stale/corrupt donor never
+  // breaks CI; the cold path then re-seeds the donor for the next run.
+  if (warmDonor && existsSync(join(warmDonor, 'node_modules', 'moflo', 'package.json'))) {
+    try {
+      copyWarmDonor(warmDonor, consumerDir);
+      const version = overlayMofloFromTarball(tarballPath, consumerDir);
+      record('install', 'pass', `moflo@${version} (warm donor)`);
+      return consumerDir;
+    } catch (err) {
+      log(`  warm-donor reuse failed (${err.message}); falling through to cold install`);
+      rmSync(consumerDir, { recursive: true, force: true });
+      mkdirSync(consumerDir, { recursive: true });
+    }
+  }
 
   const pkg = {
     name: 'moflo-consumer-smoke',
@@ -170,7 +188,103 @@ export function installConsumer({ workDir, tarballPath }) {
   }
   const { version } = JSON.parse(readFileSync(installedPkg, 'utf8'));
   record('install', 'pass', `moflo@${version}`);
+
+  // #1153 — seed the donor for the next run's cache-save step. Best-effort:
+  // a failure here doesn't fail the harness, just disables caching for the
+  // next run.
+  if (warmDonor) {
+    try {
+      seedWarmDonor(consumerDir, warmDonor);
+      log(`  seeded warm donor at ${warmDonor}`);
+    } catch (err) {
+      log(`  warm-donor seed failed: ${err.message}`);
+    }
+  }
+
   return consumerDir;
+}
+
+/**
+ * #1153 — bulk copy a directory tree. Uses robocopy on Windows (multi-threaded,
+ * ~3× faster than fs.cpSync on NTFS) and fs.cpSync on POSIX where it's already
+ * libuv-fast on APFS/ext4. The donor tree is ~200-500 MB of node_modules.
+ */
+function bulkCopyDir(src, dest) {
+  if (process.platform === 'win32') {
+    mkdirSync(dest, { recursive: true });
+    // /E    = recurse including empty dirs (do NOT use /MIR — it would purge
+    //         files in `dest` that pre-exist, which is fine for an empty
+    //         dest but surprising if a caller passes a non-empty dest).
+    // /MT:8 = 8 threads
+    // /NFL /NDL /NJH /NJS /NP = suppress per-file logging
+    // /R:1 /W:1 = retry once with 1s wait (NTFS file lock contention)
+    // Exit codes 0-7 are "no errors with copy"; ≥8 is a real failure.
+    const r = spawnSync(
+      'robocopy',
+      [src, dest, '/E', '/MT:8', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1'],
+      { stdio: 'pipe', timeout: 300_000, windowsHide: true },
+    );
+    // r.status === null means spawn failure (ENOENT) or timeout — both
+    // produce a partial dest tree and must NOT silently pass.
+    if (r.error) {
+      throw new Error(`robocopy ${src}→${dest} failed to spawn: ${r.error.message}`);
+    }
+    if (r.status === null || r.status >= 8) {
+      const stderr = (r.stderr || '').toString().trim().slice(0, 200);
+      throw new Error(`robocopy ${src}→${dest} failed (exit ${r.status}): ${stderr}`);
+    }
+    return;
+  }
+  cpSync(src, dest, { recursive: true });
+}
+
+function copyWarmDonor(donor, consumerDir) {
+  bulkCopyDir(join(donor, 'node_modules'), join(consumerDir, 'node_modules'));
+  if (existsSync(join(donor, 'package.json'))) {
+    copyFileSync(join(donor, 'package.json'), join(consumerDir, 'package.json'));
+  }
+  if (existsSync(join(donor, 'package-lock.json'))) {
+    copyFileSync(join(donor, 'package-lock.json'), join(consumerDir, 'package-lock.json'));
+  }
+}
+
+/**
+ * #1153 — overlay the freshly-packed moflo tgz onto the donor-supplied
+ * node_modules/moflo. The donor's moflo payload is stale (built from whatever
+ * source the donor was created against); only its transitives stay valid.
+ * Uses the system `tar` (built into Windows 10 1803+, macOS, and all Linux
+ * distros). Returns the installed moflo version.
+ */
+function overlayMofloFromTarball(tarballPath, consumerDir) {
+  const mofloDir = join(consumerDir, 'node_modules', 'moflo');
+  rmSync(mofloDir, { recursive: true, force: true });
+  mkdirSync(mofloDir, { recursive: true });
+  const r = spawnSync(
+    'tar',
+    ['-xzf', tarballPath, '-C', mofloDir, '--strip-components=1'],
+    { stdio: 'pipe', timeout: 120_000, windowsHide: true },
+  );
+  if (r.status !== 0) {
+    const stderr = (r.stderr || '').toString().trim().slice(0, 200);
+    throw new Error(`tar extract failed (exit ${r.status}): ${stderr}`);
+  }
+  const pkgPath = join(mofloDir, 'package.json');
+  if (!existsSync(pkgPath)) {
+    throw new Error('tar extract did not produce node_modules/moflo/package.json');
+  }
+  return JSON.parse(readFileSync(pkgPath, 'utf8')).version;
+}
+
+function seedWarmDonor(consumerDir, donor) {
+  // Clear donor first so a previous run's stale dep tree can't bleed in.
+  // Single recursive rmSync is much faster than entry-by-entry on NTFS.
+  rmSync(donor, { recursive: true, force: true });
+  mkdirSync(donor, { recursive: true });
+  bulkCopyDir(join(consumerDir, 'node_modules'), join(donor, 'node_modules'));
+  copyFileSync(join(consumerDir, 'package.json'), join(donor, 'package.json'));
+  if (existsSync(join(consumerDir, 'package-lock.json'))) {
+    copyFileSync(join(consumerDir, 'package-lock.json'), join(donor, 'package-lock.json'));
+  }
 }
 
 /**
