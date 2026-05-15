@@ -8,20 +8,20 @@ import { describe, it, expect } from 'vitest';
 import { resolveDashboardPort } from '../../commands/daemon.js';
 import { DEFAULT_DASHBOARD_PORT } from '../../services/daemon-dashboard.js';
 
-describe('resolveDashboardPort (#1067)', () => {
-  it('returns DEFAULT_DASHBOARD_PORT when neither flag nor env is set', () => {
+describe('resolveDashboardPort (#1067 / #1145)', () => {
+  it('returns DEFAULT_DASHBOARD_PORT when neither flag nor env is set (not explicit)', () => {
     const r = resolveDashboardPort(undefined, undefined);
-    expect(r).toEqual({ ok: true, port: DEFAULT_DASHBOARD_PORT });
+    expect(r).toEqual({ ok: true, port: DEFAULT_DASHBOARD_PORT, explicit: false });
   });
 
-  it('honors MOFLO_DAEMON_PORT env when --dashboard-port flag is absent', () => {
+  it('honors MOFLO_DAEMON_PORT env when --dashboard-port flag is absent (explicit)', () => {
     const r = resolveDashboardPort(undefined, '3217');
-    expect(r).toEqual({ ok: true, port: 3217 });
+    expect(r).toEqual({ ok: true, port: 3217, explicit: true });
   });
 
-  it('--dashboard-port flag wins over MOFLO_DAEMON_PORT env', () => {
+  it('--dashboard-port flag wins over MOFLO_DAEMON_PORT env (explicit)', () => {
     const r = resolveDashboardPort('4000', '3217');
-    expect(r).toEqual({ ok: true, port: 4000 });
+    expect(r).toEqual({ ok: true, port: 4000, explicit: true });
   });
 
   it('rejects invalid --dashboard-port flag value', () => {
@@ -47,7 +47,7 @@ describe('resolveDashboardPort (#1067)', () => {
   });
 
   it('accepts port 1 and 65535 (range edges)', () => {
-    expect(resolveDashboardPort('1', undefined)).toEqual({ ok: true, port: 1 });
-    expect(resolveDashboardPort('65535', undefined)).toEqual({ ok: true, port: 65535 });
+    expect(resolveDashboardPort('1', undefined)).toEqual({ ok: true, port: 1, explicit: true });
+    expect(resolveDashboardPort('65535', undefined)).toEqual({ ok: true, port: 65535, explicit: true });
   });
 });

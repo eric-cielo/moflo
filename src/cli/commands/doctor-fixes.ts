@@ -183,6 +183,22 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
       return runFixCommand('npx moflo daemon start');
     },
+    // #1145 — daemon claims a different projectRoot than ours (or has no
+    // port in its lock so we can't verify). Same recycle pattern as version
+    // skew: SIGTERM the local daemon, clear the lock, respawn. Then the new
+    // daemon binds the per-project deterministic port and stamps it into
+    // the lock — clients can discover it without guessing.
+    'Daemon Identity Match': async () => {
+      const cwd = process.cwd();
+      const { getDaemonLockPayload } = await import('../services/daemon-lock.js');
+      const payload = getDaemonLockPayload(cwd);
+      if (payload?.pid && payload.pid > 0) {
+        try { process.kill(payload.pid, 'SIGTERM'); } catch { /* already dead */ }
+      }
+      const lockFile = join(cwd, '.moflo', 'daemon.lock');
+      try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
+      return runFixCommand('npx moflo daemon start');
+    },
     'Embedding Coverage Truth': async () => {
       // Same as the existing Embeddings fix — rebuild the cache by re-running
       // the embeddings pipeline. Routes through `npx moflo` so the consumer

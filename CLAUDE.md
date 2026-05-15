@@ -1,4 +1,36 @@
-## ⚠ MoFlo is a library shipped to other projects — READ FIRST, every change
+## ⚠ Rule #1 — All shipped code MUST be cross-platform (Linux + macOS + Windows)
+
+**Hard requirement, no exceptions.** Consumers run moflo on Windows dev boxes, macOS laptops, and Linux CI runners. Any code that ships in `bin/`, `src/cli/`, `.claude/scripts/`, or `node_modules/moflo/` MUST work identically on all three. The smoke harness runs on all three CI platforms specifically to catch divergence.
+
+**Before any change, audit it against the cross-platform checklist:**
+
+1. **Paths** — use `path.join`, `path.sep`, `path.resolve`. NEVER hardcode `/` or `\`. NEVER hardcode `/tmp`, `/usr/local`, `C:\\Users`, etc.
+2. **Symlinks** — POSIX has them; Windows mostly doesn't. If you compare two paths for identity, `fs.realpathSync` BOTH sides first (otherwise `/var/folders/...` ≠ `/private/var/folders/...` on macOS — see #1145).
+3. **Case sensitivity** — POSIX FS is case-sensitive; macOS APFS + Windows NTFS are case-insensitive by default. Don't write `Foo.ts` and `foo.ts` in the same directory.
+4. **Line endings** — files written by moflo MUST use platform-appropriate EOL or be marked `text=auto` in `.gitattributes`. Tests that hash file contents must normalize.
+5. **Shell commands** — `bash`/`grep`/`sed`/`cat`/`find` don't exist on Windows out of the box. Use Node primitives (`fs`, `child_process` with `spawn` not shell, `Glob`/`Grep` tools) instead of shelling out. If you MUST shell, branch on `process.platform`.
+6. **Process introspection** — `tasklist`/`wmic`/`Get-CimInstance` on Windows vs `ps`/`/proc/<pid>/cmdline` on POSIX. See `daemon-lock.ts:isDaemonProcess*` for the right shape.
+7. **Spawning daemons** — Windows requires `shell: true` + quoted strings (Node 24 DEP0190); POSIX uses `detached: true`. See `commands/daemon.ts:startBackgroundDaemon`.
+8. **Tempdir + Windows port reservations** — `os.tmpdir()` is platform-correct; ports 49152-65535 are reserved on Windows (EACCES) — use 40000-44999 in tests.
+9. **`rm`/`cp`/`mkdir`** in spell bash steps — Windows lacks these on PATH. Use `node -e` with `fs`/`os` for file ops in cross-platform spells.
+
+**Verify before pushing — don't trust your local OS:**
+
+- The smoke harness (`harness/consumer-smoke/run.mjs`) covers all three platforms in CI. Watch macOS + Ubuntu runs, not just Windows.
+- `tests/system/` runs cross-platform; `tests/bin/` has explicit Windows + POSIX branches.
+- If your local OS is Windows, mentally simulate the POSIX path (symlinks, case-sensitivity, missing `tasklist`). If POSIX, simulate Windows.
+
+**Concrete examples of what cross-platform misses look like in practice:**
+
+- **#1145 follow-up (this session)** — `normalizeProjectRoot` didn't `realpathSync` → macOS daemon resolved `/var/folders/...` → `/private/var/folders/...` while client saw the unresolved path → identity check false-positived → smoke failed on macOS + Ubuntu, passed on Windows. Shipped because verification was Windows-only.
+- **`feedback_spell_bash_minimal_path.md`** — spell bash steps on Windows lack `mkdir`/`rm`/`cp` on PATH; use `node -e` with fs/os.
+- **`feedback_docker_sandbox_git_safe_directory.md`** — `git config --global safe.directory` gets overridden by bind-mounted `.gitconfig`; must use `--system`.
+
+See `feedback_cross_platform_mandatory.md` (auto-memory) for the running list.
+
+---
+
+## ⚠ Rule #2 — MoFlo is a library shipped to other projects — READ FIRST, every change
 
 **This is an open-source library.** The package is installed as a `devDependency` into consumer projects to make Claude Code more effective in those projects. It is NOT a standalone application — every change you make ships to N consumers via `npm install moflo` and runs from their `node_modules/moflo/...` on their machines.
 

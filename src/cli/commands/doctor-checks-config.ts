@@ -7,7 +7,13 @@
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
-import { getDaemonLockHolder } from '../services/daemon-lock.js';
+import { getDaemonLockHolder, getDaemonLockPayload } from '../services/daemon-lock.js';
+import {
+  resolveClientPort,
+  LEGACY_DEFAULT_PORT,
+  probeDaemonHealth as probeDaemonHealthIdentity,
+  normalizeProjectRoot,
+} from '../services/daemon-port.js';
 import {
   legacyMemoryDbPath,
   memoryDbCandidatePaths,
@@ -114,6 +120,95 @@ export async function checkDaemonStatus(): Promise<HealthCheck> {
   } catch (e) {
     return { name: 'Daemon Status', status: 'warn', message: `Unable to check: ${errorDetail(e)}`, fix: 'claude-flow daemon status' };
   }
+}
+
+/**
+ * Daemon identity check (#1145).
+ *
+ * Reads `.moflo/daemon.lock` → probes `/api/health` on the recorded port →
+ * confirms the daemon's reported `projectRoot` matches `findProjectRoot()`.
+ * Catches the silent cross-project routing class where two moflo daemons
+ * (e.g. moflo-dev + a consumer) share a port and the client hits the wrong
+ * one.
+ *
+ * Status semantics:
+ *   - `pass` — no daemon (cleanly absent) OR identity matches.
+ *   - `warn` — daemon has no port in lock (pre-#1145 daemon; harmless if
+ *     no collision, but should be recycled to upgrade).
+ *   - `fail` — `/api/health` reports a different project. Routing is
+ *     polluted; the healer fix kills the foreign-identity daemon and
+ *     respawns the local one.
+ */
+export async function checkDaemonIdentity(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const projectRoot = findProjectRoot({ cwd });
+  const payload = getDaemonLockPayload(projectRoot);
+
+  if (!payload) {
+    return {
+      name: 'Daemon Identity Match',
+      status: 'pass',
+      message: 'No daemon running (nothing to verify)',
+    };
+  }
+
+  // Lock present but no port field — pre-#1145 daemon. Identity check is
+  // best-effort; surface as warn so the user knows to recycle but don't
+  // hard-fail unless we can prove cross-project routing.
+  const portFromLock = payload.port;
+  const probePort = portFromLock ?? resolveClientPort(projectRoot);
+
+  if (!portFromLock) {
+    // Try the legacy default explicitly so consumers running an
+    // un-upgraded daemon still get a useful diagnostic.
+    const probe = await probeDaemonHealthIdentity(LEGACY_DEFAULT_PORT, 1500);
+    if (probe.kind === 'identity'
+        && normalizeProjectRoot(probe.projectRoot) !== normalizeProjectRoot(projectRoot)) {
+      return {
+        name: 'Daemon Identity Match',
+        status: 'fail',
+        message: `Daemon at 127.0.0.1:${LEGACY_DEFAULT_PORT} claims project '${probe.projectRoot}' — cross-project routing active`,
+        fix: 'flo healer --fix -c daemon-identity',
+      };
+    }
+    return {
+      name: 'Daemon Identity Match',
+      status: 'warn',
+      message: 'Daemon lock has no port field — pre-#1145 daemon; recycle to enable port discovery',
+      fix: 'flo healer --fix -c daemon-identity',
+    };
+  }
+
+  const probe = await probeDaemonHealthIdentity(probePort, 1500);
+  if (probe.kind === 'unreachable') {
+    return {
+      name: 'Daemon Identity Match',
+      status: 'warn',
+      message: `Daemon at 127.0.0.1:${probePort} unreachable on /api/health`,
+      fix: 'flo healer --fix -c daemon-identity',
+    };
+  }
+  if (probe.kind === 'legacy') {
+    return {
+      name: 'Daemon Identity Match',
+      status: 'warn',
+      message: `Daemon at 127.0.0.1:${probePort} has no /api/health (legacy) — recycle to upgrade`,
+      fix: 'flo healer --fix -c daemon-identity',
+    };
+  }
+  if (normalizeProjectRoot(probe.projectRoot) !== normalizeProjectRoot(projectRoot)) {
+    return {
+      name: 'Daemon Identity Match',
+      status: 'fail',
+      message: `Daemon at 127.0.0.1:${probePort} claims project '${probe.projectRoot}' but cwd is '${projectRoot}'`,
+      fix: 'flo healer --fix -c daemon-identity',
+    };
+  }
+
+  return {
+    name: 'Daemon Identity Match',
+    status: 'pass',
+    message: `OK (port ${probePort}, pid ${payload.pid})`,
+  };
 }
 
 export async function checkMemoryDatabase(): Promise<HealthCheck> {

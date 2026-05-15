@@ -36,6 +36,7 @@ import {
 } from './doctor-checks-runtime.js';
 import {
   checkConfigFile,
+  checkDaemonIdentity,
   checkDaemonStatus,
   checkDaemonWriteRouting,
   checkMcpServers,
@@ -76,6 +77,7 @@ export const allChecks: CheckFn[] = [
   checkStatusLine,
   checkDaemonStatus,
   checkDaemonVersionSkew,
+  checkDaemonIdentity,
   checkDaemonWriteRouting,
   checkWritersAudit,
   checkMemoryDatabase,
@@ -136,6 +138,9 @@ export const componentMap: Record<string, CheckFn> = {
   'skew': checkDaemonVersionSkew,
   'daemon-write-routing': checkDaemonWriteRouting,
   'write-routing': checkDaemonWriteRouting,
+  'daemon-identity': checkDaemonIdentity,
+  'daemon-identity-match': checkDaemonIdentity,
+  'identity': checkDaemonIdentity,
   'writers-audit': checkWritersAudit,
   'writers': checkWritersAudit,
   'memory': checkMemoryDatabase,

@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 
 export interface DaemonLockPayload {
   pid: number;
@@ -26,6 +27,15 @@ export interface DaemonLockPayload {
    * the same as a mismatch (recycle).
    */
   version?: string;
+  /**
+   * Actual port the daemon's HTTP server bound to. Added in #1145 so clients
+   * can discover the bound port from the lock file rather than guessing the
+   * fixed default (which produced silent cross-project routing when two
+   * moflo daemons collided). Stamped by `writeLockPort()` after a successful
+   * bind. Missing on locks written by pre-#1145 daemons; clients fall back
+   * to `resolveProjectPort()` then `LEGACY_DEFAULT_PORT`.
+   */
+  port?: number;
 }
 
 const LOCK_FILENAME = 'daemon.lock';
@@ -137,6 +147,49 @@ export function releaseDaemonLock(projectRoot: string, pid: number = process.pid
 }
 
 /**
+ * Stamp the daemon's bound HTTP port into the lock file (#1145).
+ *
+ * Called by `daemon-dashboard.startDashboard()` after a successful bind so
+ * clients can read the actual port (vs. guessing the fixed default and
+ * silently hitting another project's daemon).
+ *
+ * Best-effort by design:
+ *   - Missing lock → no-op (the daemon didn't acquire the lock; this is
+ *     a test or unusual startup path).
+ *   - Lock owned by a different PID → no-op (we don't overwrite locks we
+ *     don't own).
+ *   - Write failure → swallowed (the daemon still serves; clients fall
+ *     back to the deterministic port resolution).
+ *
+ * Returns `true` on a successful stamp, `false` otherwise. The boolean is
+ * informational — production callers don't branch on it.
+ */
+export function writeLockPort(
+  projectRoot: string,
+  port: number,
+  pid: number = process.pid,
+): boolean {
+  if (!Number.isFinite(port) || port < 1 || port > 65535) return false;
+  const lock = lockPath(projectRoot);
+  const existing = readLockPayload(lock);
+  if (!existing) return false;
+  if (existing.pid !== pid) return false;
+  if (existing.port === port) return true;
+
+  const updated: DaemonLockPayload = { ...existing, port };
+  try {
+    // Atomic write-then-rename: a client reading mid-write never sees a
+    // truncated JSON. The vulnerable window is precisely a re-stamp after
+    // a daemon recycle on a different port, when clients are likeliest
+    // to be probing the lock for the new port.
+    atomicWriteFileSync(lock, JSON.stringify(updated));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Atomically transfer the daemon lock to a new PID (e.g. parent → child).
  *
  * Overwrites the lock file in-place so there is no window where the lock
@@ -159,6 +212,9 @@ export function transferDaemonLock(
     startedAt: Date.now(),
     label: LOCK_LABEL,
     version: existing.version ?? readOwnMofloVersion(),
+    // Preserve the port field across PID transfers (#1145) — the child
+    // process inherits the parent's binding, so the port is still valid.
+    ...(existing.port != null ? { port: existing.port } : {}),
   };
 
   try {
