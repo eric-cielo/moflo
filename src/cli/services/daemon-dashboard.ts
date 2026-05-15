@@ -325,14 +325,18 @@ function tryParse(s: string): Record<string, unknown> {
 }
 
 async function handleMemoryStats(): Promise<object> {
-  // Single GROUP BY query — no hardcoded namespace list, no row fetching
-  try {
-    const { getNamespaceCounts } = await import('../memory/memory-initializer.js');
-    const { namespaces, total } = await getNamespaceCounts();
-    return { namespaces, totalEntries: total, available: total > 0 || Object.keys(namespaces).length > 0 };
-  } catch {
-    return { namespaces: {}, totalEntries: 0, available: false };
-  }
+  // Single GROUP BY query — no hardcoded namespace list, no row fetching.
+  // Errors propagate to the request handler's outer try/catch → 500, so
+  // MCP clients see a real failure instead of a silent `totalEntries: 0`.
+  const { getNamespaceCounts } = await import('../memory/memory-initializer.js');
+  const { namespaces, total, withEmbeddings } = await getNamespaceCounts();
+  return {
+    ok: true,
+    namespaces,
+    totalEntries: total,
+    withEmbeddings,
+    available: total > 0 || Object.keys(namespaces).length > 0,
+  };
 }
 
 /**

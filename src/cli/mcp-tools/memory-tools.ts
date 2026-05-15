@@ -726,27 +726,47 @@ export const memoryTools: MCPTool[] = [
     },
     handler: async () => {
       await ensureInitialized();
-      const { checkMemoryInitialization, listEntries } = await getMemoryFunctions();
+      const { checkMemoryInitialization } = await getMemoryFunctions();
 
       try {
         const status = await checkMemoryInitialization();
-        const allEntries = await listEntries({ limit: 100000 });
 
-        // Count by namespace
-        const namespaces: Record<string, number> = {};
-        let withEmbeddings = 0;
+        // #1149 — server-side aggregation. The pre-fix path iterated every
+        // namespace via listEntries({limit:100000}) and tripped the daemon's
+        // `limit ≤ 10 000` cap → 400 → tryDaemonList defaulted total to 0 →
+        // the MCP tool silently reported zero entries on populated DBs.
+        // Route through the dedicated stats endpoint; on routed:false, run
+        // the same GROUP BY in-process so users always see real counts; on
+        // a daemon error, surface it rather than masking it as zero.
+        const { tryDaemonStats } = await import('../memory/daemon-write-client.js');
+        const routed = await tryDaemonStats();
 
-        for (const entry of allEntries.entries) {
-          namespaces[entry.namespace] = (namespaces[entry.namespace] || 0) + 1;
-          if (entry.hasEmbedding) withEmbeddings++;
+        let namespaces: Record<string, number>;
+        let totalEntries: number;
+        let withEmbeddings: number;
+
+        if (routed.routed && routed.data) {
+          ({ namespaces, totalEntries, withEmbeddings } = routed.data);
+        } else if (routed.routed && routed.error) {
+          return {
+            initialized: status.initialized,
+            error: `daemon memory_stats failed: ${routed.error}`,
+            backend: BACKEND_LABEL,
+          };
+        } else {
+          const { getNamespaceCounts } = await import('../memory/memory-initializer.js');
+          const direct = await getNamespaceCounts();
+          namespaces = direct.namespaces;
+          totalEntries = direct.total;
+          withEmbeddings = direct.withEmbeddings;
         }
 
         return {
           initialized: status.initialized,
-          totalEntries: allEntries.total,
+          totalEntries,
           entriesWithEmbeddings: withEmbeddings,
-          embeddingCoverage: allEntries.total > 0
-            ? `${((withEmbeddings / allEntries.total) * 100).toFixed(1)}%`
+          embeddingCoverage: totalEntries > 0
+            ? `${((withEmbeddings / totalEntries) * 100).toFixed(1)}%`
             : '0%',
           namespaces,
           backend: BACKEND_LABEL,

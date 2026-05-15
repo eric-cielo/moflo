@@ -318,18 +318,38 @@ describe('DaemonDashboard', () => {
     mockGetNamespaceCounts.mockResolvedValue({
       namespaces: { guidance: 34, patterns: 29, 'code-map': 100, knowledge: 3, tests: 10 },
       total: 176,
+      withEmbeddings: 170,
     });
     dashboard = await startDashboard(daemon, { port: testPort });
 
     const res = await fetchDashboard(testPort, '/api/memory/stats');
     const data = JSON.parse(res.body);
+    // #1149 — `ok:true` lets MCP clients distinguish a real 200 from a
+    // misrouted/empty response; `withEmbeddings` removes the need to
+    // iterate /api/memory/list just to compute embedding coverage.
+    expect(data.ok).toBe(true);
     expect(data.available).toBe(true);
     expect(data.totalEntries).toBe(176);
+    expect(data.withEmbeddings).toBe(170);
     expect(data.namespaces.guidance).toBe(34);
     expect(data.namespaces.patterns).toBe(29);
     expect(data.namespaces.knowledge).toBe(3);
     expect(data.namespaces['code-map']).toBe(100);
     expect(data.namespaces.tests).toBe(10);
+  });
+
+  // #1149 — totals must NOT silently default to 0 when getNamespaceCounts
+  // fails. The daemon returns 500 so MCP clients fall back to a direct
+  // local query (or surface the error) instead of seeing `totalEntries: 0`.
+  it('returns 500 from /api/memory/stats when underlying query throws', async () => {
+    const daemon = makeMockDaemon();
+    mockGetNamespaceCounts.mockRejectedValueOnce(new Error('disk read failed'));
+    dashboard = await startDashboard(daemon, { port: testPort });
+
+    const res = await fetchDashboard(testPort, '/api/memory/stats');
+    expect(res.status).toBe(500);
+    const data = JSON.parse(res.body);
+    expect(data.message).toContain('disk read failed');
   });
 
   it('returns 404 for unknown routes', async () => {

@@ -91,6 +91,8 @@ vi.mock('../memory/memory-initializer.js', () => ({
   getEntry: vi.fn(async () => null),
   deleteEntry: vi.fn(async () => ({ success: true })),
   getStats: vi.fn(async () => ({ totalEntries: 0 })),
+  // memory_stats handler imports this lazily on routed:false fallback (#1149)
+  getNamespaceCounts: vi.fn(async () => ({ namespaces: {}, total: 0, withEmbeddings: 0 })),
   initializeDatabase: vi.fn(async () => ({ success: true })),
   initializeMemoryDatabase: vi.fn(async () => ({ success: true })),
   checkMemoryInitialization: vi.fn(async () => ({ initialized: true, version: '3.0.0' })),

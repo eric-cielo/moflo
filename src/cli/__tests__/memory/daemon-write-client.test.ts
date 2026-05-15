@@ -23,6 +23,7 @@ import {
   tryDaemonGet,
   tryDaemonSearch,
   tryDaemonList,
+  tryDaemonStats,
   _resetForTest,
 } from '../../memory/daemon-write-client.js';
 
@@ -619,6 +620,104 @@ describe('daemon-write-client', () => {
     process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
     const r = await tryDaemonList({});
     expect(r.routed).toBe(false);
+  });
+
+  // ── tryDaemonStats (#1149) ────────────────────────────────────────────
+
+  it('tryDaemonStats returns routed:true with namespaces+totals on 200', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      if (req.url === '/api/memory/stats') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          namespaces: { guidance: 2620, 'code-map': 1414, patterns: 1297 },
+          totalEntries: 5331,
+          withEmbeddings: 5300,
+          available: true,
+        }));
+        return;
+      }
+      res.writeHead(404); res.end();
+    });
+
+    const r = await tryDaemonStats();
+    expect(r.routed).toBe(true);
+    expect(r.data?.totalEntries).toBe(5331);
+    expect(r.data?.withEmbeddings).toBe(5300);
+    expect(r.data?.namespaces.guidance).toBe(2620);
+    expect(r.data?.namespaces['code-map']).toBe(1414);
+    expect(fake.requests.find(req => req.url === '/api/memory/stats')?.method).toBe('GET');
+  });
+
+  it('tryDaemonStats issues a GET (no request body)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, namespaces: {}, totalEntries: 0, withEmbeddings: 0 }));
+    });
+    await tryDaemonStats();
+    const statsReq = fake.requests.find(req => req.url === '/api/memory/stats');
+    expect(statsReq?.method).toBe('GET');
+    expect(statsReq?.body).toBe('');
+  });
+
+  it('tryDaemonStats returns routed:true,error on 4xx (caller propagates, no fake zero)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'bad request' }));
+    });
+    const r = await tryDaemonStats();
+    expect(r.routed).toBe(true);
+    expect(r.data).toBeUndefined();
+    expect(r.error).toBe('bad request');
+  });
+
+  it('tryDaemonStats returns routed:false on 5xx (caller falls back to direct)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(500); res.end('boom');
+    });
+    expect((await tryDaemonStats()).routed).toBe(false);
+  });
+
+  it('tryDaemonStats returns routed:false when daemon down (ECONNREFUSED)', async () => {
+    process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
+    expect((await tryDaemonStats()).routed).toBe(false);
+  });
+
+  it('tryDaemonStats returns routed:false when response is missing totalEntries (malformed)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, namespaces: {} })); // no totalEntries
+    });
+    expect((await tryDaemonStats()).routed).toBe(false);
+  });
+
+  it('tryDaemonStats defaults withEmbeddings to 0 when daemon omits it (older daemon)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ namespaces: { x: 3 }, totalEntries: 3 }));
+    });
+    const r = await tryDaemonStats();
+    expect(r.routed).toBe(true);
+    expect(r.data?.totalEntries).toBe(3);
+    expect(r.data?.withEmbeddings).toBe(0);
   });
 
   // ── port resolution ───────────────────────────────────────────────────
