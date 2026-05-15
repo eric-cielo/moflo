@@ -10,10 +10,11 @@
  */
 
 import * as fs from 'fs';
-import { dirname, join } from 'path';
+import { dirname, join, sep } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
+import { normalizeProjectRoot } from './daemon-port.js';
 
 export interface DaemonLockPayload {
   pid: number;
@@ -73,6 +74,18 @@ export function readOwnMofloVersion(): string | undefined {
 /**
  * Try to acquire the daemon lock atomically.
  *
+ * Before the EEXIST atomic write, runs a same-project orphan scan (#1150):
+ * enumerates moflo daemon processes whose command line is rooted at THIS
+ * project's CLI binary. If any are found that the lock doesn't account for,
+ * they get SIGTERM'd (3s graceful → SIGKILL) before we try to acquire.
+ * Catches the failure mode where the lock was unlinked (e.g. by an old
+ * doctor-fix or a crashed shutdown handler) but the daemon process is still
+ * alive — without this scan, a fresh daemon would spawn alongside it.
+ *
+ * Tests can opt out of the scan via `MOFLO_TEST_SKIP_ORPHAN_SCAN=1` (the same
+ * env-var also disables the post-spawn fallback in #1086 so vitest workers
+ * don't pay the 8s Windows introspection cost on every acquire).
+ *
  * @returns `{ acquired: true }` on success,
  *          `{ acquired: false, holder: pid }` if another daemon owns the lock.
  */
@@ -87,6 +100,15 @@ export function acquireDaemonLock(
   if (!fs.existsSync(stateDir)) {
     fs.mkdirSync(stateDir, { recursive: true });
   }
+
+  // #1150 — same-project orphan scan. Runs BEFORE the atomic write because
+  // (a) it lets us reclaim the lock after a crash that left the daemon
+  //     running but the lock unlinked, and
+  // (b) the second-spawn case (lock absent, prior daemon alive) is exactly
+  //     the failure mode that produced two-daemons-per-project in #1145's
+  //     waxstack audit.
+  const lockHolderPid = readLockPayload(lock)?.pid;
+  reapSameProjectOrphans(projectRoot, pid, lockHolderPid);
 
   const payload: DaemonLockPayload = {
     pid,
@@ -312,10 +334,29 @@ function safeUnlink(path: string): void {
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch {
     return false;
   }
+  // Linux zombie handling: `kill(pid, 0)` succeeds for zombie processes
+  // (exited but not yet reaped). A zombie can't write to the DB or hold
+  // a lock, so treating it as alive exhausts the kill window polling a
+  // corpse. Read /proc/<pid>/stat and treat 'Z' as dead — same logic as
+  // bin/lib/daemon-recycler.mjs:51-69. The case surfaces in tests AND
+  // in any production path where the daemon and our process share a
+  // parent (foreground mode, vitest worker that spawned a child); on
+  // standard detached-daemon production paths init reaps so this is a
+  // no-op there.
+  if (process.platform === 'linux') {
+    try {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
+      const lastParen = stat.lastIndexOf(')');
+      if (lastParen !== -1 && stat.charAt(lastParen + 2) === 'Z') return false;
+    } catch (err: any) {
+      if (err && err.code === 'ENOENT') return false;
+      // /proc unavailable — fall through with the kill(0) verdict.
+    }
+  }
+  return true;
 }
 
 /**
@@ -392,5 +433,285 @@ function isDaemonProcessUnix(pid: number): boolean {
     return /daemon.*start|moflo|claude-flow/i.test(result);
   } catch {
     return true; // fallback
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Same-project orphan detection (#1150)
+// ---------------------------------------------------------------------------
+
+/**
+ * Enumerate moflo daemon node processes whose command line is rooted at THIS
+ * project's CLI binary (consumer install OR dogfood-source).
+ *
+ * Returns PIDs. Used by `acquireDaemonLock` (pre-acquire reap) and the
+ * `daemon-orphan` doctor check/fix.
+ *
+ * Matching strategy: cmdline must contain BOTH a moflo daemon marker
+ * (`daemon ... start` + `moflo`/`claude-flow`) AND one of the two
+ * project-rooted cli.js paths. This keeps daemons for OTHER projects out of
+ * scope — they have their own project root and (post-#1145) their own port.
+ *
+ * Cross-platform:
+ *   - Windows: `Get-CimInstance Win32_Process` via PowerShell (single shell
+ *     invocation that returns all node processes with command lines).
+ *   - Linux:   `/proc/<pid>/cmdline` walk.
+ *   - macOS:   `ps -axo pid,command` (no `/proc`).
+ *
+ * Falls back to `[]` if the platform probe fails — better to spawn an extra
+ * daemon than to wrongly kill a foreign-project one.
+ */
+export function findProjectDaemonPids(
+  projectRoot: string,
+  opts: { pidsHint?: Array<{ pid: number; cmdline: string }> } = {},
+): number[] {
+  if (process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN === '1') return [];
+
+  const candidates = projectCliCandidates(projectRoot);
+  if (candidates.length === 0) return [];
+
+  let processes: Array<{ pid: number; cmdline: string }>;
+  if (opts.pidsHint) {
+    processes = opts.pidsHint;
+  } else {
+    try {
+      if (process.platform === 'win32') processes = listMofloDaemonsWindows();
+      else if (process.platform === 'linux') processes = listMofloDaemonsLinux();
+      else processes = listMofloDaemonsUnix();
+    } catch {
+      return [];
+    }
+  }
+
+  return processes.filter(p => cmdlineMatchesProject(p.cmdline, candidates)).map(p => p.pid);
+}
+
+/**
+ * Candidate absolute paths for THIS project's daemon CLI binary.
+ *
+ * Returns the two layouts moflo ships with — consumer install
+ * (`<root>/node_modules/moflo/bin/cli.js`) and dogfood-source
+ * (`<root>/bin/cli.js`) — normalised for case-insensitive substring match
+ * via the shared `normalizeProjectRoot` helper (which realpaths + lowercases
+ * on Windows, matching the #1145 daemon-identity surface so the two checks
+ * agree about which root a process belongs to).
+ *
+ * Never includes the bare `projectRoot` prefix as a match candidate: an
+ * unrelated process (editor, npm script) whose cmdline happens to mention
+ * the project path would otherwise false-positive once the daemon-marker
+ * regex also incidentally matched.
+ */
+function projectCliCandidates(projectRoot: string): string[] {
+  const cliRelatives = [
+    join('node_modules', 'moflo', 'bin', 'cli.js'),
+    join('bin', 'cli.js'),
+  ];
+  // realpath both the input AND each candidate path — on macOS the
+  // command-line records the realpath'd form (`/private/var/folders/...`)
+  // while the cwd-rooted candidate stays under `/var/folders/...`.
+  const normRoot = normalizeProjectRoot(projectRoot);
+  const out = new Set<string>();
+  for (const rel of cliRelatives) {
+    // Apply normalizeForMatch ON TOP of normalizeProjectRoot so the
+    // substring match also tolerates mixed separators in the spawn-recorded
+    // cmdline ("\\" vs "/"). `normalizeProjectRoot` realpaths + lowercases
+    // on Windows; `normalizeForMatch` collapses slashes.
+    out.add(normalizeForMatch(normalizeProjectRoot(join(projectRoot, rel))));
+    out.add(normalizeForMatch(normalizeProjectRoot(join(normRoot, rel))));
+  }
+  return Array.from(out).filter(s => s.length > 0);
+}
+
+function cmdlineMatchesProject(cmdline: string, candidates: string[]): boolean {
+  // Daemon marker — must look like a moflo daemon to even consider matching.
+  if (!/daemon[\s\S]{0,40}start/i.test(cmdline)) return false;
+  if (!/moflo|claude-flow/i.test(cmdline)) return false;
+
+  // Substring match against case-folded, slash-normalised forms.
+  const norm = normalizeForMatch(cmdline);
+  return candidates.some(c => c.length > 0 && norm.includes(c));
+}
+
+function normalizeForMatch(p: string): string {
+  // Collapse mixed slashes to the OS separator so the substring check works
+  // regardless of how spawn quoted the path. Case-fold on Windows.
+  const collapsed = p.replace(/[\\/]+/g, sep);
+  return process.platform === 'win32' ? collapsed.toLowerCase() : collapsed;
+}
+
+function listMofloDaemonsWindows(): Array<{ pid: number; cmdline: string }> {
+  // Use execFileSync so the PS command is passed as a single argument vector
+  // (no cmd.exe quote-mangling). The `@($res)` array-cast handles the
+  // single-result case (`ConvertTo-Json` emits a bare object otherwise, and
+  // `-AsArray` is PS 6+ only). The `if ($res)` guard avoids emitting an
+  // empty string that JSON.parse can't read.
+  const script =
+    "$res = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" " +
+    "| Select-Object ProcessId, CommandLine; " +
+    "if ($res) { @($res) | ConvertTo-Json -Compress -Depth 3 }";
+  let raw: string;
+  try {
+    raw = execFileSync('powershell', ['-NoProfile', '-Command', script], {
+      encoding: 'utf-8',
+      timeout: 10000,
+      windowsHide: true,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    return [];
+  }
+  if (!raw.trim()) return [];
+  let parsed: any;
+  try { parsed = JSON.parse(raw); } catch { return []; }
+  if (!Array.isArray(parsed)) parsed = [parsed];
+  return parsed
+    .filter((p: any) => p && typeof p.CommandLine === 'string' && p.CommandLine.length > 0)
+    .map((p: any) => ({ pid: Number(p.ProcessId), cmdline: String(p.CommandLine) }))
+    .filter((p: any): p is { pid: number; cmdline: string } => Number.isFinite(p.pid) && p.pid > 0);
+}
+
+function listMofloDaemonsLinux(): Array<{ pid: number; cmdline: string }> {
+  const out: Array<{ pid: number; cmdline: string }> = [];
+  let entries: string[];
+  try { entries = fs.readdirSync('/proc'); } catch { return []; }
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    const pid = parseInt(entry, 10);
+    try {
+      // cmdline is NUL-separated argv. Replace NULs with spaces for matching.
+      const raw = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf-8');
+      if (!raw) continue;
+      const cmdline = raw.replace(/\0+$/, '').replace(/\0/g, ' ');
+      if (!/\bnode\b/i.test(cmdline) && !/\.js\b/.test(cmdline)) continue;
+      out.push({ pid, cmdline });
+    } catch { /* process exited mid-scan / no perms — skip */ }
+  }
+  return out;
+}
+
+function listMofloDaemonsUnix(): Array<{ pid: number; cmdline: string }> {
+  let raw: string;
+  try {
+    // -axww = all processes including session leaders (BSD form portable to
+    // macOS/Linux), unlimited line width so long cmdlines don't truncate.
+    // execFileSync (no shell) keeps quoting consistent with the rest of the
+    // codebase.
+    raw = execFileSync('ps', ['-axww', '-o', 'pid=,command='], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    return [];
+  }
+  const out: Array<{ pid: number; cmdline: string }> = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const sepIdx = trimmed.indexOf(' ');
+    if (sepIdx === -1) continue;
+    const pid = parseInt(trimmed.slice(0, sepIdx), 10);
+    if (!Number.isFinite(pid) || pid <= 0) continue;
+    const cmdline = trimmed.slice(sepIdx + 1).trim();
+    if (!/\bnode\b/i.test(cmdline) && !/\.js\b/.test(cmdline)) continue;
+    out.push({ pid, cmdline });
+  }
+  return out;
+}
+
+/**
+ * Same-project orphan reap. Called from `acquireDaemonLock` BEFORE the atomic
+ * write. PIDs that match the lock-holder OR our own process are skipped.
+ *
+ * Best-effort: failures during kill are swallowed because the next step
+ * (atomic exclusive write of the lock) is the source of truth — if the
+ * orphan survives, the lock-acquire still fails cleanly and the caller
+ * reports a stale lock-holder rather than spawning a duplicate.
+ *
+ * Exported for the `Daemon Orphan` healer fix which reuses the same logic.
+ */
+export function reapSameProjectOrphans(
+  projectRoot: string,
+  ownPid: number = process.pid,
+  lockHolderPid?: number,
+  /**
+   * Pre-computed project-daemon PIDs. Skips re-running the OS process scan
+   * when the caller already has them — the `Daemon Orphan` doctor-fix
+   * computes them once via `findProjectDaemonPids` and then reuses the
+   * same list here.
+   */
+  pidsHint?: number[],
+): { reaped: number[]; survived: number[] } {
+  const reaped: number[] = [];
+  const survived: number[] = [];
+
+  const allPids = pidsHint ?? findProjectDaemonPids(projectRoot);
+  const foreignPids = allPids.filter(p => {
+    if (p === ownPid) return false;
+    if (lockHolderPid != null && p === lockHolderPid) return false;
+    return true;
+  });
+  if (foreignPids.length === 0) return { reaped, survived };
+
+  for (const pid of foreignPids) {
+    if (terminateOrphan(pid)) reaped.push(pid);
+    else survived.push(pid);
+  }
+  return { reaped, survived };
+}
+
+/**
+ * Terminate a same-project daemon orphan: SIGTERM → 3s graceful poll →
+ * SIGKILL (POSIX) / `taskkill /F /T` (Windows). Returns true once the PID
+ * is no longer alive.
+ */
+function terminateOrphan(pid: number): boolean {
+  if (!isProcessAlive(pid)) return true;
+
+  try {
+    if (process.platform === 'win32') {
+      // No SIGTERM equivalent for our detached Node daemon on Windows — go
+      // straight to /F /T (same shape as bin/lib/daemon-recycler.mjs and
+      // killBackgroundDaemon). execFileSync keeps args un-shell-quoted.
+      try {
+        execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], {
+          windowsHide: true,
+          timeout: 3000,
+        });
+      } catch { /* already exiting */ }
+    } else {
+      try { process.kill(pid, 'SIGTERM'); } catch { /* already dead */ }
+    }
+  } catch { /* fall through to liveness poll */ }
+
+  // Graceful window
+  const gracefulDeadline = Date.now() + 3000;
+  while (Date.now() < gracefulDeadline && isProcessAlive(pid)) {
+    sleepSyncMs(100);
+  }
+
+  if (!isProcessAlive(pid)) return true;
+
+  // Escalate to SIGKILL on POSIX (Windows already used /F)
+  if (process.platform !== 'win32') {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already dead */ }
+  }
+
+  const killDeadline = Date.now() + 1000;
+  while (Date.now() < killDeadline && isProcessAlive(pid)) {
+    sleepSyncMs(100);
+  }
+  return !isProcessAlive(pid);
+}
+
+function sleepSyncMs(ms: number): void {
+  try {
+    const buf = new Int32Array(new SharedArrayBuffer(4));
+    Atomics.wait(buf, 0, 0, ms);
+  } catch {
+    // SharedArrayBuffer disabled (rare — exotic Node flags); fall back to a
+    // tight loop. Caller's wait windows are bounded so this is safe.
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) { /* spin */ }
   }
 }

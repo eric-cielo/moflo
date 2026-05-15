@@ -7,7 +7,11 @@
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
-import { getDaemonLockHolder, getDaemonLockPayload } from '../services/daemon-lock.js';
+import {
+  findProjectDaemonPids,
+  getDaemonLockHolder,
+  getDaemonLockPayload,
+} from '../services/daemon-lock.js';
 import {
   resolveClientPort,
   LEGACY_DEFAULT_PORT,
@@ -208,6 +212,63 @@ export async function checkDaemonIdentity(cwd: string = process.cwd()): Promise<
     name: 'Daemon Identity Match',
     status: 'pass',
     message: `OK (port ${probePort}, pid ${payload.pid})`,
+  };
+}
+
+/**
+ * Same-project orphan daemon check (#1150).
+ *
+ * Counts moflo daemon processes whose command line is rooted at THIS
+ * project's CLI binary. Healthy state: 0 (no daemon) or 1 (the lock-holder).
+ * Failure state: >1 — multiple daemons are racing for the indexer lock and
+ * writing to the same `daemon-state.json`.
+ *
+ * Distinct from `Daemon Identity Match`, which catches a DIFFERENT project's
+ * daemon answering on a port. This check catches multiple SAME-project
+ * daemons sharing the project root but with one of them holding a stale or
+ * unlinked lock (the orphan path).
+ *
+ * Status semantics:
+ *   - `pass` — 0 or 1 same-project daemon.
+ *   - `fail` — 2+ same-project daemons. Auto-fix terminates all but the
+ *     lock-recorded PID (or all + respawn if no lock matches a live one).
+ *     The "no live lock-holder" sub-case stays `fail` rather than `warn`:
+ *     a stale lock alongside live orphan daemons is a strictly worse state
+ *     than an orphan that the lock knows about, not a softer one.
+ *   - `warn` — the OS process scan itself failed (platform introspection
+ *     unavailable). The healer is offered as a fallback but isn't binding.
+ */
+export async function checkDaemonOrphan(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const projectRoot = findProjectRoot({ cwd });
+  let pids: number[];
+  try {
+    pids = findProjectDaemonPids(projectRoot);
+  } catch (e) {
+    return {
+      name: 'Daemon Orphan',
+      status: 'warn',
+      message: `Process scan failed: ${errorDetail(e)}`,
+    };
+  }
+
+  if (pids.length === 0) {
+    return { name: 'Daemon Orphan', status: 'pass', message: 'No daemon running (nothing to verify)' };
+  }
+  if (pids.length === 1) {
+    return { name: 'Daemon Orphan', status: 'pass', message: `1 daemon (pid ${pids[0]})` };
+  }
+
+  const lockHolder = getDaemonLockHolder(projectRoot);
+  const lockHolderInPids = lockHolder != null && pids.includes(lockHolder);
+  const orphanPids = lockHolderInPids ? pids.filter(p => p !== lockHolder) : pids;
+
+  return {
+    name: 'Daemon Orphan',
+    status: 'fail',
+    message: lockHolderInPids
+      ? `${pids.length} daemons for this project; lock holds pid ${lockHolder}, orphans: ${orphanPids.join(', ')}`
+      : `${pids.length} daemons for this project; no lock-holder identifiable, candidates: ${pids.join(', ')}`,
+    fix: 'flo healer --fix -c daemon-orphan',
   };
 }
 
