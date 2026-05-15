@@ -95,6 +95,8 @@ export interface MofloConfig {
     helpers: boolean;
     /** #881 — hash-based hook-block drift detection mode. */
     hook_block_drift: 'warn' | 'regenerate' | 'off';
+    /** #1142 — CLAUDE.md injection drift detection mode. */
+    claudemd_injection_drift: 'warn' | 'regenerate' | 'off';
   };
 
   sandbox: {
@@ -199,6 +201,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     scripts: true,
     helpers: true,
     hook_block_drift: 'warn',
+    claudemd_injection_drift: 'regenerate',
   },
   sandbox: {
     enabled: false,
@@ -341,6 +344,12 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
         return v === 'regenerate' || v === 'off' || v === 'warn'
           ? v
           : DEFAULT_CONFIG.auto_update.hook_block_drift;
+      })(),
+      claudemd_injection_drift: (() => {
+        const v = raw.auto_update?.claudemd_injection_drift ?? raw.autoUpdate?.claudemdInjectionDrift;
+        return v === 'regenerate' || v === 'off' || v === 'warn'
+          ? v
+          : DEFAULT_CONFIG.auto_update.claudemd_injection_drift;
       })(),
     },
     sandbox: {
@@ -542,6 +551,10 @@ auto_update:
   hook_block_drift: warn         # warn | regenerate | off
                                  # warn = print drift summary on session start (default)
                                  # regenerate = auto-add missing hooks (only when no customisations)
+                                 # off = skip detection entirely
+  claudemd_injection_drift: regenerate  # warn | regenerate | off
+                                 # regenerate = auto-refresh CLAUDE.md MoFlo block on drift (default)
+                                 # warn = print drift summary on session start
                                  # off = skip detection entirely
 
 # OS-level sandbox for spell bash steps
