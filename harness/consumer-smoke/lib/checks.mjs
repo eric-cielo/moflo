@@ -224,7 +224,12 @@ function bulkCopyDir(src, dest) {
       [src, dest, '/E', '/MT:8', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1'],
       { stdio: 'pipe', timeout: 300_000, windowsHide: true },
     );
-    if (r.status !== null && r.status >= 8) {
+    // r.status === null means spawn failure (ENOENT) or timeout — both
+    // produce a partial dest tree and must NOT silently pass.
+    if (r.error) {
+      throw new Error(`robocopy ${src}→${dest} failed to spawn: ${r.error.message}`);
+    }
+    if (r.status === null || r.status >= 8) {
       const stderr = (r.stderr || '').toString().trim().slice(0, 200);
       throw new Error(`robocopy ${src}→${dest} failed (exit ${r.status}): ${stderr}`);
     }
@@ -271,11 +276,10 @@ function overlayMofloFromTarball(tarballPath, consumerDir) {
 }
 
 function seedWarmDonor(consumerDir, donor) {
-  mkdirSync(donor, { recursive: true });
   // Clear donor first so a previous run's stale dep tree can't bleed in.
-  for (const name of readdirSync(donor)) {
-    rmSync(join(donor, name), { recursive: true, force: true });
-  }
+  // Single recursive rmSync is much faster than entry-by-entry on NTFS.
+  rmSync(donor, { recursive: true, force: true });
+  mkdirSync(donor, { recursive: true });
   bulkCopyDir(join(consumerDir, 'node_modules'), join(donor, 'node_modules'));
   copyFileSync(join(consumerDir, 'package.json'), join(donor, 'package.json'));
   if (existsSync(join(consumerDir, 'package-lock.json'))) {
