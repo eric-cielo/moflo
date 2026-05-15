@@ -58,8 +58,11 @@ describe('MCP server per-project PID/log (#1151)', () => {
   it('cleanupAbandonedTmpdirPid unlinks a dead pre-#1151 tmpdir PID file', async () => {
     const legacyPid = join(tmpdir(), 'claude-flow-mcp.pid');
     const legacyLog = join(tmpdir(), 'claude-flow-mcp.log');
-    // A PID nearly guaranteed to be dead (max-uint16 + 1 is unused on most systems).
-    writeFileSync(legacyPid, '999999', 'utf8');
+    // 2^31 - 1 is unreachable on every supported OS: Linux kernel enforces
+    // pid_max <= 4194304, macOS caps at 99998, Windows PIDs are bounded well
+    // below 2GB. Using `999999` instead is unsafe on modern Linux distros
+    // with raised pid_max under heavy load.
+    writeFileSync(legacyPid, '2147483647', 'utf8');
     writeFileSync(legacyLog, 'old log\n', 'utf8');
 
     const manager = new MCPServerManager();

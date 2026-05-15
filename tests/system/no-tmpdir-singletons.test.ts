@@ -36,6 +36,9 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 /** Paths allowed to reference `claude-flow-mcp.{pid,log}`. Forward-slashes only. */
 const ALLOWLIST = new Set<string>([
   'src/cli/mcp-server.ts',
+  // The cleanup-path unit test stages a legacy file under tmpdir() to verify
+  // the abandoned-tmpdir reap. Allowed for that purpose only.
+  'src/cli/__tests__/mcp-server-per-project-pid.test.ts',
   'tests/system/no-tmpdir-singletons.test.ts',
   'docs/internal/1145-daemon-port-collision-analysis.md',
   '.gitignore',
