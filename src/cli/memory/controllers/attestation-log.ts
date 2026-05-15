@@ -2,7 +2,7 @@
  * AttestationLog — moflo-owned append-only audit log (epic #464 Phase C2).
  *
  * Replaces `agentdb.AttestationLog`. Writes observability records into a
- * sql.js-backed table with a hash chain so tampering can be detected.
+ * SQLite table with a hash chain so tampering can be detected.
  *
  * Consumer surface (from src/cli/memory/memory-bridge.ts):
  *   - record({ operation, entryId, timestamp?, ...metadata })

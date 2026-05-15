@@ -34,6 +34,14 @@ import { SqliteBackend, SqliteBackendConfig } from './sqlite-backend.js';
 export type DatabaseProvider = 'sql.js' | 'node-sqlite' | 'json' | 'rvf' | 'auto';
 
 /**
+ * Canonical label returned in MCP `backend` fields and other consumer-visible
+ * surfaces. Single source of truth so a future engine swap is a one-line edit
+ * instead of an 8-site grep. Phase 5 (#1084) finalized node:sqlite as the
+ * only SQLite backend; the HNSW vector index sits on top.
+ */
+export const BACKEND_LABEL = 'node:sqlite + HNSW';
+
+/**
  * Database creation options
  */
 export interface DatabaseOptions {

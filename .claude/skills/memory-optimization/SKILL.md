@@ -112,7 +112,7 @@ const stats = await mcp.memory_stats({});
 - **Don't rebuild the index on every test.** Use a module-level singleton + `beforeAll`. HNSW cold-boot is ~5s.
 - **Don't raise `ef` globally.** Raise it on the specific queries that need recall. Default is fine for 90% of calls.
 - **Don't quantize a small corpus.** Below ~500k vectors the RAM saving doesn't justify the recall cost.
-- **Don't measure in dev mode.** sql.js WASM behaves differently under `NODE_ENV=production`; benches should match the target.
+- **Don't measure in dev mode.** The memory stack behaves differently under `NODE_ENV=production`; benches should match the target.
 
 ## See Also
 

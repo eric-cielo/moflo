@@ -1,11 +1,11 @@
 ---
 name: "vector-search"
-description: "Semantic vector search with moflo — RAG over your own documents, similarity matching, context-aware retrieval via HNSW (sql.js-backed). Use when building retrieval layers for chat, search, or context-assembly."
+description: "Semantic vector search with moflo — RAG over your own documents, similarity matching, context-aware retrieval via HNSW (node:sqlite-backed). Use when building retrieval layers for chat, search, or context-assembly."
 ---
 
 # MoFlo Vector Search (RAG)
 
-Semantic search over your own documents, backed by moflo's HNSW index in `.swarm/memory.db`. Small enough to ship in a devDependency; fast enough for interactive retrieval at 100k–1M vectors.
+Semantic search over your own documents, backed by moflo's HNSW index in `.moflo/moflo.db` (node:sqlite, Node 22+ built-in). Small enough to ship in a devDependency; fast enough for interactive retrieval at 100k–1M vectors.
 
 ## When to Use This vs `memory-patterns`
 

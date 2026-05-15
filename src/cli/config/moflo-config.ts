@@ -46,7 +46,7 @@ export interface MofloConfig {
   };
 
   memory: {
-    backend: 'sql.js' | 'agentdb' | 'json';
+    backend: 'node-sqlite' | 'sql.js' | 'agentdb' | 'json';
     embedding_model: string;
     namespace: string;
   };
@@ -159,7 +159,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     code_map: true,
   },
   memory: {
-    backend: 'sql.js',
+    backend: 'node-sqlite',
     embedding_model: 'Xenova/all-MiniLM-L6-v2',
     namespace: 'default',
   },
@@ -497,7 +497,7 @@ auto_index:
 
 # Memory backend
 memory:
-  backend: sql.js              # sql.js (WASM, no native deps) | agentdb | json
+  backend: node-sqlite         # node:sqlite (Node 22+ built-in) | agentdb | json — runtime always uses node:sqlite (Phase 5 #1084); this knob is informational only
   embedding_model: Xenova/all-MiniLM-L6-v2
   namespace: default
 

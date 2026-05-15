@@ -47,7 +47,7 @@ auto_index:
 
 # Memory backend
 memory:
-  backend: sql.js                 # sql.js (WASM) | json
+  backend: node-sqlite            # node:sqlite (Node 22+ built-in) | json — runtime always uses node:sqlite (Phase 5 #1084); this knob is informational only
   embedding_model: Xenova/all-MiniLM-L6-v2   # 384-dim neural embeddings
   namespace: default              # Default namespace for memory operations
 

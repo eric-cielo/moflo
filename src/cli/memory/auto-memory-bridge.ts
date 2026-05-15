@@ -3,7 +3,7 @@
  *
  * Per ADR-048: Bridges Claude Code's auto memory (markdown files at
  * ~/.claude/projects/<project>/memory/) with claude-flow's unified memory
- * system (MofloDb: sql.js + HNSW).
+ * system (MofloDb: node:sqlite + HNSW).
  *
  * Auto memory files are human-readable markdown that Claude loads into its
  * system prompt. MEMORY.md (first 200 lines) is the entrypoint; topic files

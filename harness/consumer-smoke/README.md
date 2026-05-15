@@ -38,7 +38,7 @@ The harness has two entry points sharing the same pack/install pipeline:
 | Required deps | `required-deps` | `onnxruntime-node` and `@anush008/tokenizers` are present (embedding stack intact) |
 | CLI | `cli-version` | `flo --version` reports a semver |
 | CLI | `doctor` | `flo doctor --json` runs (exit 0 or 1) |
-| Memory | `memory-init` | `flo memory init` initializes the sql.js+HNSW store |
+| Memory | `memory-init` | `flo memory init` initializes the node:sqlite+HNSW store |
 | Memory | `memory-store/retrieve/search/list/delete` | CRUD round-trips |
 | Spell | `spell-list` | `flo spell list` runs (exit 0 or 1) |
 | MCP | `mcp-tools:moflodb` | `flo mcp tools` lists `moflodb_*` tools |

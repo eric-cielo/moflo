@@ -254,7 +254,7 @@ describe('doctor-checks-memory-access — #1111 HNSW-empty fallback', () => {
             namespace: input.namespace,
             hasEmbedding: true,
             embeddingDimensions: 384,
-            backend: 'sql.js + HNSW',
+            backend: 'node:sqlite + HNSW',
           };
         },
       },
@@ -262,7 +262,7 @@ describe('doctor-checks-memory-access — #1111 HNSW-empty fallback', () => {
         name: 'memory_search',
         // The race: store succeeded, but HNSW has 0 vectors so search
         // returns empty. Matches the production failure mode in #1111.
-        handler: async () => ({ results: [], total: 0, backend: 'HNSW + sql.js' }),
+        handler: async () => ({ results: [], total: 0, backend: 'node:sqlite + HNSW' }),
       },
       {
         name: 'memory_retrieve',
@@ -359,7 +359,7 @@ describe('doctor-checks-memory-access — #1120 stale-neighbor fallback', () => 
             namespace: input.namespace,
             hasEmbedding: true,
             embeddingDimensions: 384,
-            backend: 'sql.js + HNSW',
+            backend: 'node:sqlite + HNSW',
           };
         },
       },
@@ -376,7 +376,7 @@ describe('doctor-checks-memory-access — #1120 stale-neighbor fallback', () => 
             similarity: 0.3,
           }],
           total: 1,
-          backend: 'HNSW + sql.js',
+          backend: 'node:sqlite + HNSW',
         }),
       },
       {

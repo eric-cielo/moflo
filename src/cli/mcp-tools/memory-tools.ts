@@ -1,11 +1,9 @@
 /**
- * Memory MCP Tools for CLI - V3 with sql.js/HNSW Backend
+ * Memory MCP Tools for CLI — node:sqlite + HNSW backend
  *
- * UPGRADED: Now uses the advanced sql.js + HNSW backend for:
- * - 150x-12,500x faster semantic search
- * - Vector embeddings with cosine similarity
- * - Persistent SQLite storage (WASM)
- * - Backward compatible with legacy JSON storage (auto-migrates)
+ * Backed by Node's built-in `node:sqlite` engine (Phase 4 #1083 flipped the
+ * default; Phase 5 #1084 deleted the prior sql.js path) plus an HNSW vector
+ * index for semantic search. Auto-migrates legacy JSON stores on first use.
  *
  * @module v3/cli/mcp-tools/memory-tools
  */
@@ -14,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { join, resolve } from 'path';
 import type { MCPTool } from './types.js';
 import { GateService } from '../services/spell-gate.js';
+import { BACKEND_LABEL } from '../memory/database-provider.js';
 
 // Legacy JSON store interface (for migration)
 interface LegacyMemoryEntry {
@@ -192,7 +191,7 @@ function shapeRetrievedEntry(entry: MemoryEntryWithMeta): RetrievedEntry {
     hasEmbedding: entry.hasEmbedding,
     navigation: parseNavigation(entry.metadata, 'full'),
     found: true,
-    backend: 'sql.js + HNSW',
+    backend: BACKEND_LABEL,
   };
 }
 
@@ -285,7 +284,7 @@ async function ensureInitialized(): Promise<void> {
   if (hasLegacyStore()) {
     const legacyStore = loadLegacyStore();
     if (legacyStore && Object.keys(legacyStore.entries).length > 0) {
-      console.error('[MCP Memory] Migrating legacy JSON store to sql.js...');
+      console.error('[MCP Memory] Migrating legacy JSON store to node:sqlite...');
       let migrated = 0;
 
       for (const [key, entry] of Object.entries(legacyStore.entries)) {
@@ -313,7 +312,7 @@ async function ensureInitialized(): Promise<void> {
 export const memoryTools: MCPTool[] = [
   {
     name: 'memory_store',
-    description: 'Store a value in memory with vector embedding for semantic search (sql.js + HNSW backend). Upserts by default — pass upsert:false to fail on duplicate keys. Optional `metadata` lets chunk-row producers set the navigation fields (parentDoc, prevChunk, nextChunk, siblings, …) that `memory_get_neighbors` reads.',
+    description: 'Store a value in memory with vector embedding for semantic search (node:sqlite + HNSW backend). Upserts by default — pass upsert:false to fail on duplicate keys. Optional `metadata` lets chunk-row producers set the navigation fields (parentDoc, prevChunk, nextChunk, siblings, …) that `memory_get_neighbors` reads.',
     category: 'memory',
     inputSchema: {
       type: 'object',
@@ -376,7 +375,7 @@ export const memoryTools: MCPTool[] = [
           storedAt: new Date().toISOString(),
           hasEmbedding: !!result.embedding,
           embeddingDimensions: result.embedding?.dimensions || null,
-          backend: 'sql.js + HNSW',
+          backend: BACKEND_LABEL,
           storeTime: `${duration.toFixed(2)}ms`,
           error: result.error,
         };
@@ -504,7 +503,7 @@ export const memoryTools: MCPTool[] = [
           query,
           results,
           total: results.length,
-          backend: 'HNSW + sql.js',
+          backend: BACKEND_LABEL,
         };
       } catch (error) {
         return {
@@ -600,7 +599,7 @@ export const memoryTools: MCPTool[] = [
           include,
           neighbors,
           total: neighbors.length,
-          backend: 'sql.js + HNSW',
+          backend: BACKEND_LABEL,
         };
       } catch (error) {
         return {
@@ -648,7 +647,7 @@ export const memoryTools: MCPTool[] = [
           key,
           namespace,
           deleted,
-          backend: 'sql.js + HNSW',
+          backend: BACKEND_LABEL,
           ...(errorReason ? { error: errorReason } : {}),
         };
       } catch (error) {
@@ -704,7 +703,7 @@ export const memoryTools: MCPTool[] = [
           total: result.total,
           limit,
           offset,
-          backend: 'sql.js + HNSW',
+          backend: BACKEND_LABEL,
         };
       } catch (error) {
         return {
@@ -750,7 +749,7 @@ export const memoryTools: MCPTool[] = [
             ? `${((withEmbeddings / allEntries.total) * 100).toFixed(1)}%`
             : '0%',
           namespaces,
-          backend: 'sql.js + HNSW',
+          backend: BACKEND_LABEL,
           version: status.version || '3.0.0',
           features: status.features || {
             vectorEmbeddings: true,

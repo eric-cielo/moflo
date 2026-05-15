@@ -2,7 +2,7 @@
  * CausalGraph — moflo-owned causal edge store.
  *
  * Replaces `agentdb.CausalGraph.addEdge`. Stores typed edges between
- * memory-entry IDs in a sql.js-backed table with composite indexes so
+ * memory-entry IDs in a SQLite table with composite indexes so
  * CausalRecall's BFS walks don't hit a full scan on the relation filter.
  */
 

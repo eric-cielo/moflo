@@ -2,7 +2,7 @@
 
 > **Inlined into `@moflo/cli` by [#598](https://github.com/eric-cielo/moflo/issues/598)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/memory` workspace package no longer exists — its contents live at `src/cli/memory/` and ship inside the `moflo` tarball.
 
-The unified memory service backed by sql.js + HNSW indexing (150x-12,500x faster than brute-force vector search per ADR-006/009). Provides `MofloDbAdapter`, `HnswLite`, `ControllerRegistry`, `UnifiedMemoryService`, `LearningBridge`, `MemoryGraph`, `RvfLearningStore`, `PersistentSonaCoordinator`, plus migration tooling and the auto-memory bridge (ADR-048/049).
+The unified memory service backed by node:sqlite + HNSW indexing (150x-12,500x faster than brute-force vector search per ADR-006/009). Provides `MofloDbAdapter`, `HnswLite`, `ControllerRegistry`, `UnifiedMemoryService`, `LearningBridge`, `MemoryGraph`, `RvfLearningStore`, `PersistentSonaCoordinator`, plus migration tooling and the auto-memory bridge (ADR-048/049).
 
 ## Where things live
 
