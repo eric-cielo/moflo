@@ -8,6 +8,8 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { mofloImport, mofloResolve } from '../services/moflo-require.js';
+import { findProjectRoot } from '../services/project-root.js';
+import { MOFLO_DIR } from '../services/moflo-paths.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Train subcommand - REAL WASM training with MoVector
@@ -790,8 +792,8 @@ const optimizeCommand: Command = {
       const patterns = await getAllPatterns();
       const stats = getIntelligenceStats();
 
-      // Get actual pattern storage size
-      const patternDir = path.join(process.cwd(), '.moflo', 'neural');
+      // Get actual pattern storage size (#1152: anchor on projectRoot, not cwd)
+      const patternDir = path.join(findProjectRoot(), MOFLO_DIR, 'neural');
       let beforeSize = 0;
       try {
         const patternFile = path.join(patternDir, 'patterns.json');
@@ -986,8 +988,8 @@ const exportCommand: Command = {
         },
       };
 
-      // Load patterns from local storage
-      const memoryDir = path.join(process.cwd(), '.moflo', 'memory');
+      // Load patterns from local storage (#1152: projectRoot-anchored)
+      const memoryDir = path.join(findProjectRoot(), MOFLO_DIR, 'memory');
       const patternsFile = path.join(memoryDir, 'patterns.json');
 
       if (fs.existsSync(patternsFile)) {
@@ -1469,8 +1471,8 @@ const importCommand: Command = {
         output.writeln(output.warning(`Filtered ${patterns.length - validPatterns.length} suspicious patterns`));
       }
 
-      // Save to local memory
-      const memoryDir = path.join(process.cwd(), '.moflo', 'memory');
+      // Save to local memory (#1152: projectRoot-anchored)
+      const memoryDir = path.join(findProjectRoot(), MOFLO_DIR, 'memory');
       if (!fs.existsSync(memoryDir)) {
         fs.mkdirSync(memoryDir, { recursive: true });
       }
