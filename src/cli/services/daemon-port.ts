@@ -249,3 +249,44 @@ export function probeDaemonHealth(
     req.on('timeout', () => { req.destroy(); finish({ kind: 'unreachable' }); });
   });
 }
+
+/** Retry backoff schedule for HTTP liveness probes (#1163 — Windows CI race). */
+const PROBE_RETRY_BACKOFF_MS = [50, 200, 800] as const;
+
+/**
+ * {@link probeDaemonHealth} with retry on transient `unreachable` results.
+ *
+ * The bare one-shot probe was tripping in CI when a daemon was mid-boot on
+ * Windows: the lockfile said v4.10.8 was alive but the HTTP server hadn't
+ * accepted /api/health yet, and the doctor check raised "unreachable" inside
+ * the 1500ms window. This wrapper retries 3× at 50/200/800 ms — total
+ * worst-case ~1s extra — and only on `unreachable`. `identity` and `legacy`
+ * are terminal: a daemon answering with a different project root or 404 is
+ * a real signal, not a race.
+ *
+ * Mirrors the retry pattern from `bin/lib/file-sync.mjs:syncWithRetry`
+ * (`feedback_transient_retry_circuit_breaker` — every transient-error op
+ * uses 50/200/800ms backoff).
+ *
+ * Worst-case elapsed = (PROBE_RETRY_BACKOFF_MS.length + 1) × timeoutMs
+ * + sum(PROBE_RETRY_BACKOFF_MS). For doctor's 1500ms timeout that's
+ * 4 × 1500 + 1050 ≈ 7s, fully off the hot path; callers picking a tighter
+ * timeout should account for the 4× multiplier.
+ */
+export async function probeDaemonHealthWithRetry(
+  port: number,
+  timeoutMs: number,
+): Promise<DaemonIdentityProbe> {
+  let last: DaemonIdentityProbe = { kind: 'unreachable' };
+  const maxAttempts = PROBE_RETRY_BACKOFF_MS.length + 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, PROBE_RETRY_BACKOFF_MS[attempt - 1]),
+      );
+    }
+    last = await probeDaemonHealth(port, timeoutMs);
+    if (last.kind !== 'unreachable') return last;
+  }
+  return last;
+}
