@@ -19,18 +19,22 @@ on:
     # signal. The drift-guard test still runs as part of the main CI
     # workflow's `Tests` job so consumer-shape regressions in CLAUDE.md
     # injection are still caught.
+    # Narrow ignore list — only ROOT-level Markdown / templates / LICENSE.
+    # Do NOT match `**/*.md` recursively: src/CLAUDE.md, src/cli/CLAUDE.md,
+    # `.claude/guidance/**/*.md`, and shipped fixtures under tests/ are all
+    # functional (consumed by claudemd-generator, drift guards, and indexer
+    # tests). Changing them MUST trigger CI.
     paths-ignore:
       - 'docs/**'
-      - '**/*.md'
+      - '*.md'
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE/**'
       - 'LICENSE'
-      - 'CODE_OF_CONDUCT.md'
   push:
     branches: [main, 'epic/*']
     paths-ignore:
       - 'docs/**'
-      - '**/*.md'
+      - '*.md'
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE/**'
       - 'LICENSE'
