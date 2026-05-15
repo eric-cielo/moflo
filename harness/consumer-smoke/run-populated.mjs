@@ -14,6 +14,7 @@
  *   node harness/consumer-smoke/run-populated.mjs --summary    # suppress PASS rows; failures + tail only (auto-on when stdout is non-TTY)
  *   node harness/consumer-smoke/run-populated.mjs --no-summary # force verbose output even when piped
  *   node harness/consumer-smoke/run-populated.mjs --tarball PATH
+ *   node harness/consumer-smoke/run-populated.mjs --warm-donor PATH # reuse cached node_modules at PATH (CI fast path, #1153)
  *
  * Exit codes:
  *   0 — every check passed
@@ -50,9 +51,12 @@ const opts = {
   json: argv.includes('--json'),
   summary: report.resolveSummaryMode(argv),
   tarball: null,
+  warmDonor: null,
 };
 const tIdx = argv.indexOf('--tarball');
 if (tIdx !== -1 && argv[tIdx + 1]) opts.tarball = resolve(argv[tIdx + 1]);
+const wIdx = argv.indexOf('--warm-donor');
+if (wIdx !== -1 && argv[wIdx + 1]) opts.warmDonor = resolve(argv[wIdx + 1]);
 
 report.configure({ json: opts.json, summary: opts.summary });
 proc.configure({ verbose: opts.verbose });
@@ -65,7 +69,7 @@ async function main() {
       tarballOverride: opts.tarball,
       skipPack: opts.skipPack,
     });
-    consumerDir = check.installConsumer({ workDir, tarballPath: tarball });
+    consumerDir = check.installConsumer({ workDir, tarballPath: tarball, warmDonor: opts.warmDonor });
 
     // #1067 — pin CLAUDE_PROJECT_DIR; see run.mjs for rationale.
     process.env.CLAUDE_PROJECT_DIR = consumerDir;

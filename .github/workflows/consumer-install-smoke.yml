@@ -92,6 +92,29 @@ jobs:
           path: ~/.cache/fastembed
           key: fastembed-${{ runner.os }}-${{ hashFiles('src/cli/embeddings/fastembed-inline/**/*.ts') }}-fast-all-MiniLM-L6-v2
 
+      # Issue #1153 — cache the consumer-install node_modules tree across
+      # runs. The cold path here used to be ~3 minutes on Windows; with a
+      # warm donor the harness skips `npm install` and overlays the freshly-
+      # packed moflo tgz on top of the cached deps (~30s on Windows).
+      #
+      # Key invariants:
+      #   - Keyed per-runner-OS. NTFS file metadata doesn't restore cleanly
+      #     onto POSIX runners (or vice-versa).
+      #   - Keyed off the lockfile + postinstall scripts. Anything that
+      #     would change the *dep tree* or the *postinstall side effects*
+      #     (e.g. native-binary pruning logic) invalidates the cache.
+      #   - The tgz hash is intentionally NOT in the key — the moflo source
+      #     payload changes every commit; only deps + postinstall behavior
+      #     matter for the cached layer. The harness overlays the fresh tgz
+      #     post-restore, so test coverage of the current source is intact.
+      #   - No restore-keys: a partial-prefix match could resurrect a stale
+      #     transitive after a `package-lock.json` bump.
+      - name: Cache consumer-install node_modules
+        uses: actions/cache@v5
+        with:
+          path: .work/consumer-warm
+          key: consumer-warm-${{ runner.os }}-${{ matrix.harness }}-${{ hashFiles('package-lock.json', 'scripts/prune-native-binaries.mjs', 'scripts/post-install-bootstrap.mjs', 'scripts/post-install-notice.mjs') }}
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
@@ -100,7 +123,7 @@ jobs:
 
       - name: Run consumer smoke harness
         if: matrix.harness == 'consumer'
-        run: npm run test:smoke
+        run: npm run test:smoke -- --warm-donor .work/consumer-warm
 
       # Issue #736 — safety gate for stories #727/#728/#729/#735. Pre-split
       # this step reused the consumer-smoke tgz via --skip-pack; post-split
@@ -108,4 +131,4 @@ jobs:
       # vs. the ~5m the split saves).
       - name: Run populated-consumer smoke harness
         if: matrix.harness == 'populated'
-        run: npm run test:smoke:populated
+        run: npm run test:smoke:populated -- --warm-donor .work/consumer-warm
