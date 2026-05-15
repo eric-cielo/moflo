@@ -64,6 +64,13 @@ afterEach(async () => {
   if (savedHomedrive === undefined) delete process.env.HOMEDRIVE; else process.env.HOMEDRIVE = savedHomedrive;
   if (savedHomepath === undefined) delete process.env.HOMEPATH; else process.env.HOMEPATH = savedHomepath;
   if (savedUserprofile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedUserprofile;
+  // #1154 — belt-and-suspenders with vitest.setup.ts. The handler under test
+  // reads `process.cwd()` at request time; if a prior test in this fork
+  // chdir'd and threw before its own restore, our fixture path (encoded from
+  // cwd at line below) wouldn't match the handler's lookup.
+  if (process.cwd() !== savedCwd) {
+    try { process.chdir(savedCwd); } catch { /* ignore */ }
+  }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 

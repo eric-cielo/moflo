@@ -23,6 +23,21 @@ import { beforeEach } from 'vitest';
 // that snapshot or assert on stderr. (#1098)
 import './src/cli/memory/suppress-sqlite-warning.js';
 
+// #1154 — every vitest fork runs many test files sequentially with shared
+// process state. Several test files `process.chdir(tmpDir)` to redirect
+// `findProjectRoot()` and restore in afterEach, but a throw before the
+// restore — or a module that caches `process.cwd()` at import time — leaves
+// the next test file in the same fork running at a stale or deleted path.
+// Victims that read `process.cwd()` (dashboard-claude-stats-route, the
+// simplify-classify default-branch detector under git contention) then flake
+// 0–3× per `npm test` run on Windows.
+//
+// INITIAL_CWD is captured once at module load (each fork loads this setup
+// fresh). The beforeEach below restores it for every test as belt-and-
+// suspenders — tests that intentionally chdir do so in their own
+// beforeEach, which runs *after* this one.
+const INITIAL_CWD = process.cwd();
+
 // Set once at module load (every test file imports this setup).
 process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 
@@ -45,6 +60,10 @@ process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = '1';
 // Re-set in `beforeEach` so a test that intentionally cleared it for a
 // routing scenario doesn't bleed into the next test.
 beforeEach(() => {
+  // #1154 — restore cwd first so subsequent env/init code runs at a known path.
+  if (process.cwd() !== INITIAL_CWD) {
+    try { process.chdir(INITIAL_CWD); } catch { /* dir may have been removed */ }
+  }
   if (process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1') {
     process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
   }
