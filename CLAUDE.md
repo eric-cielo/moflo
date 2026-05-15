@@ -44,6 +44,10 @@ Skip this and you'll either waste a session debugging code that isn't running, s
 
 Your first tool call MUST be `mcp__moflo__memory_search` — before any Glob/Grep/Read. Search `guidance`, `patterns`, and `learnings` every prompt; add `code-map` when navigating code, `tests` when looking for test inventory or coverage. When the user says "remember this", call `mcp__moflo__memory_store` with namespace `learnings`.
 
+### Traverse chunks, don't bulk-retrieve
+
+Search results carry a compact `navigation` crumb (parentDoc, prev/next, chunkTitle). For adjacent/sibling/hierarchical context use `mcp__moflo__memory_get_neighbors`; for full chunk content use `mcp__moflo__memory_retrieve`; `Read` the source doc only via `parentPath` when truly needed. Full protocol: `.claude/guidance/moflo-memory-protocol.md`.
+
 ### Auto-enforced gates
 
 - **TaskCreate-first**: Call `TaskCreate` before spawning the Agent tool
@@ -59,7 +63,8 @@ After `npm install` touches moflo, check `.moflo/restart-pending.json` — if pr
 
 ### Full Reference
 
-- Subagents protocol: `.claude/guidance/moflo-subagents.md`
+- Universal agent rules (memory protocol, git/PR conventions, file org, build/test): `.claude/guidance/moflo-agent-rules.md`
+- Subagent spawn protocol: `.claude/guidance/moflo-subagents.md`
 - Task + swarm coordination: `.claude/guidance/moflo-claude-swarm-cohesion.md`
 - CLI, hooks, swarm, memory, moflo.yaml: `.claude/guidance/moflo-core-guidance.md`
 <!-- MOFLO:INJECTED:END -->
