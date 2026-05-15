@@ -80,16 +80,18 @@ describe('probeDaemonHealthWithRetry — #1163', () => {
     const targetPort = (probeOnly.address() as AddressInfo).port;
     await new Promise<void>((r) => probeOnly.close(() => r()));
 
-    // Start the retry in parallel; server comes up after ~150ms (after the
-    // first backoff of 50ms but during the second of 200ms).
+    // Start the retry in parallel; server comes up after ~150ms (during the
+    // probe's second attempt window). Capture the late server into the
+    // module-level `server` so `afterEach` closes it — leaving it listening
+    // leaks the ephemeral port across tests.
     const probePromise = probeDaemonHealthWithRetry(targetPort, 300);
     setTimeout(() => {
-      createServer((_req, res) => {
+      const lateServer = createServer((_req, res) => {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ projectRoot: '/late/boot' }));
-      }).listen(targetPort, '127.0.0.1', () => {
-        // capture for cleanup
-        server = null;
+      });
+      lateServer.listen(targetPort, '127.0.0.1', () => {
+        server = lateServer;
       });
     }, 150);
 

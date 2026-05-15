@@ -267,6 +267,11 @@ const PROBE_RETRY_BACKOFF_MS = [50, 200, 800] as const;
  * Mirrors the retry pattern from `bin/lib/file-sync.mjs:syncWithRetry`
  * (`feedback_transient_retry_circuit_breaker` — every transient-error op
  * uses 50/200/800ms backoff).
+ *
+ * Worst-case elapsed = (PROBE_RETRY_BACKOFF_MS.length + 1) × timeoutMs
+ * + sum(PROBE_RETRY_BACKOFF_MS). For doctor's 1500ms timeout that's
+ * 4 × 1500 + 1050 ≈ 7s, fully off the hot path; callers picking a tighter
+ * timeout should account for the 4× multiplier.
  */
 export async function probeDaemonHealthWithRetry(
   port: number,
