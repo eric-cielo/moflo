@@ -17,6 +17,13 @@ try {
 // Types
 // ============================================================================
 
+/**
+ * YAML-side memory backend selection. Kept as a discriminated string union
+ * so older `moflo.yaml` files (containing `sql.js`) continue to parse —
+ * {@link resolveDatabaseProvider} maps the deprecated value at use time.
+ */
+export type MofloMemoryBackend = 'node-sqlite' | 'sql.js' | 'rvf' | 'json';
+
 export interface MofloConfig {
   project: {
     name: string;
@@ -46,7 +53,23 @@ export interface MofloConfig {
   };
 
   memory: {
-    backend: 'node-sqlite' | 'sql.js' | 'agentdb' | 'json';
+    /**
+     * Memory backend selection. Maps directly to the
+     * {@link DatabaseProvider} union in `src/cli/memory/database-provider.ts`.
+     *
+     * - `node-sqlite` — Node 22+ built-in (the runtime default since #1083/#1084).
+     * - `rvf` — pure-TS fallback used when node:sqlite is unavailable.
+     * - `json` — last-resort file storage.
+     * - `sql.js` — deprecated alias retained for old `moflo.yaml` files
+     *   in the wild. {@link resolveDatabaseProvider} rewrites it to
+     *   `node-sqlite` at use time with a one-time stderr deprecation. The
+     *   alias stays in the YAML-side type until a future major version.
+     *
+     * `agentdb` was previously listed here but never wired into the
+     * runtime — #1144 removed it to align the YAML schema with what
+     * `selectProvider()` actually understands.
+     */
+    backend: MofloMemoryBackend;
     embedding_model: string;
     namespace: string;
   };
@@ -261,6 +284,42 @@ function positiveNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && isFinite(value) && value > 0 ? value : fallback;
 }
 
+const VALID_MEMORY_BACKENDS: ReadonlySet<MofloMemoryBackend> = new Set<MofloMemoryBackend>([
+  'node-sqlite',
+  'sql.js',
+  'rvf',
+  'json',
+]);
+
+// Dedupe stderr warnings — `loadMofloConfig()` runs on every
+// `createDatabase()` call that omits an explicit provider, so a single
+// typo in moflo.yaml would otherwise spam N lines per process. Keyed by
+// the offending raw value so unrelated typos still each emit once.
+const _seenUnknownBackendWarnings = new Set<string>();
+
+/**
+ * Validate a raw `memory.backend` value against the narrow union. Unknown
+ * values (previously: `agentdb`, future typos) fall back to the default
+ * with a one-line stderr warning so consumers don't silently get the wrong
+ * backend after a migration.
+ *
+ * `sql.js` is accepted here but normalised later by
+ * {@link resolveDatabaseProvider} — keeping it in the YAML-side type lets
+ * existing `moflo.yaml` files keep parsing across the upgrade.
+ */
+function coerceMemoryBackend(raw: unknown): MofloMemoryBackend {
+  if (typeof raw !== 'string' || raw.length === 0) return DEFAULT_CONFIG.memory.backend;
+  if (VALID_MEMORY_BACKENDS.has(raw as MofloMemoryBackend)) return raw as MofloMemoryBackend;
+  if (!_seenUnknownBackendWarnings.has(raw)) {
+    _seenUnknownBackendWarnings.add(raw);
+    process.stderr.write(
+      `[moflo] WARNING: unknown memory.backend "${raw}" in moflo.yaml — ` +
+      `falling back to "${DEFAULT_CONFIG.memory.backend}". Valid: ${[...VALID_MEMORY_BACKENDS].join(', ')}.\n`,
+    );
+  }
+  return DEFAULT_CONFIG.memory.backend;
+}
+
 /**
  * Parse raw config object into typed config, merging with defaults.
  */
@@ -289,7 +348,7 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       code_map: raw.auto_index?.code_map ?? raw.autoIndex?.code_map ?? DEFAULT_CONFIG.auto_index.code_map,
     },
     memory: {
-      backend: raw.memory?.backend || DEFAULT_CONFIG.memory.backend,
+      backend: coerceMemoryBackend(raw.memory?.backend),
       embedding_model: raw.memory?.embedding_model || raw.memory?.embeddingModel || DEFAULT_CONFIG.memory.embedding_model,
       namespace: raw.memory?.namespace || DEFAULT_CONFIG.memory.namespace,
     },
@@ -497,7 +556,7 @@ auto_index:
 
 # Memory backend
 memory:
-  backend: node-sqlite         # node:sqlite (Node 22+ built-in) | agentdb | json — runtime always uses node:sqlite (Phase 5 #1084); this knob is informational only
+  backend: node-sqlite         # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider.
   embedding_model: Xenova/all-MiniLM-L6-v2
   namespace: default
 
@@ -608,4 +667,59 @@ export function writeMofloConfig(projectRoot?: string): string {
   const content = generateMofloConfig(root);
   fs.writeFileSync(configPath, content, 'utf-8');
   return configPath;
+}
+
+// ============================================================================
+// Backend resolution — bridges MofloConfig.memory.backend to runtime
+// ============================================================================
+
+/**
+ * Runtime provider identifiers understood by
+ * `src/cli/memory/database-provider.ts:selectProvider`. Declared as the
+ * intersection of MofloMemoryBackend (minus the deprecated `sql.js`
+ * alias) and the runtime `DatabaseProvider` union (minus `auto`, since
+ * resolution always commits to a concrete provider before
+ * selectProvider sees it). Kept structural so this module has no value-
+ * import dependency on the memory subtree — the launcher and statusline
+ * still pay only the YAML parse on cold start.
+ */
+export type ResolvedMemoryBackend = Exclude<MofloMemoryBackend, 'sql.js'>;
+
+// Dedupe stderr deprecation messages — one banner per (process, deprecated
+// alias) keeps the noise to a single line per session even when multiple
+// subsystems (daemon + indexer + statusline) all load the same config.
+const _seenBackendDeprecations = new Set<string>();
+
+/**
+ * Map a YAML-side `memory.backend` value to the runtime
+ * {@link ResolvedMemoryBackend}. `sql.js` (deprecated since Phase 5 / #1084)
+ * is rewritten to `node-sqlite` with a one-time stderr deprecation note so
+ * consumers see they need to update their `moflo.yaml` but the run still
+ * succeeds.
+ *
+ * Centralising the mapping here is the whole point of #1144: every future
+ * caller that opens a DB based on the user's YAML knob goes through this
+ * helper, so the YAML schema and the runtime selection can never drift.
+ */
+export function resolveDatabaseProvider(
+  backend: MofloMemoryBackend,
+): ResolvedMemoryBackend {
+  if (backend === 'sql.js') {
+    if (!_seenBackendDeprecations.has(backend)) {
+      _seenBackendDeprecations.add(backend);
+      process.stderr.write(
+        `[moflo] DEPRECATED: memory.backend "sql.js" in moflo.yaml — ` +
+        `sql.js was removed in Phase 5 (#1084). Using "node-sqlite" instead. ` +
+        `Update your moflo.yaml to silence this warning.\n`,
+      );
+    }
+    return 'node-sqlite';
+  }
+  return backend;
+}
+
+/** @internal — test hook only; resets the dedupe sets between cases. */
+export function _resetBackendDeprecations(): void {
+  _seenBackendDeprecations.clear();
+  _seenUnknownBackendWarnings.clear();
 }

@@ -207,7 +207,7 @@ export async function createDatabase(
   options: DatabaseOptions = {}
 ): Promise<IMemoryBackend> {
   const {
-    provider = 'auto',
+    provider,
     verbose = false,
     walMode: _walMode = true,
     optimize = true,
@@ -217,8 +217,16 @@ export async function createDatabase(
     wasmPath: _wasmPath,
   } = options;
 
-  // Select provider
-  const selectedProvider = await selectProvider(provider, verbose);
+  // When no explicit provider is given, consult moflo.yaml's
+  // `memory.backend` knob (#1144). This is what makes the YAML value
+  // truthful instead of cosmetic — the runtime now actually honours
+  // whatever the consumer put in their config. Falls back to `'auto'` if
+  // the config can't be loaded (e.g. running from a directory with no
+  // `moflo.yaml`), preserving the previous behaviour for raw callers.
+  const effectiveProvider: DatabaseProvider =
+    provider ?? (await preferredProviderFromConfig(verbose)) ?? 'auto';
+
+  const selectedProvider = await selectProvider(effectiveProvider, verbose);
 
   if (verbose) {
     console.log(`[DatabaseProvider] Creating database with provider: ${selectedProvider}`);
@@ -289,6 +297,58 @@ export async function createDatabase(
  */
 export function getPlatformInfo(): PlatformInfo {
   return detectPlatform();
+}
+
+/**
+ * Read `memory.backend` from the project's `moflo.yaml`, resolve any
+ * deprecated aliases (sql.js → node-sqlite), and return a value
+ * `selectProvider()` understands. Returns `null` on any failure so
+ * `createDatabase()` cleanly falls back to platform auto-detection
+ * — config loading must never break the runtime.
+ *
+ * Wrapped in a dynamic import so the memory subtree doesn't pull
+ * `js-yaml` / `fs` into hot paths (e.g. the in-memory test backend).
+ *
+ * Memoised per (cwd, process) — a test suite or daemon that opens many
+ * DBs in sequence parses moflo.yaml once. Keyed on cwd so a test that
+ * `chdir`s into a temp dir gets a fresh resolution.
+ */
+const _resolvedProviderCache = new Map<string, DatabaseProvider | null>();
+
+async function preferredProviderFromConfig(verbose: boolean): Promise<DatabaseProvider | null> {
+  const key = process.cwd();
+  if (_resolvedProviderCache.has(key)) {
+    return _resolvedProviderCache.get(key) ?? null;
+  }
+  try {
+    const { loadMofloConfig, resolveDatabaseProvider } = await import(
+      '../config/moflo-config.js'
+    );
+    const cfg = loadMofloConfig();
+    const resolved = resolveDatabaseProvider(cfg.memory.backend);
+    if (verbose) {
+      console.log(
+        `[DatabaseProvider] moflo.yaml memory.backend="${cfg.memory.backend}" → ${resolved}`,
+      );
+    }
+    _resolvedProviderCache.set(key, resolved);
+    return resolved;
+  } catch (err) {
+    if (verbose) {
+      console.warn(
+        `[DatabaseProvider] Could not load moflo.yaml backend preference (${
+          (err as Error).message
+        }) — falling back to auto-detection`,
+      );
+    }
+    _resolvedProviderCache.set(key, null);
+    return null;
+  }
+}
+
+/** @internal — test hook only; resets the per-cwd cache between cases. */
+export function _resetPreferredProviderCache(): void {
+  _resolvedProviderCache.clear();
 }
 
 /**
