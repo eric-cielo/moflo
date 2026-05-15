@@ -19,6 +19,7 @@ import {
   normalizeProjectRoot,
 } from '../services/daemon-port.js';
 import {
+  LEGACY_SWARM_DIR,
   legacyMemoryDbPath,
   memoryDbCandidatePaths,
   memoryDbPath,
@@ -313,8 +314,8 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
  * one pass.
  */
 export async function checkSwarmResidue(): Promise<HealthCheck> {
-  const root = process.cwd();
-  const swarmDir = join(root, '.swarm');
+  const root = findProjectRoot();
+  const swarmDir = join(root, LEGACY_SWARM_DIR);
   if (!existsSync(swarmDir)) {
     return { name: 'Swarm Residue', status: 'pass', message: 'No .swarm/ directory present' };
   }

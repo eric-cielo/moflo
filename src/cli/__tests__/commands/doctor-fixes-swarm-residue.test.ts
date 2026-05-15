@@ -27,17 +27,27 @@ import { join } from 'node:path';
 import { autoFixCheck } from '../../commands/doctor-fixes.js';
 
 let originalCwd: string;
+let originalClaudeProjectDir: string | undefined;
 let tmpDir: string;
 
 beforeEach(() => {
   originalCwd = process.cwd();
+  originalClaudeProjectDir = process.env.CLAUDE_PROJECT_DIR;
   tmpDir = mkdtempSync(join(tmpdir(), 'moflo-swarm-residue-'));
   process.chdir(tmpDir);
+  // `findProjectRoot()` honors CLAUDE_PROJECT_DIR. Pin it at the temp dir so
+  // the migrator can't escape to the real moflo repo when tests run under it.
+  process.env.CLAUDE_PROJECT_DIR = tmpDir;
   mkdirSync(join(tmpDir, '.moflo'), { recursive: true });
 });
 
 afterEach(() => {
   process.chdir(originalCwd);
+  if (originalClaudeProjectDir === undefined) {
+    delete process.env.CLAUDE_PROJECT_DIR;
+  } else {
+    process.env.CLAUDE_PROJECT_DIR = originalClaudeProjectDir;
+  }
   rmSync(tmpDir, { recursive: true, force: true });
 });
 

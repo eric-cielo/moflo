@@ -6,7 +6,7 @@
  * if it looks like an `npx`/`npm`/`claude` command.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync, readdirSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
@@ -14,6 +14,7 @@ import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { getDaemonLockHolder } from '../services/daemon-lock.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { legacyMemoryDbPath, legacyMemoryDbBakPath, memoryDbPath, mofloDir } from '../services/moflo-paths.js';
 import { findZombieProcesses } from './doctor-zombies.js';
 import { inspectMcpConfigs } from './doctor-checks-config.js';
 import { installClaudeCode, runCommand } from './doctor-checks-runtime.js';
@@ -123,19 +124,26 @@ async function fixGateHealthHooks(): Promise<boolean> {
  * contents.
  */
 async function fixSwarmLegacyResidue(): Promise<boolean> {
-  const root = process.cwd();
+  const root = findProjectRoot();
   const swarmDir = join(root, '.swarm');
   if (!existsSync(swarmDir)) return true;
 
-  const canonicalDb = join(root, '.moflo', 'moflo.db');
-  const movectorDir = join(root, '.moflo', 'movector');
-  const logsDir = join(root, '.moflo', 'logs');
+  const canonicalDb = memoryDbPath(root);
+  const moflo = mofloDir(root);
+  const movectorDir = join(moflo, 'movector');
+  const logsDir = join(moflo, 'logs');
 
   let allMigrated = true;
 
-  // (1) memory.db + .bak — only safe to delete once the canonical exists.
-  for (const name of ['memory.db', 'memory.db.bak']) {
-    const src = join(swarmDir, name);
+  // (1) memory.db + .bak — both are migration artifacts of the launcher's
+  // copy-verify-rename step; if the canonical isn't yet in place neither
+  // source is safe to delete. The launcher creates the `.bak` only AFTER
+  // canonical exists, so this guard is conservative but correct.
+  const legacyDbPaths: Array<[string, string]> = [
+    ['memory.db', legacyMemoryDbPath(root)],
+    ['memory.db.bak', legacyMemoryDbBakPath(root)],
+  ];
+  for (const [name, src] of legacyDbPaths) {
     if (!existsSync(src)) continue;
     if (!existsSync(canonicalDb)) {
       output.writeln(output.warning(
@@ -177,8 +185,8 @@ async function fixSwarmLegacyResidue(): Promise<boolean> {
   }
 
   // (3) logs — best-effort move. Append into canonical if it already exists
-  // (don't drop history) by reading + appending + unlinking. Logs are small
-  // enough that the read-into-memory cost is acceptable.
+  // (don't drop history). Hook + background logs are bounded to kilobytes in
+  // practice so the read-into-memory cost is acceptable.
   const logFiles = ['hooks.log', 'background.log'];
   for (const name of logFiles) {
     const src = join(swarmDir, name);
@@ -187,10 +195,7 @@ async function fixSwarmLegacyResidue(): Promise<boolean> {
     try {
       mkdirSync(logsDir, { recursive: true });
       if (existsSync(target)) {
-        const legacyContents = readFileSync(src);
-        // appendFileSync via writeFileSync with flag:'a' to avoid pulling in
-        // another import; functionally identical for our purposes.
-        writeFileSync(target, legacyContents, { flag: 'a' });
+        appendFileSync(target, readFileSync(src));
         unlinkSync(src);
       } else {
         renameSync(src, target);
