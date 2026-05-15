@@ -9,7 +9,7 @@
  * - Optimized state space with feature hashing
  * - Epsilon decay with exponential annealing
  * - Experience replay buffer for stable learning
- * - Model persistence to .swarm/q-learning-model.json
+ * - Model persistence to .moflo/movector/q-learning-model.json
  *
  * @module q-learning-router
  */
@@ -48,7 +48,7 @@ export interface QLearningRouterConfig {
   cacheSize: number;
   /** Cache TTL in milliseconds (default: 300000 = 5 minutes) */
   cacheTTL: number;
-  /** Model persistence path (default: '.swarm/q-learning-model.json') */
+  /** Model persistence path (default: '.moflo/movector/q-learning-model.json') */
   modelPath: string;
   /** Auto-save interval in updates (default: 100) */
   autoSaveInterval: number;
@@ -140,7 +140,7 @@ const DEFAULT_CONFIG: QLearningRouterConfig = {
   enableReplay: true,
   cacheSize: 256,
   cacheTTL: 300000,
-  modelPath: '.swarm/q-learning-model.json',
+  modelPath: '.moflo/movector/q-learning-model.json',
   autoSaveInterval: 100,
   stateSpaceDim: 64,
 };

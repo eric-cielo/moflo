@@ -196,7 +196,7 @@ const DEFAULT_CONFIG: ModelRouterConfig = {
   maxUncertainty: 0.15,
   enableCircuitBreaker: true,
   circuitBreakerThreshold: 5,
-  statePath: '.swarm/model-router-state.json',
+  statePath: '.moflo/movector/model-router-state.json',
   autoSaveInterval: 1, // Save after every decision for CLI persistence
   enableCostOptimization: true,
   preferSpeed: true,

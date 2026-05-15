@@ -282,14 +282,10 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
     const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
 
     if (dbPath === canonical) {
-      let message = `.moflo/moflo.db (${sizeMB} MB)`;
-      // Unfinished migration tail: source still present means the launcher's
-      // rename-to-.bak step failed (Windows lock most often). Flag so the user
-      // knows to clear the stale source.
-      if (existsSync(legacyMemoryDbPath(root))) {
-        message += ' — legacy .swarm/memory.db still present (delete it after confirming canonical is healthy)';
-      }
-      return { name: 'Memory Database', status: 'pass', message };
+      // Legacy `.swarm/memory.db` residue is owned by the separate
+      // `checkSwarmResidue` check so we keep this check focused on the
+      // canonical DB. That check carries the auto-fix.
+      return { name: 'Memory Database', status: 'pass', message: `.moflo/moflo.db (${sizeMB} MB)` };
     }
 
     return {
@@ -301,6 +297,48 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
   }
 
   return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
+}
+
+/**
+ * Catches `.swarm/` residue that survived past the canonical migration:
+ *  - `memory.db` / `memory.db.bak` — stale once `.moflo/moflo.db` exists.
+ *  - `q-learning-model.json` / `model-router-state.json` — live router state
+ *    that pre-dates the `.moflo/movector/` defaults; migrate, don't delete.
+ *  - `hooks.log` / `background.log` — diagnostic logs the launcher used to
+ *    route to `.swarm/`; relocate to `.moflo/logs/`.
+ *
+ * Passes when `.swarm/` is absent OR contains nothing the migrator recognises.
+ * Otherwise warns with `fix: 'flo healer --fix -c swarm-residue'` so the auto-fix
+ * dispatcher (`fixSwarmLegacyResidue` in doctor-fixes.ts) can clean it up in
+ * one pass.
+ */
+export async function checkSwarmResidue(): Promise<HealthCheck> {
+  const root = process.cwd();
+  const swarmDir = join(root, '.swarm');
+  if (!existsSync(swarmDir)) {
+    return { name: 'Swarm Residue', status: 'pass', message: 'No .swarm/ directory present' };
+  }
+
+  const artifacts = [
+    'memory.db',
+    'memory.db.bak',
+    'q-learning-model.json',
+    'model-router-state.json',
+    'hooks.log',
+    'background.log',
+  ];
+  const present = artifacts.filter(name => existsSync(join(swarmDir, name)));
+
+  if (present.length === 0) {
+    return { name: 'Swarm Residue', status: 'pass', message: '.swarm/ present but no known residue' };
+  }
+
+  return {
+    name: 'Swarm Residue',
+    status: 'warn',
+    message: `${present.length} legacy artifact(s) in .swarm/: ${present.join(', ')}`,
+    fix: 'flo healer --fix -c swarm-residue',
+  };
 }
 
 /**

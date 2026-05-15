@@ -6,7 +6,7 @@
  * if it looks like an `npx`/`npm`/`claude` command.
  */
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
@@ -97,6 +97,128 @@ async function fixGateHealthHooks(): Promise<boolean> {
   }
 
   return driftFixed && wiringFixed;
+}
+
+/**
+ * Migrate `.swarm/` residue to its canonical home and remove the legacy directory.
+ *
+ * Three categories of artifact:
+ *   1. `memory.db` (+ `.bak`)               — stale once `.moflo/moflo.db` exists; delete.
+ *   2. `q-learning-model.json` / `model-router-state.json` — live RL state.
+ *      Rename into `.moflo/movector/`. If the canonical target already exists
+ *      (consumer ran moflo on the new defaults before the auto-fix), the
+ *      canonical wins and the `.swarm/` copy is unlinked.
+ *   3. `hooks.log` / `background.log`       — diagnostic logs. Relocate to
+ *      `.moflo/logs/`; append into the canonical file if it already exists
+ *      so we don't drop history. Best-effort — log loss is acceptable.
+ *
+ * Finally `rmdir .swarm/` if and only if it's empty. Anything we didn't
+ * recognise is left in place rather than silently deleted.
+ *
+ * Cross-platform: uses `fs.rename`/`rmdir` (Node primitives), forward-slash-free
+ * joins via `path.join`. Works on Windows + POSIX.
+ *
+ * Returns true if the directory was fully retired OR if there was nothing to
+ * migrate; false if any relocation throws or `.swarm/` survives with unknown
+ * contents.
+ */
+async function fixSwarmLegacyResidue(): Promise<boolean> {
+  const root = process.cwd();
+  const swarmDir = join(root, '.swarm');
+  if (!existsSync(swarmDir)) return true;
+
+  const canonicalDb = join(root, '.moflo', 'moflo.db');
+  const movectorDir = join(root, '.moflo', 'movector');
+  const logsDir = join(root, '.moflo', 'logs');
+
+  let allMigrated = true;
+
+  // (1) memory.db + .bak — only safe to delete once the canonical exists.
+  for (const name of ['memory.db', 'memory.db.bak']) {
+    const src = join(swarmDir, name);
+    if (!existsSync(src)) continue;
+    if (!existsSync(canonicalDb)) {
+      output.writeln(output.warning(
+        `  Skipping ${name}: .moflo/moflo.db absent — run \`flo memory init\` first.`,
+      ));
+      allMigrated = false;
+      continue;
+    }
+    try {
+      unlinkSync(src);
+    } catch (e) {
+      output.writeln(output.warning(`  Failed to delete ${name}: ${errorDetail(e)}`));
+      allMigrated = false;
+    }
+  }
+
+  // (2) router state JSONs — rename into .moflo/movector/.
+  const stateFiles = [
+    { name: 'q-learning-model.json', dest: movectorDir },
+    { name: 'model-router-state.json', dest: movectorDir },
+  ];
+  for (const { name, dest } of stateFiles) {
+    const src = join(swarmDir, name);
+    if (!existsSync(src)) continue;
+    const target = join(dest, name);
+    try {
+      mkdirSync(dest, { recursive: true });
+      if (existsSync(target)) {
+        // Canonical already populated by a fresh save on the new defaults.
+        // Keep the canonical, drop the legacy copy.
+        unlinkSync(src);
+      } else {
+        renameSync(src, target);
+      }
+    } catch (e) {
+      output.writeln(output.warning(`  Failed to relocate ${name}: ${errorDetail(e)}`));
+      allMigrated = false;
+    }
+  }
+
+  // (3) logs — best-effort move. Append into canonical if it already exists
+  // (don't drop history) by reading + appending + unlinking. Logs are small
+  // enough that the read-into-memory cost is acceptable.
+  const logFiles = ['hooks.log', 'background.log'];
+  for (const name of logFiles) {
+    const src = join(swarmDir, name);
+    if (!existsSync(src)) continue;
+    const target = join(logsDir, name);
+    try {
+      mkdirSync(logsDir, { recursive: true });
+      if (existsSync(target)) {
+        const legacyContents = readFileSync(src);
+        // appendFileSync via writeFileSync with flag:'a' to avoid pulling in
+        // another import; functionally identical for our purposes.
+        writeFileSync(target, legacyContents, { flag: 'a' });
+        unlinkSync(src);
+      } else {
+        renameSync(src, target);
+      }
+    } catch (e) {
+      output.writeln(output.warning(`  Failed to relocate ${name}: ${errorDetail(e)}`));
+      allMigrated = false;
+    }
+  }
+
+  // (4) rmdir .swarm/ if it's empty. Anything left is unrecognised — leave it
+  // for the user to inspect rather than silently delete.
+  try {
+    const remaining = readdirSync(swarmDir);
+    if (remaining.length === 0) {
+      rmdirSync(swarmDir);
+    } else {
+      output.writeln(output.dim(
+        `  .swarm/ kept (${remaining.length} unrecognised entr${remaining.length === 1 ? 'y' : 'ies'}): ${remaining.join(', ')}`,
+      ));
+      allMigrated = false;
+    }
+  } catch (e) {
+    output.writeln(output.warning(`  Failed to remove .swarm/: ${errorDetail(e)}`));
+    allMigrated = false;
+  }
+
+  return allMigrated;
 }
 
 /**
@@ -427,6 +549,12 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
         output.writeln(output.warning(`  Repair failed: ${errorDetail(e)}`));
         return false;
       }
+    },
+    // Migrate `.swarm/` residue (legacy memory.db, RL state JSONs, hook/bg logs)
+    // into their canonical `.moflo/` homes and rmdir the directory once empty.
+    // See `fixSwarmLegacyResidue` for the per-artifact policy.
+    'Swarm Residue': async () => {
+      return fixSwarmLegacyResidue();
     },
     'Status Line': async () => {
       const settingsPath = join(process.cwd(), '.claude', 'settings.json');

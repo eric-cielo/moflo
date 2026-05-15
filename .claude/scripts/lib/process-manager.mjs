@@ -164,9 +164,9 @@ export function createProcessManager(root) {
         // This ensures errors from background indexers/pretrain are captured
         let stdio = 'ignore';
         try {
-          const swarmDir = resolve(projectRoot, '.swarm');
-          ensureDir(swarmDir);
-          const logPath = resolve(swarmDir, 'background.log');
+          const logsDir = resolve(projectRoot, '.moflo', 'logs');
+          ensureDir(logsDir);
+          const logPath = resolve(logsDir, 'background.log');
           const fd = openSync(logPath, 'a');
           stdio = ['ignore', fd, fd];
         } catch {

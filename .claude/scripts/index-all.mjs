@@ -13,7 +13,7 @@
  * Spawned as a single detached background process by hooks.mjs session-start.
  */
 
-import { existsSync, appendFileSync, readFileSync } from 'fs';
+import { existsSync, appendFileSync, readFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, spawnSync } from 'child_process';
@@ -53,7 +53,8 @@ function findProjectRoot() {
 }
 
 const projectRoot = findProjectRoot();
-const LOG_PATH = resolve(projectRoot, '.swarm/hooks.log');
+const LOG_PATH = resolve(projectRoot, '.moflo', 'logs', 'hooks.log');
+try { mkdirSync(dirname(LOG_PATH), { recursive: true }); } catch { /* best effort */ }
 
 function log(msg) {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
