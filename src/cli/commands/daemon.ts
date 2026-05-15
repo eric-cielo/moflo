@@ -37,15 +37,15 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 export function resolveDashboardPort(
   flagValue: string | undefined,
   envValue: string | undefined,
-): { ok: true; port: number } | { ok: false; error: string } {
+): { ok: true; port: number; explicit: boolean } | { ok: false; error: string } {
   const source = flagValue ?? envValue;
-  if (!source) return { ok: true, port: DEFAULT_DASHBOARD_PORT };
+  if (!source) return { ok: true, port: DEFAULT_DASHBOARD_PORT, explicit: false };
   const parsed = parseInt(source, 10);
   if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
     const label = flagValue ? 'dashboard port' : 'MOFLO_DAEMON_PORT';
     return { ok: false, error: `Invalid ${label}: ${source} (must be 1-65535)` };
   }
-  return { ok: true, port: parsed };
+  return { ok: true, port: parsed, explicit: true };
 }
 
 // Start daemon subcommand
@@ -85,6 +85,7 @@ const startCommand: Command = {
       return { success: false, exitCode: 1 };
     }
     const dashboardPort = portResult.port;
+    const dashboardPortExplicit = portResult.explicit;
 
     // Parse resource threshold overrides from CLI flags
     const config: Partial<DaemonConfig> = {};
@@ -120,7 +121,14 @@ const startCommand: Command = {
 
     // Background mode (default): fork a detached process
     if (!foreground) {
-      return startBackgroundDaemon(projectRoot, quiet, rawMaxCpu, rawMinMem, dashboardPort, noDashboard);
+      return startBackgroundDaemon(
+        projectRoot,
+        quiet,
+        rawMaxCpu,
+        rawMinMem,
+        dashboardPortExplicit ? dashboardPort : undefined,
+        noDashboard,
+      );
     }
 
     // Foreground mode: run in current process (blocks terminal)
@@ -169,7 +177,7 @@ const startCommand: Command = {
         spinner.succeed('Worker daemon started (foreground mode)');
 
         const { dashboard } = await attachDaemonServices(daemon, {
-          projectRoot, noDashboard, dashboardPort, verbose: true,
+          projectRoot, noDashboard, dashboardPort, dashboardPortExplicit, verbose: true,
         });
 
         output.writeln();
@@ -233,7 +241,7 @@ const startCommand: Command = {
         await new Promise(() => {}); // Never resolves - daemon runs until killed
       } else {
         const daemon = await startDaemon(projectRoot, config);
-        await attachDaemonServices(daemon, { projectRoot, noDashboard, dashboardPort, verbose: false });
+        await attachDaemonServices(daemon, { projectRoot, noDashboard, dashboardPort, dashboardPortExplicit, verbose: false });
         await new Promise(() => {}); // Keep alive
       }
 
@@ -255,7 +263,18 @@ const startCommand: Command = {
  */
 async function attachDaemonServices(
   daemon: WorkerDaemon,
-  opts: { projectRoot: string; noDashboard?: boolean; dashboardPort: number; verbose: boolean },
+  opts: {
+    projectRoot: string;
+    noDashboard?: boolean;
+    dashboardPort: number;
+    /**
+     * True when the caller pinned the port via `--dashboard-port` or
+     * `MOFLO_DAEMON_PORT`. When false, the dashboard picks a deterministic
+     * per-project port via `serverPortCandidates` (#1145).
+     */
+    dashboardPortExplicit?: boolean;
+    verbose: boolean;
+  },
 ): Promise<{ dashboard: DashboardHandle | null; memory: MemoryAccessor | null }> {
   const logWarn = (msg: string) => opts.verbose
     ? output.printWarning(msg)
@@ -275,13 +294,23 @@ async function attachDaemonServices(
   if (!opts.noDashboard) {
     try {
       dashboard = await startDashboard(daemon, {
-        port: opts.dashboardPort,
+        // Pass the resolved port only when the caller explicitly pinned it
+        // (CLI flag / env). Otherwise let startDashboard pick the
+        // deterministic per-project port via serverPortCandidates (#1145).
+        port: opts.dashboardPortExplicit ? opts.dashboardPort : undefined,
         memory,
         schedulerEnabledInConfig: schedulerConfig.enabled,
+        projectRoot: opts.projectRoot,
       });
       if (opts.verbose) output.printSuccess(`The Luminarium: http://localhost:${dashboard.port}`);
     } catch (err) {
-      logWarn(`The Luminarium failed to start: ${errorDetail(err)}`);
+      // #1145 §9.4 — hard-fail on bind exhaustion. Pre-#1145 we swallowed
+      // this; the daemon stayed alive doing worker-only work while clients
+      // routed to whichever daemon happened to be on the legacy default
+      // port. Re-throw so the spawn launcher sees a non-zero exit and the
+      // healer flags the failure instead of silently continuing.
+      logWarn(`The Luminarium failed to bind — daemon will exit so clients don't silently route to a foreign daemon: ${errorDetail(err)}`);
+      throw err;
     }
   }
 
@@ -392,10 +421,13 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
   if (minFreeMemory && SPAWN_NUMERIC_RE.test(minFreeMemory)) {
     spawnArgs.push('--min-free-memory', minFreeMemory);
   }
-  // Forward dashboard flags
+  // Forward dashboard flags. With #1145 the foreground child resolves its
+  // own deterministic per-project port when no `--dashboard-port` flag is
+  // passed — only forward the flag when the caller explicitly pinned it
+  // (signaled by `dashboardPort` being defined here).
   if (noDashboard) {
     spawnArgs.push('--no-dashboard');
-  } else if (dashboardPort && dashboardPort !== DEFAULT_DASHBOARD_PORT) {
+  } else if (dashboardPort != null) {
     spawnArgs.push('--dashboard-port', String(dashboardPort));
   }
 
@@ -461,7 +493,13 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
   if (!quiet) {
     output.printSuccess(`Daemon started in background (PID: ${pid})`);
     if (!noDashboard) {
-      output.printInfo(`The Luminarium: http://localhost:${dashboardPort ?? DEFAULT_DASHBOARD_PORT}`);
+      if (dashboardPort != null) {
+        output.printInfo(`The Luminarium: http://localhost:${dashboardPort}`);
+      } else {
+        // #1145 — port is project-deterministic and assigned at bind time;
+        // read it from .moflo/daemon.lock once the child finishes startup.
+        output.printInfo(`The Luminarium: see http://localhost:<port from .moflo/daemon.lock>`);
+      }
     }
     output.printInfo(`Logs: ${logFile}`);
     output.printInfo(`Stop with: claude-flow daemon stop`);

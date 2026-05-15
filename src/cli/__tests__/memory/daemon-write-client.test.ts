@@ -369,6 +369,10 @@ describe('daemon-write-client', () => {
     let invoked = 0;
     fake.setHandler((req, res, _body) => {
       if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      // #1145 — identity probe is best-effort; failure mode is "treat as
+      // legacy-no-health" and proceed. Excluded from the store-attempt
+      // count below.
+      if (req.url === '/api/health') { res.writeHead(404); res.end(); return; }
       invoked++;
       // Hold the connection open beyond the 100ms timeout
       setTimeout(() => { res.writeHead(200); res.end('{}'); }, 500);

@@ -29,14 +29,23 @@ import {
   matchMemoryRpcRoute,
 } from './daemon-memory-rpc.js';
 import { aggregateClaudeStats, emptyClaudeStatsShape } from './claude-stats.js';
+import { serverPortCandidates, LEGACY_DEFAULT_PORT } from './daemon-port.js';
+import { writeLockPort } from './daemon-lock.js';
+import { findProjectRoot } from './project-root.js';
+import { readOwnMofloVersion } from './daemon-lock.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface DashboardOptions {
-  /** Port to listen on (default: 3117). */
-  port: number;
+  /**
+   * Port to listen on. Treated as the first candidate; the server falls
+   * through to the project-deterministic range from `serverPortCandidates`
+   * on `EADDRINUSE`. When omitted, the resolver picks the deterministic
+   * port directly (#1145).
+   */
+  port?: number;
   /** Optional MemoryAccessor for namespace stats. */
   memory?: MemoryAccessor;
   /**
@@ -45,6 +54,12 @@ export interface DashboardOptions {
    * than the generic "not connected" placeholder.
    */
   schedulerEnabledInConfig?: boolean;
+  /**
+   * Absolute project root the daemon is serving. Stamped into
+   * `/api/health` so clients can verify they're hitting their own
+   * project's daemon (#1145). Defaults to `findProjectRoot()`.
+   */
+  projectRoot?: string;
 }
 
 export interface DashboardHandle {
@@ -56,7 +71,14 @@ export interface DashboardHandle {
   stop(): Promise<void>;
 }
 
-export const DEFAULT_DASHBOARD_PORT = 3117;
+/**
+ * Legacy default port retained as a re-export of {@link LEGACY_DEFAULT_PORT}
+ * for backward compat with existing importers (`commands/daemon.ts`,
+ * `__tests__/daemon-dashboard.test.ts`). The actual port a daemon binds is
+ * now resolved deterministically per project via `serverPortCandidates()` —
+ * see `daemon-port.ts` and `docs/internal/1145-daemon-port-collision-analysis.md`.
+ */
+export const DEFAULT_DASHBOARD_PORT = LEGACY_DEFAULT_PORT;
 
 /**
  * Process-wide promise for the shared MemoryAccessor. Memoized as a *promise*
@@ -164,6 +186,28 @@ export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
 
 function tryParseSafe(s: string): unknown {
   try { return JSON.parse(s); } catch { return s; }
+}
+
+/**
+ * Build the `/api/health` response (#1145).
+ *
+ * Identity payload — clients compare `projectRoot` against their own
+ * `findProjectRoot()` and refuse to route to this daemon on mismatch.
+ * Also surfaces `pid`, `version`, and `uptimeMs` for healer-class
+ * diagnostics and orphan-daemon detection.
+ *
+ * Read-only, no-auth, localhost-only (the dashboard binds 127.0.0.1).
+ */
+function handleHealth(daemon: WorkerDaemon, opts: DashboardOptions): object {
+  const status = daemon.getStatus();
+  const startedAt = status.startedAt instanceof Date ? status.startedAt : null;
+  return {
+    status: 'ok',
+    projectRoot: opts.projectRoot ?? findProjectRoot(),
+    pid: status.pid ?? process.pid,
+    version: readOwnMofloVersion() ?? null,
+    uptimeMs: startedAt ? Date.now() - startedAt.getTime() : 0,
+  };
 }
 
 function handleStatus(daemon: WorkerDaemon): object {
@@ -483,6 +527,10 @@ async function handleRequest(
 
     if (url === '/') {
       sendHtml(res, DASHBOARD_HTML);
+    } else if (url === '/api/health') {
+      // #1145 — identity probe. Clients use this to confirm they're talking
+      // to the daemon for their OWN project before routing memory ops here.
+      sendJson(res, 200, handleHealth(daemon, opts));
     } else if (url === '/api/status') {
       sendJson(res, 200, handleStatus(daemon));
     } else if (url === '/api/schedules') {
@@ -638,37 +686,69 @@ const MAX_PORT_ATTEMPTS = 10;
 /**
  * Start the dashboard HTTP server.
  *
- * Tries the requested port first, then falls back to port+1, port+2, ...
- * up to MAX_PORT_ATTEMPTS to avoid crashing the daemon when another
- * project's daemon already holds the default port.
+ * Port selection (#1145):
+ *   1. `opts.port`, if explicitly set (CLI `--dashboard-port` flag).
+ *   2. Otherwise `serverPortCandidates(projectRoot)` — deterministic per-
+ *      project port + collision-fallback range.
+ * Both honor `MOFLO_DAEMON_PORT` (collapses the candidate list to one).
  *
- * @param daemon - WorkerDaemon instance for status data
- * @param opts - Dashboard configuration
- * @returns A handle to stop the server (port reflects the actual bound port)
+ * On successful bind the bound port is stamped into `.moflo/daemon.lock`
+ * via `writeLockPort()` so clients can discover it without guessing.
+ *
+ * On bind exhaustion (every candidate in use) the server throws — the
+ * caller is expected to surface the failure rather than stay half-alive
+ * (the silent-trap pattern that produced #1145).
+ *
+ * @returns handle whose `.port` field reflects the actually bound port
  */
 export async function startDashboard(
   daemon: WorkerDaemon,
   opts: DashboardOptions,
 ): Promise<DashboardHandle> {
-  const basePort = opts.port;
+  const projectRoot = opts.projectRoot ?? findProjectRoot();
+  const candidates = buildBindCandidates(opts.port, projectRoot, MAX_PORT_ATTEMPTS);
 
-  for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
-    const port = basePort + attempt;
+  let lastErr: unknown = null;
+  for (let i = 0; i < candidates.length; i++) {
+    const port = candidates[i];
     try {
-      const handle = await tryListenOnPort(daemon, opts, port);
+      const handle = await tryListenOnPort(daemon, { ...opts, projectRoot }, port);
+      // Stamp the bound port into the lock so clients discover us reliably.
+      // Best-effort: a missing/locked-by-another-pid lock means stamping
+      // is a no-op — the deterministic fallback still works.
+      try { writeLockPort(projectRoot, handle.port); } catch { /* ignore */ }
       return handle;
     } catch (err: unknown) {
+      lastErr = err;
       const code = err && typeof err === 'object' && 'code' in err ? (err as { code: string }).code : '';
-      if (code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS - 1) {
-        // Port taken — try the next one
-        continue;
-      }
+      if (code === 'EADDRINUSE' && i < candidates.length - 1) continue;
       throw err;
     }
   }
 
-  // Should be unreachable, but satisfies the type checker
-  throw new Error(`All dashboard ports ${basePort}–${basePort + MAX_PORT_ATTEMPTS - 1} are in use`);
+  // Bind exhaustion — surface so the daemon can hard-fail (#1145 §9.4).
+  throw lastErr ?? new Error(
+    `All dashboard ports (${candidates[0]}…${candidates[candidates.length - 1]}) are in use`,
+  );
+}
+
+/**
+ * Build the ordered list of ports to try.
+ *
+ * When the caller pinned a port (CLI flag), respect it without any
+ * fallback — the consumer pinned it on purpose. When they didn't, use
+ * the deterministic per-project candidates so two projects never collide
+ * silently on a fixed default.
+ */
+function buildBindCandidates(
+  explicitPort: number | undefined,
+  projectRoot: string,
+  maxAttempts: number,
+): number[] {
+  if (typeof explicitPort === 'number' && explicitPort > 0 && explicitPort < 65536) {
+    return [explicitPort];
+  }
+  return serverPortCandidates(projectRoot, maxAttempts);
 }
 
 /**

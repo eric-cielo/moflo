@@ -5,6 +5,31 @@ All notable changes to MoFlo are documented here. Pre-2026-03 entries below desc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — Daemon port collision (#1145, CRITICAL)
+
+Pre-#1145, moflo's daemon HTTP server defaulted to a fixed port (3117). The server retried 3117→3126 on `EADDRINUSE`; the client always POSTed to 3117. When two moflo-using projects ran daemons concurrently on the same machine, the second project's clients routed to the first project's daemon — silently. `flo memory stats`, `flo memory list`, `memory_search`, MCP `memory_store`, `flo memory store/delete`, swarm persistence, aidefence, and write-through-adapter all crossed projects.
+
+#### What changed
+
+- New shared port resolver `src/cli/services/daemon-port.ts` (JS twin at `bin/lib/daemon-port.mjs`). Both server bind site and client RPC route through `resolveProjectPort(projectRoot)` — deterministic `33000 + sha256(path) % 1000` so every project gets its own port.
+- `.moflo/daemon.lock` gained a `port` field. Server stamps the actually-bound port after `listen()`; clients read it to discover the daemon without guessing.
+- New `GET /api/health` endpoint on the daemon returns `{status, projectRoot, pid, version, uptimeMs}`. Clients probe it on every reachability check; a confirmed `projectRoot` mismatch downgrades the call to direct-SQL (the path that's been provably correct) and emits ONE stderr warn per mismatched port.
+- Daemon now hard-fails if the dashboard can't bind any candidate port — pre-#1145 the daemon stayed alive doing internal-worker-only work while HTTP was dead.
+- New healer subcheck: `flo healer --fix -c daemon-identity` (alias `identity`). Detects identity mismatches, kills the local daemon, clears the lock, respawns on the per-project port.
+- Regression guard at `tests/system/no-fixed-3117-port.test.ts` rejects any new shipped code that references the legacy literal outside the central resolver.
+
+#### Compatibility
+
+- `MOFLO_DAEMON_PORT` env override still wins. Consumers pinning the env keep the pre-#1145 behavior.
+- Clients running against pre-#1145 daemons (no `/api/health`, no lock-file `port`) fall through to `LEGACY_DEFAULT_PORT` (3117) — no breakage during the upgrade window.
+- Daemons running against pre-#1145 clients keep working; the new port is just announced through the lock file the old client will ignore.
+
+#### Data-integrity advisory
+
+moflo versions ≤4.10.7 had a daemon-routing bug (#1145) where two moflo-using projects on the same machine could silently cross-write each other's databases during any overlap window. If you ran `flo memory store`, MCP `memory_store`, or `flo swarm` across multiple projects concurrently, audit `.moflo/moflo.db` in each project for foreign entries (especially in the `learnings`, `default`, `swarm-*`, and `tasklist` namespaces — indexer-populated namespaces like `guidance`, `code-map`, `tests`, `patterns` are safe because they bypass HTTP). See `docs/internal/1145-daemon-port-collision-analysis.md` §10.2 for the manual reconciliation procedure.
+
 ## [3.5.0] - 2026-02-27
 
 ### Ruflo v3.5 — First Major Stable Release

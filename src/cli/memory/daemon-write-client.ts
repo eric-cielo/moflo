@@ -38,13 +38,25 @@
  */
 
 import * as http from 'node:http';
+import { findProjectRoot } from '../services/project-root.js';
+import {
+  resolveClientPort,
+  LEGACY_DEFAULT_PORT,
+  probeDaemonHealth as probeDaemonHealthIdentity,
+  normalizeProjectRoot,
+} from '../services/daemon-port.js';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-/** Default daemon HTTP port. Mirrors `DEFAULT_DASHBOARD_PORT` in daemon-dashboard.ts. */
-const DEFAULT_DAEMON_PORT = 3117;
+/**
+ * Read-only legacy default exported for tests; the actual port comes from
+ * `getDaemonPort()` which delegates to `resolveClientPort(findProjectRoot())`.
+ * Routes through `LEGACY_DEFAULT_PORT` so no literal port number lives in
+ * this file — see `daemon-port.ts` and the no-fixed-port regression guard.
+ */
+const DEFAULT_DAEMON_PORT = LEGACY_DEFAULT_PORT;
 
 /** HTTP timeout for ALL daemon requests (probe + write). Bounds the worst-case CLI hang. */
 const DAEMON_HTTP_TIMEOUT_MS = 100;
@@ -156,19 +168,37 @@ let configCache: { daemonEnabled: boolean; checkedAt: number } | null = null;
 export function _resetForTest(): void {
   healthCache = null;
   configCache = null;
+  identityCache = null;
+  _portCache = null;
+  _identityWarnedFor.clear();
 }
 
 // ============================================================================
 // Resolve daemon port (env override → moflo.yaml unused for v1 → default)
 // ============================================================================
 
+/**
+ * Resolve the daemon HTTP port for this project.
+ *
+ * Delegates to `resolveClientPort(findProjectRoot())`:
+ *   1. `MOFLO_DAEMON_PORT` env override (consumer pin)
+ *   2. `port` field in `<projectRoot>/.moflo/daemon.lock` (server records
+ *      the actual bound port after startup — #1145)
+ *   3. Deterministic per-project port `33000 + sha256(path)%1000`
+ *
+ * Cached per-process — the lock-file path doesn't change once a process is
+ * up. On a routed-failure the health cache is invalidated (which triggers
+ * the next port resolve), keeping the client honest about daemon location
+ * after a recycle.
+ */
+let _portCache: { port: number; projectRoot: string } | null = null;
+
 function getDaemonPort(): number {
-  const fromEnv = process.env.MOFLO_DAEMON_PORT;
-  if (fromEnv) {
-    const n = parseInt(fromEnv, 10);
-    if (Number.isFinite(n) && n > 0 && n < 65536) return n;
-  }
-  return DEFAULT_DAEMON_PORT;
+  const projectRoot = findProjectRoot();
+  if (_portCache && _portCache.projectRoot === projectRoot) return _portCache.port;
+  const port = resolveClientPort(projectRoot);
+  _portCache = { port, projectRoot };
+  return port;
 }
 
 // ============================================================================
@@ -198,9 +228,34 @@ async function isDaemonEnabledInConfig(): Promise<boolean> {
 // Health probe (cached) — GET /api/status
 // ============================================================================
 
+// ============================================================================
+// Identity check (#1145) — refuse to route to a daemon owning a different
+// project. Before this, the client trusted any daemon on the resolved port.
+// ============================================================================
+
+interface IdentityCache {
+  matches: boolean;
+  checkedAt: number;
+  /** What the daemon reported. Used in the stderr warn on mismatch. */
+  daemonProjectRoot?: string;
+  /** What we expected. Used in the stderr warn on mismatch. */
+  ourProjectRoot: string;
+}
+
+let identityCache: IdentityCache | null = null;
+
+/**
+ * Ports we've already warned about during this process — bounded by the
+ * number of distinct daemon ports a single client process can see in its
+ * lifetime (usually 1). Keeps the stderr noise to a single line per
+ * mismatched daemon per process.
+ */
+const _identityWarnedFor = new Set<number>();
+
 /**
  * Cached daemon health probe. Returns true iff the daemon's HTTP server
- * is reachable on `127.0.0.1:<port>` within {@link DAEMON_HTTP_TIMEOUT_MS}.
+ * is reachable on `127.0.0.1:<port>` within {@link DAEMON_HTTP_TIMEOUT_MS}
+ * AND its `/api/health` reports a `projectRoot` matching ours (#1145).
  *
  * Cache survives 5s in either direction — so a daemon that just came up
  * is missed for ≤5s, and a daemon that just died is incorrectly assumed
@@ -219,9 +274,85 @@ export async function isDaemonAvailable(): Promise<boolean> {
     return healthCache.available;
   }
 
-  const available = await probeDaemonHealth(getDaemonPort());
-  healthCache = { available, checkedAt: now };
-  return available;
+  const port = getDaemonPort();
+  const reachable = await probeDaemonHealth(port);
+  if (!reachable) {
+    healthCache = { available: false, checkedAt: now };
+    return false;
+  }
+
+  // 4) Identity check — daemon reachable but is it OUR daemon?
+  const identityOk = await isDaemonIdentityMatch(port);
+  healthCache = { available: identityOk, checkedAt: now };
+  return identityOk;
+}
+
+/**
+ * Probe `/api/health` and confirm the daemon's reported `projectRoot`
+ * matches ours. Caches the result for {@link HEALTH_CACHE_TTL_MS}.
+ *
+ * Mismatch consequence: this function returns `false`, the caller falls
+ * through to the direct-SQL path (the path that is provably correct, see
+ * the `MOFLO_DISABLE_DAEMON_ROUTING=1` reproducer in
+ * `docs/internal/1145-daemon-port-collision-analysis.md`), and we emit
+ * ONE stderr line per port per process so the user can see the wrong-
+ * project daemon is the problem.
+ *
+ * Tolerant of legacy daemons that don't expose `/api/health`: a 404 means
+ * the daemon predates #1145, so we trust the legacy port resolution (the
+ * client is presumably hitting the same project's daemon anyway) and
+ * return `true`. The lock-file port-discovery path is the primary
+ * collision defence; identity check is the safety net.
+ */
+async function isDaemonIdentityMatch(port: number): Promise<boolean> {
+  const now = Date.now();
+  const ourProjectRoot = findProjectRoot();
+
+  if (
+    identityCache &&
+    identityCache.ourProjectRoot === ourProjectRoot &&
+    (now - identityCache.checkedAt) < HEALTH_CACHE_TTL_MS
+  ) {
+    return identityCache.matches;
+  }
+
+  const probe = await probeDaemonHealthIdentity(port, DAEMON_HTTP_TIMEOUT_MS);
+  if (probe.kind === 'legacy' || probe.kind === 'unreachable') {
+    // No identity to compare — daemon either predates #1145 or the probe
+    // itself failed transport-side. Fall open: rely on port-discovery
+    // (lock file + deterministic hash) as the primary defence. Only a
+    // CONFIRMED mismatch blocks routing — that's the conservative safety
+    // net that doesn't break upgraded-client-against-legacy-daemon.
+    //
+    // Asymmetry with doctor's `checkDaemonIdentity`: the healer probes
+    // LEGACY_DEFAULT_PORT explicitly and flags a foreign legacy daemon
+    // as `fail`, while this hot path lets it through. That's intentional
+    // — the doctor runs on-demand for diagnostics, and live writes must
+    // not block when the cluster is mid-upgrade. The CHANGELOG migration
+    // window is the agreed remediation surface.
+    identityCache = { matches: true, checkedAt: now, ourProjectRoot };
+    return true;
+  }
+
+  const matches = normalizeProjectRoot(probe.projectRoot) === normalizeProjectRoot(ourProjectRoot);
+  identityCache = {
+    matches,
+    checkedAt: now,
+    ourProjectRoot,
+    daemonProjectRoot: probe.projectRoot,
+  };
+
+  if (!matches && !_identityWarnedFor.has(port)) {
+    _identityWarnedFor.add(port);
+    // One stderr line per mismatched daemon, ever. Quiet enough that scripts
+    // don't drown but loud enough that healer-class diagnostics surface it.
+    process.stderr.write(
+      `[moflo] daemon at 127.0.0.1:${port} claims project '${probe.projectRoot}' but cwd is '${ourProjectRoot}' — ` +
+      `using direct DB. Run flo healer --fix to repair daemon binding (#1145).\n`,
+    );
+  }
+
+  return matches;
 }
 
 function probeDaemonHealth(port: number): Promise<boolean> {
@@ -404,7 +535,14 @@ function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
       // On routed-failure, invalidate the health cache so the next call
       // re-probes and trips back to direct-write quickly when the daemon
       // is dying.
-      if (result.routed === false) healthCache = null;
+      if (result.routed === false) {
+        // Daemon recycled to a different port (post #1145 server restart)
+        // → invalidate the port cache too so the next call re-reads
+        // .moflo/daemon.lock. Otherwise we'd keep hammering a stale port.
+        healthCache = null;
+        identityCache = null;
+        _portCache = null;
+      }
       resolve(result);
     };
 
@@ -486,7 +624,14 @@ function postReadJson<T>(
     const finish = (result: DaemonReadResult<T>): void => {
       if (done) return;
       done = true;
-      if (result.routed === false) healthCache = null;
+      if (result.routed === false) {
+        // Daemon recycled to a different port (post #1145 server restart)
+        // → invalidate the port cache too so the next call re-reads
+        // .moflo/daemon.lock. Otherwise we'd keep hammering a stale port.
+        healthCache = null;
+        identityCache = null;
+        _portCache = null;
+      }
       resolve(result);
     };
 
