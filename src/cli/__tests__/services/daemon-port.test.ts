@@ -172,6 +172,48 @@ describe('LEGACY_DEFAULT_PORT', () => {
   });
 });
 
+describe('normalizeProjectRoot (#1145 follow-up — macOS/Ubuntu symlink false-positive)', () => {
+  it('resolves symlinks before comparing', async () => {
+    const { normalizeProjectRoot } = await import('../../services/daemon-port.js');
+    const { mkdtempSync, symlinkSync, rmSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    // POSIX: realpath through a symlink. Skip on Windows where symlink
+    // creation requires admin (test would silently passthrough anyway).
+    if (process.platform === 'win32') return;
+
+    const realDir = mkdtempSync(join(tmpdir(), 'realpath-test-'));
+    const linkDir = `${realDir}-link`;
+    try {
+      symlinkSync(realDir, linkDir);
+      // Same project, accessed via two paths — must normalize equal.
+      expect(normalizeProjectRoot(realDir)).toBe(normalizeProjectRoot(linkDir));
+    } finally {
+      try { rmSync(linkDir, { force: true }); } catch { /* ignore */ }
+      try { rmSync(realDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+
+  it('falls back to input on non-existent paths (never throws)', async () => {
+    const { normalizeProjectRoot } = await import('../../services/daemon-port.js');
+    const nonexistent = '/this/path/does/not/exist/' + Math.random();
+    // Should return the input (lowercased on Windows) without throwing.
+    const result = normalizeProjectRoot(nonexistent);
+    expect(typeof result).toBe('string');
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('lowercases on Windows for case-insensitive FS', async () => {
+    const { normalizeProjectRoot } = await import('../../services/daemon-port.js');
+    if (process.platform !== 'win32') return;
+    // Use a known-existent path so realpath succeeds; assert casing.
+    const upper = process.cwd().toUpperCase();
+    const lower = process.cwd().toLowerCase();
+    expect(normalizeProjectRoot(upper)).toBe(normalizeProjectRoot(lower));
+  });
+});
+
 describe('JS twin parity (bin/lib/daemon-port.mjs)', () => {
   it('produces the same port as the TS resolver', async () => {
     // Dynamic import so vitest doesn't try to type-check the JS twin.

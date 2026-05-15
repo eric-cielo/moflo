@@ -24,7 +24,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import * as http from 'node:http';
 
@@ -152,11 +152,27 @@ export function serverPortCandidates(projectRoot: string, maxAttempts = 10): num
 // ============================================================================
 
 /**
- * Case-normalize project root paths so `C:\Users\...` and `c:\users\...`
- * compare equal on Windows. POSIX is case-sensitive — pass through.
+ * Normalize project root paths for identity comparison.
+ *
+ *   - Resolve symlinks via `realpathSync`. macOS aliases `/var/folders`
+ *     → `/private/var/folders`; one side of the daemon/client pair may
+ *     resolve the symlink and the other may not, producing false-positive
+ *     identity mismatches on otherwise-matching project roots (caught by
+ *     the consumer-smoke harness on macOS + Ubuntu after the original
+ *     #1145 fix). Ubuntu hits the same shape via `/tmp` symlinks under
+ *     certain mount configurations.
+ *   - Lowercase on Windows so `C:\Users\...` and `c:\users\...` compare
+ *     equal. POSIX is case-sensitive — pass through.
+ *
+ * Never throws — a path that doesn't exist (or that we lack permission
+ * to stat) falls back to the input string. The fallback case is safe
+ * because the symlink-mismatch class only fires on paths that DO exist
+ * (both daemon and client just resolved them).
  */
 export function normalizeProjectRoot(p: string): string {
-  return process.platform === 'win32' ? p.toLowerCase() : p;
+  let resolved = p;
+  try { resolved = realpathSync(p); } catch { /* path doesn't exist / EACCES — use input */ }
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 /**
