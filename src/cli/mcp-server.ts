@@ -26,10 +26,31 @@ import * as os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { errorDetail } from './shared/utils/error-detail.js';
+import { findProjectRoot } from './services/project-root.js';
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Resolve the per-project `.moflo/` directory for MCP state files.
+ *
+ * Routed through the unified `findProjectRoot` so the launcher, daemon, healers
+ * and the MCP server all agree on the same anchor (see #1057, #1145).
+ * Replaces the prior `os.tmpdir()` location which was shared across every
+ * moflo consumer on the machine — concurrent projects overwrote each other's
+ * PID file and `flo mcp stop` could kill the wrong project's MCP server.
+ */
+function resolveMcpStateDir(): string {
+  return path.join(findProjectRoot(), '.moflo');
+}
+
+/**
+ * Legacy tmpdir paths (pre-#1151). Kept only so we can clean up dead PID
+ * files left behind by older moflo versions. Never written to.
+ */
+const LEGACY_TMPDIR_PID_FILE = path.join(os.tmpdir(), 'claude-flow-mcp.pid');
+const LEGACY_TMPDIR_LOG_FILE = path.join(os.tmpdir(), 'claude-flow-mcp.log');
 
 /**
  * MCP Server configuration
@@ -63,15 +84,21 @@ export interface MCPServerStatus {
 }
 
 /**
- * Default configuration
+ * Build default configuration at construction time. PID/log paths resolve
+ * against `findProjectRoot()` so each project gets its own MCP state files
+ * under `<projectRoot>/.moflo/`. Lazy so test code that sets
+ * `CLAUDE_PROJECT_DIR` per-test sees the override.
  */
-const DEFAULT_OPTIONS: Required<MCPServerOptions> = {
-  transport: 'stdio',
-  pidFile: path.join(os.tmpdir(), 'claude-flow-mcp.pid'),
-  logFile: path.join(os.tmpdir(), 'claude-flow-mcp.log'),
-  tools: 'all',
-  daemonize: false,
-};
+function buildDefaultOptions(): Required<MCPServerOptions> {
+  const stateDir = resolveMcpStateDir();
+  return {
+    transport: 'stdio',
+    pidFile: path.join(stateDir, 'mcp-server.pid'),
+    logFile: path.join(stateDir, 'mcp-server.log'),
+    tools: 'all',
+    daemonize: false,
+  };
+}
 
 /**
  * MCP Server Manager
@@ -86,7 +113,7 @@ export class MCPServerManager extends EventEmitter {
 
   constructor(options: MCPServerOptions = {}) {
     super();
-    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.options = { ...buildDefaultOptions(), ...options };
   }
 
   /**
@@ -575,11 +602,35 @@ export class MCPServerManager extends EventEmitter {
   }
 
   /**
-   * Write PID file
+   * Write PID file. Ensures the per-project state directory exists and opportunistically
+   * cleans up an abandoned tmpdir PID file (pre-#1151 layout) when it points at a dead
+   * PID — abandoned dead-PID files belong to nobody so we can safely unlink them, but
+   * a live tmpdir PID is left alone since it may belong to another project on an
+   * older moflo version.
    */
   private async writePidFile(): Promise<void> {
     const pid = this.process?.pid || process.pid;
+    await fs.promises.mkdir(path.dirname(this.options.pidFile), { recursive: true });
     await fs.promises.writeFile(this.options.pidFile, String(pid), 'utf8');
+    await this.cleanupAbandonedTmpdirPid();
+  }
+
+  /**
+   * Remove a stale `<tmpdir>/claude-flow-mcp.pid` left by a pre-#1151 moflo if
+   * the PID it points to is no longer running. Live PIDs are preserved so we
+   * don't break stop/status for another project still on the old layout.
+   */
+  private async cleanupAbandonedTmpdirPid(): Promise<void> {
+    try {
+      const legacy = await fs.promises.readFile(LEGACY_TMPDIR_PID_FILE, 'utf8');
+      const legacyPid = parseInt(legacy.trim(), 10);
+      if (!Number.isNaN(legacyPid) && !this.isProcessRunning(legacyPid)) {
+        await fs.promises.unlink(LEGACY_TMPDIR_PID_FILE).catch(() => {});
+        await fs.promises.unlink(LEGACY_TMPDIR_LOG_FILE).catch(() => {});
+      }
+    } catch {
+      // No legacy file (the common path post-upgrade) — nothing to do.
+    }
   }
 
   /**
