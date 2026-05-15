@@ -9,7 +9,7 @@
 Source files (`.claude/guidance/*.md`, `docs/**/*.md`, code, tests) flow through four stages:
 
 1. **Index** — `bin/index-*.mjs` chunks markdown on `##` headers and walks code/tests for structural facts
-2. **Store** — entries land in `.moflo/moflo.db` (SQLite via sql.js) with metadata + RAG links
+2. **Store** — entries land in `.moflo/moflo.db` (SQLite via Node 22's built-in `node:sqlite`) with metadata + RAG links
 3. **Embed** — `bin/build-embeddings.mjs` generates 384-dim vectors via `fastembed` (mandatory, see ADR-EMB-001)
 4. **Search** — `mcp__moflo__memory_search` (preferred), `npx flo memory search` (fallback), or `npx flo-search` (verbose) hit an HNSW index for nearest-neighbor lookup
 

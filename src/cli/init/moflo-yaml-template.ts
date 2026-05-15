@@ -224,7 +224,7 @@ auto_index:
 
 # Memory backend
 memory:
-  backend: sql.js
+  backend: node-sqlite
   embedding_model: Xenova/all-MiniLM-L6-v2
   namespace: default
 

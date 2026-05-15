@@ -63,6 +63,6 @@ describe('memory_search — cosmetic trims (#1053 S6)', () => {
   it('retains backend field (doctor dependency)', async () => {
     const tool = await getSearchTool();
     const result = await tool.handler({ query: 'q' }) as { backend: string };
-    expect(result.backend).toBe('HNSW + sql.js');
+    expect(result.backend).toBe('node:sqlite + HNSW');
   });
 });

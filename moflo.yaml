@@ -45,15 +45,9 @@ auto_index:
 
 # Memory backend
 memory:
-  backend: sql.js
+  backend: node-sqlite
   embedding_model: Xenova/all-MiniLM-L6-v2
   namespace: default
-  # Phase 3 of epic #1078 — dogfood the node:sqlite backend alongside sql.js so
-  # any cross-engine divergence surfaces before the Phase 4 default flip.
-  # Mirrors every write to a sibling .moflo/moflo.shadow.db and compares reads;
-  # divergences land in .moflo/shadow-divergence.log. moflo's own repo only —
-  # consumers' moflo.yaml never declares this (default OFF).
-  shadow_read: true
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:

@@ -115,7 +115,7 @@ flo init --yes --force
 | code_map.extensions | `.js` detected | PASS |
 | gates (memory_first, etc.) | All enabled | PASS |
 | auto_index | Both enabled | PASS |
-| memory.backend | sql.js | PASS |
+| memory.backend | node-sqlite | PASS |
 
 ---
 
@@ -201,7 +201,7 @@ flo memory stats
 ```
 
 **Expected**: Shows backend type, version, entry count.
-**Status**: PASS — Reports `sql.js + HNSW`, version `3.0.0`
+**Status**: PASS — Reports `node:sqlite + HNSW`, version `3.0.0`
 
 ---
 

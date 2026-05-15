@@ -1,11 +1,11 @@
 ---
 name: "memory-patterns"
-description: "Persistent memory patterns for moflo agents — session memory, long-term knowledge, pattern learning, and cross-session context via moflo's sql.js + HNSW vector store. Use when building stateful agents or assistants that need to remember across runs."
+description: "Persistent memory patterns for moflo agents — session memory, long-term knowledge, pattern learning, and cross-session context via moflo's node:sqlite + HNSW vector store. Use when building stateful agents or assistants that need to remember across runs."
 ---
 
 # MoFlo Memory Patterns
 
-Persistent, semantically-searchable memory for moflo-enabled projects. Backed by `.swarm/memory.db` (sql.js + HNSW vector index) and exposed through MCP tools.
+Persistent, semantically-searchable memory for moflo-enabled projects. Backed by `.moflo/moflo.db` (node:sqlite + HNSW vector index) and exposed through MCP tools.
 
 ## Core API
 
@@ -124,7 +124,7 @@ This is the same fan-out the `/flo` spell does — cheap (HNSW, parallel) and re
 
 ## Persistence & Indexing
 
-- File: `.swarm/memory.db` at project root (sql.js).
+- File: `.moflo/moflo.db` at project root (node:sqlite, Node 22+ built-in).
 - Embeddings: built by cli's embeddings module; indexed with HNSW from `src/cli/memory/`.
 - Cold-start cost: ~5 seconds to initialize HNSW. Tests should share a single instance (`beforeAll`, not `beforeEach`).
 - Namespace isolation: each namespace is a logical partition, but the HNSW index spans the table. Query time scales with `limit` and `threshold`, not total row count.

@@ -159,7 +159,7 @@
 <h2>One database to rule them all: MoFlo DB</h2>
 
 <p>The biggest invisible upgrade is the storage layer. Memory, swarm coordination, hive-mind state, AIDefence threat patterns, learned routing outcomes — all of it now lives in a single
-  <code>sql.js + HNSW</code> store at <code>.moflo/moflo.db</code>.</p>
+  <code>node:sqlite + HNSW</code> store at <code>.moflo/moflo.db</code>.</p>
 
 <ul>
   <li><strong>It consumes everything that matters</strong> — project guidance, reusable patterns, code maps (exports, classes, functions, types), test-to-source mappings, and a continuously updated stream of learnings from <em>both</em> Claude and the humans on the team. A correction you make once, a convention you write down, a routing decision that worked: all of it lands in the same index and shows up the next time it's relevant.</li>

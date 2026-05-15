@@ -30,7 +30,7 @@ MoFlo makes deliberate choices so you don't have to:
 - **Fully self-contained** — No external services, no cloud dependencies, no API keys. Everything runs locally on your machine.
 - **Minimal dependencies** — small runtime dep set, all WASM or prebuilt binaries. No native compilation, no `node-gyp`, no platform-specific build steps.
 - **Node.js runtime** — Targets Node.js specifically. All scripts, hooks, and tooling are JavaScript/TypeScript. No Python, no Rust binaries, no native compilation.
-- **sql.js (WASM)** — The memory database uses sql.js, a pure WebAssembly build of SQLite. No native `better-sqlite3` bindings to compile, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
+- **node:sqlite (built-in)** — The memory database uses Node 22's built-in SQLite engine. No `better-sqlite3` native bindings to compile, no WASM round-trip, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
 - **Neural embeddings by default** — 384-dimensional embeddings using `all-MiniLM-L6-v2`. No hash fallback, no peer-optional setup, no install prompts — real semantic search works out of the box. A `postinstall` step trims the embedding runtime to your platform and strips GPU-only libraries the runtime never loads, reclaiming roughly 340 MB on Linux and 150 MB on Windows from a fresh install. Set `MOFLO_NO_PRUNE=1` to skip the trim, or `ONNXRUNTIME_NODE_INSTALL_CUDA=true` to keep CUDA GPU support.
 - **Full learning stack wired up OOTB** — All configured and functional from `flo init`, no manual setup:
   - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories
@@ -537,7 +537,7 @@ flo diagnose --json              # JSON output for CI/automation
 | **MCP Spell Integration** | Bridge between MCP tools and spell engine functions correctly |
 | **Hook Execution** | Hook executor is functional and can fire hooks |
 | **Gate Health** | All gate cases, hook bindings, and state file are intact |
-| **MofloDb Bridge** | Memory DB adapter (sql.js + HNSW) is wired and routable |
+| **MofloDb Bridge** | Memory DB adapter (node:sqlite + HNSW) is wired and routable |
 | **Sandbox Tier** | Detects which sandbox backend is available (Docker / bwrap / sandbox-exec / none) |
 
 **Auto-fix mode** (`flo healer --fix`) attempts to repair each failing check automatically:
@@ -645,7 +645,7 @@ These are the backend systems that hooks and commands interact with.
 
 | System | What It Does | Why It Matters | Enabled OOTB |
 |--------|-------------|----------------|:---:|
-| **Semantic Memory** | SQLite database (sql.js/WASM) storing knowledge entries with 384-dim vector embeddings | Your AI assistant accumulates project knowledge across sessions instead of starting from scratch each time | Yes |
+| **Semantic Memory** | SQLite database (Node's built-in `node:sqlite`) storing knowledge entries with 384-dim vector embeddings | Your AI assistant accumulates project knowledge across sessions instead of starting from scratch each time | Yes |
 | **HNSW Vector Search** | Hierarchical Navigable Small World index for fast nearest-neighbor search | Searches across thousands of stored entries return in milliseconds instead of scanning linearly | Yes |
 | **Guidance Indexing** | Chunks markdown docs into overlapping segments, embeds each with MiniLM-L6-v2 | Your project documentation becomes searchable by meaning ("how does auth work?") not just keywords | Yes |
 | **Code Map** | Parses source files for exports, classes, functions, types | The AI can answer "where is X defined?" from the index instead of running Glob/Grep | Yes |
@@ -720,7 +720,7 @@ Routing outcomes persist across sessions. You can inspect them with `flo hooks p
 
 ### Memory & Knowledge Storage
 
-MoFlo uses a SQLite database (via sql.js/WASM — no native deps) to store three types of knowledge:
+MoFlo uses a SQLite database (via Node 22's built-in `node:sqlite` — no native deps) to store three types of knowledge:
 
 | Namespace | What's Stored | How It Gets There |
 |-----------|---------------|-------------------|
@@ -861,7 +861,7 @@ MoFlo started from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) but is n
 
 My use case was just one of those many scenarios: day-to-day local coding, enhancing my normal Claude Code experience on a single project. The original supported this — it was all in there — but because the project served so many different needs, I found myself configuring and tailoring things for my specific setup each time I pulled in updates. That isn't a shortcoming of the original; it's the natural trade-off of a tool designed to be that flexible and powerful.
 
-So I started from that foundation and narrowed the focus to my particular corner of it. I baked in the defaults I kept setting manually, added automatic indexing and memory gating at session start, and tuned the out-of-box experience so that `npm install` and `flo init` gets you straight to coding. Over time MoFlo grew its own architecture (workspace collapse, in-tree fastembed runtime, sql.js + HNSW memory layer, spell engine, daemon-driven scheduling) and the two projects fully diverged.
+So I started from that foundation and narrowed the focus to my particular corner of it. I baked in the defaults I kept setting manually, added automatic indexing and memory gating at session start, and tuned the out-of-box experience so that `npm install` and `flo init` gets you straight to coding. Over time MoFlo grew its own architecture (workspace collapse, in-tree fastembed runtime, node:sqlite + HNSW memory layer, spell engine, daemon-driven scheduling) and the two projects fully diverged.
 
 If you're exploring the full breadth of agent orchestration, go look at [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) — it's the real deal. If your needs are similar to mine — a focused, opinionated local dev setup that just works — MoFlo is for you.
 
