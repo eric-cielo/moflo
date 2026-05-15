@@ -853,12 +853,21 @@ async function runMcpClobberCheck(consumerDir, seedRows) {
   // throws EBUSY and the harness aborts before any MCP-clobber assertion
   // runs (#1067). The launcher's second run leaves these processes alive
   // for the post-state probes — we own the cleanup.
+  //
+  // `flo daemon stop` ACKs when the daemon receives the shutdown signal,
+  // not when the OS releases its file handles; `quiesceLauncherBackground`
+  // calls `taskkill /F` which is similarly fire-and-forget on Windows. The
+  // `maxRetries`/`retryDelay` options (added in 4.10) drive Node's built-in
+  // linear-backoff retry against EBUSY/EPERM/etc, matching the pattern
+  // `cleanupWorkDir` uses in checks.mjs for the same OS-quirk class (#1018).
+  // 5 retries × 500ms linear backoff = ~7.5s total budget, more than enough
+  // for taskkill to actually reap the indexer/embeddings children.
   flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
   quiesceLauncherBackground(consumerDir);
 
-  rmSync(join(consumerDir, MOFLO_DIR), { recursive: true, force: true });
-  rmSync(legacyMemoryDbPath(consumerDir), { force: true });
-  rmSync(legacyMemoryDbBakPath(consumerDir), { force: true });
+  rmSync(join(consumerDir, MOFLO_DIR), { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  rmSync(legacyMemoryDbPath(consumerDir), { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  rmSync(legacyMemoryDbBakPath(consumerDir), { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
 
   seedSwarmDb(consumerDir, seedRows);
 
