@@ -94,13 +94,19 @@ describe('daemon-lock orphan detection (#1150)', () => {
       //     Need to ensure 'moflo' is in cmdline. Add it as a tag arg.)
       //   - 'daemon start' substring
       //   - tempDir path substring
+      // Detached + unref so init/launchd is the child's reaper instead of
+      // the test parent — when the test parent's event loop is blocked by
+      // sleepSyncMs in `terminateOrphan`, an internally-reaped zombie
+      // would otherwise keep `kill(pid, 0)` returning success forever and
+      // bust the kill-window poll. /proc/<pid>/stat handles this on Linux
+      // but macOS has no /proc, so the detach is the macOS-safe path.
       const child = spawn(
         process.execPath,
         [cliPath, 'daemon', 'start', '--moflo-fake-daemon-tag'],
         {
           cwd: tempDir,
-          detached: false,
-          stdio: ['pipe', 'ignore', 'ignore'],
+          detached: process.platform !== 'win32',
+          stdio: 'ignore',
           windowsHide: true,
         },
       );
@@ -108,6 +114,7 @@ describe('daemon-lock orphan detection (#1150)', () => {
       child.on('spawn', () => {
         if (child.pid) {
           fakeDaemons.push(child);
+          if (process.platform !== 'win32') child.unref();
           // Give the process a moment to show up in /proc and ps listings.
           setTimeout(() => resolve(child.pid!), 200);
         } else {

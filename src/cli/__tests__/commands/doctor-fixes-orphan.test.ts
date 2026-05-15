@@ -66,15 +66,24 @@ describe('Daemon Orphan healer (#1150)', () => {
   function spawnFakeDaemon(): Promise<number> {
     return new Promise((resolve, reject) => {
       const cliPath = join(tempDir, 'bin', 'cli.js');
+      // See daemon-lock-orphan.test.ts for why detached+unref on POSIX:
+      // init reaps the zombie so the kill-window poll converges even when
+      // the test parent's event loop is blocked.
       const child = spawn(
         process.execPath,
         [cliPath, 'daemon', 'start', '--moflo-fake-daemon-tag'],
-        { cwd: tempDir, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true },
+        {
+          cwd: tempDir,
+          detached: process.platform !== 'win32',
+          stdio: 'ignore',
+          windowsHide: true,
+        },
       );
       child.on('error', reject);
       child.on('spawn', () => {
         if (child.pid) {
           children.push(child);
+          if (process.platform !== 'win32') child.unref();
           setTimeout(() => resolve(child.pid!), 200);
         } else {
           reject(new Error('no pid'));

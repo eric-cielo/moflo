@@ -334,10 +334,29 @@ function safeUnlink(path: string): void {
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch {
     return false;
   }
+  // Linux zombie handling: `kill(pid, 0)` succeeds for zombie processes
+  // (exited but not yet reaped). A zombie can't write to the DB or hold
+  // a lock, so treating it as alive exhausts the kill window polling a
+  // corpse. Read /proc/<pid>/stat and treat 'Z' as dead — same logic as
+  // bin/lib/daemon-recycler.mjs:51-69. The case surfaces in tests AND
+  // in any production path where the daemon and our process share a
+  // parent (foreground mode, vitest worker that spawned a child); on
+  // standard detached-daemon production paths init reaps so this is a
+  // no-op there.
+  if (process.platform === 'linux') {
+    try {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
+      const lastParen = stat.lastIndexOf(')');
+      if (lastParen !== -1 && stat.charAt(lastParen + 2) === 'Z') return false;
+    } catch (err: any) {
+      if (err && err.code === 'ENOENT') return false;
+      // /proc unavailable — fall through with the kill(0) verdict.
+    }
+  }
+  return true;
 }
 
 /**
