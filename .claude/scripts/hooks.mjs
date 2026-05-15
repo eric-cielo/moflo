@@ -45,14 +45,15 @@ function findProjectRoot() {
 }
 
 const projectRoot = findProjectRoot();
-const logFile = resolve(projectRoot, '.swarm/hooks.log');
+const logFile = resolve(projectRoot, '.moflo', 'logs', 'hooks.log');
+try { mkdirSync(dirname(logFile), { recursive: true }); } catch { /* best effort */ }
 const pm = createProcessManager(projectRoot);
 
 // Parse command line args
 const args = process.argv.slice(2);
 const hookType = args[0];
 
-// Simple log function - writes to .swarm/hooks.log
+// Simple log function - writes to .moflo/logs/hooks.log
 function log(level, message) {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] [${level.toUpperCase()}] [${hookType || 'unknown'}] ${message}\n`;

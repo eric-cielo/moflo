@@ -845,16 +845,16 @@ if (!skipEmbeddings && needsEmbeddings) {
 
   if (embeddingScript) {
     // Register the spawn with the shared ProcessManager (#886). Stdout/stderr
-    // route through `.swarm/background.log` (pm.spawn default) instead of the
-    // bespoke `.moflo/logs/embeddings.log` so the registry, dedup, and
-    // session-end drain stay consistent with every other tracked spawn.
+    // route through `.moflo/logs/background.log` (pm.spawn default) so the
+    // registry, dedup, and session-end drain stay consistent with every other
+    // tracked spawn.
     const pm = createProcessManager(projectRoot);
     const result = pm.spawn('node', [embeddingScript, '--namespace', NAMESPACE], `build-embeddings-${NAMESPACE}`);
     if (result.skipped) {
       log(`Background embedding already running (PID: ${result.pid})`);
     } else if (result.pid) {
       log(`Background embedding started (PID: ${result.pid})`);
-      log(`Log file: .swarm/background.log`);
+      log(`Log file: .moflo/logs/background.log`);
     } else {
       log('⚠️  Failed to spawn background embedding');
     }

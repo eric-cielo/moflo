@@ -45,6 +45,7 @@ import {
   checkMemoryDbIntegrity,
   checkMofloYamlCompliance,
   checkStatusLine,
+  checkSwarmResidue,
   checkTestDirs,
 } from './doctor-checks-config.js';
 import { checkSpellEngine, checkSandboxTier } from './doctor-checks-platform.js';
@@ -83,6 +84,10 @@ export const allChecks: CheckFn[] = [
   checkDaemonWriteRouting,
   checkWritersAudit,
   checkMemoryDatabase,
+  // Surfaces leftover `.swarm/` artifacts (memory.db, router state, logs) so
+  // the auto-fix can relocate or delete them. Independent of the canonical
+  // DB checks — runs cheap (statSync only).
+  checkSwarmResidue,
   // Owns the corruption signal so downstream checks (Embeddings, Semantic
   // Quality, Memory Access Functional) don't surface it as the synthetic
   // "Check" failure (doctor.ts:214). MUST run after checkMemoryDatabase
@@ -150,6 +155,8 @@ export const componentMap: Record<string, CheckFn> = {
   'writers-audit': checkWritersAudit,
   'writers': checkWritersAudit,
   'memory': checkMemoryDatabase,
+  'swarm-residue': checkSwarmResidue,
+  'residue': checkSwarmResidue,
   'memory-db-integrity': checkMemoryDbIntegrity,
   'integrity': checkMemoryDbIntegrity,
   'memory-integrity': checkMemoryDbIntegrity,
