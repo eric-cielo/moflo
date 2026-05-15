@@ -11,36 +11,35 @@
  * @module v3/cli/intelligence
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { findProjectRoot } from '../services/project-root.js';
+import { MOFLO_DIR, mofloHomeDir } from '../services/moflo-paths.js';
 
 // ============================================================================
 // Persistence Configuration
 // ============================================================================
 
-/**
- * Get the data directory for neural pattern persistence
- * Uses .moflo/neural in the current working directory,
- * falling back to home directory
- */
+const NEURAL_SUBDIR = 'neural';
+const PATTERNS_FILE = 'patterns.json';
+const STATS_FILE = 'stats.json';
+
+// #1152: pre-fix builds wrote neural patterns to `~/.moflo/neural/` whenever
+// cwd lacked `.moflo`. The bleed was silent — every moflo-using project on
+// the machine shared one ReasoningBank. Resolver now anchors on
+// findProjectRoot() like neural-tools.ts (#829); legacy home-dir files are
+// copied (not moved) into the active project on first load so users do not
+// lose history when older co-installed projects still point at the home-dir
+// copy.
 function getDataDir(): string {
-  const cwd = process.cwd();
-  const localDir = join(cwd, '.moflo', 'neural');
-  const homeDir = join(homedir(), '.moflo', 'neural');
-
-  // Prefer local directory if .moflo exists
-  if (existsSync(join(cwd, '.moflo'))) {
-    return localDir;
-  }
-
-  return homeDir;
+  return join(findProjectRoot(), MOFLO_DIR, NEURAL_SUBDIR);
 }
 
-/**
- * Ensure the data directory exists
- */
+function getLegacyDataDir(): string {
+  return join(mofloHomeDir(), NEURAL_SUBDIR);
+}
+
 function ensureDataDir(): string {
   const dir = getDataDir();
   if (!existsSync(dir)) {
@@ -49,18 +48,38 @@ function ensureDataDir(): string {
   return dir;
 }
 
-/**
- * Get the patterns file path
- */
 function getPatternsPath(): string {
-  return join(getDataDir(), 'patterns.json');
+  return join(getDataDir(), PATTERNS_FILE);
 }
 
-/**
- * Get the stats file path
- */
 function getStatsPath(): string {
-  return join(getDataDir(), 'stats.json');
+  return join(getDataDir(), STATS_FILE);
+}
+
+// Latch is intentionally not async-safe — all I/O in this module is
+// synchronous so re-entry only happens via clearIntelligence() in tests.
+let legacyMigrationAttempted = false;
+
+function migrateLegacyIfNeeded(): void {
+  if (legacyMigrationAttempted) return;
+  legacyMigrationAttempted = true;
+
+  const legacyDir = getLegacyDataDir();
+  const localDir = getDataDir();
+  if (legacyDir === localDir) return;
+
+  for (const file of [PATTERNS_FILE, STATS_FILE]) {
+    const legacy = join(legacyDir, file);
+    const local = join(localDir, file);
+    if (existsSync(legacy) && !existsSync(local)) {
+      try {
+        mkdirSync(localDir, { recursive: true });
+        copyFileSync(legacy, local);
+      } catch {
+        // Best-effort migration; failures fall through to a fresh local store.
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -262,6 +281,7 @@ class LocalReasoningBank {
    */
   private loadFromDisk(): void {
     try {
+      migrateLegacyIfNeeded();
       const path = getPatternsPath();
       if (existsSync(path)) {
         const data = JSON.parse(readFileSync(path, 'utf-8'));
@@ -299,6 +319,14 @@ class LocalReasoningBank {
    * Immediately flush patterns to disk
    */
   flushToDisk(): void {
+    // Cancel any pending debounced save — we are writing right now and the
+    // deferred handler would otherwise fire post-teardown on short-lived
+    // processes (test runners hit this as a Windows EPERM during cleanup).
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
     if (!this.persistenceEnabled || !this.dirty) return;
 
     try {
@@ -484,6 +512,7 @@ let globalStats = {
  */
 function loadPersistedStats(): void {
   try {
+    migrateLegacyIfNeeded();
     const path = getStatsPath();
     if (existsSync(path)) {
       const data = JSON.parse(readFileSync(path, 'utf-8'));
@@ -756,6 +785,7 @@ export function clearIntelligence(): void {
   sonaCoordinator = null;
   reasoningBank = null;
   intelligenceInitialized = false;
+  legacyMigrationAttempted = false;
   globalStats = {
     trajectoriesRecorded: 0,
     lastAdaptation: null
