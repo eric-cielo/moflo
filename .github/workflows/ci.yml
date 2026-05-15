@@ -3,6 +3,22 @@ name: CI
 on:
   pull_request:
     branches: [main, 'epic/*']
+    # Skip CI on PRs that only touch documentation — saves runner minutes
+    # on typo/wording PRs without losing signal. Code-touching PRs always
+    # run; doc-touching paths added to a code PR don't filter out (any
+    # non-ignored path triggers the workflow).
+    #
+    # Narrow ignore list — only ROOT-level Markdown / templates / LICENSE.
+    # Do NOT match `**/*.md` recursively: src/CLAUDE.md, src/cli/CLAUDE.md,
+    # `.claude/guidance/**/*.md`, and test fixtures under tests/ are all
+    # functional (consumed by claudemd-generator, drift guards, and indexer
+    # tests). Changing them MUST trigger CI.
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE/**'
+      - 'LICENSE'
 
 env:
   NODE_VERSION: '22'

@@ -14,8 +14,30 @@ name: Consumer install smoke
 on:
   pull_request:
     branches: [main, 'epic/*']
+    # Skip CI on PRs that only touch documentation. Smoke runs on Windows
+    # cost ~10 minutes wall clock; doc-only PRs pay that cost for zero
+    # signal. The drift-guard test still runs as part of the main CI
+    # workflow's `Tests` job so consumer-shape regressions in CLAUDE.md
+    # injection are still caught.
+    # Narrow ignore list — only ROOT-level Markdown / templates / LICENSE.
+    # Do NOT match `**/*.md` recursively: src/CLAUDE.md, src/cli/CLAUDE.md,
+    # `.claude/guidance/**/*.md`, and shipped fixtures under tests/ are all
+    # functional (consumed by claudemd-generator, drift guards, and indexer
+    # tests). Changing them MUST trigger CI.
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE/**'
+      - 'LICENSE'
   push:
     branches: [main, 'epic/*']
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE/**'
+      - 'LICENSE'
 
 env:
   NODE_VERSION: '22'
@@ -29,11 +51,20 @@ concurrency:
 
 jobs:
   smoke:
-    name: ${{ matrix.os }}
+    # Split into a 3 × 2 matrix (3 OS × 2 harnesses) so consumer-smoke and
+    # populated-smoke run in PARALLEL on each runner instead of sequentially.
+    # Pre-split Windows wall time: ~10m52s (consumer 2m47s + populated 5m35s
+    # + shared setup ~2m30s). Post-split: max(consumer, populated) + shared
+    # setup ≈ ~7m. The populated harness still bears the heaviest single
+    # chunk (3-min consumer-install) so this approaches but doesn't beat
+    # that floor; further wins need harness-level caching of node_modules
+    # (separate issue).
+    name: ${{ matrix.harness }} / ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        harness: [consumer, populated]
     runs-on: ${{ matrix.os }}
     # Acceptance criterion: < 5 min on Ubuntu. Cap all runners conservatively
     # so a stuck install can't hold the queue.
@@ -68,11 +99,13 @@ jobs:
         run: npm run build
 
       - name: Run consumer smoke harness
+        if: matrix.harness == 'consumer'
         run: npm run test:smoke
 
-      # Issue #736 — safety gate for stories #727/#728/#729/#735. Reuses the
-      # tarball that test:smoke just packed (skip-pack) so we don't pay
-      # `npm pack` twice. The previous step keeps `.work/` because pack-only
-      # cleanup happens at the end of each run.
+      # Issue #736 — safety gate for stories #727/#728/#729/#735. Pre-split
+      # this step reused the consumer-smoke tgz via --skip-pack; post-split
+      # each harness packs independently (pack is ~3s on Windows, negligible
+      # vs. the ~5m the split saves).
       - name: Run populated-consumer smoke harness
-        run: npm run test:smoke:populated -- --skip-pack
+        if: matrix.harness == 'populated'
+        run: npm run test:smoke:populated
