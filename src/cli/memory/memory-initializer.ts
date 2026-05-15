@@ -2759,39 +2759,50 @@ export async function deleteEntry(options: {
 }
 
 /**
- * Get per-namespace entry counts via a single GROUP BY query.
- * Returns { namespaces: Record<string, number>, total: number }.
+ * Get memory stats via a single GROUP BY query — namespace counts plus the
+ * number of rows that carry a non-null embedding. One trip to disk; the
+ * server-side aggregation replaces a pre-#1149 client iteration that
+ * fetched 100 000 rows just to count them.
+ *
+ * Throws on DB read errors. Returns a zero shape ONLY when the DB file
+ * doesn't exist yet (the real "empty project" signal) — never swallows a
+ * locked/corrupt-DB error into a fake zero, since that's the exact silent
+ * wrong-answer this fix is for.
  */
 export async function getNamespaceCounts(dbPath?: string): Promise<{
   namespaces: Record<string, number>;
   total: number;
+  withEmbeddings: number;
 }> {
   const resolvedPath = dbPath || memoryDbPath(process.cwd());
 
-  try {
-    if (!fs.existsSync(resolvedPath)) {
-      return { namespaces: {}, total: 0 };
-    }
-    const db = openDaemonDatabase(resolvedPath);
+  if (!fs.existsSync(resolvedPath)) {
+    return { namespaces: {}, total: 0, withEmbeddings: 0 };
+  }
 
+  const db = openDaemonDatabase(resolvedPath);
+  try {
     const result = db.exec(
-      "SELECT namespace, COUNT(*) as cnt FROM memory_entries WHERE status = 'active' GROUP BY namespace ORDER BY cnt DESC"
+      "SELECT namespace, COUNT(*) AS cnt, SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS emb_cnt " +
+      "FROM memory_entries WHERE status = 'active' GROUP BY namespace ORDER BY cnt DESC"
     );
-    db.close();
 
     const namespaces: Record<string, number> = {};
     let total = 0;
+    let withEmbeddings = 0;
     if (result[0]?.values) {
       for (const row of result[0].values) {
         const ns = String(row[0]);
         const count = Number(row[1]);
+        const embCount = Number(row[2] ?? 0);
         namespaces[ns] = count;
         total += count;
+        withEmbeddings += embCount;
       }
     }
-    return { namespaces, total };
-  } catch {
-    return { namespaces: {}, total: 0 };
+    return { namespaces, total, withEmbeddings };
+  } finally {
+    db.close();
   }
 }
 

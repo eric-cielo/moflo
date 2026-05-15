@@ -152,6 +152,17 @@ export interface DaemonListEntry {
   hasEmbedding: boolean;
 }
 
+/**
+ * Shape returned by GET /api/memory/stats (#1149). Server-side aggregation
+ * over `memory_entries` — namespace counts, total active rows, and rows with
+ * an embedding, all from one GROUP BY query.
+ */
+export interface DaemonStats {
+  namespaces: Record<string, number>;
+  totalEntries: number;
+  withEmbeddings: number;
+}
+
 // ============================================================================
 // Module state — cached probes, never persisted
 // ============================================================================
@@ -489,6 +500,30 @@ export async function tryDaemonList(opts: {
   );
 }
 
+/**
+ * Route a memory-stats query through the daemon (#1149). Single GROUP BY
+ * query server-side — replaces the list-and-iterate path in the MCP
+ * `memory_stats` handler that fetched up to 100 000 rows just to count
+ * them and tripped the daemon's `limit ≤ 10 000` cap.
+ *
+ * Returns `{ routed: false }` when the daemon is unavailable or any 5xx /
+ * transport fault fires — caller falls back to a direct
+ * `getNamespaceCounts()` so users never see a fake zero.
+ */
+export async function tryDaemonStats(): Promise<DaemonReadResult<DaemonStats>> {
+  if (!(await isDaemonAvailable())) return { routed: false };
+  return requestReadJson<DaemonStats>('GET', '/api/memory/stats', undefined, (data) => {
+    if (typeof data?.totalEntries !== 'number') return null;
+    return {
+      namespaces: (data?.namespaces && typeof data.namespaces === 'object')
+        ? (data.namespaces as Record<string, number>)
+        : {},
+      totalEntries: data.totalEntries,
+      withEmbeddings: typeof data?.withEmbeddings === 'number' ? data.withEmbeddings : 0,
+    };
+  });
+}
+
 // ============================================================================
 // Internal HTTP poster — never throws, bounded timeout
 // ============================================================================
@@ -606,17 +641,26 @@ function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
 }
 
 /**
- * Generic JSON POST that returns a daemon-read envelope. Same transport
- * guarantees as `postJson`: never throws, bounded timeout, invalidates health
- * cache on routed-failure.
+ * Generic JSON read-request that returns a daemon-read envelope. Never
+ * throws, bounded by `DAEMON_HTTP_TIMEOUT_MS`, invalidates the health +
+ * identity + port caches on any routed-failure (daemon-recycle covers).
  *
- * The `shape` callback maps the daemon's parsed JSON payload to the typed
- * data shape the caller expects. Returning `null` from `shape` (or a parse
- * failure) downgrades to `{ routed: false }` so the caller falls back.
+ * Failure-shape contract (#1101):
+ *   2xx                            → routed:true with shape(data)
+ *   4xx                            → routed:true with error (caller propagates)
+ *   5xx / transport / parse-fail   → routed:false (caller falls back)
+ *
+ * `body === undefined` ⇒ GET (no Content-* headers); otherwise POST with
+ * JSON body. The `shape` callback maps parsed JSON to the typed payload;
+ * returning `null` downgrades the response to routed:false so the caller
+ * falls back to bridge-direct.
  */
-function postReadJson<T>(
+function requestReadJson<T>(
+  method: 'GET' | 'POST',
   path: string,
-  body: unknown,
+  body: unknown | undefined,
+  // `data` is a JSON.parse boundary — typed `any` here mirrors JSON.parse's
+  // own return type so callers can do safe optional-chaining narrowing.
   shape: (data: any) => T | null,
 ): Promise<DaemonReadResult<T>> {
   return new Promise((resolve) => {
@@ -625,9 +669,9 @@ function postReadJson<T>(
       if (done) return;
       done = true;
       if (result.routed === false) {
-        // Daemon recycled to a different port (post #1145 server restart)
-        // → invalidate the port cache too so the next call re-reads
-        // .moflo/daemon.lock. Otherwise we'd keep hammering a stale port.
+        // Daemon may have recycled to a new port (post-#1145 restart) →
+        // invalidate the lock-file-port cache and the identity probe so
+        // the next call re-discovers reality.
         healthCache = null;
         identityCache = null;
         _portCache = null;
@@ -635,45 +679,27 @@ function postReadJson<T>(
       resolve(result);
     };
 
-    const payload = JSON.stringify(body);
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    const headers = payload === undefined
+      ? undefined
+      : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) };
+
     const req = http.request(
-      {
-        host: '127.0.0.1',
-        port: getDaemonPort(),
-        path,
-        method: 'POST',
-        timeout: DAEMON_HTTP_TIMEOUT_MS,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-      },
+      { host: '127.0.0.1', port: getDaemonPort(), path, method, timeout: DAEMON_HTTP_TIMEOUT_MS, headers },
       (res) => {
         let buf = '';
         res.setEncoding('utf8');
         res.on('data', (chunk: string) => { buf += chunk; });
         res.on('end', () => {
-          // #1101 — mirror postJson contract for reads:
-          //   2xx  → routed:true with shaped data
-          //   4xx  → routed:true with error (no data) — caller propagates
-          //   5xx  → routed:false (caller falls back)
           const status = res.statusCode ?? 0;
-          if (status >= 500 || status < 200) {
-            finish({ routed: false });
-            return;
-          }
+          if (status >= 500 || status < 200) { finish({ routed: false }); return; }
           if (status >= 400) {
             finish({ routed: true, error: parse4xxError(buf, status) });
             return;
           }
           try {
-            const parsed = JSON.parse(buf);
-            const shaped = shape(parsed);
-            if (shaped === null) {
-              finish({ routed: false });
-              return;
-            }
-            finish({ routed: true, data: shaped });
+            const shaped = shape(JSON.parse(buf));
+            finish(shaped === null ? { routed: false } : { routed: true, data: shaped });
           } catch {
             finish({ routed: false });
           }
@@ -683,7 +709,15 @@ function postReadJson<T>(
     );
     req.on('error', () => finish({ routed: false }));
     req.on('timeout', () => { req.destroy(); finish({ routed: false }); });
-    req.write(payload);
+    if (payload !== undefined) req.write(payload);
     req.end();
   });
+}
+
+function postReadJson<T>(
+  path: string,
+  body: unknown,
+  shape: (data: any) => T | null,
+): Promise<DaemonReadResult<T>> {
+  return requestReadJson('POST', path, body, shape);
 }
