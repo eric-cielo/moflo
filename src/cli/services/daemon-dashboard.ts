@@ -874,6 +874,14 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     .btn-primary { background: #238636; border-color: #2ea043; color: #fff; }
     .btn-primary:hover { background: #2ea043; border-color: #3fb950; }
     .dim { color: #484f58; font-size: 0.75rem; font-style: italic; }
+    /* Loading state for tabs whose data is slow on first paint (currently
+       Claude Stats, which walks the user's transcript dir — can take 10–15s
+       on a long history). Pure-CSS spinner; no image, no framework. */
+    .loading-block { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 48px 16px; color: #8b949e; }
+    .loading-block .spinner { width: 28px; height: 28px; border: 3px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: lum-spin 0.85s linear infinite; }
+    .loading-block .msg { font-size: 0.9rem; color: #c9d1d9; }
+    .loading-block .hint { font-size: 0.8rem; color: #8b949e; font-style: italic; max-width: 480px; text-align: center; line-height: 1.5; }
+    @keyframes lum-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -887,7 +895,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <div id="panel-schedules" class="panel" style="display:none"><div id="schedules-active"></div><div id="schedules-events"></div></div>
   <div id="panel-executions" class="panel" style="display:none"></div>
   <div id="panel-memory" class="panel" style="display:none"></div>
-  <div id="panel-claude-stats" class="panel" style="display:none"></div>
+  <div id="panel-claude-stats" class="panel" style="display:none"><div class="loading-block"><div class="spinner"></div><div class="msg">Reading Claude Code transcripts…</div><div class="hint">First load can take 10–15 seconds — moflo walks every session file in this project's transcript directory. Subsequent loads in this tab are much faster.</div></div></div>
   <div id="poll-indicator" class="poll-indicator"></div>
   <script>
     // Tab navigation — plain DOM, no framework
@@ -1215,7 +1223,19 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     };
     function renderClaudeStats(cs) {
       const el = document.getElementById('panel-claude-stats');
-      if (!cs) { el.innerHTML = '<div class="empty">Loading...</div>'; return; }
+      // cs is null on first paint AND on fetch error (Promise chain uses
+      // .catch(() => null)). Render the spinner block on both so the user
+      // sees motion during the 10–15s transcript walk and during a transient
+      // network blip — better than a static "Loading..." that looks frozen.
+      if (!cs) {
+        el.innerHTML =
+          '<div class="loading-block">' +
+            '<div class="spinner"></div>' +
+            '<div class="msg">Reading Claude Code transcripts…</div>' +
+            '<div class="hint">First load can take 10–15 seconds — moflo walks every session file in this project\\'s transcript directory. Subsequent loads in this tab are much faster.</div>' +
+          '</div>';
+        return;
+      }
 
       // Always-visible disclaimer banner — keeps the scope and limits in
       // view so the numbers aren't read as account-wide truth.
