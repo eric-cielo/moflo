@@ -27,6 +27,7 @@ import { existsSync } from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { purgeMemoryProbeNamespaces } from '../services/ephemeral-namespace-purge.js';
 import { type HealthCheck } from './doctor-checks-deep.js';
 import {
   type FunctionalCheckDetail,
@@ -642,6 +643,11 @@ export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthChe
         if (shutdown?.handler) await shutdown.handler({ force: true });
       } catch { /* ignore */ }
     }
+    // #1166 — namespace-level sweep backstop for the per-key safeDelete
+    // loop above (see purgeMemoryProbeNamespaces docstring for why).
+    try {
+      await purgeMemoryProbeNamespaces({ dbPath: memoryDbPath(findProjectRoot()) });
+    } catch { /* best-effort */ }
   }
 
   return summarizeFunctional(MEMORY_ACCESS_CHECK, details, {

@@ -20,7 +20,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { purgeEphemeralNamespaces } from '../../services/ephemeral-namespace-purge.js';
+import {
+  purgeEphemeralNamespaces,
+  purgeMemoryProbeNamespaces,
+} from '../../services/ephemeral-namespace-purge.js';
 import {
   EPHEMERAL_NAMESPACES,
   EPHEMERAL_NAMESPACE_PREFIXES,
@@ -272,6 +275,101 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     expect(countByNamespace(dbPath, 'doctor-neighbors-1778701810936-zmnzzp')).toBe(0);
     expect(countByNamespace(dbPath, 'doctor-neighbors-1778700000000-aaaaaa')).toBe(0);
     expect(countByNamespace(dbPath, 'learnings')).toBe(1);
+  });
+});
+
+describe('purgeMemoryProbeNamespaces (#1166)', () => {
+  it('returns { purged: 0 } when the DB file does not exist', async () => {
+    const result = await purgeMemoryProbeNamespaces({
+      dbPath: join(tmpdir(), 'moflo-missing-1166', 'nope.db'),
+    });
+    expect(result).toEqual({ purged: 0 });
+  });
+
+  it('hard-deletes only prefix-match namespaces; exact ephemerals and user data survive', async () => {
+    // The doctor's namespace sweep must NOT clobber hive-mind / epic-state /
+    // test-bridge-fix (the launcher owns those) and obviously NOT user data.
+    const dbPath = await makeTmpDb((db) => {
+      const insert = (id: string, key: string, ns: string, content: string) =>
+        db.run(
+          `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+          [id, key, ns, content],
+        );
+
+      // Prefix-match probe rows — every healer persona plus a neighbors stamp.
+      const personas = ['subagent', 'swarm-agent', 'hive-mind-worker'];
+      let i = 0;
+      for (const p of personas) {
+        insert(`probe-${++i}`, `k-probe-${i}`, `doctor-memprobe-${p}`, `sentinel-${p}`);
+      }
+      for (let n = 0; n < 3; n++) {
+        insert(
+          `nbr-${++i}`,
+          `chunk-doctor-neighbors-1778702104739-nw6tcl-${n}`,
+          'doctor-neighbors-1778702104739-nw6tcl',
+          `chunk ${n}`,
+        );
+      }
+
+      // Exact ephemerals the doctor must NOT touch (launcher owns these).
+      for (const ns of PURGE_ON_SESSION_START_NAMESPACES) {
+        insert(`exact-${++i}`, `k-exact-${i}`, ns, `exact-${ns}`);
+      }
+
+      // Decoy: namespace contains the prefix but doesn't start with it.
+      insert(`decoy`, 'k-decoy', 'my-doctor-memprobe-fake', 'should-survive');
+
+      // User rows that must survive.
+      insert('keep-1', 'k-keep-1', 'learnings', 'real learning');
+      insert('keep-2', 'k-keep-2', 'knowledge', 'real knowledge');
+      insert('keep-3', 'k-keep-3', 'tasklist', 'flo-1-1700000000000');
+    });
+
+    const result = await purgeMemoryProbeNamespaces({ dbPath });
+    expect(result.purged).toBe(3 + 3); // 3 personas + 3 neighbors chunks
+
+    // Prefix-match cleared.
+    expect(countByNamespace(dbPath, 'doctor-memprobe-subagent')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-memprobe-swarm-agent')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-memprobe-hive-mind-worker')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-neighbors-1778702104739-nw6tcl')).toBe(0);
+
+    // Exact ephemerals untouched — the launcher owns those.
+    for (const ns of PURGE_ON_SESSION_START_NAMESPACES) {
+      expect(countByNamespace(dbPath, ns)).toBe(1);
+    }
+    // Decoy and user data survive.
+    expect(countByNamespace(dbPath, 'my-doctor-memprobe-fake')).toBe(1);
+    expect(countByNamespace(dbPath, 'learnings')).toBe(1);
+    expect(countByNamespace(dbPath, 'knowledge')).toBe(1);
+    expect(countByNamespace(dbPath, 'tasklist')).toBe(1);
+  });
+
+  it('is idempotent — second pass over a clean DB returns { purged: 0 }', async () => {
+    const dbPath = await makeTmpDb((db) => {
+      db.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+        ['p1', 'kp1', 'doctor-memprobe-subagent', 'probe'],
+      );
+    });
+
+    const first = await purgeMemoryProbeNamespaces({ dbPath });
+    expect(first.purged).toBe(1);
+
+    const second = await purgeMemoryProbeNamespaces({ dbPath });
+    expect(second).toEqual({ purged: 0 });
+  });
+
+  it('skips DBs that lack a memory_entries table', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'moflo-probe-purge-other-'));
+    tmpDirs.push(dir);
+    const dbPath = join(dir, 'something.db');
+    const db = openDaemonDatabase(dbPath);
+    db.run(`CREATE TABLE other_table (id TEXT PRIMARY KEY);`);
+    db.close();
+
+    const result = await purgeMemoryProbeNamespaces({ dbPath });
+    expect(result).toEqual({ purged: 0 });
   });
 });
 
