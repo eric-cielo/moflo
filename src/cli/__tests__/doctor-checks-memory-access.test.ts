@@ -223,6 +223,61 @@ describe('doctor-checks-memory-access', () => {
       ).toBe(0);
     }
   });
+
+  it('namespace sweep mops up a row a missed safeDelete would have leaked (#1166)', { timeout: 60_000 }, async () => {
+    // Simulates the production flake: a probe row that the doctor's per-key
+    // safeDelete never deletes (transport error, daemon race, or the row
+    // wasn't visible to the DELETE's WHERE clause at the moment it ran).
+    // The fix in #1166 adds a namespace-level sweep in the finally block —
+    // any row in `doctor-memprobe-*` is gone when the check returns,
+    // regardless of how it got there.
+    const { findMofloPackageRoot } = await import('../services/moflo-require.js');
+    const { pathToFileURL } = await import('url');
+    const { existsSync } = await import('fs');
+    const { join } = await import('path');
+    const root = findMofloPackageRoot();
+    if (!root) return;
+    const memToolsPath = join(root, 'dist/src/cli/mcp-tools/memory-tools.js');
+    if (!existsSync(memToolsPath)) return;
+    const { memoryTools } = await import(pathToFileURL(memToolsPath).href);
+    const store = memoryTools.find((t: { name: string }) => t.name === 'memory_store');
+    const list = memoryTools.find((t: { name: string }) => t.name === 'memory_list');
+    if (!store?.handler || !list?.handler) return;
+
+    // First run primes the bridge / creates moflo.db inside the temp project.
+    const priming = await checkMemoryAccessFunctional();
+    if (priming.status === 'warn' && /not built/i.test(priming.message)) return;
+
+    // Plant a synthetic leak: a key the doctor's safeDelete will never see
+    // because it's not in the cleanups[] array. Pre-#1166 this row survived
+    // checkMemoryAccessFunctional's finally — the bug the smoke harness's
+    // populated:ephemeral-purged catches.
+    const leakedKey = `doctor-memprobe-swarm-agent-leaked-${Date.now()}`;
+    const leakedNs = 'doctor-memprobe-swarm-agent';
+    await store.handler({ key: leakedKey, value: { sentinel: 'leak' }, namespace: leakedNs });
+
+    // Confirm it really landed (otherwise the test is vacuous).
+    {
+      const before = await list.handler({ namespace: leakedNs, limit: 100 });
+      const rows = (before as { entries?: Array<{ key: string }>; results?: Array<{ key: string }> }).entries
+        ?? (before as { results?: Array<{ key: string }> }).results
+        ?? [];
+      expect(rows.some(r => r.key === leakedKey), 'synthetic leak row must be present before doctor sweep').toBe(true);
+    }
+
+    // The fix: any row in doctor-memprobe-*/doctor-neighbors-* is swept by
+    // the finally block, regardless of whether safeDelete touched it.
+    await checkMemoryAccessFunctional();
+
+    const after = await list.handler({ namespace: leakedNs, limit: 100 });
+    const remaining = (after as { entries?: Array<{ key: string }>; results?: Array<{ key: string }> }).entries
+      ?? (after as { results?: Array<{ key: string }> }).results
+      ?? [];
+    expect(
+      remaining.map(r => r.key),
+      `expected ${leakedNs} empty after sweep, found: ${remaining.map(r => r.key).join(', ')}`,
+    ).not.toContain(leakedKey);
+  });
 });
 
 /**

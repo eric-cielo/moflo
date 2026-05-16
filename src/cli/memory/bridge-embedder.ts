@@ -130,13 +130,16 @@ export const PURGE_ON_SESSION_START_NAMESPACES: ReadonlySet<string> = new Set([
  *   spawns a NEW namespace, so namespace pollution grows linearly with
  *   healer-run count if cleanup races fail.
  *
- * Both probes register an explicit cleanup via `safeDelete`, but the
- * cleanup is best-effort and silently swallows failures (e.g. daemon
- * races, MCP transport errors) — so rows accumulate across consumer
- * sessions. Auto-purging matches the pattern for
- * `hive-mind`/`epic-state`/`test-bridge-fix`. These rows MUST still get
- * embeddings (see {@link EPHEMERAL_NAMESPACE_PREFIXES} for why) — only
- * their persistence across sessions is curtailed.
+ * Both probes register an explicit cleanup via `safeDelete`. Post-#1166
+ * the doctor also runs an in-process namespace sweep over these prefixes
+ * inside `checkMemoryAccessFunctional`'s finally block, so a healthy
+ * doctor run leaves zero rows behind. The session-start launcher's
+ * prefix-purge is now strictly a safety net for crashed-process residue
+ * (the doctor never reached its finally) or pre-#1166 consumer DBs that
+ * still carry accumulated probe rows. Auto-purging matches the pattern
+ * for `hive-mind`/`epic-state`/`test-bridge-fix`. These rows MUST still
+ * get embeddings (see {@link EPHEMERAL_NAMESPACE_PREFIXES} for why) —
+ * only their persistence across sessions is curtailed.
  */
 export const PURGE_ON_SESSION_START_PREFIXES: ReadonlySet<string> = new Set([
   'doctor-memprobe-',

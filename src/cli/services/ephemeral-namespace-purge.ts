@@ -150,3 +150,64 @@ export async function purgeEphemeralNamespaces(
     db.close();
   }
 }
+
+export interface PurgeMemoryProbeNamespacesOptions {
+  /** Path to the memory DB. Defaults to `<cwd>/.moflo/moflo.db`. */
+  dbPath?: string;
+}
+
+/**
+ * Hard-delete rows whose namespace matches one of
+ * {@link PURGE_ON_SESSION_START_PREFIXES} — currently `doctor-memprobe-*`
+ * and `doctor-neighbors-*`. Scoped down from {@link purgeEphemeralNamespaces}:
+ * no exact-namespace pass, no tasklist trim, no VACUUM. Returns
+ * `{ purged: 0 }` on a missing DB / missing `memory_entries` / clean state.
+ *
+ * Intended for the doctor's Memory Access functional check finally block
+ * (#1166). Only the doctor writes to these namespaces in production, so
+ * sweeping by prefix at the end of every healer run kills the
+ * `populated:ephemeral-purged` flake class — a per-key `safeDelete` that
+ * silently no-ops (row not visible at delete time, MCP transport error,
+ * `memory_delete` returning `success: true, deleted: false`) no longer
+ * leaks a row into the next assertion. The launcher's session-start
+ * purge stays in place as a defence-in-depth safety net for residue from
+ * crashed-process scenarios where the doctor never reached its finally.
+ *
+ * Errors propagate to the caller (the doctor absorbs them so a failed
+ * sweep never poisons the check return value).
+ */
+export async function purgeMemoryProbeNamespaces(
+  options: PurgeMemoryProbeNamespacesOptions = {},
+): Promise<{ purged: number }> {
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
+  if (!fs.existsSync(dbPath)) return { purged: 0 };
+
+  const prefixes = Array.from(PURGE_ON_SESSION_START_PREFIXES);
+  if (prefixes.length === 0) return { purged: 0 };
+
+  const db = openDaemonDatabase(dbPath);
+  try {
+    const probe = db.exec(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='memory_entries' LIMIT 1`,
+    );
+    if (!probe[0]?.values?.[0]) return { purged: 0 };
+
+    const whereClause = prefixes.map(() => 'namespace LIKE ?').join(' OR ');
+    const bindings = prefixes.map((p) => `${p}%`);
+
+    const countRows = db.exec(
+      `SELECT COUNT(*) FROM memory_entries WHERE ${whereClause}`,
+      bindings,
+    );
+    const purgeable = Number(countRows[0]?.values?.[0]?.[0] ?? 0);
+    if (purgeable === 0) return { purged: 0 };
+
+    db.run(`DELETE FROM memory_entries WHERE ${whereClause}`, bindings);
+    return { purged: db.getRowsModified?.() ?? 0 };
+  } finally {
+    db.close();
+  }
+}
