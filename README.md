@@ -419,7 +419,7 @@ flo daemon status    # shows whether the service is registered AND running
 
 `flo spell schedule create` warns when the daemon isn't installed so you don't quietly miss runs.
 
-**Monitoring.** **The Luminarium** (the moflo daemon's localhost UI) surfaces live schedules, recent executions, and per-schedule controls (disable / re-enable / run now). It starts alongside the daemon at `http://localhost:3117` (override with `--dashboard-port` or disable with `--no-dashboard`).
+**Monitoring.** **[The Luminarium](#the-luminarium)** — moflo's localhost daemon dashboard — surfaces live schedules, recent executions, and per-schedule controls (disable / re-enable / run now), alongside worker health, memory stats, and Claude Code session stats. Each project gets its own deterministic port (33000–33999) recorded in `.moflo/daemon.lock`; ask `/luminarium` in your Claude session and it'll print the link.
 
 For full configuration (`scheduler:` block in `moflo.yaml`), event types, and the catch-up window after restarts, see [docs/SPELLS.md#scheduling](docs/SPELLS.md#scheduling).
 
@@ -458,6 +458,35 @@ flo epic reset 42                        # Reset state for re-run
 ```
 
 See the [Epic handling](#epic-handling) section above for detection criteria and the comparison between `/flo <epic>` and `flo epic run`.
+
+## The Luminarium
+
+The Luminarium is moflo's localhost daemon dashboard. It boots automatically with the background daemon (no extra service to install) and stays running as long as the daemon is up.
+
+### Finding the URL
+
+Each project gets a deterministic port in the range 33000–33999, derived from a hash of the project root so two projects never collide on the same machine. The actual bound port is written to `.moflo/daemon.lock` when the daemon starts — if the deterministic port is already taken the daemon scans forward, so the lock file is the source of truth, not the hash.
+
+Three ways to get the URL:
+
+- **`/luminarium`** — inside a Claude Code session in a moflo project, this skill reads `.moflo/daemon.lock` and prints `http://localhost:<port>`. Fastest path.
+- **`flo daemon status`** — prints the URL alongside the health summary.
+- **`cat .moflo/daemon.lock`** — read the JSON directly: `{ "pid": ..., "port": 33421, ... }`.
+
+### What it shows
+
+| Tab | What you see |
+|-----|--------------|
+| **Workers** | Live agent processes the daemon is running (statusline updater, indexer, embedder, etc.) |
+| **Schedules** | All registered spell schedules (cron / interval / one-time), with run-now and disable controls |
+| **Executions** | Recent spell runs — duration, exit code, step-by-step output |
+| **Memory** | Memory namespace breakdown, vector count, embedder backend, HNSW index health |
+| **Claude Stats** | Per-session Claude Code transcript stats — tokens, tools called, files touched (local primary sessions only) |
+
+### Flags
+
+- `flo daemon start --no-dashboard` — disable the HTTP server entirely (the daemon itself still runs)
+- `flo daemon start --dashboard-port <N>` — pin to a specific port, overriding the deterministic resolver. Also accepts the `MOFLO_DAEMON_PORT` env var, which the rest of moflo respects when talking to the daemon
 
 ## Commands
 
