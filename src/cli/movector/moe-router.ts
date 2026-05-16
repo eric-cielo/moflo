@@ -6,7 +6,8 @@
  * - Gating network for soft expert selection (top-k)
  * - Online weight updates via reward signals
  * - Load balancing with auxiliary loss
- * - Weight persistence to .swarm/moe-weights.json
+ * - Weight persistence to .moflo/movector/moe-weights.json
+ *   (legacy fallback read: .swarm/moe-weights.json)
  *
  * Architecture:
  * - Input: 384-dim task embedding (from ONNX)
@@ -17,7 +18,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname } from 'path';
+import { legacySwarmPath, runtimePath } from '../services/moflo-paths.js';
 
 // ============================================================================
 // Types & Constants
@@ -77,7 +79,7 @@ export interface MoERouterConfig {
   temperature: number;
   /** Load balancing coefficient (default: 0.01) */
   loadBalanceCoef: number;
-  /** Path for weight persistence (default: '.swarm/moe-weights.json') */
+  /** Path for weight persistence (default: '<root>/.moflo/movector/moe-weights.json') */
   weightsPath: string;
   /** Auto-save interval in updates (default: 50) */
   autoSaveInterval: number;
@@ -146,14 +148,15 @@ interface PersistedModel {
 }
 
 /**
- * Default configuration
+ * Default configuration. `weightsPath` is overridden lazily in the
+ * MoERouter constructor (see #1168) so the path resolves against the
+ * consumer's project root, not the module-load cwd.
  */
-const DEFAULT_CONFIG: MoERouterConfig = {
+const DEFAULT_CONFIG: Omit<MoERouterConfig, 'weightsPath'> = {
   topK: 2,
   learningRate: 0.01,
   temperature: 1.0,
   loadBalanceCoef: 0.01,
-  weightsPath: '.swarm/moe-weights.json',
   autoSaveInterval: 50,
   enableNoise: true,
   noiseStd: 0.1,
@@ -328,7 +331,15 @@ export class MoERouter {
   private lastSelectedExperts: number[] = [];
 
   constructor(config: Partial<MoERouterConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // Resolve weightsPath lazily here (#1168) — the default routes through
+    // findProjectRoot at construct-time, not module-load time. Default-rescue
+    // runs *last* so an explicit `weightsPath: undefined` falls back to the
+    // canonical path instead of leaving the field undefined.
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      weightsPath: config.weightsPath ?? runtimePath('movector', 'moe-weights.json'),
+    };
 
     // Initialize weights
     this.W1 = xavierInit(INPUT_DIM, HIDDEN_DIM);
@@ -616,10 +627,14 @@ export class MoERouter {
    * Load weights from persistence file
    */
   async loadWeights(path?: string): Promise<boolean> {
-    const weightsPath = path || this.config.weightsPath;
+    // Canonical path first, then legacy `.swarm/moe-weights.json` as a
+    // read-only fallback for consumers who upgraded mid-training (#1168).
+    let weightsPath = path || this.config.weightsPath;
     try {
       if (!existsSync(weightsPath)) {
-        return false;
+        const legacy = legacySwarmPath('moe-weights.json');
+        if (!existsSync(legacy)) return false;
+        weightsPath = legacy;
       }
 
       const data = readFileSync(weightsPath, 'utf-8');

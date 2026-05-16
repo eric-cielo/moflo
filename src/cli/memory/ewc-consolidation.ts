@@ -16,7 +16,8 @@
  * - Fisher Information Matrix computation from gradient history
  * - Online EWC updates for streaming patterns
  * - Selective consolidation based on pattern importance
- * - Persistent storage in .swarm/ewc-fisher.json
+ * - Persistent storage in .moflo/neural/ewc-fisher.json
+ *   (legacy fallback read: .swarm/ewc-fisher.json)
  *
  * @module v3/cli/memory/ewc-consolidation
  */
@@ -24,6 +25,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { legacySwarmPath, runtimePath } from '../services/moflo-paths.js';
 
 // ============================================================================
 // Types
@@ -143,12 +145,11 @@ interface GradientSample {
 // Default Configuration
 // ============================================================================
 
-const DEFAULT_EWC_CONFIG: EWCConfig = {
+const DEFAULT_EWC_CONFIG: Omit<EWCConfig, 'storagePath'> = {
   lambda: 0.4,
   maxPatterns: 1000,
   fisherDecayRate: 0.01,
   importanceThreshold: 0.3,
-  storagePath: path.join(process.cwd(), '.swarm', 'ewc-fisher.json'),
   onlineMode: true,
   dimensions: 384
 };
@@ -171,7 +172,15 @@ export class EWCConsolidator {
   private initialized: boolean = false;
 
   constructor(config?: Partial<EWCConfig>) {
-    this.config = { ...DEFAULT_EWC_CONFIG, ...config };
+    // Resolve storagePath lazily here (#1168) — the default routes through
+    // findProjectRoot at construct-time, not module-load time. Default-rescue
+    // runs *last* so an explicit `storagePath: undefined` falls back to the
+    // canonical path instead of leaving the field undefined.
+    this.config = {
+      ...DEFAULT_EWC_CONFIG,
+      ...config,
+      storagePath: config?.storagePath ?? runtimePath('neural', 'ewc-fisher.json'),
+    };
     this.globalFisher = new Array(this.config.dimensions).fill(0);
   }
 
@@ -635,11 +644,18 @@ export class EWCConsolidator {
    * Load state from disk
    */
   private async loadFromDisk(): Promise<void> {
-    if (!fs.existsSync(this.config.storagePath)) {
-      throw new Error('No persisted state found');
+    // Canonical path first, then legacy `.swarm/ewc-fisher.json` as a
+    // read-only fallback for consumers who upgraded mid-training (#1168).
+    let sourcePath = this.config.storagePath;
+    if (!fs.existsSync(sourcePath)) {
+      const legacy = legacySwarmPath('ewc-fisher.json');
+      if (!fs.existsSync(legacy)) {
+        throw new Error('No persisted state found');
+      }
+      sourcePath = legacy;
     }
 
-    const content = fs.readFileSync(this.config.storagePath, 'utf-8');
+    const content = fs.readFileSync(sourcePath, 'utf-8');
     const state = JSON.parse(content);
 
     // Validate version

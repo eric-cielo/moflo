@@ -160,10 +160,27 @@ async function fixSwarmLegacyResidue(): Promise<boolean> {
     }
   }
 
-  // (2) router state JSONs — rename into .moflo/movector/.
+  // (2) router state + neural state JSONs — rename into .moflo/{movector,neural,swarm,memory}/.
+  //
+  // q-learning-model.json + model-router-state.json: shipped at #727.
+  // lora-weights.json + moe-weights.json: writer relocation in #1168
+  //   (lora-adapter.ts, moe-router.ts).
+  // ewc-fisher.json + sona-patterns.json: writer relocation in #1168
+  //   (ewc-consolidation.ts, sona-optimizer.ts).
+  // state.json + code-map-hash.txt: writer relocation in #1168
+  //   (commands/swarm.ts, commands/memory.ts).
+  const neuralDir = join(moflo, 'neural');
+  const swarmStateDir = join(moflo, 'swarm');
+  const memoryStateDir = join(moflo, 'memory');
   const stateFiles = [
     { name: 'q-learning-model.json', dest: movectorDir },
     { name: 'model-router-state.json', dest: movectorDir },
+    { name: 'lora-weights.json', dest: movectorDir },
+    { name: 'moe-weights.json', dest: movectorDir },
+    { name: 'ewc-fisher.json', dest: neuralDir },
+    { name: 'sona-patterns.json', dest: neuralDir },
+    { name: 'state.json', dest: swarmStateDir },
+    { name: 'code-map-hash.txt', dest: memoryStateDir },
   ];
   for (const { name, dest } of stateFiles) {
     const src = join(swarmDir, name);
@@ -236,9 +253,11 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
   // Map checks to programmatic fixes (not just shell commands)
   const fixActions: Record<string, () => Promise<boolean>> = {
     'Memory Database': async () => {
+      // Canonical DB lives at `.moflo/moflo.db`; `initializeMemoryDatabase`
+      // creates the parent dir itself. The pre-#1168 fix also `mkdirSync`'d
+      // `.swarm/` — vestigial residue that fought the 'Swarm Residue' fix in
+      // the same healer pass. Removed.
       try {
-        const swarmDir = join(process.cwd(), '.swarm');
-        if (!existsSync(swarmDir)) mkdirSync(swarmDir, { recursive: true });
         const { initializeMemoryDatabase } = await import('../memory/memory-initializer.js');
         const result = await initializeMemoryDatabase({ force: true, verbose: false });
         return result.success;
@@ -247,11 +266,11 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       }
     },
     'Embeddings': async () => {
+      // Same fix as Memory Database — ensure the canonical DB exists, then
+      // populate embeddings. Pre-#1168 wrote to `.swarm/memory.db` directly,
+      // contradicting the post-#727 layout; that branch is removed.
       try {
-        const swarmDir = join(process.cwd(), '.swarm');
-        if (!existsSync(swarmDir)) mkdirSync(swarmDir, { recursive: true });
-        const dbPath = join(swarmDir, 'memory.db');
-        if (!existsSync(dbPath)) {
+        if (!existsSync(memoryDbPath(findProjectRoot()))) {
           const { initializeMemoryDatabase } = await import('../memory/memory-initializer.js');
           await initializeMemoryDatabase({ force: true, verbose: false });
         }

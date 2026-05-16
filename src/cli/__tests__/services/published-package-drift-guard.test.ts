@@ -258,6 +258,66 @@ describe('published-package drift guard (issue #585)', () => {
     ).toEqual([]);
   });
 
+  it('no `.swarm/` *writer* paths re-enter production source (#1168)', () => {
+    // Issue #1168: moflo's canonical runtime store is `.moflo/`. The legacy
+    // `.swarm/` path is read-only — used by the cherry-pick recovery, the
+    // bridge migration window probe, and the doctor 'Swarm Residue' fix as
+    // a source. Production code MUST NOT *write* to `.swarm/` (mkdirSync,
+    // writeFileSync, or join-then-write) — that's the bug class #1168 closed.
+    //
+    // Read-only references (legacyMemoryDbPath, fallback existsSync probes,
+    // doc strings, comments) are allowed without a marker. The guard flags
+    // only suspicious *mutating* patterns; if a contributor adds a new
+    // legitimate read path the regex won't fire. If a future PR genuinely
+    // needs to write `.swarm/` (e.g. for a new migration codepath), they
+    // add an explicit `LEGACY-V2-WRITE` marker on the same line.
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'helpers'),
+      join(REPO_ROOT, '.claude', 'skills'),
+    ];
+    // A "writer" pattern: any of mkdirSync/mkdir/writeFileSync/renameSync/
+    // appendFileSync called on a path string that contains `.swarm`. We scan
+    // for the call-site shape on the same line as `.swarm` to keep this
+    // simple — multi-line writer chains aren't a current shape in the repo.
+    const WRITER_RE = /(mkdirSync|writeFileSync|renameSync|appendFileSync|fs\.mkdir\b)[^\n]*['"`][^'"`]*\.swarm/;
+    const ALLOWED_MARKERS = /LEGACY-V2-WRITE|pre-#1168/;
+    // Files whose entire purpose is `.swarm/` migration logic — they may
+    // legitimately write to `.swarm/` (e.g. for restore-during-migration).
+    // Currently empty: post-#1168 there's no such writer in moflo.
+    const MIGRATION_FILES = new Set<string>([]);
+
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (/[/\\]__tests__[/\\]/.test(file)) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        if (MIGRATION_FILES.has(rel)) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!WRITER_RE.test(text)) continue;
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (!WRITER_RE.test(lines[i])) continue;
+          if (ALLOWED_MARKERS.test(lines[i])) continue;
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Production code writes to .swarm/ (issue #1168 moved every writer to .moflo/).\n` +
+        `If the new write is intentional (e.g. a new migration codepath), add\n` +
+        `the marker LEGACY-V2-WRITE or pre-#1168 to the same line.\n` +
+        `Offenders:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
   it('no `npm install @moflo/<pkg>` strings remain in source or shipped guidance', () => {
     // Issue #661: moflo publishes as a single npm package called `moflo`. Any
     // `npm install @moflo/cli` (or @moflo/neural, @moflo/memory, …) string in
