@@ -13,6 +13,7 @@ import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { legacySwarmPath, runtimePath } from '../services/moflo-paths.js';
 
 // Memory backends
 const BACKENDS = [
@@ -2436,7 +2437,10 @@ const codeMapCommand: Command = {
     const { createHash } = await import('crypto');
 
     const cwd = ctx.cwd || process.cwd();
-    const hashCachePath = pathModule.join(cwd, '.swarm', 'code-map-hash.txt');
+    // Post-#1168: canonical at `.moflo/memory/code-map-hash.txt`. Legacy
+    // `.swarm/code-map-hash.txt` is read-only fallback for upgrade scenarios.
+    const hashCachePath = runtimePath('memory', 'code-map-hash.txt');
+    const legacyHashCachePath = legacySwarmPath('code-map-hash.txt');
 
     output.writeln();
     output.writeln(output.bold('Generating Code Map'));
@@ -2484,9 +2488,12 @@ const codeMapCommand: Command = {
       return { success: true };
     }
 
-    // Check if unchanged
-    if (!forceRegen && fs.existsSync(hashCachePath)) {
-      const cached = fs.readFileSync(hashCachePath, 'utf-8').trim();
+    // Check if unchanged — canonical first, then legacy `.swarm/` fallback.
+    const cachedReadPath = fs.existsSync(hashCachePath)
+      ? hashCachePath
+      : (fs.existsSync(legacyHashCachePath) ? legacyHashCachePath : null);
+    if (!forceRegen && cachedReadPath) {
+      const cached = fs.readFileSync(cachedReadPath, 'utf-8').trim();
       if (cached === currentHash) {
         const { db } = await openDb(cwd);
         const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = ?`);

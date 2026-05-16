@@ -21,6 +21,7 @@
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { findProjectRoot } from './project-root.js';
 
 export const MOFLO_DIR = '.moflo';
 /** Canonical memory DB filename (post-#727). Lives at `<root>/.moflo/moflo.db`. */
@@ -77,6 +78,27 @@ export function legacyHnswIndexPath(projectRoot: string): string {
 /** Backup sentinel kept for one upgrade cycle: `<root>/.swarm/memory.db.bak`. */
 export function legacyMemoryDbBakPath(projectRoot: string): string {
   return join(projectRoot, LEGACY_SWARM_DIR, `${LEGACY_MEMORY_DB_FILE}${LEGACY_MEMORY_DB_BAK_SUFFIX}`);
+}
+
+/**
+ * Resolve a runtime-state path under `.moflo/<subdir>/<filename>` at the
+ * project root. Lazy by design — every call routes through `findProjectRoot()`
+ * so the path never bakes in `process.cwd()` at module-load time (#1168 bug
+ * class). Use this for any persisted runtime state the daemon, MCP server,
+ * or neural runtime writes (weights, fisher matrix, routing patterns, etc.).
+ */
+export function runtimePath(subdir: string, filename: string): string {
+  return join(mofloDir(findProjectRoot()), subdir, filename);
+}
+
+/**
+ * Legacy `.swarm/<filename>` path at the project root. Read-only fallback for
+ * consumers who saved state under the pre-#1168 location; never written by
+ * production code (enforced by the drift-guard in
+ * `published-package-drift-guard.test.ts`).
+ */
+export function legacySwarmPath(filename: string): string {
+  return join(findProjectRoot(), LEGACY_SWARM_DIR, filename);
 }
 
 /**

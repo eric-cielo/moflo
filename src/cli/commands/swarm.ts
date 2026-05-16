@@ -9,16 +9,28 @@ import { select, confirm, multiSelect } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
+import { LEGACY_SWARM_DIR, memoryDbCandidatePaths, mofloDir } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 
 // Get dynamic swarm status from memory/session files
 function getSwarmStatus(swarmId?: string) {
-  const swarmDir = path.join(process.cwd(), '.swarm');
+  const projectRoot = findProjectRoot();
+  // `.moflo/swarm/state.json` is canonical post-#1168; `.swarm/state.json`
+  // is a read-only fallback so a consumer who initialised on an older moflo
+  // still sees their swarm. The pre-#1168 agents/tasks JSON probe blocks
+  // were removed — no current writer creates those directories, so they
+  // always produced 0 counts. The coordinator-backed MCP tools
+  // (agent_list / task_list) are the live source of truth.
+  const canonicalSwarmDir = path.join(mofloDir(projectRoot), 'swarm');
+  const legacySwarmDir = path.join(projectRoot, LEGACY_SWARM_DIR);
   const sessionDir = path.join(process.cwd(), '.claude', 'sessions');
   const memoryPaths = memoryDbCandidatePaths(process.cwd());
 
-  // Check for active swarm state file
-  const swarmStateFile = path.join(swarmDir, 'state.json');
+  // Check for active swarm state file — canonical first, then legacy.
+  let swarmStateFile = path.join(canonicalSwarmDir, 'state.json');
+  if (!fs.existsSync(swarmStateFile)) {
+    swarmStateFile = path.join(legacySwarmDir, 'state.json');
+  }
   let swarmState: Record<string, unknown> | null = null;
 
   if (fs.existsSync(swarmStateFile)) {
@@ -29,28 +41,14 @@ function getSwarmStatus(swarmId?: string) {
     }
   }
 
-  // Count active agents from process files
-  let activeAgents = 0;
-  let totalAgents = 0;
-  const agentsDir = path.join(swarmDir, 'agents');
-  if (fs.existsSync(agentsDir)) {
-    try {
-      const agentFiles = fs.readdirSync(agentsDir).filter(f => f.endsWith('.json'));
-      totalAgents = agentFiles.length;
-      for (const file of agentFiles) {
-        try {
-          const agent = JSON.parse(fs.readFileSync(path.join(agentsDir, file), 'utf-8'));
-          if (agent.status === 'active' || agent.status === 'running') {
-            activeAgents++;
-          }
-        } catch {
-          // Ignore
-        }
-      }
-    } catch {
-      // Ignore
-    }
-  }
+  // agents/tasks counters: no file-store readers post-#1168. Coordinator
+  // MCP tools own the live counts; getSwarmStatus surfaces a static summary
+  // of the persisted state file plus session/memory rough indicators.
+  const activeAgents = 0;
+  const totalAgents = 0;
+  const completedTasks = 0;
+  const inProgressTasks = 0;
+  const pendingTasks = 0;
 
   // Get session count
   let sessionCount = 0;
@@ -72,33 +70,6 @@ function getSwarmStatus(swarmId?: string) {
       } catch {
         // Ignore
       }
-    }
-  }
-
-  // Count task files if they exist
-  let completedTasks = 0;
-  let inProgressTasks = 0;
-  let pendingTasks = 0;
-  const tasksDir = path.join(swarmDir, 'tasks');
-  if (fs.existsSync(tasksDir)) {
-    try {
-      const taskFiles = fs.readdirSync(tasksDir).filter(f => f.endsWith('.json'));
-      for (const file of taskFiles) {
-        try {
-          const task = JSON.parse(fs.readFileSync(path.join(tasksDir, file), 'utf-8'));
-          if (task.status === 'completed' || task.status === 'done') {
-            completedTasks++;
-          } else if (task.status === 'in_progress' || task.status === 'running') {
-            inProgressTasks++;
-          } else {
-            pendingTasks++;
-          }
-        } catch {
-          // Ignore
-        }
-      }
-    } catch {
-      // Ignore
     }
   }
 
@@ -302,8 +273,11 @@ const initCommand: Command = {
       output.writeln();
       output.printSuccess('Swarm initialized successfully');
 
-      // Save swarm state locally for status command to read
-      const swarmDir = path.join(process.cwd(), '.swarm');
+      // Save swarm state locally for status command to read. Post-#1168 the
+      // canonical home is `<root>/.moflo/swarm/state.json`; the legacy
+      // `.swarm/state.json` path is preserved as a read-only fallback in
+      // `getSwarmStatus`.
+      const swarmDir = path.join(mofloDir(findProjectRoot()), 'swarm');
       try {
         if (!fs.existsSync(swarmDir)) {
           fs.mkdirSync(swarmDir, { recursive: true });

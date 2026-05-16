@@ -8,14 +8,16 @@
  * - Processes trajectory outcomes from the spell-engine trajectory pipeline
  * - Extracts keywords from tasks for pattern matching
  * - Maintains learned routing patterns with confidence scoring
- * - Persists patterns to .swarm/sona-patterns.json
+ * - Persists patterns to .moflo/neural/sona-patterns.json
+ *   (legacy fallback read: .swarm/sona-patterns.json)
  * - Integrates with Q-learning router for combined routing
  *
  * @module v3/cli/memory/sona-optimizer
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname, isAbsolute, resolve } from 'path';
+import { legacySwarmPath, runtimePath } from '../services/moflo-paths.js';
 
 // ============================================================================
 // Types
@@ -119,7 +121,6 @@ interface PersistedState {
 // Constants
 // ============================================================================
 
-const DEFAULT_PERSISTENCE_PATH = '.swarm/sona-patterns.json';
 const PATTERN_VERSION = '1.0.0';
 const MIN_CONFIDENCE = 0.1;
 const MAX_CONFIDENCE = 0.99;
@@ -211,7 +212,12 @@ export class SONAOptimizer {
   private qLearningEnabled = false;
 
   constructor(options?: { persistencePath?: string }) {
-    this.persistencePath = options?.persistencePath || DEFAULT_PERSISTENCE_PATH;
+    // Resolve persistencePath lazily here (#1168). When the caller supplies
+    // one we honor it verbatim (may be relative — preserved for existing
+    // tests/callers that join against their own cwd). When unset, we route
+    // through runtimePath so writes land under `.moflo/neural/` regardless
+    // of subprocess cwd.
+    this.persistencePath = options?.persistencePath || runtimePath('neural', 'sona-patterns.json');
   }
 
   /**
@@ -685,9 +691,16 @@ export class SONAOptimizer {
    */
   private loadFromDisk(): boolean {
     try {
-      const fullPath = join(process.cwd(), this.persistencePath);
+      // Treat absolute persistencePath verbatim (new #1168 default routes
+      // through runtimePath → absolute `.moflo/neural/...`); relative paths
+      // preserve the pre-#1168 behaviour of resolving against cwd.
+      let fullPath = isAbsolute(this.persistencePath)
+        ? this.persistencePath
+        : resolve(process.cwd(), this.persistencePath);
       if (!existsSync(fullPath)) {
-        return false;
+        const legacy = legacySwarmPath('sona-patterns.json');
+        if (!existsSync(legacy)) return false;
+        fullPath = legacy;
       }
 
       const data = readFileSync(fullPath, 'utf-8');
@@ -727,7 +740,11 @@ export class SONAOptimizer {
    */
   private saveToDisk(): boolean {
     try {
-      const fullPath = join(process.cwd(), this.persistencePath);
+      // See loadFromDisk: absolute persistencePath is taken verbatim, relative
+      // paths resolve against cwd. New #1168 default writes to `.moflo/neural/`.
+      const fullPath = isAbsolute(this.persistencePath)
+        ? this.persistencePath
+        : resolve(process.cwd(), this.persistencePath);
       const dir = dirname(fullPath);
 
       // Ensure directory exists

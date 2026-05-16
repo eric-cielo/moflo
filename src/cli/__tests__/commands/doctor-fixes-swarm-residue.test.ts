@@ -152,4 +152,41 @@ describe('Swarm Residue auto-fix — fixSwarmLegacyResidue', () => {
     expect(existsSync(join(tmpDir, '.swarm', 'mystery-artifact.dat'))).toBe(true);
     expect(existsSync(join(tmpDir, '.swarm', 'memory.db'))).toBe(false);
   });
+
+  // #1168: writer relocations require the residue migrator to recognise the
+  // new artifact set so legacy `.swarm/` directories left by pre-#1168 saves
+  // get fully retired in one healer pass.
+  it('relocates #1168 neural runtime state into .moflo/{movector,neural,swarm,memory}/', async () => {
+    seedSwarm({
+      'lora-weights.json': '{"lora":true}',
+      'moe-weights.json': '{"moe":true}',
+      'ewc-fisher.json': '{"ewc":true}',
+      'sona-patterns.json': '{"sona":true}',
+      'state.json': '{"swarm-state":true}',
+      'code-map-hash.txt': 'abc123',
+    });
+
+    const result = await autoFixCheck(residueCheck);
+
+    expect(result).toBe(true);
+    expect(existsSync(join(tmpDir, '.swarm'))).toBe(false);
+    expect(readFileSync(join(tmpDir, '.moflo', 'movector', 'lora-weights.json'), 'utf-8')).toBe('{"lora":true}');
+    expect(readFileSync(join(tmpDir, '.moflo', 'movector', 'moe-weights.json'), 'utf-8')).toBe('{"moe":true}');
+    expect(readFileSync(join(tmpDir, '.moflo', 'neural', 'ewc-fisher.json'), 'utf-8')).toBe('{"ewc":true}');
+    expect(readFileSync(join(tmpDir, '.moflo', 'neural', 'sona-patterns.json'), 'utf-8')).toBe('{"sona":true}');
+    expect(readFileSync(join(tmpDir, '.moflo', 'swarm', 'state.json'), 'utf-8')).toBe('{"swarm-state":true}');
+    expect(readFileSync(join(tmpDir, '.moflo', 'memory', 'code-map-hash.txt'), 'utf-8')).toBe('abc123');
+  });
+
+  it('keeps the canonical lora-weights.json when both locations have content', async () => {
+    mkdirSync(join(tmpDir, '.moflo', 'movector'), { recursive: true });
+    writeFileSync(join(tmpDir, '.moflo', 'movector', 'lora-weights.json'), '{"canonical":true}', 'utf-8');
+    seedSwarm({ 'lora-weights.json': '{"legacy":true}' });
+
+    const result = await autoFixCheck(residueCheck);
+
+    expect(result).toBe(true);
+    expect(readFileSync(join(tmpDir, '.moflo', 'movector', 'lora-weights.json'), 'utf-8')).toBe('{"canonical":true}');
+    expect(existsSync(join(tmpDir, '.swarm'))).toBe(false);
+  });
 });

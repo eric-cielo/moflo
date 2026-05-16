@@ -8,7 +8,7 @@
  * - Rank decomposition (r << d) for memory efficiency
  * - Additive weight updates: W' = W + BA (where B ∈ R^{d×r}, A ∈ R^{r×k})
  * - Support for multiple adaptation heads
- * - Persistence to .swarm/lora-weights.json
+ * - Persistence to .moflo/movector/lora-weights.json (legacy fallback: .swarm/lora-weights.json)
  *
  * Memory savings:
  * - Original: d × k parameters
@@ -19,7 +19,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname } from 'path';
+import { legacySwarmPath, runtimePath } from '../services/moflo-paths.js';
 
 // ============================================================================
 // Types & Constants
@@ -115,13 +116,12 @@ export interface LoRAStats {
 // Default Configuration
 // ============================================================================
 
-const DEFAULT_CONFIG: LoRAConfig = {
+const DEFAULT_CONFIG: Omit<LoRAConfig, 'weightsPath'> = {
   rank: DEFAULT_RANK,
   alpha: DEFAULT_ALPHA,
   inputDim: INPUT_DIM,
   outputDim: OUTPUT_DIM,
   learningRate: 0.001,
-  weightsPath: join(process.cwd(), '.swarm', 'lora-weights.json'),
   enableDropout: true,
   dropoutProb: 0.1,
   autoSaveInterval: 50,
@@ -144,7 +144,16 @@ export class LoRAAdapter {
   private updatesSinceLastSave = 0;
 
   constructor(config?: Partial<LoRAConfig>) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // Resolve weightsPath lazily here, not at module load — captures the
+    // *current* consumer project root, not the cwd at first import (#1168).
+    // Default-rescue runs *last* so an explicit `weightsPath: undefined` from
+    // the caller still falls back to the canonical path instead of crashing
+    // save/load on an undefined string.
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      weightsPath: config?.weightsPath ?? runtimePath('movector', 'lora-weights.json'),
+    };
     this.weights = this.initializeWeights();
   }
 
@@ -420,11 +429,16 @@ export class LoRAAdapter {
    */
   loadWeights(): boolean {
     try {
-      if (!existsSync(this.config.weightsPath)) {
-        return false;
+      // Canonical path first, then legacy `.swarm/lora-weights.json` as a
+      // read-only fallback for consumers who upgraded mid-training (#1168).
+      let sourcePath = this.config.weightsPath;
+      if (!existsSync(sourcePath)) {
+        const legacy = legacySwarmPath('lora-weights.json');
+        if (!existsSync(legacy)) return false;
+        sourcePath = legacy;
       }
 
-      const content = readFileSync(this.config.weightsPath, 'utf-8');
+      const content = readFileSync(sourcePath, 'utf-8');
       const data = JSON.parse(content);
 
       if (data.version !== 1) {

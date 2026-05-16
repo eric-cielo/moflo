@@ -305,6 +305,12 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
  *  - `memory.db` / `memory.db.bak` — stale once `.moflo/moflo.db` exists.
  *  - `q-learning-model.json` / `model-router-state.json` — live router state
  *    that pre-dates the `.moflo/movector/` defaults; migrate, don't delete.
+ *  - `lora-weights.json` / `moe-weights.json` — LoRA + MoE weights (#1168
+ *    moved the writers to `.moflo/movector/`).
+ *  - `ewc-fisher.json` / `sona-patterns.json` — neural runtime state (#1168
+ *    moved the writers to `.moflo/neural/`).
+ *  - `state.json` — `flo swarm init` snapshot (#1168 → `.moflo/swarm/`).
+ *  - `code-map-hash.txt` — `flo memory code-map` cache (#1168 → `.moflo/memory/`).
  *  - `hooks.log` / `background.log` — diagnostic logs the launcher used to
  *    route to `.swarm/`; relocate to `.moflo/logs/`.
  *
@@ -325,6 +331,12 @@ export async function checkSwarmResidue(): Promise<HealthCheck> {
     'memory.db.bak',
     'q-learning-model.json',
     'model-router-state.json',
+    'lora-weights.json',
+    'moe-weights.json',
+    'ewc-fisher.json',
+    'sona-patterns.json',
+    'state.json',
+    'code-map-hash.txt',
     'hooks.log',
     'background.log',
   ];
