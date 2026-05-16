@@ -895,7 +895,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <div id="panel-schedules" class="panel" style="display:none"><div id="schedules-active"></div><div id="schedules-events"></div></div>
   <div id="panel-executions" class="panel" style="display:none"></div>
   <div id="panel-memory" class="panel" style="display:none"></div>
-  <div id="panel-claude-stats" class="panel" style="display:none"><div class="loading-block"><div class="spinner"></div><div class="msg">Reading Claude Code transcripts…</div><div class="hint">First load can take 10–15 seconds — moflo walks every session file in this project's transcript directory. Subsequent loads in this tab are much faster.</div></div></div>
+  <div id="panel-claude-stats" class="panel" style="display:none"><div class="loading-block" role="status" aria-label="Loading Claude Code transcripts"><div class="spinner"></div><div class="msg">Reading Claude Code transcripts…</div><div class="hint">First load can take 10–15 seconds — moflo walks every session file in this project's transcript directory. Subsequent loads in this tab are much faster.</div></div></div>
   <div id="poll-indicator" class="poll-indicator"></div>
   <script>
     // Tab navigation — plain DOM, no framework
@@ -1229,7 +1229,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       // network blip — better than a static "Loading..." that looks frozen.
       if (!cs) {
         el.innerHTML =
-          '<div class="loading-block">' +
+          '<div class="loading-block" role="status" aria-label="Loading Claude Code transcripts">' +
             '<div class="spinner"></div>' +
             '<div class="msg">Reading Claude Code transcripts…</div>' +
             '<div class="hint">First load can take 10–15 seconds — moflo walks every session file in this project\\'s transcript directory. Subsequent loads in this tab are much faster.</div>' +
