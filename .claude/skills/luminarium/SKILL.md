@@ -43,7 +43,7 @@ The port is project-deterministic (sha256(projectRoot) mapped into 33000–33999
 
 ## Don't
 
-- Don't fall back to `http://localhost:3117` — that's the retired pre-#1145 port and routes to a foreign daemon on multi-project machines.
+- Don't fall back to any hardcoded port — there is no project-agnostic dashboard port; a literal would route to a foreign daemon on a multi-project machine. If the lock is missing, report "not running".
 - Don't compute the deterministic port and report it as the link when the lock is missing — the daemon may be down, or bound to an alternate port. Report "not running" instead.
 - Don't run `flo daemon start` automatically — the user asked for a link, not for daemon management. Leave starting to `/healer` or the user.
 - Don't open a browser. Print the URL; let the user click.
