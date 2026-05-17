@@ -25,9 +25,9 @@ Automated release pipeline for moflo. Bumps version, commits, builds, tests, run
 
 ## --check / -ch flag (presence-only)
 
-**Default (flag absent):** runs build + doctor + trigger-based manual checks only. Skips lint/test/smoke because those gates are covered by CI on every PR + push to main (`ci.yml`, `consumer-install-smoke.yml`).
+**Default (flag absent):** runs build + doctor + trigger-based manual checks only. Skips local lint/test/smoke because lint+test are covered by `ci.yml` on every PR + push to main, and **cross-platform smoke is dispatched as part of this skill** (Step 8.5 below) — the `release-smoke.yml` workflow runs the full 3-OS matrix on the exact commit about to be published.
 
-**With `--check` or `-ch` (any presence):** runs the full pre-flight from `pre-publish-rules.md` — lint, build, test, doctor (strict), clean smoke, populated smoke, and a forced full walk of every manual gate. Use this for publishes that didn't go through a green PR, risky releases, or when you want belt-and-suspenders.
+**With `--check` or `-ch` (any presence):** runs the full pre-flight from `pre-publish-rules.md` — lint, build, test, doctor (strict), local clean smoke, local populated smoke, and a forced full walk of every manual gate. Use this for publishes that didn't go through a green PR, risky releases, or when you want belt-and-suspenders on the local box in addition to the CI matrix.
 
 The flag is presence-only. `--check` and `-ch` both set it to true. There is no `--check=true` / `--check=false` syntax — absence means false.
 
@@ -103,14 +103,14 @@ Doctor is the only check with no CI equivalent — it inspects local state (daem
 
 **Never `--fix` on the publish path.** A release pipeline must fail fast on broken local state, not silently repair it; a doctor that auto-repairs masks the very signal we want — "something is off, stop and investigate before shipping." If `doctor --strict` fails, stop and run `flo healer --fix` (or `npx moflo doctor --fix`) interactively, verify the repair, then retry the publish.
 
-### Step 6: Smoke Tests (only if `CHECK_MODE=true`)
+### Step 6: Local Smoke Tests (only if `CHECK_MODE=true`)
 
 ```bash
 npm run test:smoke
 npm run test:smoke:populated
 ```
 
-Skipped by default — `consumer-install-smoke.yml` runs both profiles on Ubuntu/macOS/Windows on every PR + push to main. Run when `--check` is set.
+Skipped by default. Local smoke covers the same harness as CI's Ubuntu leg, so it adds little signal over `release-smoke.yml`'s Ubuntu matrix entry (Step 8.5). Run only when `--check` is set — useful if you want belt-and-suspenders on the local box before dispatching the full CI matrix.
 
 ### Step 7: Manual Gate Walk (trigger-based, even in default mode)
 
@@ -143,6 +143,42 @@ git push origin main
 ```
 
 Only commit version-related files. Do not stage unrelated changes.
+
+### Step 8.5: Dispatch release-smoke and block until green
+
+```bash
+# Capture the SHA we just pushed — release-smoke runs against this exact commit.
+PUBLISH_SHA=$(git rev-parse HEAD)
+
+# Trigger the full 3-OS × 2-harness matrix. `sha` is a required workflow input
+# so the dispatched run is unambiguously bound to this commit.
+gh workflow run release-smoke.yml --ref main -f sha="$PUBLISH_SHA"
+
+# Give GitHub a moment to register the dispatched run.
+sleep 10
+
+# Find the run we just dispatched by matching head_sha. This is robust against
+# concurrent dispatches (e.g. a manual UI retry from another tab) — never use
+# `--limit 1` alone, which would race against any unrelated in-flight run.
+RUN_ID=$(gh run list --workflow=release-smoke.yml --branch main \
+  --json databaseId,headSha \
+  --jq ".[] | select(.headSha == \"$PUBLISH_SHA\") | .databaseId" \
+  | head -1)
+
+if [ -z "$RUN_ID" ]; then
+  echo "ERROR: no release-smoke run found for SHA $PUBLISH_SHA. Wait a few seconds and retry, or check https://github.com/eric-cielo/moflo/actions/workflows/release-smoke.yml" >&2
+  exit 1
+fi
+
+# Block until the run completes. Exits non-zero on failure.
+gh run watch "$RUN_ID" --exit-status
+```
+
+`release-smoke.yml` runs full consumer + populated smoke on Ubuntu/macOS/Windows, plus file-sync smoke on all three filesystems. Per-PR CI is intentionally Ubuntu-only to keep recurring cost manageable — the full cross-platform matrix is paid once here, at publish time, against the exact commit we're about to publish.
+
+**Wall time expectations**: typical run is ~15-20 min once caches are warm. **The first dispatch after `release-smoke.yml` lands will have cold caches on every leg** (no prior runs of this workflow exist to populate the `consumer-warm` and `fastembed` caches per-OS). Expect ~25-35 min on that first dispatch — the macOS leg is the long pole. Subsequent dispatches reuse the cache and settle to the typical ~15 min.
+
+**If `gh run watch` exits non-zero**: stop immediately. Inspect the failed leg with `gh run view "$RUN_ID" --log-failed`, fix the underlying issue, push the fix, then re-run this step (no need to rerun Steps 0–8 — the bump commit is already on main, and the SHA-filtered lookup will pick up the new dispatched run against the same SHA only after `cancel-in-progress: false` lets the previous run drain). Do not proceed to `npm publish` until release-smoke is green for the SHA you intend to publish.
 
 ### Step 9: Verify npm Authentication
 
@@ -223,8 +259,8 @@ Build:           passed
 Tests:           skipped (CI-covered) | <N> files passed, <N> tests passed
 Lint:            skipped (CI-covered) | passed
 Doctor:          <N> passed, <N> warnings
-Smoke (clean):   skipped (CI-covered) | passed
-Smoke (popl):    skipped (CI-covered) | passed
+Smoke (local):   skipped (CI-covered) | passed
+Release-smoke:   green (run <id>, 3-OS × 2-harness)
 Triggered gates: <list> | none
 Published:       moflo@<new-version>
 Installed:       moflo@<new-version> (devDependency)
@@ -257,5 +293,7 @@ For the common case — publishing right after a merged green PR — the default
 - `docs/BUILD.md` — Step-by-step build/publish process this skill mirrors
 - `.claude/guidance/internal/dogfooding.md` — Why we catch consumer-facing regressions first as our own dependency
 - `harness/consumer-smoke/README.md` — Smoke harness profiles (clean + populated) that prove a consumer install works
-- `.github/workflows/ci.yml` — Lint/build/test gates this skill skips by default
-- `.github/workflows/consumer-install-smoke.yml` — Smoke gates this skill skips by default
+- `.github/workflows/ci.yml` — Lint/build/test gates this skill skips by default (ubuntu-only)
+- `.github/workflows/consumer-install-smoke.yml` — Per-PR ubuntu-only smoke
+- `.github/workflows/file-sync-smoke.yml` — Per-PR ubuntu-only file-sync smoke
+- `.github/workflows/release-smoke.yml` — Full 3-OS × 2-harness matrix this skill dispatches at Step 8.5

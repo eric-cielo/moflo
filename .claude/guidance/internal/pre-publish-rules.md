@@ -27,7 +27,7 @@ Moflo ships to N consumers via `npm install moflo`. Every change runs from their
 
 ## Trigger-Based Gating (`/publish` default mode)
 
-The `/publish` skill takes a presence-only `--check` / `-ch` flag. **Default behavior is `--check=false`** because most publishes happen right after a green PR where CI has already run lint, build, tests, and smoke (clean + populated, on three OSes). Re-running them locally pays for a CI workflow that already passed.
+The `/publish` skill takes a presence-only `--check` / `-ch` flag. **Default behavior is `--check=false`** because most publishes happen right after a green PR where CI has already run lint, build, tests, and ubuntu-only smoke — and the publish skill itself dispatches the **full 3-OS smoke matrix** (`release-smoke.yml`) at Step 8.5 against the exact commit being published. Re-running lint/test locally pays for a CI workflow that already passed; the cross-platform smoke is paid once per publish via the dispatched matrix.
 
 | Gate | Default mode (no flag) | `--check` mode | Rationale for default |
 |------|------------------------|----------------|----------------------|
@@ -35,8 +35,9 @@ The `/publish` skill takes a presence-only `--check` / `-ch` flag. **Default beh
 | Build | **always run** | run | Confirms the deliverables on disk match the new version; `prepublishOnly` would catch it but earlier is better |
 | Tests | skip | run | `ci.yml` runs `npm test` on every PR |
 | Doctor | **always run** (`--fix`) | run (`--strict`) | Only check with no CI equivalent — local-only state (daemon, embeddings, vector-stats) |
-| Smoke (clean) | skip | run | `consumer-install-smoke.yml` runs on PR + push to main, three OSes |
-| Smoke (populated) | skip | run | Same workflow as above |
+| Smoke (local clean) | skip | run | `release-smoke.yml` dispatched at Step 8.5 covers the same ubuntu profile as local clean smoke, plus macOS + Windows |
+| Smoke (local populated) | skip | run | Same — `release-smoke.yml` matrix includes the populated harness |
+| Release-smoke dispatch | **always run** (Step 8.5) | run | Full 3-OS × 2-harness matrix on the publish SHA. Replaces what used to be every-PR cross-platform smoke. |
 | Manual gate walk (rows below) | **trigger-based** | run all | A cheap bash fingerprint computes which gates the diff actually touches |
 
 The trigger fingerprint is `.claude/skills/publish/fingerprint.sh`. It diffs `HEAD` against the most recent `chore: install moflo@*` commit and pattern-matches the file list against the manual-gate triggers. Output is one block (~50 tokens), then Claude only walks the gates whose triggers fired.
@@ -213,4 +214,6 @@ Use `--check` when the publish didn't go through a green PR, when the change is 
 - `harness/consumer-smoke/README.md` — Smoke harness profiles + checks (Gate 5)
 - `docs/BUILD.md` — Step-by-step build/publish process the `/publish` skill follows
 - `.github/workflows/ci.yml` — Lint/build/test gates default mode skips
-- `.github/workflows/consumer-install-smoke.yml` — Smoke gates default mode skips
+- `.github/workflows/consumer-install-smoke.yml` — Per-PR + push-to-main ubuntu-only smoke
+- `.github/workflows/file-sync-smoke.yml` — Per-PR + push-to-main ubuntu-only file-sync smoke
+- `.github/workflows/release-smoke.yml` — Full 3-OS × 2-harness matrix dispatched by `/publish` Step 8.5
