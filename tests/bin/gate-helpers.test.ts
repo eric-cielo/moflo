@@ -220,6 +220,30 @@ describe('gate.cjs: check-dangerous-command', () => {
     expect(r.exitCode).toBe(2);
   });
 
+  // #1171 follow-up — DANGEROUS substring matching used to scan the entire
+  // command string, so dangerous-shaped patterns in quoted message bodies
+  // (`git commit -m "...remove-item -recurse -force c:\\..."`) tripped the gate
+  // even though no destructive command would execute. Now strips quoted bodies
+  // and heredocs before matching. These tests pin both halves: quoted-body
+  // patterns pass; actual commands still block.
+  it.each([
+    ['git commit -m "fix: removed remove-item -recurse -force c:\\ pattern"', 'dangerous string inside double-quoted commit message'],
+    ["git commit -m 'note: format-volume bug fixed'", 'dangerous string inside single-quoted commit message'],
+    ['echo "rm -rf /"', 'echo with dangerous string in quoted argument'],
+    ['printf "%s\\n" "clear-disk demo"', 'printf with dangerous string in quoted argument'],
+    ['gh pr create --body "fixes remove-item -recurse -force / issue"', 'gh pr create with dangerous string in body arg'],
+    // Heredoc with dangerous body — strips from `<<EOF` through end-of-input.
+    ['git commit -F - <<EOF\nfix: remove-item -recurse -force c:\\\nEOF', 'heredoc body with dangerous-shaped text'],
+    // Escaped double-quote inside a quoted body — regex must NOT terminate
+    // the strip on the `\"` and leak the remainder.
+    ['git commit -m "fix \\"remove-item -recurse -force c:\\\\\\" handling"', 'escaped quote inside quoted body must not leak'],
+  ])('allows dangerous-shaped substring inside quoted/heredoc body: %s (#1171)', (cmd) => {
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = cmd;
+    const r = runGate('check-dangerous-command', env);
+    expect(r.exitCode, `quoted body should pass: ${cmd}`).toBe(0);
+  });
+
   it('allows rm -rf with a safe path', () => {
     const env = baseEnv(tmpDir);
     env.TOOL_INPUT_command = 'rm -rf ./node_modules';

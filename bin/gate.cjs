@@ -157,6 +157,29 @@ var BASH_CARVE_OUT_RE = new RegExp([
   // `find` commands that lack a `-delete` / `-exec rm` suffix.
   '^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b',
 ].join('|'));
+// #1171 follow-up — strip quoted string bodies and heredoc bodies from a shell
+// command for purposes of dangerous-pattern substring matching. Used by
+// check-dangerous-command. Does NOT strip $(...) or `...` because those bodies
+// execute. Double-quoted strings handle escaped quotes (`\"`) correctly so
+// `git commit -m "fix \"X\""` strips the whole quoted body, not just the first
+// `\"` pair. Single quotes don't have escapes in bash/sh — `'[^']*'` is exact.
+function stripQuotedAndHeredocs(cmd) {
+  var out = cmd;
+  // Heredoc tail: `<<TOKEN`, `<<-TOKEN`, `<<'TOKEN'`, `<<"TOKEN"` through end-of-input.
+  // Bash heredocs are multi-line; in single-line tool inputs they show up as the
+  // tail after `<<TOKEN`. Conservative tail-strip — benign content after a heredoc
+  // body on the same logical line is also stripped, harmless for this gate.
+  out = out.replace(/<<-?\s*['"]?\w+['"]?[\s\S]*$/, '');
+  // Here-string `<<<word` — strip the word.
+  out = out.replace(/<<<\s*\S+/g, '');
+  // Single-quoted strings — no escapes inside single quotes in sh/bash.
+  out = out.replace(/'[^']*'/g, "''");
+  // Double-quoted strings — `(?:[^"\\]|\\.)*` matches anything except an
+  // unescaped `"`, so escaped `\"` mid-string doesn't terminate the strip early.
+  out = out.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+  return out;
+}
+
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
 
@@ -653,7 +676,17 @@ switch (command) {
     process.exit(2);
   }
   case 'check-dangerous-command': {
-    var cmd = (process.env.TOOL_INPUT_command || '').toLowerCase();
+    // #1171 follow-up — strip quoted string bodies and heredoc bodies before
+    // substring-matching DANGEROUS. Without this, `git commit -m "...remove-item
+    // -recurse -force c:\..."` blocks because the literal pattern appears in
+    // the quoted message body. Quoted text isn't executing — the gate's job is
+    // to catch typo-class destruction in the actual command, not text mentions
+    // inside arguments. Trade-off: `bash -c "rm -rf /"` also bypasses now; the
+    // gate is a typo safety net, not a security boundary, so this is acceptable.
+    // Command substitutions `$(...)` and backticks are NOT stripped — those
+    // bodies execute and dangerous content there is real.
+    var raw = process.env.TOOL_INPUT_command || '';
+    var cmd = stripQuotedAndHeredocs(raw).toLowerCase();
     for (var i = 0; i < DANGEROUS.length; i++) {
       if (cmd.indexOf(DANGEROUS[i]) >= 0) {
         console.log('[BLOCKED] Dangerous command: ' + DANGEROUS[i]);

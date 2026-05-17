@@ -116,9 +116,9 @@ Hits a curated incident narrative (e.g. `1145-daemon-port-collision-fix`) with t
 
 ---
 
-## Querying Technique
+## Querying Technique — Five Rules for High-Signal Searches
 
-Five rules that turn ceremonial searches into high-signal ones.
+Five rules that turn ceremonial searches into high-signal ones. Each one fixes a real failure mode observed in long sessions.
 
 | Rule | Why |
 |------|-----|
@@ -141,6 +141,8 @@ Five rules that turn ceremonial searches into high-signal ones.
 
 ## Tool Selection — Memory API
 
+Once you have a search hit, pick the right follow-up call by what you need next. Bulk-retrieving every search hit is a protocol violation; the table below maps each follow-up shape to its single correct tool.
+
 | You want | Use | Why |
 |----------|-----|-----|
 | Find an entry-point | `mcp__moflo__memory_search` | Returns chunk hits with `navigation` (parentDoc, prev/next, chunkTitle) |
@@ -152,6 +154,8 @@ Five rules that turn ceremonial searches into high-signal ones.
 ---
 
 ## Tool Selection — Memory vs. Filesystem Tools
+
+Pick memory when the question is about indexed knowledge (symbols, tests, patterns, docs, incidents); pick filesystem/git when the question is about *current authoritative state* the index can't guarantee fresher than disk.
 
 | Question shape | First call |
 |----------------|-----------|
@@ -168,7 +172,9 @@ The first five rows pivot through memory because the index already knows the ans
 
 ---
 
-## Anti-Patterns
+## Anti-Patterns — Common Memory Query Mistakes
+
+These six failure modes account for almost every "memory returned noise" complaint. Each row pairs the antipattern with the corrective shape from the cheat sheet above.
 
 | Don't | Do instead |
 |-------|-----------|
@@ -185,4 +191,4 @@ The first five rows pivot through memory because the index already knows the ans
 
 - `.claude/guidance/moflo-agent-rules.md` § Memory-First Protocol — gate enforcement, namespace selection rules
 - `.claude/guidance/moflo-memory-strategy.md` — How chunking, embeddings, and the RAG index work under the hood
-- `.claude/guidance/internal/memory-traversal-architecture.md` — Why traverse-don't-bulk-retrieve, with the tradeoff math
+- `.claude/guidance/moflo-memorydb-maintenance.md` — How the underlying memory DB is kept healthy (indexing, vacuum, integrity)
