@@ -135,6 +135,17 @@ export interface HeadlessExecutorConfig {
   /** Log directory for execution logs */
   logDir?: string;
 
+  /**
+   * Reports directory for persisted worker output (defaults to
+   * `<projectRoot>/.moflo/reports`). Each headless run writes its full output
+   * to `<reportsDir>/<workerType>.<ext>` (`.md` for markdown, `.json` for json,
+   * `.txt` for text) on the final close of the spawned Claude process. The
+   * directory lives under `.moflo/` which `flo init` adds to .gitignore, so
+   * generated reports never reach a consumer's commit history. Skills, the
+   * dashboard, and other agents look here for the latest report per worker.
+   */
+  reportsDir?: string;
+
   /** Whether to cache context between runs */
   cacheContext?: boolean;
 
@@ -311,7 +322,7 @@ Provide actionable suggestions with code examples.`,
 - Check for missing error handling tests
 - Identify integration test gaps
 
-For each gap, provide a test skeleton.`,
+For each gap, include a test skeleton inline in the report as a fenced code block — DO NOT create separate test files; the consumer will copy the skeletons into their test tree by hand.`,
       sandbox: 'permissive',
       model: 'sonnet',
       outputFormat: 'markdown',
@@ -537,12 +548,14 @@ export class HeadlessWorkerExecutor extends EventEmitter {
       maxContextFiles: options?.maxContextFiles ?? 20,
       maxCharsPerFile: options?.maxCharsPerFile ?? 5000,
       logDir: options?.logDir ?? join(projectRoot, '.moflo', 'logs', 'headless'),
+      reportsDir: options?.reportsDir ?? join(projectRoot, '.moflo', 'reports'),
       cacheContext: options?.cacheContext ?? true,
       cacheTtlMs: options?.cacheTtlMs ?? 60000, // 1 minute default
     };
 
-    // Ensure log directory exists
+    // Ensure log + reports directories exist
     this.ensureLogDir();
+    this.ensureReportsDir();
 
     // Register for process-exit cleanup via the shared listener.
     ensureExitListener();
@@ -814,6 +827,30 @@ export class HeadlessWorkerExecutor extends EventEmitter {
   }
 
   /**
+   * Ensure the reports directory exists. Reports land under `.moflo/reports/`
+   * (gitignored by `flo init`); without this directory the post-spawn write
+   * would no-op and the consumer would lose the report entirely.
+   */
+  private ensureReportsDir(): void {
+    try {
+      if (!existsSync(this.config.reportsDir)) {
+        mkdirSync(this.config.reportsDir, { recursive: true });
+      }
+    } catch (error) {
+      this.emit('warning', { message: 'Failed to create reports directory', error });
+    }
+  }
+
+  /**
+   * Resolve the on-disk report path for a worker. Extension matches the
+   * declared outputFormat so tools reading the report don't have to sniff.
+   */
+  private getReportPath(workerType: HeadlessWorkerType, outputFormat: OutputFormat | undefined): string {
+    const ext = outputFormat === 'json' ? 'json' : outputFormat === 'text' ? 'txt' : 'md';
+    return join(this.config.reportsDir, `${workerType}.${ext}`);
+  }
+
+  /**
    * Internal execution logic
    */
   private async executeInternal(
@@ -833,8 +870,12 @@ export class HeadlessWorkerExecutor extends EventEmitter {
       // Build context from file patterns
       const context = await this.buildContext(headless.contextPatterns || []);
 
+      // Resolve the on-disk report path before prompt assembly so the prompt
+      // can quote the exact absolute path Claude should write to.
+      const reportPath = this.getReportPath(workerType, headless.outputFormat);
+
       // Build the full prompt
-      const fullPrompt = this.buildPrompt(headless.promptTemplate, context);
+      const fullPrompt = this.buildPrompt(headless.promptTemplate, context, reportPath);
 
       // Log prompt for debugging
       this.logExecution(executionId, 'prompt', fullPrompt);
@@ -848,6 +889,14 @@ export class HeadlessWorkerExecutor extends EventEmitter {
         workerType,
         signal,
       });
+
+      // Persist the spawn output to the canonical report path. Belt-and-braces
+      // against Claude ignoring the in-prompt instruction — this guarantees
+      // the consumer ends up with a report at a deterministic location no
+      // matter what the model chose to do with its Write tool.
+      if (result.success && result.output && result.output.trim().length > 0) {
+        this.writeReport(reportPath, result.output);
+      }
 
       // Parse output based on format
       let parsedOutput: unknown;
@@ -1069,15 +1118,24 @@ export class HeadlessWorkerExecutor extends EventEmitter {
   }
 
   /**
-   * Build full prompt with context
+   * Build full prompt with context. The report path is injected so Claude
+   * saves output to the canonical `.moflo/reports/` location instead of
+   * dropping `*-analysis.md` / `*-report.md` files at the project root — the
+   * behaviour consumers were seeing before this change.
    */
-  private buildPrompt(template: string, context: string): string {
+  private buildPrompt(template: string, context: string, reportPath: string): string {
+    const ioInstructions = `## Output
+
+Save the full report to \`${reportPath}\` using the Write tool. Overwrite any prior content at that path. DO NOT create any other files anywhere in the project; if you need to suggest test skeletons or code samples, include them inline in the report as fenced code blocks. Moflo persists the same output to that path after you finish, so the location is authoritative.`;
+
     if (!context) {
       return `${template}
 
 ## Instructions
 
-Analyze the codebase and provide your response following the format specified in the task.`;
+Analyze the codebase and provide your response following the format specified in the task.
+
+${ioInstructions}`;
     }
 
     return `${template}
@@ -1088,7 +1146,9 @@ ${context}
 
 ## Instructions
 
-Analyze the above codebase context and provide your response following the format specified in the task.`;
+Analyze the above codebase context and provide your response following the format specified in the task.
+
+${ioInstructions}`;
   }
 
   /**
@@ -1350,6 +1410,22 @@ Analyze the above codebase context and provide your response following the forma
       writeFileSync(logFile, logContent);
     } catch {
       // Ignore log write errors
+    }
+  }
+
+  /**
+   * Persist a worker's report to the canonical `.moflo/reports/` location.
+   * The directory was created at construction time; we recreate it here as a
+   * safety net in case it was removed between construction and execution.
+   */
+  private writeReport(reportPath: string, content: string): void {
+    try {
+      if (!existsSync(this.config.reportsDir)) {
+        mkdirSync(this.config.reportsDir, { recursive: true });
+      }
+      writeFileSync(reportPath, content);
+    } catch (error) {
+      this.emit('warning', { message: 'Failed to write worker report', reportPath, error });
     }
   }
 }
