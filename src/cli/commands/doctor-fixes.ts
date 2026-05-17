@@ -258,20 +258,42 @@ async function fixSwarmLegacyResidue(): Promise<boolean> {
  * `.moflo/` would otherwise cause `renameSync` to fail with EBUSY; on POSIX,
  * the rename succeeds but the daemon's open FDs keep pointing at the inode.
  */
-async function stopNestedDaemons(subRoot: string): Promise<{ stopped: number[]; remaining: number[] }> {
+/**
+ * `process.kill` failure modes worth distinguishing:
+ *   - `ESRCH` — no such process (already exited). Treat as success.
+ *   - `EPERM` — caller lacks permission (POSIX: daemon owned by another user;
+ *     Windows: insufficient ACLs). The signal was NOT delivered. We must
+ *     report this as "remaining" so the caller doesn't archive `.moflo/`
+ *     thinking the daemon is gone.
+ *   - other — surface as remaining + log; don't crash the fix path.
+ */
+function killOutcome(err: unknown): 'gone' | 'denied' | 'unknown' {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (code === 'ESRCH') return 'gone';
+  if (code === 'EPERM') return 'denied';
+  return 'unknown';
+}
+
+async function stopNestedDaemons(subRoot: string): Promise<{ stopped: number[]; remaining: number[]; denied: number[] }> {
   let pids: number[] = [];
   try {
     pids = findProjectDaemonPids(subRoot);
-  } catch { return { stopped: [], remaining: [] }; }
+  } catch { return { stopped: [], remaining: [], denied: [] }; }
 
-  if (pids.length === 0) return { stopped: [], remaining: [] };
+  if (pids.length === 0) return { stopped: [], remaining: [], denied: [] };
 
   const stopped: number[] = [];
+  const denied: number[] = [];
   for (const pid of pids) {
     try {
       process.kill(pid, 'SIGTERM');
       stopped.push(pid);
-    } catch { /* already gone; treat as stopped */ }
+    } catch (err) {
+      const outcome = killOutcome(err);
+      if (outcome === 'gone') continue;            // already exited
+      if (outcome === 'denied') denied.push(pid);  // wrong-owner daemon
+      else denied.push(pid);                       // unknown — treat as undelivered
+    }
   }
 
   // Poll for exit with a 1s deadline (matches the daemon-service stop loop in
@@ -288,16 +310,24 @@ async function stopNestedDaemons(subRoot: string): Promise<{ stopped: number[]; 
 
   const remaining: number[] = [];
   for (const pid of stopped) {
+    let stillAlive = false;
+    try { process.kill(pid, 0); stillAlive = true; } catch { /* gone */ }
+    if (!stillAlive) continue;
+
+    // Still alive — escalate.
     try {
-      process.kill(pid, 0); // exists check
-      // Still alive — escalate.
-      try { process.kill(pid, 'SIGKILL'); } catch { /* may have just exited */ }
-      // Re-probe after SIGKILL.
-      try { process.kill(pid, 0); remaining.push(pid); } catch { /* gone */ }
-    } catch { /* already gone */ }
+      process.kill(pid, 'SIGKILL');
+    } catch (err) {
+      if (killOutcome(err) === 'denied') {
+        denied.push(pid);
+        continue;
+      }
+      // Other errors (incl. ESRCH on race) — re-probe below.
+    }
+    try { process.kill(pid, 0); remaining.push(pid); } catch { /* gone */ }
   }
 
-  return { stopped, remaining };
+  return { stopped, remaining, denied };
 }
 
 /**
@@ -338,16 +368,23 @@ async function fixNestedMofloIslands(): Promise<boolean> {
 
     // Step 1: stop any sub-daemon. The canonical projectRoot-based orphan
     // scan can't see nested daemons; we have to enumerate from the sub-root.
-    const { stopped, remaining } = await stopNestedDaemons(island);
+    const { stopped, remaining, denied } = await stopNestedDaemons(island);
     if (stopped.length > 0) {
       output.writeln(output.dim(
         `  ${island}: stopped daemon PID${stopped.length === 1 ? '' : 's'} ${stopped.join(', ')}.`,
       ));
     }
+    if (denied.length > 0) {
+      output.writeln(output.warning(
+        `  ${island}: permission denied stopping PID${denied.length === 1 ? '' : 's'} ${denied.join(', ')} — daemon owned by another user; stop it manually before re-running this fix.`,
+      ));
+      allArchived = false;
+    }
     if (remaining.length > 0) {
       output.writeln(output.warning(
         `  ${island}: PID${remaining.length === 1 ? '' : 's'} ${remaining.join(', ')} survived SIGKILL — manual intervention required.`,
       ));
+      allArchived = false;
     }
 
     try {

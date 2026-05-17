@@ -19,6 +19,7 @@ import {
   normalizeProjectRoot,
 } from '../services/daemon-port.js';
 import {
+  COMMON_WALK_SKIP_NAMES,
   LEGACY_SWARM_DIR,
   legacyMemoryDbPath,
   memoryDbCandidatePaths,
@@ -381,23 +382,31 @@ interface NestedScanResult {
   truncated: boolean;
 }
 
+/**
+ * Cap on `found.length` so a pathological monorepo (or adversarial layout)
+ * can't accumulate an unbounded array. 50 islands is already 50× more than
+ * any legitimate consumer should ever have; surfacing more would just bury
+ * the actionable signal in noise. Setting `truncated = true` signals the
+ * walker stopped early so the doctor message can hint at re-running with
+ * something more targeted.
+ */
+const NESTED_BFS_MAX_FOUND = 50;
+
 function scanNestedMofloDirs(root: string, maxDepth: number = 5): NestedScanResult {
   const found: string[] = [];
   let truncated = false;
-  const SKIP_NAMES = new Set([
-    'node_modules', '.git', '.svn', '.hg',
-    'dist', 'build', 'out', 'target', '.next', '.nuxt', '.cache',
-    'coverage', '.idea', '.vscode', '.turbo', '.svelte-kit',
-    'vendor', '__pycache__', '.venv', 'venv', '.tox',
-  ]);
 
   function walk(dir: string, depth: number): void {
+    if (found.length >= NESTED_BFS_MAX_FOUND) {
+      truncated = true;
+      return;
+    }
     let entries;
     try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const lower = entry.name.toLowerCase();
-      if (SKIP_NAMES.has(lower)) continue;
+      if (COMMON_WALK_SKIP_NAMES.has(lower)) continue;
       // Skip any .moflo* directory — both the canonical `.moflo` (we're
       // looking for nested ones, not this level's own) and archived
       // `.moflo-archived-*` produced by `flo doctor --fix`.
@@ -406,6 +415,10 @@ function scanNestedMofloDirs(root: string, maxDepth: number = 5): NestedScanResu
       const childDir = join(dir, entry.name);
       if (existsSync(join(childDir, '.moflo', 'moflo.db'))) {
         found.push(childDir);
+        if (found.length >= NESTED_BFS_MAX_FOUND) {
+          truncated = true;
+          return;
+        }
         // Don't recurse below a nested island — its own descendants would
         // be conflated under that residue.
         continue;
@@ -415,6 +428,7 @@ function scanNestedMofloDirs(root: string, maxDepth: number = 5): NestedScanResu
         continue;
       }
       walk(childDir, depth + 1);
+      if (found.length >= NESTED_BFS_MAX_FOUND) return;
     }
   }
   walk(root, 0);

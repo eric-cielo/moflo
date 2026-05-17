@@ -11,7 +11,7 @@ import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { mofloDir, findProjectRoot, findAncestorMofloRoot } from './lib/moflo-paths.mjs';
+import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
@@ -148,16 +148,21 @@ try {
 
   // Cheap, depth-1 downward walk: just check the immediate children of
   // projectRoot for `.moflo/moflo.db`. The full `flo doctor` BFS is depth-5
-  // and skips many more dir types — that's for the diagnostic. Here we only
-  // need a fast signal so the launcher stays under its perf budget.
+  // — that's for the diagnostic. Here we only need a fast signal so the
+  // launcher stays under its perf budget.
+  //
+  // Skip-list is shared with the doctor BFS via COMMON_WALK_SKIP_NAMES to
+  // prevent divergence. Only `.moflo*`-prefixed dirs are filtered separately
+  // — a `.packages/` or `.workspaces/` directory with its own moflo state is
+  // legitimate (rare, but possible) and should still be detected.
   let firstNested = null;
   try {
     const entries = readdirSync(projectRoot, { withFileTypes: true });
-    const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'out', 'coverage', '.next', '.cache']);
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const name = entry.name;
-      if (SKIP.has(name) || name.startsWith('.moflo') || name.startsWith('.')) continue;
+      if (COMMON_WALK_SKIP_NAMES.has(name.toLowerCase())) continue;
+      if (name.toLowerCase().startsWith('.moflo')) continue;
       const childDir = join(projectRoot, name);
       if (existsSync(join(childDir, '.moflo', 'moflo.db'))) {
         firstNested = childDir;
@@ -173,7 +178,12 @@ try {
       mkdirSync(mofloDir(projectRoot), { recursive: true });
       const pendingPath = join(mofloDir(projectRoot), 'restart-pending.json');
       writeFileSync(pendingPath, JSON.stringify({
-        version: '1174-nested-moflo',
+        // schemaVersion (not the moflo package version) lets future readers
+        // branch on the notice shape if it ever evolves. The launcher's §0d
+        // version-match cleanup compares `pending.version === installedVersion`
+        // (moflo semver), so this schema field is safely ignored there.
+        schemaVersion: 1,
+        kind: 'nested-moflo',
         message:
           `moflo consolidates monorepo state at the repo root (#1174). Nested .moflo/ ` +
           `directories detected (e.g. ${firstNested}). Run \`flo doctor --fix -c nested-moflo\` ` +

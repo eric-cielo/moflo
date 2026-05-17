@@ -52,6 +52,25 @@ export function legacyMemoryDbBakPath(projectRoot) {
   return join(projectRoot, LEGACY_SWARM_DIR, `${LEGACY_MEMORY_DB_FILE}${LEGACY_MEMORY_DB_BAK_SUFFIX}`);
 }
 
+/**
+ * Common skip-list for any walk that enumerates a project's children looking
+ * for moflo state. Shared by `bin/session-start-launcher.mjs` (depth-1 walk)
+ * and `src/cli/commands/doctor-checks-config.ts` (depth-5 BFS) so the two
+ * can't silently diverge. Matched case-insensitively at the call site —
+ * Windows NTFS + macOS APFS are case-insensitive by default.
+ *
+ * Categories: VCS metadata, build/cache outputs, language-specific output
+ * dirs, IDE state, virtualenv dirs. NOT included: `.moflo*` — every walk
+ * filters that separately so archived residue from `flo doctor --fix` can be
+ * recognised by prefix.
+ */
+export const COMMON_WALK_SKIP_NAMES = Object.freeze(new Set([
+  'node_modules', '.git', '.svn', '.hg',
+  'dist', 'build', 'out', 'target', '.next', '.nuxt', '.cache',
+  'coverage', '.idea', '.vscode', '.turbo', '.svelte-kit',
+  'vendor', '__pycache__', '.venv', 'venv', '.tox',
+]));
+
 export function memoryDbCandidatePaths(projectRoot) {
   return [
     memoryDbPath(projectRoot),

@@ -119,19 +119,28 @@ function buildDefaultOptions(): Required<MCPServerOptions> {
  * crash the MCP server (next append succeeds; rotation retries next time).
  */
 const MCP_LOG_ROTATE_BYTES = 50 * 1024 * 1024;
+// Throttle rotation checks: batch spell scenarios can write thousands of
+// MCP requests per session. statSync per append is wasted syscalls — bucket
+// the check every N writes (and always on the very first call so cold-start
+// rotation still fires).
+const MCP_LOG_ROTATE_CHECK_EVERY = 100;
+let mcpAppendsSinceRotateCheck = MCP_LOG_ROTATE_CHECK_EVERY;
 function safeAppendMcpLog(logFile: string, event: Record<string, unknown>): void {
   try {
     fs.mkdirSync(path.dirname(logFile), { recursive: true });
     // Rotate before append so the very write that crosses the threshold
     // lands in the fresh file rather than the rotated one.
-    try {
-      const stats = fs.statSync(logFile);
-      if (stats.size >= MCP_LOG_ROTATE_BYTES) {
-        const rotated = `${logFile}.1`;
-        try { fs.unlinkSync(rotated); } catch { /* may not exist */ }
-        fs.renameSync(logFile, rotated);
-      }
-    } catch { /* file may not exist yet; first write creates it */ }
+    if (++mcpAppendsSinceRotateCheck >= MCP_LOG_ROTATE_CHECK_EVERY) {
+      mcpAppendsSinceRotateCheck = 0;
+      try {
+        const stats = fs.statSync(logFile);
+        if (stats.size >= MCP_LOG_ROTATE_BYTES) {
+          const rotated = `${logFile}.1`;
+          try { fs.unlinkSync(rotated); } catch { /* may not exist */ }
+          fs.renameSync(logFile, rotated);
+        }
+      } catch { /* file may not exist yet; first write creates it */ }
+    }
     const line = JSON.stringify({ ts: new Date().toISOString(), ...event }) + '\n';
     fs.appendFileSync(logFile, line, 'utf-8');
   } catch { /* logging must never throw */ }
