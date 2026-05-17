@@ -308,14 +308,27 @@ var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:test|t)(
 // Edits to these don't change runtime behaviour, so they don't invalidate prior test/simplify runs.
 // Lock files and .gitignore are tracked but inert; package.json/*.yaml ARE source — they reset.
 var EDIT_RESET_SKIP_BOTH_RE = /\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\/])(CHANGELOG(?:\.md)?|\.env\.example|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb)$/i;
+// #1176 — path-based inert markers. The extension-based RE above can't cover
+// `.github/workflows/*.yml` without also exempting `moflo.yaml` / `tsconfig.yaml`
+// (which ARE source). Anchor on the GitHub-meta directories that hold CI config
+// and template scaffolds — editing those doesn't expose new runtime surface, so
+// they shouldn't reset testsRun/simplifyRun the way a real source edit does.
+// Trailing terminator includes `.` so the single-file template form
+// `.github/PULL_REQUEST_TEMPLATE.md` matches alongside the directory form.
+var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\/])\.github[\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\/.]|$)/i;
 // Test files: invalidate the testing gate (tests are stale once test code changes)
 // but NOT the simplify gate — /simplify already reviewed the production code; touching
 // a test file or fixture doesn't expose new untested surface for code review (#908).
 var EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE = /(?:^|[\\\/])(__tests__|__mocks__|tests?|spec|specs|cypress|e2e|fixtures?)[\\\/]|\.(test|spec)\.[mc]?[jt]sx?$|\.fixture\.[mc]?[jt]sx?$/i;
+// #1176 — source-file extensions used by the no-source-files PR exemption.
+// When the cumulative branch diff has zero files matching this RE (i.e. only
+// YAML/MD/JSON/lockfiles/images/templates), the testing/simplify/learnings
+// gates auto-pass at `check-before-pr`. Lists every language moflo ships
+// against — additions here should match TEST_RUNNER_RE's language coverage.
+var SOURCE_FILE_RE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|java|kt|swift|c|cc|cpp|h|hpp|sh|bash|ps1)$/i;
 // Docs-only PR exemption: text/markup/image extensions that cannot change runtime behaviour.
-// If EVERY file in the PR diff matches this, skip testing/simplify/learnings gates.
-// Anchored to end-of-path so e.g. `foo.md.js` does not match. Excludes lock files / configs
-// on purpose — those are inert for edit-reset (above) but not "documentation".
+// Retained for the transparency message when the diff is *purely* docs (no YAML/JSON either)
+// — gives a more specific reason than "no source files" in that subset.
 var DOCS_ONLY_RE = /\.(md|markdown|txt|rst|adoc|html?|pdf|png|jpe?g|gif|svg|webp|ico|bmp)$/i;
 
 // Classifier-aware simplify gate skip. Returns a string reason if the gate
@@ -339,12 +352,23 @@ function classifyForGateSkip(state) {
   } catch (e) { return null; }
   if (typeof classify !== 'function') return null;
 
-  function tryClassify(diffText, label) {
+  function tryClassify(diffText, label, allowSmallReviewFix) {
     try {
       var dec = classify(diffText);
       if (dec.tier === 'TRIVIAL') {
         var loc = (dec.stats.added || 0) + (dec.stats.deleted || 0);
         return label + ' is TRIVIAL (' + loc + ' LOC, ' + (dec.stats.fileCount || 0) + ' file(s))';
+      }
+      // #1176 — SMALL review-fix shape (snapshot path only). A ≤30-LOC delta with
+      // zero new declarations on top of an already-reviewed branch is the typical
+      // "apply 3 review fixes" cycle — re-running /flo-simplify against the same
+      // surface plus a few-line tweak adds no new signal. Baseline path stays
+      // TRIVIAL-only so brand-new SMALL features still get reviewed.
+      if (allowSmallReviewFix && dec.tier === 'SMALL') {
+        var totalLoc = (dec.stats.added || 0) + (dec.stats.deleted || 0);
+        if (totalLoc <= 30 && (dec.stats.declAdded || 0) === 0) {
+          return label + ' is SMALL review-fix shape (' + totalLoc + ' LOC, no new declarations)';
+        }
       }
     } catch (e) { /* fall through */ }
     return null;
@@ -365,7 +389,9 @@ function classifyForGateSkip(state) {
     var workTreeA = gitDiff(['diff', 'HEAD']) || '';
     if (snapDiff !== null) {
       var combined = snapDiff + (workTreeA ? '\n' + workTreeA : '');
-      var hit = tryClassify(combined, 'delta since last /simplify');
+      // Snapshot path: allow SMALL review-fix shape because the original /simplify
+      // already covered the surface and only tiny no-decl-touching tweaks followed.
+      var hit = tryClassify(combined, 'delta since last /simplify', true);
       if (hit) return hit;
     }
   }
@@ -590,6 +616,15 @@ switch (command) {
         s.testsRun = true;
         writeState(s);
       }
+    } else if (cmd) {
+      // #1176 — emit a stderr crumb when invoked with a non-empty command that
+      // doesn't match the test-runner pattern. Common pitfall: users run the
+      // stamp manually from a terminal to "satisfy the gate"; the silent no-op
+      // looks indistinguishable from success. gate-hook.mjs drops stderr from
+      // exit-0 invocations, so this only surfaces to direct CLI use — exactly
+      // the case where the friction lives.
+      var preview = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
+      process.stderr.write('gate: record-test-run no-op — TOOL_INPUT_command="' + preview + '" did not match TEST_RUNNER_RE\n');
     }
     break;
   }
@@ -610,13 +645,21 @@ switch (command) {
         if (sha && s.simplifySnapshotSha !== sha) { s.simplifySnapshotSha = sha; changed = true; }
       } catch (e) { /* no git or detached state — skip snapshot, gate still works */ }
       if (changed) writeState(s);
+    } else if (skName) {
+      // #1176 — same rationale as record-test-run. A no-op stamp on a non-simplify
+      // skill name is silent to hooks (gate-hook.mjs drops exit-0 stderr) but
+      // visible when a user runs the stamp directly to "satisfy the gate" and
+      // wonders why simplifyRun stays false.
+      process.stderr.write('gate: record-skill-run no-op — TOOL_INPUT_skill="' + skName + '" is not simplify/flo-simplify\n');
     }
     break;
   }
   case 'reset-edit-gates': {
     var fp = process.env.TOOL_INPUT_file_path || '';
-    // Inert files (markdown, lockfiles, CHANGELOG, .env.example): no gate reset.
-    if (fp && EDIT_RESET_SKIP_BOTH_RE.test(fp)) break;
+    // Inert files (markdown, lockfiles, CHANGELOG, .env.example) AND inert paths
+    // (.github/workflows/, .github/ISSUE_TEMPLATE/, .github/PULL_REQUEST_TEMPLATE/, #1176):
+    // no gate reset — editing these doesn't expose new runtime surface.
+    if (fp && (EDIT_RESET_SKIP_BOTH_RE.test(fp) || EDIT_RESET_SKIP_PATH_RE.test(fp))) break;
     var s = readState();
     // Test-only edits invalidate testsRun but preserve simplifyRun (#908).
     var isTestOnly = fp && EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE.test(fp);
@@ -639,14 +682,27 @@ switch (command) {
     // optional ENV=val prefix segment catches `GH_TOKEN=x gh pr create`.
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;
-    // Docs-only exemption: if every file changed vs the merge-base is a docs/image
-    // file (no runtime-behaviour surface), skip the testing/simplify/learnings gates
+    // No-source-files exemption (#1176, supersedes the original docs-only path).
+    // If every file changed vs the merge-base is either a docs/image file or a
+    // path-inert file (.github/workflows/, ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE/)
+    // — i.e. NO source files in the diff — skip testing/simplify/learnings gates
     // and surface a one-line transparency note. Falls through to the standard gate
     // on any failure (no base, no diff, exec error) — fail-safe by design.
+    //
+    // Source-file detection is the inverse of the inert checks: a file is "source"
+    // when it matches SOURCE_FILE_RE AND is not inside an inert path. This catches
+    // `.github/workflows/foo.sh` (sh extension but path-inert → no source).
     var changed = getChangedFilesVsBase();
-    if (changed && changed.length > 0 && changed.every(function(f) { return DOCS_ONLY_RE.test(f); })) {
-      process.stdout.write('Docs-only PR (' + changed.length + ' file' + (changed.length === 1 ? '' : 's') + ') — skipping testing/simplify/learnings gates.\n');
-      break;
+    if (changed && changed.length > 0) {
+      var hasSource = changed.some(function(f) {
+        return SOURCE_FILE_RE.test(f) && !EDIT_RESET_SKIP_PATH_RE.test(f);
+      });
+      if (!hasSource) {
+        var allDocs = changed.every(function(f) { return DOCS_ONLY_RE.test(f); });
+        var reason = allDocs ? 'Docs-only' : 'No source files in branch diff';
+        process.stdout.write(reason + ' (' + changed.length + ' file' + (changed.length === 1 ? '' : 's') + ') — skipping testing/simplify/learnings gates.\n');
+        break;
+      }
     }
     var s = readState();
     // Classifier-aware skip: if delta-since-snapshot or whole-branch diff is

@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execSync, execFileSync, spawn } from 'child_process';
+import { execSync, execFileSync, spawn, spawnSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { resolve, join } from 'path';
 import { tmpdir } from 'os';
@@ -58,21 +58,19 @@ function baseEnv(projectDir: string): Record<string, string> {
 /** Run gate.cjs with a subcommand and env vars. Returns { stdout, stderr, exitCode }.
  *  Timeout is generous because under isolation-batch contention (Windows in
  *  particular) `node + load gate.cjs` can take well over the 5 s the test
- *  used to allow; the test measures behavior, not speed. */
+ *  used to allow; the test measures behavior, not speed.
+ *  Uses spawnSync so stderr is captured even on exit 0 — required for the
+ *  #1176 no-op-warning tests where stderr is emitted but exit is still 0. */
 function runGate(command: string, env: Record<string, string>): { stdout: string; stderr: string; exitCode: number } {
-  try {
-    const stdout = execFileSync('node', [GATE, command], {
-      env, encoding: 'utf-8', timeout: 30000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return { stdout, stderr: '', exitCode: 0 };
-  } catch (err: any) {
-    return {
-      stdout: err.stdout || '',
-      stderr: err.stderr || '',
-      exitCode: err.status ?? 1,
-    };
-  }
+  const r = spawnSync('node', [GATE, command], {
+    env, encoding: 'utf-8', timeout: 30000,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  return {
+    stdout: r.stdout || '',
+    stderr: r.stderr || '',
+    exitCode: typeof r.status === 'number' ? r.status : 1,
+  };
 }
 
 /** Run an ESM script (gate-hook.mjs or prompt-hook.mjs) with stdin JSON piped in. */
@@ -1733,6 +1731,30 @@ describe('end-to-end: spell lifecycle', () => {
       const r = runGate('record-test-run', env);
       expect(r.exitCode).toBe(0);
     });
+
+    it('emits stderr crumb on no-op when TOOL_INPUT_command does not match (#1176)', () => {
+      // Direct-CLI invocation (the friction case): user runs the stamp manually
+      // to "satisfy the gate" with a command that doesn't look like a test runner.
+      // Silent no-op pre-#1176 made this indistinguishable from success.
+      writeState(tmpDir, { testsRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = 'git status';
+      const r = runGate('record-test-run', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toContain('record-test-run no-op');
+      expect(r.stderr).toContain('TEST_RUNNER_RE');
+      expect(readState(tmpDir).testsRun).toBe(false);
+    });
+
+    it('does not emit stderr crumb when command is empty (#1176 — hook-fired with no command)', () => {
+      writeState(tmpDir, { testsRun: false });
+      const env = baseEnv(tmpDir);
+      // No TOOL_INPUT_command — would emit a noisy warning on every hook fire if
+      // we didn't guard for empty.
+      const r = runGate('record-test-run', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toBe('');
+    });
   });
 
   describe('record-skill-run', () => {
@@ -1765,6 +1787,26 @@ describe('end-to-end: spell lifecycle', () => {
       env.TOOL_INPUT_skill = 'simplify';
       const r = runGate('record-skill-run', env);
       expect(r.exitCode).toBe(0);
+    });
+
+    it('emits stderr crumb on no-op when TOOL_INPUT_skill is not simplify/flo-simplify (#1176)', () => {
+      writeState(tmpDir, { simplifyRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_skill = 'eldar';
+      const r = runGate('record-skill-run', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toContain('record-skill-run no-op');
+      expect(r.stderr).toContain('"eldar"');
+      expect(readState(tmpDir).simplifyRun).toBe(false);
+    });
+
+    it('does not emit stderr crumb when TOOL_INPUT_skill is empty (#1176)', () => {
+      writeState(tmpDir, { simplifyRun: false });
+      const env = baseEnv(tmpDir);
+      // No TOOL_INPUT_skill — empty-string is the hook-fired-without-skill case.
+      const r = runGate('record-skill-run', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toBe('');
     });
   });
 
@@ -1834,6 +1876,52 @@ describe('end-to-end: spell lifecycle', () => {
       runGate('reset-edit-gates', env);
       const s = readState(tmpDir);
       expect(s.taskCount).toBe(5); // other state preserved
+    });
+
+    it('does not reset for .github/workflows/*.yml edits (#1176 inert path)', () => {
+      const env = baseEnv(tmpDir);
+      // Path-based inertness covers CI config — runtime surface is untouched.
+      for (const fp of [
+        '/project/.github/workflows/ci.yml',
+        '/project/.github/workflows/release.yaml',
+        '/project/.github/workflows/cost-tracking.yml',
+      ]) {
+        writeState(tmpDir, { testsRun: true, simplifyRun: true });
+        env.TOOL_INPUT_file_path = fp;
+        runGate('reset-edit-gates', env);
+        const s = readState(tmpDir);
+        expect(s.testsRun, `should not reset for ${fp}`).toBe(true);
+        expect(s.simplifyRun, `should not reset for ${fp}`).toBe(true);
+      }
+    });
+
+    it('does not reset for .github/ISSUE_TEMPLATE and PULL_REQUEST_TEMPLATE edits (#1176)', () => {
+      const env = baseEnv(tmpDir);
+      for (const fp of [
+        '/project/.github/ISSUE_TEMPLATE/bug.md',
+        '/project/.github/ISSUE_TEMPLATE/config.yml',
+        '/project/.github/PULL_REQUEST_TEMPLATE.md',
+        '/project/.github/PULL_REQUEST_TEMPLATE/feature.md',
+      ]) {
+        writeState(tmpDir, { testsRun: true, simplifyRun: true });
+        env.TOOL_INPUT_file_path = fp;
+        runGate('reset-edit-gates', env);
+        const s = readState(tmpDir);
+        expect(s.testsRun, `should not reset for ${fp}`).toBe(true);
+        expect(s.simplifyRun, `should not reset for ${fp}`).toBe(true);
+      }
+    });
+
+    it('STILL resets for moflo.yaml even though it is .yaml (#1176 — path-based, not extension-based)', () => {
+      // Regression guard: the path-based inert RE must NOT exempt every YAML
+      // file; moflo.yaml is source — editing it changes daemon/gate behavior.
+      writeState(tmpDir, { testsRun: true, simplifyRun: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_file_path = '/project/moflo.yaml';
+      runGate('reset-edit-gates', env);
+      const s = readState(tmpDir);
+      expect(s.testsRun).toBe(false);
+      expect(s.simplifyRun).toBe(false);
     });
   });
 });
