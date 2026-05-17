@@ -564,6 +564,13 @@ describe('gate.cjs: check-bash-memory BLOCK (#1132)', () => {
     ['Get-Content src\\foo.ts', 'PowerShell Get-Content'],
     ['gc src\\foo.ts', 'PowerShell gc alias'],
     ['Select-String "pattern" src\\', 'PowerShell Select-String'],
+    // #1171 — PS-native exploration forms covered by the widened matcher.
+    ['Get-ChildItem -Recurse src\\', 'PowerShell Get-ChildItem -Recurse'],
+    ['Get-ChildItem -Path src\\ -Recurse -Filter *.ts', 'gci with flags + -Recurse'],
+    ['gci -Recurse', 'PowerShell gci alias with -Recurse'],
+    ['dir /s', 'cmd-style dir /s'],
+    ['dir src\\ /S', 'cmd-style dir /S uppercase'],
+    ['Format-Hex C:\\file.bin', 'PowerShell Format-Hex'],
   ];
 
   for (const [cmd, label] of block) {
@@ -594,6 +601,22 @@ describe('gate.cjs: check-bash-memory BLOCK (#1132)', () => {
     ['npm test 2>&1 | grep FAIL', 'pipe-grep filter'],
     ['ls src/ | head -5', 'pipe-head filter'],
     ['curl https://x | jq .', 'curl piped to jq'],
+    // #1171 — PS introspection / metadata cmdlets that LOOK read-shaped but
+    // are not content reads; the matcher widening must not gate them.
+    ['Get-Process node', 'PS Get-Process'],
+    ['Get-Service moflo', 'PS Get-Service'],
+    ['Get-Module', 'PS Get-Module'],
+    ['Get-Command flo', 'PS Get-Command'],
+    ['Get-Help Get-ChildItem', 'PS Get-Help'],
+    ['Test-Path .\\package.json', 'PS Test-Path'],
+    ['Resolve-Path src\\', 'PS Resolve-Path'],
+    ['Get-ChildItem src\\', 'PS Get-ChildItem (no -Recurse)'],
+    ['gci', 'PS gci alias (no -Recurse)'],
+    // #1171 cross-platform — POSIX `dir` is aliased to `ls -l` on many distros.
+    // `dir -s` (sort-by-size flag) is a legitimate non-recursive listing and
+    // MUST NOT trip the gate. Only the Windows `dir /s` form is blocked.
+    ['dir -s', 'POSIX dir -s (sort-by-size, not recursive)'],
+    ['dir --sort=size src/', 'POSIX dir --sort=size'],
   ];
 
   for (const [cmd, label] of pass) {

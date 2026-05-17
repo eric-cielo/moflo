@@ -72,12 +72,16 @@ describe('repairHookWiring', () => {
   });
 
   it('appends to an existing matcher block instead of duplicating it', () => {
-    // Create a Bash PreToolUse block with check-dangerous-command but NOT check-before-pr
+    // #1171 — the canonical matcher for Bash-shaped gates widened to
+    // `^(Bash|PowerShell)$` so PS-tool calls flow through the same gates.
+    // `rewriteIncorrectHookWiring` upgrades stale `^Bash$` matchers on
+    // session-start (covered by its own test below); this test pins the
+    // post-upgrade canonical shape for repairHookWiring's append behavior.
     const dangerousEntry = HOOK_ENTRY_MAP['check-dangerous-command'];
     const settings: Record<string, unknown> = {
       hooks: {
         PreToolUse: [
-          { matcher: '^Bash$', hooks: [dangerousEntry.hook] },
+          { matcher: '^(Bash|PowerShell)$', hooks: [dangerousEntry.hook] },
         ],
       },
     };
@@ -86,13 +90,13 @@ describe('repairHookWiring', () => {
 
     expect(repaired).toContain('check-before-pr');
 
-    // The ^Bash$ PreToolUse block should have both hooks, not two separate blocks
+    // The shell PreToolUse block should have both hooks, not two separate blocks
     const preToolUse = (patched.hooks as Record<string, unknown[]>).PreToolUse as Array<Record<string, unknown>>;
-    const bashBlocks = preToolUse.filter(b => b.matcher === '^Bash$');
-    expect(bashBlocks.length).toBe(1);
+    const shellBlocks = preToolUse.filter(b => b.matcher === '^(Bash|PowerShell)$');
+    expect(shellBlocks.length).toBe(1);
 
-    const bashHooks = bashBlocks[0].hooks as unknown[];
-    expect(bashHooks.length).toBeGreaterThanOrEqual(2);
+    const shellHooks = shellBlocks[0].hooks as unknown[];
+    expect(shellHooks.length).toBeGreaterThanOrEqual(2);
   });
 
   it('handles settings with hooks key but empty object', () => {
@@ -389,5 +393,85 @@ describe('rewriteIncorrectHookWiring (#879)', () => {
 
   it('HOOK_REWRITE_RULES has at least one rule for #879', () => {
     expect(HOOK_REWRITE_RULES.some(r => r.name.includes('#879') && r.from.includes('record-memory-searched'))).toBe(true);
+  });
+
+  // ── Issue #1171 — matcher widening for PowerShell coverage ────────────────
+  // The `PowerShell` tool Claude Code exposes on Windows bypassed every
+  // `^Bash$`-anchored gate (dangerous-command, before-pr, bash-memory, test-run).
+  // MATCHER_REWRITE_RULES widen existing consumer settings on session-start so
+  // existing installs self-heal without `flo doctor --fix`.
+
+  it('widens consumer `^Bash$` matcher to `^(Bash|PowerShell)$` for the four affected gates (#1171)', () => {
+    // A stale consumer settings.json with the pre-#1171 narrow matcher for
+    // each of the four Bash-anchored gates. Build the fixture from
+    // HOOK_ENTRY_MAP's hook objects so the test stays in sync with whatever
+    // commands the canonical wiring emits, but pin matcher to the OLD `^Bash$`.
+    const stale: Record<string, unknown> = {
+      hooks: {
+        PreToolUse: [
+          { matcher: '^Bash$', hooks: [
+            HOOK_ENTRY_MAP['check-dangerous-command'].hook,
+            HOOK_ENTRY_MAP['check-before-pr'].hook,
+            HOOK_ENTRY_MAP['check-bash-memory'].hook,
+          ] },
+        ],
+        PostToolUse: [
+          { matcher: '^Bash$', hooks: [HOOK_ENTRY_MAP['record-test-run'].hook] },
+        ],
+      },
+    };
+
+    const { rewrites, settings: patched } = rewriteIncorrectHookWiring(stale);
+
+    // At least one #1171 rule fired (rules are ordered; the first matching
+    // block widens the matcher; subsequent rules for the same block become
+    // no-ops because `from: '^Bash$'` no longer matches).
+    expect(rewrites.some(r => r.name.includes('#1171'))).toBe(true);
+
+    const pre = ((patched.hooks as Record<string, unknown[]>).PreToolUse as Array<{ matcher: string }>);
+    const post = ((patched.hooks as Record<string, unknown[]>).PostToolUse as Array<{ matcher: string }>);
+    expect(pre[0].matcher).toBe('^(Bash|PowerShell)$');
+    expect(post[0].matcher).toBe('^(Bash|PowerShell)$');
+  });
+
+  it('does NOT widen a user-customised `^Bash$` block whose hooks are not moflo gates (#1171)', () => {
+    // A consumer who customised their own Bash-only logging hook should be
+    // preserved as-is — `cmdContains` guards each #1171 rule so an unrelated
+    // block sharing the matcher string never gets widened.
+    const customised: Record<string, unknown> = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '^Bash$',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/my-bash-logger.mjs"',
+                timeout: 1000,
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const { rewrites, settings: patched } = rewriteIncorrectHookWiring(customised);
+    expect(rewrites.some(r => r.name.includes('#1171'))).toBe(false);
+    const block = ((patched.hooks as Record<string, unknown[]>).PreToolUse as Array<{ matcher: string }>)[0];
+    expect(block.matcher).toBe('^Bash$');
+  });
+
+  it('matcher widening for #1171 is idempotent — second pass over already-widened settings makes no changes', () => {
+    const widened: Record<string, unknown> = {
+      hooks: {
+        PreToolUse: [
+          { matcher: '^(Bash|PowerShell)$', hooks: [HOOK_ENTRY_MAP['check-bash-memory'].hook] },
+        ],
+      },
+    };
+    const before = JSON.stringify(widened);
+    const { rewrites } = rewriteIncorrectHookWiring(widened);
+    expect(rewrites.some(r => r.name.includes('#1171'))).toBe(false);
+    expect(JSON.stringify(widened)).toBe(before);
   });
 });

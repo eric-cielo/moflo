@@ -251,12 +251,16 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [{ type: 'command', command: gateHookCmd('check-before-read'), timeout: 3000 }],
       },
       {
-        matcher: '^Bash$',
+        // #1171 — widened from `^Bash$` to also cover the dedicated `PowerShell`
+        // tool that Claude Code exposes on Windows. Without this, PS-tool calls
+        // route around every Bash-anchored gate (dangerous-command, pr, memory).
+        matcher: '^(Bash|PowerShell)$',
         hooks: [
           { type: 'command', command: gateHookCmd('check-dangerous-command'), timeout: 2000 },
           { type: 'command', command: gateHookCmd('check-before-pr'), timeout: 2000 },
           // #1132 — moved from PostToolUse so process.exit(2) actually blocks
-          // read-like Bash that bypasses the Read/Glob/Grep gates via the shell.
+          // read-like shell commands that bypass the Read/Glob/Grep gates.
+          // Name kept for backwards compat; covers PowerShell readers too.
           { type: 'command', command: gateHookCmd('check-bash-memory'), timeout: 2000 },
         ],
       },
@@ -296,7 +300,9 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [{ type: 'command', command: gateCmd('record-task-created'), timeout: 2000 }],
       },
       {
-        matcher: '^Bash$',
+        // #1171 — widened to cover the `PowerShell` tool so PS-invoked
+        // `npm test` / `pytest` etc. credit the testing gate the same as Bash.
+        matcher: '^(Bash|PowerShell)$',
         hooks: [
           // #1132 — check-bash-memory moved to PreToolUse (above).
           { type: 'command', command: gateHookCmd('record-test-run'), timeout: 2000 },

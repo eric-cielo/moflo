@@ -20,12 +20,15 @@ const CANONICAL = '.claude/guidance/shipped/moflo-memory-protocol.md';
 const NEIGHBORS_TOOL = 'memory_get_neighbors';
 
 describe('Memory traversal protocol — 6-touchpoint drift guards (#1053 S3)', () => {
-  it('Touchpoint #0 — canonical protocol doc exists and is ≤40 lines', () => {
+  it('Touchpoint #0 — canonical protocol doc exists and is ≤200 lines', () => {
+    // #1171 — cap raised from 40 → 200 to fit per-namespace worked examples
+    // + querying technique that turn the gate from ceremony into signal.
+    // Still well under the universal 500-line guidance ceiling.
     const docPath = resolve(ROOT, CANONICAL);
     expect(existsSync(docPath)).toBe(true);
     const text = readFileSync(docPath, 'utf-8');
     const lineCount = text.split('\n').length;
-    expect(lineCount, `protocol doc grew past 40-line cap (${lineCount}); compress before adding`).toBeLessThanOrEqual(40);
+    expect(lineCount, `protocol doc grew past 200-line cap (${lineCount}); compress before adding`).toBeLessThanOrEqual(200);
   });
 
   // #1068: protocol must be stated as a non-optional MUST when `navigation`
