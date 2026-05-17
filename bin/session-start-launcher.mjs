@@ -189,7 +189,7 @@ function writeUpgradeNotice(status) {
   buildAndWriteNotice(upgradeNoticeContext, status);
 }
 
-// ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
+// ── 0-pre. Drop any stale upgrade notice (#738, #743, #1173) ────────────────
 // `upgrade-notice.json` is a transient handshake between launcher and
 // statusline — it should never survive past the launcher run that wrote it.
 // Pre-#738 launchers wrote a 1-hour-TTL "complete" notice after upgrade work
@@ -199,9 +199,46 @@ function writeUpgradeNotice(status) {
 // notice (legacy file, aborted launcher, future writer mistake) gets dropped
 // before the statusline can see it. The in-progress notice for THIS session,
 // if any, is written later in section 3 and cleared in section 3f.
-try {
-  unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
-} catch { /* non-fatal — file usually doesn't exist */ }
+//
+// #1173: capture the prior notice's parsed contents BEFORE deleting so §3 can
+// detect "prior session completed upgrade work but never committed the stamp"
+// and recover via eager-stamp (Option B). Without this read, the indefinite
+// re-detect loop reported in #1173 has no signal to break on. Wrapped in an
+// existsSync guard so the common no-upgrade path doesn't pay for an ENOENT
+// throw + stack unwind on every session-start.
+let priorUpgradeNotice = null;
+if (existsSync(UPGRADE_NOTICE_PATH())) {
+  try {
+    priorUpgradeNotice = JSON.parse(readFileSync(UPGRADE_NOTICE_PATH(), 'utf-8'));
+  } catch { /* unparseable — fall through; treat as no signal */ }
+  try {
+    unlinkSync(UPGRADE_NOTICE_PATH());
+  } catch { /* deleted between stat and unlink — fine */ }
+}
+
+// #1173 Option D: defensive cleanup of in-progress upgrade notice if the
+// launcher aborts before §3f writes 'completed'. Without this, a mid-flight
+// abort leaves the (updating…) badge on the statusline until the 5-min TTL
+// expires, even though no upgrade is actually in progress.
+//
+// Coverage matrix:
+//   - normal exit / process.exit() / uncaught exception → 'exit' fires
+//   - POSIX SIGTERM/SIGINT (Claude Code's 5s hook-timeout kill, Ctrl+C) →
+//     kernel terminates without running 'exit'; explicit handlers cover this
+//     path and call process.exit() so we leave with the conventional 128+sig
+//     status. The 'exit' listener also fires on those process.exit() calls,
+//     but the cleanup already ran and the guard returns early.
+//   - Windows TerminateProcess (no signal equivalent for POSIX SIGKILL) →
+//     no Node handler runs; the 5-min in-progress notice TTL is the safety
+//     net for this path.
+let upgradeNoticeFinalized = false;
+function clearAbortedUpgradeNotice() {
+  if (!upgradeNoticeContext || upgradeNoticeFinalized) return;
+  try { unlinkSync(UPGRADE_NOTICE_PATH()); } catch { /* already gone — fine */ }
+}
+process.on('exit', clearAbortedUpgradeNotice);
+process.on('SIGTERM', () => { clearAbortedUpgradeNotice(); process.exit(143); });
+process.on('SIGINT', () => { clearAbortedUpgradeNotice(); process.exit(130); });
 
 // ── 0-bootstrap-sentinel. Surface partial-bootstrap failures (#975) ─────────
 // `scripts/post-install-bootstrap.mjs` writes `.moflo/bootstrap-failed.json`
@@ -705,6 +742,37 @@ try {
     }
     // Dogfood (#928): never drift-heal moflo's own committed copies.
     if (isMofloDogfood) manifestDrifted = false;
+
+    // #1173 Option B: eager-stamp recovery. A prior session reached §3f and
+    // wrote the 'completed' notice but was killed before §3g committed the
+    // stamp (5s SessionStart hook timeout, post-§3f exception, ...). The
+    // upgrade work is already done; we just need to land the stamp so
+    // subsequent sessions stop re-entering this branch. Heuristic: notice
+    // captured at §0-pre shows status='completed' AND to===installedVersion
+    // AND no manifest drift this session (drift means real new work to do).
+    // On success, promote cachedVersion in-memory so the next condition sees
+    // "no upgrade needed" and skips the full upgrade work block naturally —
+    // no else-if chain with a dead `if` body that confuses future readers.
+    // Stamp recovery throws → cachedVersion stays stale → fall through to
+    // the existing full-upgrade path as a safety net.
+    if (
+      installedVersion !== cachedVersion
+      && !manifestDrifted
+      && priorUpgradeNotice?.status === 'completed'
+      && priorUpgradeNotice?.to === installedVersion
+    ) {
+      try {
+        mkdirSync(dirname(versionStampPath), { recursive: true });
+        writeFileSync(versionStampPath, installedVersion);
+        cachedVersion = installedVersion;
+        emitMutation(
+          `recovered version stamp at ${installedVersion}`,
+          'prior session completed upgrade work but stamp write was missed (#1173)',
+        );
+      } catch (err) {
+        emitWarning(`stamp recovery failed (${errMessage(err)}) — running full upgrade as fallback`);
+      }
+    }
 
     if (installedVersion !== cachedVersion || manifestDrifted) {
       if (installedVersion !== cachedVersion) {
@@ -1973,8 +2041,15 @@ function runMigrationsAndAnnounce(runnerPath) {
 // ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
 // See the TTL rationale at the constants above for why we switch to a
 // short-TTL completed badge instead of clearing the file.
+//
+// #1173: setting upgradeNoticeFinalized signals the exit handler (Option D
+// above) that the notice reached its terminal 'completed' state cleanly, so
+// the handler should NOT clear it on launcher exit. Without this flag the
+// exit cleanup would race with the statusline reader and drop the short-TTL
+// 'completed' badge the user is supposed to see.
 if (upgradeNoticeContext) {
   writeUpgradeNotice('completed');
+  upgradeNoticeFinalized = true;
 }
 
 // ── 3g. Commit deferred version stamp (#730) ────────────────────────────────

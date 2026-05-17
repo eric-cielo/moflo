@@ -189,4 +189,33 @@ describe('Swarm Residue auto-fix — fixSwarmLegacyResidue', () => {
     expect(readFileSync(join(tmpDir, '.moflo', 'movector', 'lora-weights.json'), 'utf-8')).toBe('{"canonical":true}');
     expect(existsSync(join(tmpDir, '.swarm'))).toBe(false);
   });
+
+  // #1170: pre-#699 residue. Writers (bin/index-patterns.mjs +
+  // bin/index-tests.mjs) already target `.moflo/<name>` directly with no
+  // subdir, so dest is mofloDir itself — different shape from every other
+  // entry in stateFiles which all use a subdir.
+  it('relocates pre-#699 hash residue into .moflo/ root (#1170)', async () => {
+    seedSwarm({
+      'patterns-hash.txt': 'patterns-abc',
+      'tests-hash.txt': 'tests-xyz',
+    });
+
+    const result = await autoFixCheck(residueCheck);
+
+    expect(result).toBe(true);
+    expect(existsSync(join(tmpDir, '.swarm'))).toBe(false);
+    expect(readFileSync(join(tmpDir, '.moflo', 'patterns-hash.txt'), 'utf-8')).toBe('patterns-abc');
+    expect(readFileSync(join(tmpDir, '.moflo', 'tests-hash.txt'), 'utf-8')).toBe('tests-xyz');
+  });
+
+  it('keeps the canonical patterns-hash.txt when both locations have content (#1170)', async () => {
+    writeFileSync(join(tmpDir, '.moflo', 'patterns-hash.txt'), 'canonical-hash', 'utf-8');
+    seedSwarm({ 'patterns-hash.txt': 'legacy-hash' });
+
+    const result = await autoFixCheck(residueCheck);
+
+    expect(result).toBe(true);
+    expect(readFileSync(join(tmpDir, '.moflo', 'patterns-hash.txt'), 'utf-8')).toBe('canonical-hash');
+    expect(existsSync(join(tmpDir, '.swarm'))).toBe(false);
+  });
 });
