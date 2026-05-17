@@ -81,7 +81,21 @@ var config = loadGateConfig();
 var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
-var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
+// #1171 — DANGEROUS gained PowerShell additions to match the matcher widening
+// that now routes the dedicated `PowerShell` tool through check-dangerous-command.
+// POSIX entries still apply because PS will execute them when invoked. Substring
+// match (case-insensitive) inside the gate.
+var DANGEROUS = [
+  'rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda',
+  // PowerShell destructive patterns. Won't catch every adversarial spelling
+  // (PS aliases let `ri -r -force C:\` mean the same thing) but covers the
+  // common-typo destruction class — symmetric to the POSIX list's intent.
+  'remove-item -recurse -force c:\\',
+  'remove-item -recurse -force /',
+  'remove-item -recurse -force ~',
+  'format-volume',
+  'clear-disk',
+];
 
 // #1132 — Bash memory-first gate.
 //
@@ -94,6 +108,9 @@ var CREDIT_MEMORY_SEARCH_RE = /semantic-search|memory search|memory retrieve|mem
 // check-before-scan gates by going through the shell. Anchored to the start of
 // the line so subcommands inside pipelines or `npm install grep` don't trip.
 // Covers POSIX read/search tools, Windows cmd `type`, and PowerShell readers.
+// #1171 — extended with PowerShell-native exploration forms now that the matcher
+// widens to the `PowerShell` tool. Plain `Get-ChildItem` without -Recurse stays
+// uncovered (it's `ls`-equivalent and plain `ls` is allowed).
 var READ_LIKE_BASH_RE = new RegExp([
   '^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b',
   '^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b',
@@ -108,6 +125,17 @@ var READ_LIKE_BASH_RE = new RegExp([
   // primary risk pattern is leaking past the gate via `type src\foo.ts`.
   '^\\s*type\\s+\\S*[\\\\/.]',
   '^\\s*(?:Get-Content|gc|Select-String|sls)\\b',
+  // #1171 — PowerShell recursive exploration (parallel to POSIX `find`/`fd`).
+  // The `-Recurse` flag is what makes it expensive enough to gate; plain
+  // `Get-ChildItem` is `ls`-shaped and intentionally not blocked.
+  '^\\s*(?:Get-ChildItem|gci)\\b[^|]*-Recurse\\b',
+  // #1171 — cmd-style recursive listing (`dir /s` or `dir /S`). Only the
+  // Windows `/s` form, NOT POSIX `dir -s` (sort-by-size, where `dir` is aliased
+  // to `ls -l` on many distros) — false-positive blocking that would break
+  // legitimate POSIX listings.
+  '^\\s*dir\\b[^|]*\\s\\/[sS]\\b',
+  // #1171 — PowerShell hex dump, parallel to POSIX `xxd`/`hexdump`.
+  '^\\s*Format-Hex\\b',
 ].join('|'), 'i');
 // CARVE-OUT: commands that LOOK read-like but are operational. Anchored to the
 // LEADING command — the pipe-filter case (`npm test | grep FAIL`) is already
@@ -129,6 +157,32 @@ var BASH_CARVE_OUT_RE = new RegExp([
   // `find` commands that lack a `-delete` / `-exec rm` suffix.
   '^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b',
 ].join('|'));
+// #1171 follow-up — strip quoted string bodies and heredoc bodies from a shell
+// command for purposes of dangerous-pattern substring matching. Used by
+// check-dangerous-command. Does NOT strip $(...) or `...` because those bodies
+// execute. Double-quoted strings handle escaped quotes (`\"`) correctly so
+// `git commit -m "fix \"X\""` strips the whole quoted body, not just the first
+// `\"` pair. Single quotes don't have escapes in bash/sh — `'[^']*'` is exact.
+function stripQuotedAndHeredocs(cmd) {
+  var out = cmd;
+  // Heredoc tail: `<<TOKEN`, `<<-TOKEN`, `<<'TOKEN'`, `<<"TOKEN"` through end-of-input.
+  // Bash heredocs are multi-line; in single-line tool inputs they show up as the
+  // tail after `<<TOKEN`. Conservative tail-strip — benign content after a heredoc
+  // body on the same logical line is also stripped, harmless for this gate.
+  // Token class includes `-` so hyphenated heredoc tags (`<<END-OF-DOC`) match
+  // the full token, not just the leading word — without this the strip would
+  // halt at `<<END` and leave `-OF-DOC` plus the body as literal text.
+  out = out.replace(/<<-?\s*['"]?[\w-]+['"]?[\s\S]*$/, '');
+  // Here-string `<<<word` — strip the word.
+  out = out.replace(/<<<\s*\S+/g, '');
+  // Single-quoted strings — no escapes inside single quotes in sh/bash.
+  out = out.replace(/'[^']*'/g, "''");
+  // Double-quoted strings — `(?:[^"\\]|\\.)*` matches anything except an
+  // unescaped `"`, so escaped `\"` mid-string doesn't terminate the strip early.
+  out = out.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+  return out;
+}
+
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
 
@@ -475,6 +529,11 @@ switch (command) {
     // #1132 — preserve CREDIT side-effect AND add a BLOCK arm for read-like
     // Bash commands. Wired as PreToolUse[Bash] (was PostToolUse before #1132)
     // so process.exit(2) actually prevents the read from reaching the shell.
+    //
+    // #1171 — the case name is historical. The matcher now also covers the
+    // dedicated `PowerShell` tool, and READ_LIKE_BASH_RE already matched PS
+    // readers (Get-Content/Select-String/Get-ChildItem -Recurse/Format-Hex).
+    // Treat this case as shell-agnostic read-gate logic.
     var cmd = process.env.TOOL_INPUT_command || '';
 
     // 1) CREDIT — preserved behavior. A real memory-search invocation flips
@@ -620,7 +679,17 @@ switch (command) {
     process.exit(2);
   }
   case 'check-dangerous-command': {
-    var cmd = (process.env.TOOL_INPUT_command || '').toLowerCase();
+    // #1171 follow-up — strip quoted string bodies and heredoc bodies before
+    // substring-matching DANGEROUS. Without this, `git commit -m "...remove-item
+    // -recurse -force c:\..."` blocks because the literal pattern appears in
+    // the quoted message body. Quoted text isn't executing — the gate's job is
+    // to catch typo-class destruction in the actual command, not text mentions
+    // inside arguments. Trade-off: `bash -c "rm -rf /"` also bypasses now; the
+    // gate is a typo safety net, not a security boundary, so this is acceptable.
+    // Command substitutions `$(...)` and backticks are NOT stripped — those
+    // bodies execute and dangerous content there is real.
+    var raw = process.env.TOOL_INPUT_command || '';
+    var cmd = stripQuotedAndHeredocs(raw).toLowerCase();
     for (var i = 0; i < DANGEROUS.length; i++) {
       if (cmd.indexOf(DANGEROUS[i]) >= 0) {
         console.log('[BLOCKED] Dangerous command: ' + DANGEROUS[i]);

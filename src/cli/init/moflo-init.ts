@@ -292,7 +292,8 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         "hooks": [{ "type": "command", "command": gateHook('check-before-read'), "timeout": 3000 }]
       },
       {
-        "matcher": "^Bash$",
+        // #1171 — widened to cover the dedicated `PowerShell` tool.
+        "matcher": "^(Bash|PowerShell)$",
         "hooks": [
           { "type": "command", "command": gateHook('check-dangerous-command'), "timeout": 2000 },
           { "type": "command", "command": gateHook('check-before-pr'), "timeout": 2000 }
@@ -326,7 +327,8 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         "hooks": [{ "type": "command", "command": gate('record-task-created'), "timeout": 2000 }]
       },
       {
-        "matcher": "^Bash$",
+        // #1171 — widened to cover the dedicated `PowerShell` tool.
+        "matcher": "^(Bash|PowerShell)$",
         "hooks": [
           { "type": "command", "command": gateHook('check-bash-memory'), "timeout": 2000 },
           { "type": "command", "command": gateHook('record-test-run'), "timeout": 2000 }

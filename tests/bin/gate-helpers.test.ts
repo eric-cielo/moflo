@@ -204,6 +204,50 @@ describe('gate.cjs: check-dangerous-command', () => {
     expect(r.exitCode).toBe(2);
   });
 
+  // #1171 — PowerShell destructive cmdlets added when the matcher widened to
+  // include the dedicated `PowerShell` tool. Case-insensitive substring match,
+  // symmetric to the POSIX entries above.
+  it.each([
+    ['Remove-Item -Recurse -Force C:\\', 'PS recursive force-remove of C: drive'],
+    ['Remove-Item -Recurse -Force /', 'PS recursive force-remove of POSIX root'],
+    ['Remove-Item -Recurse -Force ~', 'PS recursive force-remove of home dir'],
+    ['Format-Volume -DriveLetter D', 'PS Format-Volume'],
+    ['Clear-Disk -Number 0 -RemoveData', 'PS Clear-Disk'],
+  ])('blocks PS dangerous: %s (#1171)', (cmd) => {
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = cmd;
+    const r = runGate('check-dangerous-command', env);
+    expect(r.exitCode).toBe(2);
+  });
+
+  // #1171 follow-up — DANGEROUS substring matching used to scan the entire
+  // command string, so dangerous-shaped patterns in quoted message bodies
+  // (`git commit -m "...remove-item -recurse -force c:\\..."`) tripped the gate
+  // even though no destructive command would execute. Now strips quoted bodies
+  // and heredocs before matching. These tests pin both halves: quoted-body
+  // patterns pass; actual commands still block.
+  it.each([
+    ['git commit -m "fix: removed remove-item -recurse -force c:\\ pattern"', 'dangerous string inside double-quoted commit message'],
+    ["git commit -m 'note: format-volume bug fixed'", 'dangerous string inside single-quoted commit message'],
+    ['echo "rm -rf /"', 'echo with dangerous string in quoted argument'],
+    ['printf "%s\\n" "clear-disk demo"', 'printf with dangerous string in quoted argument'],
+    ['gh pr create --body "fixes remove-item -recurse -force / issue"', 'gh pr create with dangerous string in body arg'],
+    // Heredoc with dangerous body — strips from `<<EOF` through end-of-input.
+    ['git commit -F - <<EOF\nfix: remove-item -recurse -force c:\\\nEOF', 'heredoc body with dangerous-shaped text'],
+    // Hyphenated heredoc token — `\w+` would halt at `END` and leak `-OF-DOC`
+    // plus the dangerous body; `[\w-]+` matches the full token. Regression
+    // guard for the edge case the SMALL reviewer flagged.
+    ['cat <<END-OF-DOC\nformat-volume target=D\nEND-OF-DOC', 'hyphenated heredoc token strips the full body'],
+    // Escaped double-quote inside a quoted body — regex must NOT terminate
+    // the strip on the `\"` and leak the remainder.
+    ['git commit -m "fix \\"remove-item -recurse -force c:\\\\\\" handling"', 'escaped quote inside quoted body must not leak'],
+  ])('allows dangerous-shaped substring inside quoted/heredoc body: %s (#1171)', (cmd) => {
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = cmd;
+    const r = runGate('check-dangerous-command', env);
+    expect(r.exitCode, `quoted body should pass: ${cmd}`).toBe(0);
+  });
+
   it('allows rm -rf with a safe path', () => {
     const env = baseEnv(tmpDir);
     env.TOOL_INPUT_command = 'rm -rf ./node_modules';
@@ -564,6 +608,13 @@ describe('gate.cjs: check-bash-memory BLOCK (#1132)', () => {
     ['Get-Content src\\foo.ts', 'PowerShell Get-Content'],
     ['gc src\\foo.ts', 'PowerShell gc alias'],
     ['Select-String "pattern" src\\', 'PowerShell Select-String'],
+    // #1171 — PS-native exploration forms covered by the widened matcher.
+    ['Get-ChildItem -Recurse src\\', 'PowerShell Get-ChildItem -Recurse'],
+    ['Get-ChildItem -Path src\\ -Recurse -Filter *.ts', 'gci with flags + -Recurse'],
+    ['gci -Recurse', 'PowerShell gci alias with -Recurse'],
+    ['dir /s', 'cmd-style dir /s'],
+    ['dir src\\ /S', 'cmd-style dir /S uppercase'],
+    ['Format-Hex C:\\file.bin', 'PowerShell Format-Hex'],
   ];
 
   for (const [cmd, label] of block) {
@@ -594,6 +645,22 @@ describe('gate.cjs: check-bash-memory BLOCK (#1132)', () => {
     ['npm test 2>&1 | grep FAIL', 'pipe-grep filter'],
     ['ls src/ | head -5', 'pipe-head filter'],
     ['curl https://x | jq .', 'curl piped to jq'],
+    // #1171 — PS introspection / metadata cmdlets that LOOK read-shaped but
+    // are not content reads; the matcher widening must not gate them.
+    ['Get-Process node', 'PS Get-Process'],
+    ['Get-Service moflo', 'PS Get-Service'],
+    ['Get-Module', 'PS Get-Module'],
+    ['Get-Command flo', 'PS Get-Command'],
+    ['Get-Help Get-ChildItem', 'PS Get-Help'],
+    ['Test-Path .\\package.json', 'PS Test-Path'],
+    ['Resolve-Path src\\', 'PS Resolve-Path'],
+    ['Get-ChildItem src\\', 'PS Get-ChildItem (no -Recurse)'],
+    ['gci', 'PS gci alias (no -Recurse)'],
+    // #1171 cross-platform — POSIX `dir` is aliased to `ls -l` on many distros.
+    // `dir -s` (sort-by-size flag) is a legitimate non-recursive listing and
+    // MUST NOT trip the gate. Only the Windows `dir /s` form is blocked.
+    ['dir -s', 'POSIX dir -s (sort-by-size, not recursive)'],
+    ['dir --sort=size src/', 'POSIX dir --sort=size'],
   ];
 
   for (const [cmd, label] of pass) {

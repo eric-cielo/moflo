@@ -59,8 +59,10 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
 export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   'check-before-scan':       { event: 'PreToolUse',       matcher: '^(Glob|Grep)$',              hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-scan', timeout: 3000 } },
   'check-before-read':       { event: 'PreToolUse',       matcher: '^Read$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-read', timeout: 3000 } },
-  'check-dangerous-command':  { event: 'PreToolUse',       matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-dangerous-command', timeout: 2000 } },
-  'check-before-pr':          { event: 'PreToolUse',       matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-pr', timeout: 2000 } },
+  // #1171 — matchers widened to cover `PowerShell` tool; the gate logic was
+  // always shell-agnostic but the matcher was Bash-anchored, leaving a bypass.
+  'check-dangerous-command':  { event: 'PreToolUse',       matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-dangerous-command', timeout: 2000 } },
+  'check-before-pr':          { event: 'PreToolUse',       matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-pr', timeout: 2000 } },
   'record-task-created':      { event: 'PostToolUse',      matcher: '^TaskCreate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-task-created', timeout: 2000 } },
   // record-memory-searched MUST go through gate-hook.mjs (not gate.cjs directly)
   // — the wrapper forwards Claude Code's session_id as HOOK_SESSION_ID, which
@@ -72,8 +74,10 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   'record-memory-searched':   { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched', timeout: 3000 } },
   'check-task-transition':    { event: 'PostToolUse',      matcher: '^TaskUpdate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-task-transition', timeout: 2000 } },
   'record-learnings-stored':  { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_store$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored', timeout: 2000 } },
-  'check-bash-memory':        { event: 'PostToolUse',      matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
-  'record-test-run':          { event: 'PostToolUse',      matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-test-run', timeout: 2000 } },
+  // #1171 — widened to ^(Bash|PowerShell)$ so PS reads / PS-invoked tests credit
+  // the same gates as Bash. Name kept as `check-bash-memory` for backwards compat.
+  'check-bash-memory':        { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
+  'record-test-run':          { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-test-run', timeout: 2000 } },
   'record-skill-run':         { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-skill-run', timeout: 2000 } },
   'reset-edit-gates':         { event: 'PostToolUse',      matcher: '^(Write|Edit|MultiEdit)$',   hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" reset-edit-gates', timeout: 2000 } },
   // #931 — Agent-time advisory; never blocks. Pulled the TaskCreate REMINDER
@@ -238,6 +242,36 @@ export const MATCHER_REWRITE_RULES: ReadonlyArray<MatcherRewriteRule> = [
     from: 'mcp__moflo__memory_',
     to: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$',
     cmdContains: 'record-memory-searched',
+  },
+  // Issue #1171 — widen Bash-only matchers to cover the dedicated `PowerShell`
+  // tool Claude Code exposes on Windows. The gate logic itself was already
+  // shell-agnostic (gate.cjs READ_LIKE_BASH_RE matched `Get-Content`/`Select-String`/etc.)
+  // but a Bash-anchored matcher meant PS-tool calls never reached the gate.
+  // One rewrite per gate command keeps the `cmdContains` guard precise, so an
+  // unrelated user-customised `^Bash$` block doesn't get widened.
+  {
+    name: '#1171: widen check-dangerous-command matcher to PowerShell',
+    from: '^Bash$',
+    to: '^(Bash|PowerShell)$',
+    cmdContains: 'check-dangerous-command',
+  },
+  {
+    name: '#1171: widen check-before-pr matcher to PowerShell',
+    from: '^Bash$',
+    to: '^(Bash|PowerShell)$',
+    cmdContains: 'check-before-pr',
+  },
+  {
+    name: '#1171: widen check-bash-memory matcher to PowerShell',
+    from: '^Bash$',
+    to: '^(Bash|PowerShell)$',
+    cmdContains: 'check-bash-memory',
+  },
+  {
+    name: '#1171: widen record-test-run matcher to PowerShell',
+    from: '^Bash$',
+    to: '^(Bash|PowerShell)$',
+    cmdContains: 'record-test-run',
   },
 ];
 

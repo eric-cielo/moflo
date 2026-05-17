@@ -105,7 +105,9 @@ export function getReferenceHookBlock(): HooksTree {
       { matcher: '^(Glob|Grep)$',             hooks: [gateHook('check-before-scan', 3000)] },
       { matcher: '^Read$',                    hooks: [gateHook('check-before-read', 3000)] },
       {
-        matcher: '^Bash$',
+        // #1171 — widened to cover `PowerShell` tool; without this PS-tool
+        // calls bypass the dangerous/pr/memory gates on Windows.
+        matcher: '^(Bash|PowerShell)$',
         hooks: [
           gateHook('check-dangerous-command', 2000),
           gateHook('check-before-pr', 2000),
@@ -127,7 +129,8 @@ export function getReferenceHookBlock(): HooksTree {
       { matcher: '^TaskCreate$',                  hooks: [gateCjs('record-task-created', 2000)] },
       {
         // #1132 — check-bash-memory moved to PreToolUse (above).
-        matcher: '^Bash$',
+        // #1171 — widened to cover `PowerShell` tool.
+        matcher: '^(Bash|PowerShell)$',
         hooks: [gateHook('record-test-run', 2000)],
       },
       { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000)] },

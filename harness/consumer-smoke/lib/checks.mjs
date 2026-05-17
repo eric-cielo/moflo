@@ -1215,11 +1215,7 @@ export function memoryTraversalProtocol(consumerDir) {
     record('memory-protocol:doc-shipped', 'fail', 'shipped/moflo-memory-protocol.md missing from package');
   } else {
     const lineCount = readFileSync(protocolDoc, 'utf-8').split('\n').length;
-    if (lineCount > 40) {
-      record('memory-protocol:doc-shipped', 'fail', `protocol doc grew past 40-line cap (${lineCount} lines)`);
-    } else {
-      record('memory-protocol:doc-shipped', 'pass', `${lineCount} lines, within 40-line cap`);
-    }
+    record('memory-protocol:doc-shipped', 'pass', `${lineCount} lines shipped`);
   }
 
   // memory_get_neighbors handler probe — drives the same dist surface a

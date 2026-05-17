@@ -126,8 +126,9 @@ describe('computeHookBlockDrift — AC test cases', () => {
     // The launcher handles "no rewrite when extras exist" — this test only
     // proves the report surfaces the modification.
     const consumer = JSON.parse(JSON.stringify(getReferenceHookBlock())) as Record<string, unknown[]>;
+    // #1171 — Bash-shaped block matcher widened to `^(Bash|PowerShell)$`
     const bashBlock = (consumer.PreToolUse as Array<{ matcher?: string; hooks: Array<{ command: string }> }>)
-      .find(b => b.matcher === '^Bash$')!;
+      .find(b => b.matcher === '^(Bash|PowerShell)$')!;
     const target = bashBlock.hooks.find(h => h.command.includes('check-dangerous-command'))!;
     target.command = target.command + ' --my-custom-flag';
 
@@ -302,7 +303,8 @@ describe('formatDriftReport', () => {
     expect(formatted).toContain('drift detected');
     expect(formatted).toContain('missing');
     expect(formatted).toContain('extra');
-    // Human-readable: contains event names + matcher + command
-    expect(formatted).toMatch(/PreToolUse.*\^Bash\$/);
+    // Human-readable: contains event names + matcher + command.
+    // #1171 — Bash-shaped block matcher widened to `^(Bash|PowerShell)$`.
+    expect(formatted).toMatch(/PreToolUse.*\^\(Bash\|PowerShell\)\$/);
   });
 });
