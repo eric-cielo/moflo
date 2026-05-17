@@ -176,6 +176,21 @@ Checks: Node version (20+), Git, config validity, daemon status, memory database
 
 ---
 
+## Monorepo Layout
+
+**Purpose:** prevent the most common moflo misconfig — daemon islands in monorepos (#1174).
+
+| Rule | Why |
+|------|-----|
+| One `.moflo/` per monorepo, at the repo root | The daemon, MCP server, and CLI all walk up from `cwd` to locate state. Two `.moflo/` directories under one tree means two daemons with separate sockets, ports, and registries — the MCP server bound to one will not see tools/state from the other. |
+| Never run `flo init` inside a sub-workspace of an existing moflo project | `flo init` refuses by default when an ancestor `.moflo/moflo.db` is detected. `--force` overrides if you genuinely want isolated state. |
+| `flo doctor` flags every nested `.moflo/` it finds | Component name: `nested-moflo`. Status warns when any island exists. |
+| `flo doctor --fix -c nested-moflo` archives each nested directory | Renames `<sub>/.moflo` → `<sub>/.moflo-archived-<ISO>` (never deletes). Manual review path: archived directories stay on disk. |
+
+The resolver (`findProjectRoot`) prefers the topmost ancestor with `.moflo/moflo.db` so every cwd in the tree agrees on the canonical anchor. If `CLAUDE_PROJECT_DIR` is set explicitly, it overrides this — only use that override when you intend isolated state.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -188,6 +203,7 @@ Checks: Node version (20+), Git, config validity, daemon status, memory database
 | Embeddings fail offline / air-gapped | `fastembed` model cache missing | Pre-populate `~/.cache/fastembed` or set `FASTEMBED_CACHE` (see `docs/modules/embeddings.md`) |
 | `flo` command not found | Not in PATH | Use `npx flo` or `node node_modules/moflo/bin/index-guidance.mjs` |
 | Bundled guidance not indexed | Running inside the moflo repo | Bundled guidance only indexes when installed as a dependency in a different project |
+| `mcp__moflo__*` tools missing in monorepo session | Nested `.moflo/` directories spawned separate daemons (#1174) | Run `flo doctor -c nested-moflo`; if any are found, `flo doctor --fix -c nested-moflo` archives them. Restart Claude Code to reconnect. |
 
 See `.claude/guidance/moflo-memory-strategy.md` for memory-specific troubleshooting and `.claude/guidance/moflo-spell-troubleshooting.md` for spell sandbox/network failures.
 

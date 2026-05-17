@@ -118,3 +118,20 @@ export function memoryDbCandidatePaths(projectRoot: string): string[] {
   ];
 }
 
+/**
+ * Common skip-list for any walk that enumerates a project's children looking
+ * for moflo state. Shared by `bin/session-start-launcher.mjs` (depth-1 walk)
+ * and `doctor-checks-config.ts` (depth-5 BFS) so the two can't silently
+ * diverge.
+ *
+ * Twin of `bin/lib/moflo-paths.mjs:COMMON_WALK_SKIP_NAMES`. Matched
+ * case-insensitively at every call site — Windows NTFS + macOS APFS are
+ * case-insensitive by default.
+ */
+export const COMMON_WALK_SKIP_NAMES: ReadonlySet<string> = new Set([
+  'node_modules', '.git', '.svn', '.hg',
+  'dist', 'build', 'out', 'target', '.next', '.nuxt', '.cache',
+  'coverage', '.idea', '.vscode', '.turbo', '.svelte-kit',
+  'vendor', '__pycache__', '.venv', 'venv', '.tox',
+]);
+

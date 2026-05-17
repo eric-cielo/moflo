@@ -4,8 +4,8 @@
  * test directories.
  */
 
-import { existsSync, readFileSync, statSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { join, relative } from 'path';
 import os from 'os';
 import {
   findProjectDaemonPids,
@@ -19,6 +19,7 @@ import {
   normalizeProjectRoot,
 } from '../services/daemon-port.js';
 import {
+  COMMON_WALK_SKIP_NAMES,
   LEGACY_SWARM_DIR,
   legacyMemoryDbPath,
   memoryDbCandidatePaths,
@@ -355,6 +356,146 @@ export async function checkSwarmResidue(): Promise<HealthCheck> {
     status: 'warn',
     message: `${present.length} legacy artifact(s) in .swarm/: ${present.join(', ')}`,
     fix: 'flo healer --fix -c swarm-residue',
+  };
+}
+
+/**
+ * Walk downward from `root` (BFS, bounded) collecting every `.moflo/moflo.db`
+ * outside `root` itself. Skips `node_modules`, `.git`, dot-prefixed temp dirs,
+ * and any `.moflo*` directory (so archived residue from `flo doctor --fix`
+ * doesn't keep re-tripping the check). Depth-bounded to avoid pathological
+ * walks in massive monorepos — most consumer layouts nest at most 2-3 levels.
+ *
+ * `truncated` is set when any branch of the walk hit `maxDepth` without
+ * finishing — a deeper nested island could be hiding past the limit. The
+ * doctor check surfaces this so the user knows to inspect manually.
+ *
+ * Skip-list match is case-INSENSITIVE because Windows NTFS and macOS APFS are
+ * case-insensitive by default — `Node_Modules` should be skipped just like
+ * `node_modules`. POSIX hits the lowercased path 100% of the time anyway.
+ *
+ * Returned paths are the parent directories (e.g. `/repo/packages/api`, not
+ * `/repo/packages/api/.moflo`), aligned with `findProjectRoot()` semantics.
+ */
+interface NestedScanResult {
+  islands: string[];
+  truncated: boolean;
+}
+
+/**
+ * Cap on `found.length` so a pathological monorepo (or adversarial layout)
+ * can't accumulate an unbounded array. 50 islands is already 50× more than
+ * any legitimate consumer should ever have; surfacing more would just bury
+ * the actionable signal in noise. Setting `truncated = true` signals the
+ * walker stopped early so the doctor message can hint at re-running with
+ * something more targeted.
+ */
+const NESTED_BFS_MAX_FOUND = 50;
+
+function scanNestedMofloDirs(root: string, maxDepth: number = 5): NestedScanResult {
+  const found: string[] = [];
+  let truncated = false;
+
+  function walk(dir: string, depth: number): void {
+    if (found.length >= NESTED_BFS_MAX_FOUND) {
+      truncated = true;
+      return;
+    }
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const lower = entry.name.toLowerCase();
+      if (COMMON_WALK_SKIP_NAMES.has(lower)) continue;
+      // Skip any .moflo* directory — both the canonical `.moflo` (we're
+      // looking for nested ones, not this level's own) and archived
+      // `.moflo-archived-*` produced by `flo doctor --fix`.
+      if (lower.startsWith('.moflo')) continue;
+      if (entry.name.startsWith('.') && depth > 0) continue;
+      const childDir = join(dir, entry.name);
+      if (existsSync(join(childDir, '.moflo', 'moflo.db'))) {
+        found.push(childDir);
+        if (found.length >= NESTED_BFS_MAX_FOUND) {
+          truncated = true;
+          return;
+        }
+        // Don't recurse below a nested island — its own descendants would
+        // be conflated under that residue.
+        continue;
+      }
+      if (depth + 1 > maxDepth) {
+        truncated = true;
+        continue;
+      }
+      walk(childDir, depth + 1);
+      if (found.length >= NESTED_BFS_MAX_FOUND) return;
+    }
+  }
+  walk(root, 0);
+  return { islands: found, truncated };
+}
+
+function findNestedMofloDirs(root: string, maxDepth: number = 5): string[] {
+  return scanNestedMofloDirs(root, maxDepth).islands;
+}
+
+/**
+ * Public wrapper for the BFS used by `checkNestedMofloIslands`. Exposed so
+ * `doctor-fixes.ts:fixNestedMofloIslands` can enumerate the same set without
+ * duplicating the skip-list / depth-bound logic. Returns parent directories
+ * (the consumer joins `.moflo` itself).
+ */
+export function findNestedMofloDirsForFix(root: string): string[] {
+  return findNestedMofloDirs(root);
+}
+
+/**
+ * Surface nested `.moflo/moflo.db` directories — every one of them is a daemon
+ * island in a monorepo (#1174). The MCP server, daemon, and CLI tools each
+ * resolve their own anchor via cwd; pre-#1174 the resolver returned the
+ * *nearest* ancestor, so subdirectory invocations silently spawned isolated
+ * daemons with separate sockets, ports, registries, and vector state.
+ *
+ * Status semantics:
+ *  - `pass` — no nested `.moflo/` directories under the canonical project root.
+ *  - `warn` — one or more nested `.moflo/` directories detected; lists each
+ *    with its relative path. `fix` points at the auto-fix that archives them.
+ *
+ * Auto-fix (`fixNestedMofloIslands` in doctor-fixes.ts) renames each nested
+ * `.moflo/` to `.moflo-archived-<ISO>/` so the user can manually inspect or
+ * restore them. Daemons running out of those nested directories are stopped
+ * first.
+ */
+export async function checkNestedMofloIslands(cwd?: string): Promise<HealthCheck> {
+  const root = cwd ?? findProjectRoot();
+  let scan: NestedScanResult;
+  try {
+    scan = scanNestedMofloDirs(root);
+  } catch (e) {
+    return {
+      name: 'Nested .moflo/ Islands',
+      status: 'warn',
+      message: `Walk failed: ${errorDetail(e, { firstLineOnly: true })}`,
+    };
+  }
+  const { islands, truncated } = scan;
+  if (islands.length === 0) {
+    const baseMsg = 'No nested .moflo/ directories detected';
+    return {
+      name: 'Nested .moflo/ Islands',
+      status: truncated ? 'warn' : 'pass',
+      message: truncated
+        ? `${baseMsg} within depth-5 walk — deeper subtrees not inspected`
+        : baseMsg,
+    };
+  }
+  const rels = islands.map(p => relative(root, p) || '.');
+  const truncNote = truncated ? ' (walk truncated at depth 5 — deeper islands may exist)' : '';
+  return {
+    name: 'Nested .moflo/ Islands',
+    status: 'warn',
+    message: `${islands.length} nested .moflo/ ${islands.length === 1 ? 'directory' : 'directories'} (#1174): ${rels.join(', ')}${truncNote}`,
+    fix: 'flo healer --fix -c nested-moflo',
   };
 }
 

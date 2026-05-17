@@ -11,7 +11,7 @@ import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { mofloDir, findProjectRoot } from './lib/moflo-paths.mjs';
+import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
@@ -47,6 +47,23 @@ function sessionStartMirrorHeader(file) {
 // package.json / .git. Inline walks here have caused N writers to land on
 // different DBs than the bridge reads from — never reintroduce one.
 const projectRoot = findProjectRoot();
+
+// Monorepo nested-.moflo guard (#1174). After the resolver fix, findProjectRoot
+// returns the topmost ancestor with .moflo/moflo.db, so an ancestor still
+// having one of those files means CLAUDE_PROJECT_DIR pinned us inside a
+// sub-workspace, or someone reintroduced an inline walk-up. Either way, the
+// daemon spawned from here would NOT be the same one a sibling cwd in the
+// same monorepo resolves to. Emit a clear stderr warning so the user can run
+// `flo doctor --fix` to consolidate.
+try {
+  const ancestor = findAncestorMofloRoot(projectRoot);
+  if (ancestor) {
+    process.stderr.write(
+      `moflo: nested .moflo/ detected — using "${projectRoot}" while ancestor "${ancestor}" also has .moflo/moflo.db. ` +
+      `This fragments monorepo state across multiple daemons (#1174). Run "flo doctor --fix" to consolidate.\n`,
+    );
+  }
+} catch { /* diagnostic-only — must never block session start */ }
 
 // Dogfood guard (#928). When this launcher runs inside the moflo repo itself,
 // .claude/scripts/, .claude/helpers/, and .claude/guidance/ are committed git
@@ -110,6 +127,82 @@ function emitWarning(message) {
 function errMessage(err) {
   return err && err.message ? err.message : String(err);
 }
+
+// Post-upgrade monorepo consolidation notice (#1174). The resolver change in
+// 4.10.13+ flips project-root resolution from "nearest .moflo/" to "topmost
+// .moflo/". Consumers with pre-fix nested .moflo/ residue will see their
+// effective projectRoot move upward, orphaning sub-daemons and changing the
+// per-project daemon port hash. Write a one-time restart-pending.json so the
+// user (via Claude's CLAUDE.md surface-and-delete rule) sees the guidance and
+// runs `flo doctor --fix -c nested-moflo` before the gate hooks start failing.
+//
+// Sentinel state-machine — re-arms after consolidation:
+//   !sentinel && nested  → notify (write json + sentinel, emit mutation)
+//   sentinel  && nested  → silent (already notified)
+//   sentinel  && !nested → cleanup sentinel (user consolidated; re-arm)
+//   !sentinel && !nested → silent (nothing to do)
+//
+// Best-effort — never blocks session start.
+try {
+  const nestedNoticeSentinel = join(mofloDir(projectRoot), 'nested-moflo-notice-shown');
+
+  // Cheap, depth-1 downward walk: just check the immediate children of
+  // projectRoot for `.moflo/moflo.db`. The full `flo doctor` BFS is depth-5
+  // — that's for the diagnostic. Here we only need a fast signal so the
+  // launcher stays under its perf budget.
+  //
+  // Skip-list is shared with the doctor BFS via COMMON_WALK_SKIP_NAMES to
+  // prevent divergence. Only `.moflo*`-prefixed dirs are filtered separately
+  // — a `.packages/` or `.workspaces/` directory with its own moflo state is
+  // legitimate (rare, but possible) and should still be detected.
+  let firstNested = null;
+  try {
+    const entries = readdirSync(projectRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const name = entry.name;
+      if (COMMON_WALK_SKIP_NAMES.has(name.toLowerCase())) continue;
+      if (name.toLowerCase().startsWith('.moflo')) continue;
+      const childDir = join(projectRoot, name);
+      if (existsSync(join(childDir, '.moflo', 'moflo.db'))) {
+        firstNested = childDir;
+        break;
+      }
+    }
+  } catch { /* depth-1 walk failure — fall through, no notice */ }
+
+  const sentinelExists = existsSync(nestedNoticeSentinel);
+
+  if (firstNested && !sentinelExists) {
+    try {
+      mkdirSync(mofloDir(projectRoot), { recursive: true });
+      const pendingPath = join(mofloDir(projectRoot), 'restart-pending.json');
+      writeFileSync(pendingPath, JSON.stringify({
+        // schemaVersion (not the moflo package version) lets future readers
+        // branch on the notice shape if it ever evolves. The launcher's §0d
+        // version-match cleanup compares `pending.version === installedVersion`
+        // (moflo semver), so this schema field is safely ignored there.
+        schemaVersion: 1,
+        kind: 'nested-moflo',
+        message:
+          `moflo consolidates monorepo state at the repo root (#1174). Nested .moflo/ ` +
+          `directories detected (e.g. ${firstNested}). Run \`flo doctor --fix -c nested-moflo\` ` +
+          `to archive them and stop any orphaned sub-daemons.`,
+        createdAt: new Date().toISOString(),
+      }, null, 2));
+      writeFileSync(nestedNoticeSentinel, new Date().toISOString());
+      emitMutation('nested .moflo/ detected — restart-pending.json written with consolidation guidance');
+    } catch (err) {
+      emitWarning(`nested-moflo notice write failed: ${errMessage(err)}`);
+    }
+  } else if (!firstNested && sentinelExists) {
+    // User has consolidated. Clear the sentinel so a future re-introduction
+    // of nested .moflo/ re-arms the notice path.
+    try {
+      unlinkSync(nestedNoticeSentinel);
+    } catch { /* may have just been removed concurrently */ }
+  }
+} catch { /* diagnostic-only — must never block session start */ }
 
 // Manifest schema (#854 hardening). Originally `string[]`; now `{path,size}[]`
 // so the launcher can detect *content* drift, not just *missing-file* drift.
