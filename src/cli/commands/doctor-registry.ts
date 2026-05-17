@@ -44,6 +44,7 @@ import {
   checkMemoryDatabase,
   checkMemoryDbIntegrity,
   checkMofloYamlCompliance,
+  checkNestedMofloIslands,
   checkStatusLine,
   checkSwarmResidue,
   checkTestDirs,
@@ -84,6 +85,10 @@ export const allChecks: CheckFn[] = [
   checkDaemonWriteRouting,
   checkWritersAudit,
   checkMemoryDatabase,
+  // Surfaces nested `.moflo/moflo.db` directories — every nested instance is
+  // a daemon island in a monorepo (#1174). Runs cheap (depth-bounded BFS,
+  // statSync only) and independent of memory-DB integrity probes.
+  checkNestedMofloIslands,
   // Surfaces leftover `.swarm/` artifacts (memory.db, router state, logs) so
   // the auto-fix can relocate or delete them. Independent of the canonical
   // DB checks — runs cheap (statSync only).
@@ -155,6 +160,10 @@ export const componentMap: Record<string, CheckFn> = {
   'writers-audit': checkWritersAudit,
   'writers': checkWritersAudit,
   'memory': checkMemoryDatabase,
+  'nested-moflo': checkNestedMofloIslands,
+  'nested': checkNestedMofloIslands,
+  'islands': checkNestedMofloIslands,
+  'monorepo': checkNestedMofloIslands,
   'swarm-residue': checkSwarmResidue,
   'residue': checkSwarmResidue,
   'memory-db-integrity': checkMemoryDbIntegrity,

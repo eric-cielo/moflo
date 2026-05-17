@@ -62,6 +62,40 @@ export function memoryDbCandidatePaths(projectRoot) {
 }
 
 /**
+ * Walk strictly upward from `dir` (exclusive) and return the nearest ancestor
+ * that has `.moflo/moflo.db`, or `null` if none exists below the filesystem
+ * root.
+ *
+ * Used by the launcher and `flo init` to detect nested-.moflo/ situations
+ * (#1174). Post-resolver-fix `findProjectRoot` already returns the topmost
+ * memory marker, so encountering an ancestor here means either:
+ *   1. `CLAUDE_PROJECT_DIR` explicitly overrode to a sub-directory (legitimate
+ *      user action — log a warning but don't refuse), or
+ *   2. The launcher is running before any `.moflo/moflo.db` exists at the
+ *      current root (e.g. fresh init in a sub-workspace).
+ *
+ * In either case the caller wants to surface a clear diagnostic so the user
+ * can run `flo doctor --fix` to consolidate.
+ *
+ * @param {string} dir absolute path to walk up from
+ * @returns {string | null} ancestor directory containing `.moflo/moflo.db`
+ */
+export function findAncestorMofloRoot(dir) {
+  const start = resolve(dir);
+  const fsRoot = parse(start).root;
+  let cursor = dirname(start);
+  while (cursor !== fsRoot) {
+    if (existsSync(join(cursor, '.moflo', 'moflo.db'))) {
+      return cursor;
+    }
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  return null;
+}
+
+/**
  * Resolve the project root the same way the TS bridge does. Every bin/
  * script that touches `.moflo/moflo.db` (or any sibling state under
  * `.moflo/`) MUST go through this so its writes land on the SAME file the
@@ -83,15 +117,32 @@ export function findProjectRoot(opts) {
   const start = resolve(startDir);
   const fsRoot = parse(start).root;
 
-  // High-priority pass: memory markers + CLAUDE.md/package.json pair.
+  // Pass A — memory markers, topmost wins (#1174). Walks the FULL ancestor
+  // chain, returns the highest ancestor with .moflo/moflo.db or .swarm/memory.db.
+  // Guarantees the root daemon is canonical in a monorepo with nested residue.
+  let topmostMemoryMarker = null;
   let dir = start;
   while (dir !== fsRoot) {
     if (basename(dir) === 'node_modules') {
       dir = dirname(dir);
       continue;
     }
-    if (existsSync(join(dir, '.moflo', 'moflo.db'))) return dir;
-    if (existsSync(join(dir, '.swarm', 'memory.db'))) return dir;
+    if (existsSync(join(dir, '.moflo', 'moflo.db')) || existsSync(join(dir, '.swarm', 'memory.db'))) {
+      topmostMemoryMarker = dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  if (topmostMemoryMarker) return topmostMemoryMarker;
+
+  // Pass B — CLAUDE.md/package.json pair, nearest wins.
+  dir = start;
+  while (dir !== fsRoot) {
+    if (basename(dir) === 'node_modules') {
+      dir = dirname(dir);
+      continue;
+    }
     if (existsSync(join(dir, 'CLAUDE.md')) && existsSync(join(dir, 'package.json'))) {
       return dir;
     }
@@ -100,7 +151,7 @@ export function findProjectRoot(opts) {
     dir = parent;
   }
 
-  // Low-priority pass: bare package.json or .git.
+  // Pass C — bare package.json or .git, nearest wins.
   dir = start;
   while (dir !== fsRoot) {
     if (basename(dir) === 'node_modules') {

@@ -12,7 +12,7 @@ import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
-import { getDaemonLockHolder } from '../services/daemon-lock.js';
+import { findProjectDaemonPids, getDaemonLockHolder } from '../services/daemon-lock.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { legacyMemoryDbPath, legacyMemoryDbBakPath, memoryDbPath, mofloDir } from '../services/moflo-paths.js';
 import { findZombieProcesses } from './doctor-zombies.js';
@@ -246,6 +246,122 @@ async function fixSwarmLegacyResidue(): Promise<boolean> {
   }
 
   return allMigrated;
+}
+
+/**
+ * Stop any moflo daemons owned by `subRoot` before archiving its `.moflo/`.
+ *
+ * Pre-#1174 nested-daemon PIDs are not visible to the canonical orphan reap
+ * (which uses the topmost projectRoot's CLI candidate paths). Calling
+ * `findProjectDaemonPids` with the SUB-root finds them. SIGTERM first, wait a
+ * brief grace, SIGKILL if still alive. On Windows, daemons holding files in
+ * `.moflo/` would otherwise cause `renameSync` to fail with EBUSY; on POSIX,
+ * the rename succeeds but the daemon's open FDs keep pointing at the inode.
+ */
+async function stopNestedDaemons(subRoot: string): Promise<{ stopped: number[]; remaining: number[] }> {
+  let pids: number[] = [];
+  try {
+    pids = findProjectDaemonPids(subRoot);
+  } catch { return { stopped: [], remaining: [] }; }
+
+  if (pids.length === 0) return { stopped: [], remaining: [] };
+
+  const stopped: number[] = [];
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 'SIGTERM');
+      stopped.push(pid);
+    } catch { /* already gone; treat as stopped */ }
+  }
+
+  // Poll for exit with a 1s deadline (matches the daemon-service stop loop in
+  // commands/daemon.ts). Async-by-default — busy-waiting here would pin CPU
+  // during the very contention we're waiting out (see feedback memory).
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    const alive = stopped.filter(pid => {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    });
+    if (alive.length === 0) break;
+    await new Promise<void>(resolve => setTimeout(resolve, 50));
+  }
+
+  const remaining: number[] = [];
+  for (const pid of stopped) {
+    try {
+      process.kill(pid, 0); // exists check
+      // Still alive — escalate.
+      try { process.kill(pid, 'SIGKILL'); } catch { /* may have just exited */ }
+      // Re-probe after SIGKILL.
+      try { process.kill(pid, 0); remaining.push(pid); } catch { /* gone */ }
+    } catch { /* already gone */ }
+  }
+
+  return { stopped, remaining };
+}
+
+/**
+ * Archive nested `.moflo/` directories that fragment monorepo state (#1174).
+ *
+ * Each nested `.moflo/` is renamed to `.moflo-archived-<ISO>` in place. Never
+ * deletes — sub-daemon vector state can be uniquely useful (subworkspace-
+ * specific learnings) and silently dropping it would be the wrong default.
+ * The user can manually inspect or restore archived directories.
+ *
+ * Daemon reap: before each rename, `findProjectDaemonPids(island)` enumerates
+ * any moflo daemons whose cmdline references the sub-root, then SIGTERMs them
+ * (escalates to SIGKILL after 1s). This is required for both platforms:
+ *   - Windows: `renameSync` fails with EBUSY if any file is open. Without the
+ *     reap, archive silently fails until the user manually stops the daemon.
+ *   - POSIX: rename succeeds but the daemon's open FDs keep pointing at the
+ *     inode; the daemon keeps writing to a now-archived path until it exits.
+ */
+async function fixNestedMofloIslands(): Promise<boolean> {
+  const root = findProjectRoot();
+  let islands: string[];
+  try {
+    const { findNestedMofloDirsForFix } = await import('./doctor-checks-config.js');
+    islands = findNestedMofloDirsForFix(root);
+  } catch (e) {
+    output.writeln(output.warning(`  Unable to enumerate nested .moflo/: ${errorDetail(e)}`));
+    return false;
+  }
+  if (islands.length === 0) return true;
+
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  let allArchived = true;
+
+  for (const island of islands) {
+    const src = join(island, '.moflo');
+    const dst = join(island, `.moflo-archived-${ts}`);
+    if (!existsSync(src)) continue;
+
+    // Step 1: stop any sub-daemon. The canonical projectRoot-based orphan
+    // scan can't see nested daemons; we have to enumerate from the sub-root.
+    const { stopped, remaining } = await stopNestedDaemons(island);
+    if (stopped.length > 0) {
+      output.writeln(output.dim(
+        `  ${island}: stopped daemon PID${stopped.length === 1 ? '' : 's'} ${stopped.join(', ')}.`,
+      ));
+    }
+    if (remaining.length > 0) {
+      output.writeln(output.warning(
+        `  ${island}: PID${remaining.length === 1 ? '' : 's'} ${remaining.join(', ')} survived SIGKILL — manual intervention required.`,
+      ));
+    }
+
+    try {
+      renameSync(src, dst);
+      output.writeln(output.success(`  Archived: ${island}/.moflo → .moflo-archived-${ts}/`));
+    } catch (e) {
+      output.writeln(output.warning(
+        `  Failed to archive ${island}/.moflo: ${errorDetail(e)}. ` +
+        `If a process still holds files open, stop it manually and re-run \`flo doctor --fix -c nested-moflo\`.`,
+      ));
+      allArchived = false;
+    }
+  }
+  return allArchived;
 }
 
 /**
@@ -584,6 +700,13 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     // See `fixSwarmLegacyResidue` for the per-artifact policy.
     'Swarm Residue': async () => {
       return fixSwarmLegacyResidue();
+    },
+    // Archive nested `.moflo/` directories that fragment monorepo state
+    // (#1174). Rename, never delete — sub-daemon vector state can be unique
+    // and silently losing it would be the wrong default. The archive name
+    // includes an ISO timestamp so re-runs don't collide.
+    'Nested .moflo/ Islands': async () => {
+      return fixNestedMofloIslands();
     },
     'Status Line': async () => {
       const settingsPath = join(process.cwd(), '.claude', 'settings.json');

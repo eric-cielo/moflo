@@ -9,6 +9,7 @@ import { confirm, select, multiSelect, input } from '../prompt.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { findAncestorMofloRoot } from '../services/project-root.js';
 import {
   executeInit,
   executeUpgrade,
@@ -37,6 +38,44 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const skipClaude = ctx.flags.skipClaude as boolean;
   const onlyClaude = ctx.flags.onlyClaude as boolean;
   const cwd = ctx.cwd;
+
+  // ── Monorepo nested-.moflo guard (#1174) ───────────────────────────
+  // Initializing inside a sub-directory whose ancestor already has
+  // .moflo/moflo.db creates a daemon island: the MCP server, daemon, and CLI
+  // tools end up bound to different daemons depending on cwd. Default to
+  // using the ancestor's state; --force lets the user opt in to a nested
+  // setup (rare, almost always a misconfiguration).
+  const ancestorMoflo = findAncestorMofloRoot(cwd);
+  if (ancestorMoflo && !force) {
+    output.printWarning('Monorepo detected: ancestor moflo project found.');
+    output.printInfo(`  Ancestor: ${ancestorMoflo}`);
+    output.printInfo(`  This directory: ${cwd}`);
+    output.writeln();
+    output.writeln(
+      'Initializing here would create a nested .moflo/ — the MCP server and CLI tools',
+    );
+    output.writeln(
+      'would silently route to different daemons depending on cwd (issue #1174). Use the',
+    );
+    output.writeln('ancestor\'s state by running moflo commands from the ancestor instead.');
+    output.writeln();
+    if (ctx.interactive && !ctx.flags.yes) {
+      const proceed = await confirm({
+        message: 'Initialize anyway (creates a nested .moflo/)?',
+        default: false,
+      });
+      if (!proceed) {
+        output.printInfo('Aborted — use the ancestor moflo project.');
+        return { success: true, message: 'aborted by user (ancestor moflo project)' };
+      }
+    } else {
+      output.printError(
+        'Refusing to create a nested .moflo/. Pass --force to override, or re-run from the ancestor.',
+      );
+      return { success: false, message: 'refused: nested .moflo/ in monorepo', exitCode: 1 };
+    }
+  }
+  // ── End monorepo guard ─────────────────────────────────────────────
 
   // ── MoFlo Project Setup ────────────────────────────────────────────
   // Always run MoFlo init to ensure moflo.yaml, hooks, skill, and

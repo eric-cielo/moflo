@@ -98,6 +98,54 @@ const cases: Case[] = [
     },
   },
   {
+    // #1174 — Pre-fix behavior: nearest .moflo/moflo.db wins, so a session-
+    // start hook running from `subpkg` (which has its own residue .moflo/)
+    // anchored on the sub-package and spawned its own daemon. Topmost-wins
+    // means the resolver returns the workspace anchor even when nested
+    // residue exists; the residue becomes detectable by `flo doctor` instead
+    // of silently fragmenting state.
+    name: 'monorepo with nested .moflo/ residue: topmost ancestor wins (#1174)',
+    setup(rootDir) {
+      const workspace = join(rootDir, 'mono-nested');
+      const subpkg = join(workspace, 'packages', 'api');
+      const subSrc = join(subpkg, 'src');
+      mkdirSync(subSrc, { recursive: true });
+      // Workspace root .moflo/moflo.db — the canonical anchor.
+      mkdirSync(join(workspace, '.moflo'), { recursive: true });
+      writeFileSync(join(workspace, '.moflo', 'moflo.db'), 'SQLite format 3\0');
+      writeFileSync(join(workspace, 'package.json'), '{"name":"workspace"}');
+      writeFileSync(join(workspace, 'CLAUDE.md'), '# workspace');
+      // Sub-package residue .moflo/moflo.db (zombie from pre-fix flo init).
+      mkdirSync(join(subpkg, '.moflo'), { recursive: true });
+      writeFileSync(join(subpkg, '.moflo', 'moflo.db'), 'SQLite format 3\0');
+      writeFileSync(join(subpkg, 'package.json'), '{"name":"api"}');
+      writeFileSync(join(subpkg, 'CLAUDE.md'), '# api workspace');
+      return { cwd: subSrc, expected: workspace };
+    },
+  },
+  {
+    // #1174 — 2-level nesting: workspace > packages > sub. Resolver must walk
+    // all the way up even when an intermediate level also has .moflo/.
+    name: 'monorepo with 2-level nested .moflo/ residue: topmost wins (#1174)',
+    setup(rootDir) {
+      const workspace = join(rootDir, 'mono-2level');
+      const intermediate = join(workspace, 'apps', 'web');
+      const sub = join(intermediate, 'api');
+      const subSrc = join(sub, 'src');
+      mkdirSync(subSrc, { recursive: true });
+      mkdirSync(join(workspace, '.moflo'), { recursive: true });
+      writeFileSync(join(workspace, '.moflo', 'moflo.db'), 'SQLite format 3\0');
+      writeFileSync(join(workspace, 'package.json'), '{"name":"workspace"}');
+      mkdirSync(join(intermediate, '.moflo'), { recursive: true });
+      writeFileSync(join(intermediate, '.moflo', 'moflo.db'), 'SQLite format 3\0');
+      writeFileSync(join(intermediate, 'package.json'), '{"name":"web"}');
+      mkdirSync(join(sub, '.moflo'), { recursive: true });
+      writeFileSync(join(sub, '.moflo', 'moflo.db'), 'SQLite format 3\0');
+      writeFileSync(join(sub, 'package.json'), '{"name":"api"}');
+      return { cwd: subSrc, expected: workspace };
+    },
+  },
+  {
     name: 'legacy .swarm/memory.db marker also wins over nested package.json',
     setup(rootDir) {
       const workspace = join(rootDir, 'legacy');

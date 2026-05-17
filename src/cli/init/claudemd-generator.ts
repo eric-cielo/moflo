@@ -53,6 +53,10 @@ Prefer MCP (\`mcp__moflo__*\` — memory, swarm, agent, task, hooks, hive-mind, 
 
 After \`npm install\` touches moflo, check \`.moflo/restart-pending.json\` — if present, surface its \`message\` field to the user verbatim, then delete the file. (Claude Code only loads new hooks/MCP/launcher at session start.)
 
+### Monorepos
+
+Moflo state lives at the monorepo root \`.moflo/\` — never run \`flo init\` inside a sub-workspace of an existing moflo project, or the MCP server and CLI silently bind to different daemons (issue #1174).
+
 ### Full Reference
 
 - Universal agent rules (memory protocol, git/PR conventions, file org, build/test): \`.claude/guidance/moflo-agent-rules.md\`

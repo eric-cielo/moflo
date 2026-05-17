@@ -101,6 +101,43 @@ function buildDefaultOptions(): Required<MCPServerOptions> {
 }
 
 /**
+ * Best-effort append to the MCP log file. Errors are swallowed — logging must
+ * never crash the MCP server. Used to capture server start, project root
+ * resolution, and per-request timing so we never repeat the 18-hour
+ * diagnostic blind window from #1174.
+ *
+ * Rotation: when the log exceeds {@link MCP_LOG_ROTATE_BYTES}, rename it to
+ * `<logFile>.1` (overwriting any previous rotated file). One rotation level
+ * keeps the most recent ~50MB of activity plus the previous ~50MB. A long-
+ * running session with heavy MCP traffic can otherwise write hundreds of MB.
+ *
+ * Cross-platform: uses fs.appendFileSync + fs.mkdirSync({recursive:true}) +
+ * fs.renameSync. All three work identically on Windows/macOS/Linux. Windows
+ * note: renameSync can fail with EBUSY if the file is open by another
+ * process; we use append-only here so no other writer should hold it, but
+ * the rename is wrapped in a try/catch so a transient rotation failure can't
+ * crash the MCP server (next append succeeds; rotation retries next time).
+ */
+const MCP_LOG_ROTATE_BYTES = 50 * 1024 * 1024;
+function safeAppendMcpLog(logFile: string, event: Record<string, unknown>): void {
+  try {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    // Rotate before append so the very write that crosses the threshold
+    // lands in the fresh file rather than the rotated one.
+    try {
+      const stats = fs.statSync(logFile);
+      if (stats.size >= MCP_LOG_ROTATE_BYTES) {
+        const rotated = `${logFile}.1`;
+        try { fs.unlinkSync(rotated); } catch { /* may not exist */ }
+        fs.renameSync(logFile, rotated);
+      }
+    } catch { /* file may not exist yet; first write creates it */ }
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...event }) + '\n';
+    fs.appendFileSync(logFile, line, 'utf-8');
+  } catch { /* logging must never throw */ }
+}
+
+/**
  * MCP Server Manager
  *
  * Manages the lifecycle of the MCP server process
@@ -321,6 +358,28 @@ export class MCPServerManager extends EventEmitter {
       version: VERSION,
     }));
 
+    // Persistent log (#1174). The MCP server previously logged only to stderr,
+    // which Claude Code drops on the floor unless the user runs `claude
+    // --debug`. The 18-hour daemon-island incident took that long to diagnose
+    // partly because no on-disk log captured server start, the resolved
+    // project root, or the request stream. Default-on JSONL log fixes that.
+    const resolvedProjectRoot = findProjectRoot();
+    safeAppendMcpLog(this.options.logFile, {
+      event: 'server.start',
+      sessionId,
+      version: VERSION,
+      pid: process.pid,
+      ppid: process.ppid,
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.version,
+      cwd: process.cwd(),
+      projectRoot: resolvedProjectRoot,
+      claudeProjectDir: process.env.CLAUDE_PROJECT_DIR || null,
+      pidFile: this.options.pidFile,
+      logFile: this.options.logFile,
+    });
+
     // Send server initialization notification
     console.log(JSON.stringify({
       jsonrpc: '2.0',
@@ -483,8 +542,16 @@ export class MCPServerManager extends EventEmitter {
             },
           };
 
-        case 'tools/list':
+        case 'tools/list': {
+          const listStart = performance.now();
           const tools = listMCPTools();
+          const durationMs = performance.now() - listStart;
+          safeAppendMcpLog(this.options.logFile, {
+            event: 'tools/list',
+            sessionId,
+            count: tools.length,
+            durationMs: Math.round(durationMs * 100) / 100,
+          });
           return {
             jsonrpc: '2.0',
             id: message.id,
@@ -496,12 +563,18 @@ export class MCPServerManager extends EventEmitter {
               })),
             },
           };
+        }
 
-        case 'tools/call':
+        case 'tools/call': {
           const toolName = params.name as string;
           const toolParams = (params.arguments || {}) as Record<string, unknown>;
 
           if (!hasTool(toolName)) {
+            safeAppendMcpLog(this.options.logFile, {
+              event: 'tools/call.unknown',
+              sessionId,
+              toolName,
+            });
             return {
               jsonrpc: '2.0',
               id: message.id,
@@ -509,14 +582,30 @@ export class MCPServerManager extends EventEmitter {
             };
           }
 
+          const callStart = performance.now();
           try {
             const result = await callMCPTool(toolName, toolParams, { sessionId });
+            const durationMs = performance.now() - callStart;
+            safeAppendMcpLog(this.options.logFile, {
+              event: 'tools/call.ok',
+              sessionId,
+              toolName,
+              durationMs: Math.round(durationMs * 100) / 100,
+            });
             return {
               jsonrpc: '2.0',
               id: message.id,
               result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
             };
           } catch (error) {
+            const durationMs = performance.now() - callStart;
+            safeAppendMcpLog(this.options.logFile, {
+              event: 'tools/call.error',
+              sessionId,
+              toolName,
+              durationMs: Math.round(durationMs * 100) / 100,
+              error: error instanceof Error ? error.message : 'Tool execution failed',
+            });
             return {
               jsonrpc: '2.0',
               id: message.id,
@@ -526,6 +615,7 @@ export class MCPServerManager extends EventEmitter {
               },
             };
           }
+        }
 
         case 'notifications/initialized':
           // Client notification - no response needed
