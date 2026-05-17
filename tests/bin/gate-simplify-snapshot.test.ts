@@ -39,6 +39,12 @@ function makeTmpRepo(): string {
   execSync('git init -q -b main', { cwd: dir });
   execSync('git config user.email "test@example.com"', { cwd: dir });
   execSync('git config user.name "Test"', { cwd: dir });
+  // Ignore the gate's own state file so subsequent `git add -A` calls don't
+  // sweep workflow-state.json (rewritten by gate.cjs on every record-skill-run)
+  // into the test commit and inflate the snap-to-HEAD diff. Pre-#1176 tests
+  // happened to pass anyway because the baseline path masked the contamination
+  // (snapshot returned null silently, baseline TRIVIAL on empty branch diff).
+  writeFileSync(join(dir, '.gitignore'), '.claude/workflow-state.json\n');
   // Seed an initial commit so HEAD exists and merge-base resolves.
   writeFileSync(join(dir, 'src.ts'), 'export const X = 1;\n');
   execSync('git add -A', { cwd: dir });
@@ -209,6 +215,165 @@ describe('gate baseline path — TRIVIAL whole-branch diff auto-passes', () => {
     env.TOOL_INPUT_command = 'gh pr create --title "feat"';
     const r = runGate('check-before-pr', env);
     expect(r.exitCode, 'non-trivial branch should block').toBe(2);
+    expect(r.stderr).toContain('/flo-simplify has not run');
+  });
+});
+
+describe('gate no-source-files exemption — check-before-pr (#1176)', () => {
+  // The DOCS_ONLY path used to skip the testing/simplify/learnings gates only
+  // when EVERY changed file was a doc/image. #1176 widens that to "no source
+  // files" — YAML, JSON, lockfiles, .github/workflows, and templates all count
+  // as inert at PR-creation time. Tests live here (not gate-helpers.test.ts)
+  // because the exemption queries real git for the branch diff.
+
+  it('YAML+MD+skill diff (zero source files) auto-passes gh pr create', () => {
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    // Mimic PR #1175: workflow YAML + skill markdown + guidance markdown.
+    mkdirSync(join(tmpDir, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(tmpDir, '.claude', 'skills', 'flo'), { recursive: true });
+    mkdirSync(join(tmpDir, '.claude', 'guidance'), { recursive: true });
+    writeFileSync(join(tmpDir, '.github', 'workflows', 'ci.yml'), 'name: ci\non: [push]\n');
+    writeFileSync(join(tmpDir, '.claude', 'skills', 'flo', 'SKILL.md'), '# flo\n');
+    writeFileSync(join(tmpDir, '.claude', 'guidance', 'foo.md'), '# foo\n');
+    execSync('git add -A && git commit -q -m "yaml + md only"', { cwd: tmpDir });
+
+    // No gates satisfied — exact scenario the user flagged on PR #1175.
+    writeState(tmpDir, { testsRun: false, simplifyRun: false, learningsStored: false });
+    env.TOOL_INPUT_command = 'gh pr create --title "yaml-only"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, `expected pass, stderr=${r.stderr} stdout=${r.stdout}`).toBe(0);
+    expect(r.stdout).toMatch(/skipping testing\/simplify\/learnings gates/i);
+  });
+
+  it('docs-only diff still uses the more specific "Docs-only" message', () => {
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    writeFileSync(join(tmpDir, 'README.md'), '# new docs\n');
+    execSync('git add -A && git commit -q -m "docs"', { cwd: tmpDir });
+
+    writeState(tmpDir, { testsRun: false, simplifyRun: false, learningsStored: false });
+    env.TOOL_INPUT_command = 'gh pr create --title "docs"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toMatch(/^Docs-only/i);
+  });
+
+  it('mixed YAML+TS diff (has source files) does NOT auto-pass', () => {
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    mkdirSync(join(tmpDir, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, '.github', 'workflows', 'ci.yml'), 'name: ci\n');
+    // One TS file in the diff means the gate must still demand tests/simplify.
+    writeFileSync(join(tmpDir, 'src', 'feature.ts'), 'export const NEW = 1;\n');
+    execSync('git add -A && git commit -q -m "mixed"', { cwd: tmpDir });
+
+    writeState(tmpDir, { testsRun: false, simplifyRun: false, learningsStored: false });
+    env.TOOL_INPUT_command = 'gh pr create --title "mixed"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, 'has TS file — gate must still block').toBe(2);
+    expect(r.stderr).toContain('tests have not run');
+  });
+
+  it('source extension inside .github/workflows/ still counts as inert (#1176)', () => {
+    // A `.github/workflows/foo.sh` script extension would normally classify as
+    // source, but its path is inert — the bypass should honor path-inertness.
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    mkdirSync(join(tmpDir, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(tmpDir, '.github', 'workflows', 'helper.sh'), '#!/bin/bash\necho hi\n');
+    execSync('git add -A && git commit -q -m "workflow helper"', { cwd: tmpDir });
+
+    writeState(tmpDir, { testsRun: false, simplifyRun: false, learningsStored: false });
+    env.TOOL_INPUT_command = 'gh pr create --title "workflow"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, `expected pass, stderr=${r.stderr}`).toBe(0);
+    expect(r.stdout).toMatch(/skipping testing\/simplify\/learnings gates/i);
+  });
+});
+
+describe('gate SMALL review-fix shape — snapshot path (#1176)', () => {
+  // The pre-#1176 snapshot path only auto-passed TRIVIAL deltas. A 3-line
+  // review-fix on top of a SMALL diff that /flo-simplify already reviewed
+  // would re-trigger a full review even though the new delta added zero
+  // declarations. The SMALL ≤30-LOC no-new-decls extension covers that case
+  // — but only on the snapshot path (already-reviewed surface). Baseline
+  // path stays TRIVIAL-only so brand-new SMALL features still get reviewed.
+
+  it('15-line review-fix with no new declarations auto-passes after /simplify', () => {
+    const env = baseEnv(tmpDir);
+    // Branch off main so merge-base != HEAD — otherwise the baseline path's
+    // empty branch diff trips TRIVIAL before the snapshot path's SMALL hit
+    // is observable via the stdout message. Mirrors how real PRs work.
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    env.TOOL_INPUT_skill = 'simplify';
+    runGate('record-skill-run', env);
+    const s = readState(tmpDir) as any;
+    expect(typeof s.simplifySnapshotSha, 'snapshot SHA must be stamped').toBe('string');
+    s.simplifyRun = false; // simulate post-edit reset
+    s.testsRun = true;
+    s.learningsStored = true;
+    writeState(tmpDir, s);
+
+    // 15-line tweak across one file: clarify comments, no new declarations.
+    const tweaked =
+      'export const X = 1;\n' +
+      Array(14).fill('// review fix: clarify intent').join('\n') + '\n';
+    writeFileSync(join(tmpDir, 'src.ts'), tweaked);
+    execSync('git add -A && git commit -q -m "apply review fixes"', { cwd: tmpDir });
+
+    env.TOOL_INPUT_command = 'gh pr create --title "review fixes"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, `expected pass, stderr=${r.stderr} stdout=${r.stdout}`).toBe(0);
+    expect(r.stdout).toMatch(/SMALL review-fix shape/i);
+  });
+
+  it('SMALL delta with a NEW declaration still blocks (snapshot path)', () => {
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+
+    env.TOOL_INPUT_skill = 'simplify';
+    runGate('record-skill-run', env);
+    const s = readState(tmpDir) as any;
+    s.simplifyRun = false;
+    s.testsRun = true;
+    s.learningsStored = true;
+    writeState(tmpDir, s);
+
+    // 8-line edit but introduces a new exported function — auto-pass must NOT
+    // fire, because new declarations are new surface that wasn't reviewed.
+    writeFileSync(
+      join(tmpDir, 'src.ts'),
+      'export const X = 1;\nexport function newFn() {\n  return 42;\n}\n',
+    );
+    execSync('git add -A && git commit -q -m "new fn"', { cwd: tmpDir });
+
+    env.TOOL_INPUT_command = 'gh pr create --title "feat"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, 'new declaration must keep blocking').toBe(2);
+    expect(r.stderr).toContain('/flo-simplify has not run');
+  });
+
+  it('SMALL baseline (no snapshot) STILL blocks — auto-skip is snapshot-only', () => {
+    // Without a prior /simplify run, the baseline path classifies the whole
+    // branch and only auto-passes TRIVIAL. A SMALL no-decl diff with no
+    // snapshot is brand-new code, however small — must still go through review.
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+
+    // 15 lines, no declarations — would pass on the SNAPSHOT path with /simplify
+    // run, but no /simplify happened so we're on the BASELINE path.
+    const tweaked =
+      'export const X = 1;\n' +
+      Array(14).fill('// baseline note').join('\n') + '\n';
+    writeFileSync(join(tmpDir, 'src.ts'), tweaked);
+    execSync('git add -A && git commit -q -m "no review yet"', { cwd: tmpDir });
+
+    writeState(tmpDir, { testsRun: true, simplifyRun: false, learningsStored: true });
+    env.TOOL_INPUT_command = 'gh pr create --title "small new"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, 'baseline SMALL must keep blocking').toBe(2);
     expect(r.stderr).toContain('/flo-simplify has not run');
   });
 });
