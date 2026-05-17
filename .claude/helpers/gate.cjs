@@ -169,7 +169,10 @@ function stripQuotedAndHeredocs(cmd) {
   // Bash heredocs are multi-line; in single-line tool inputs they show up as the
   // tail after `<<TOKEN`. Conservative tail-strip — benign content after a heredoc
   // body on the same logical line is also stripped, harmless for this gate.
-  out = out.replace(/<<-?\s*['"]?\w+['"]?[\s\S]*$/, '');
+  // Token class includes `-` so hyphenated heredoc tags (`<<END-OF-DOC`) match
+  // the full token, not just the leading word — without this the strip would
+  // halt at `<<END` and leave `-OF-DOC` plus the body as literal text.
+  out = out.replace(/<<-?\s*['"]?[\w-]+['"]?[\s\S]*$/, '');
   // Here-string `<<<word` — strip the word.
   out = out.replace(/<<<\s*\S+/g, '');
   // Single-quoted strings — no escapes inside single quotes in sh/bash.

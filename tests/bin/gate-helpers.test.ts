@@ -234,6 +234,10 @@ describe('gate.cjs: check-dangerous-command', () => {
     ['gh pr create --body "fixes remove-item -recurse -force / issue"', 'gh pr create with dangerous string in body arg'],
     // Heredoc with dangerous body — strips from `<<EOF` through end-of-input.
     ['git commit -F - <<EOF\nfix: remove-item -recurse -force c:\\\nEOF', 'heredoc body with dangerous-shaped text'],
+    // Hyphenated heredoc token — `\w+` would halt at `END` and leak `-OF-DOC`
+    // plus the dangerous body; `[\w-]+` matches the full token. Regression
+    // guard for the edge case the SMALL reviewer flagged.
+    ['cat <<END-OF-DOC\nformat-volume target=D\nEND-OF-DOC', 'hyphenated heredoc token strips the full body'],
     // Escaped double-quote inside a quoted body — regex must NOT terminate
     // the strip on the `\"` and leak the remainder.
     ['git commit -m "fix \\"remove-item -recurse -force c:\\\\\\" handling"', 'escaped quote inside quoted body must not leak'],

@@ -301,7 +301,7 @@ var BASH_CARVE_OUT_RE = /^\\s*(npm|npx|pnpm|yarn|bun|node|deno|tsx|ts-node)\\s|^
 // bodies are intentionally not stripped (those execute).
 function stripQuotedAndHeredocs(cmd) {
   var out = cmd;
-  out = out.replace(/<<-?\\s*['"]?\\w+['"]?[\\s\\S]*$/, '');
+  out = out.replace(/<<-?\\s*['"]?[\\w-]+['"]?[\\s\\S]*$/, '');
   out = out.replace(/<<<\\s*\\S+/g, '');
   out = out.replace(/'[^']*'/g, "''");
   out = out.replace(/"(?:[^"\\\\]|\\\\.)*"/g, '""');
