@@ -204,6 +204,22 @@ describe('gate.cjs: check-dangerous-command', () => {
     expect(r.exitCode).toBe(2);
   });
 
+  // #1171 — PowerShell destructive cmdlets added when the matcher widened to
+  // include the dedicated `PowerShell` tool. Case-insensitive substring match,
+  // symmetric to the POSIX entries above.
+  it.each([
+    ['Remove-Item -Recurse -Force C:\\', 'PS recursive force-remove of C: drive'],
+    ['Remove-Item -Recurse -Force /', 'PS recursive force-remove of POSIX root'],
+    ['Remove-Item -Recurse -Force ~', 'PS recursive force-remove of home dir'],
+    ['Format-Volume -DriveLetter D', 'PS Format-Volume'],
+    ['Clear-Disk -Number 0 -RemoveData', 'PS Clear-Disk'],
+  ])('blocks PS dangerous: %s (#1171)', (cmd) => {
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = cmd;
+    const r = runGate('check-dangerous-command', env);
+    expect(r.exitCode).toBe(2);
+  });
+
   it('allows rm -rf with a safe path', () => {
     const env = baseEnv(tmpDir);
     env.TOOL_INPUT_command = 'rm -rf ./node_modules';
