@@ -74,11 +74,11 @@ Skip this and you'll either waste a session debugging code that isn't running, s
 
 ### FIRST ACTION ON EVERY PROMPT: Search Memory
 
-Your first tool call MUST be `mcp__moflo__memory_search` — before any Glob/Grep/Read. Search `guidance`, `patterns`, and `learnings` every prompt; add `code-map` when navigating code, `tests` when looking for test inventory or coverage. When the user says "remember this", call `mcp__moflo__memory_store` with namespace `learnings`.
+Your first tool call MUST be `mcp__moflo__memory_search` — before any Glob/Grep/Read. Pick the namespace by question shape: `code-map` for "where is symbol X defined", `tests` for "what tests cover Y", `patterns` for "what's our pattern for Z", `guidance` for project rules, `learnings` for "did we hit this before". Pivot on the bare symbol/keyword (not a natural-language question), and trust similarity ≥ 0.80 as a confident hit. When the user says "remember this", call `mcp__moflo__memory_store` with namespace `learnings`.
 
 ### Traverse chunks, don't bulk-retrieve
 
-Search results carry a compact `navigation` crumb (parentDoc, prev/next, chunkTitle). For adjacent/sibling/hierarchical context use `mcp__moflo__memory_get_neighbors`; for full chunk content use `mcp__moflo__memory_retrieve`; `Read` the source doc only via `parentPath` when truly needed. Full protocol: `.claude/guidance/moflo-memory-protocol.md`.
+Search results carry a compact `navigation` crumb (parentDoc, prev/next, chunkTitle). For adjacent/sibling/hierarchical context use `mcp__moflo__memory_get_neighbors`; for full chunk content use `mcp__moflo__memory_retrieve`; `Read` the source doc only via `parentPath` when truly needed. Full protocol + worked examples per namespace: `.claude/guidance/moflo-memory-protocol.md`.
 
 ### Auto-enforced gates
 
@@ -92,6 +92,10 @@ Prefer MCP (`mcp__moflo__*` — memory, swarm, agent, task, hooks, hive-mind, ne
 ### After upgrading MoFlo
 
 After `npm install` touches moflo, check `.moflo/restart-pending.json` — if present, surface its `message` field to the user verbatim, then delete the file. (Claude Code only loads new hooks/MCP/launcher at session start.)
+
+### Monorepos
+
+Moflo state lives at the monorepo root `.moflo/` — never run `flo init` inside a sub-workspace of an existing moflo project, or the MCP server and CLI silently bind to different daemons (issue #1174).
 
 ### Full Reference
 
