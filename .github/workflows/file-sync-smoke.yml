@@ -58,17 +58,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Native: NTFS / APFS / ext4 each have their own lock + rename semantics.
-  # Bug #975's failure venue was DrvFs (covered separately below) but the
-  # other native filesystems have caught a long tail of platform-specific
-  # rename behavior, so we keep all three on every change.
+  # Per-PR + push-to-main: ubuntu-only file-sync smoke. Cross-OS coverage
+  # for NTFS / APFS rename semantics runs in `release-smoke.yml` on
+  # workflow_dispatch (gated by /publish). Same cost-driven split as
+  # consumer-install-smoke. The workflow_dispatch trigger below is kept
+  # so maintainers can still kick off this lightweight suite on demand.
   native:
-    name: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5

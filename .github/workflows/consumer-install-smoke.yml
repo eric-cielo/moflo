@@ -51,19 +51,25 @@ concurrency:
 
 jobs:
   smoke:
-    # Split into a 3 × 2 matrix (3 OS × 2 harnesses) so consumer-smoke and
-    # populated-smoke run in PARALLEL on each runner instead of sequentially.
-    # Pre-split Windows wall time: ~10m52s (consumer 2m47s + populated 5m35s
-    # + shared setup ~2m30s). Post-split: max(consumer, populated) + shared
-    # setup ≈ ~7m. The populated harness still bears the heaviest single
-    # chunk (3-min consumer-install) so this approaches but doesn't beat
-    # that floor; further wins need harness-level caching of node_modules
-    # (separate issue).
+    # Per-PR + push-to-main: ubuntu-only consumer and populated smoke.
+    # Cross-OS coverage (mac + windows) runs in `release-smoke.yml` on
+    # workflow_dispatch, gated by the /publish skill. This split exists
+    # because mac runners bill at 10× and windows at 2× — paying that on
+    # every doc tweak / typo fix was the dominant CI cost. Pre-split per-PR
+    # cost was ~197 equivalent-minutes (the smoke matrix alone was ~182);
+    # post-split per-PR cost is ~29 eq-min. The full matrix is paid once
+    # per publish instead of once per PR.
+    #
+    # Job-name template ("${harness} / ${os}") is preserved verbatim so the
+    # protected-branch required status checks `consumer / ubuntu-latest` and
+    # `populated / ubuntu-latest` continue to post. The four removed mac +
+    # windows contexts MUST be deleted from branch protection in the same
+    # change that lands this file — see the PR body for the gh api call.
     name: ${{ matrix.harness }} / ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest]
         harness: [consumer, populated]
     runs-on: ${{ matrix.os }}
     # Acceptance criterion: < 5 min on Ubuntu. Cap all runners conservatively

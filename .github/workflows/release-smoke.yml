@@ -1,0 +1,143 @@
+name: Release smoke (pre-publish)
+
+# Full cross-platform smoke matrix, gated to publish time only.
+#
+# Per-PR and push-to-main CI runs ubuntu-only smoke (see
+# `consumer-install-smoke.yml` + `file-sync-smoke.yml`) to keep recurring CI
+# cost manageable. Mac runners bill at 10× and Windows at 2×, so paying the
+# full matrix on every doc tweak or typo fix is unaffordable at PR volume.
+#
+# This workflow runs the full matrix on `workflow_dispatch` only. The
+# `/publish` skill dispatches it (`gh workflow run release-smoke.yml`),
+# polls until green via `gh run watch`, and only then proceeds with
+# `npm publish` from the maintainer's machine.
+#
+# Coverage:
+#   consumer:  ubuntu × {consumer, populated}, macos × {consumer, populated},
+#              windows × {consumer, populated}  → 6 jobs
+#   file-sync: ubuntu, macos, windows                                  → 3 jobs
+#
+# Cost (equivalent-minutes per dispatch, approx):
+#   ubuntu  consumer ~14 × 1  + file-sync ~5 × 1   =  ~19
+#   macos   consumer ~14 × 10 + file-sync ~5 × 10  = ~190
+#   windows consumer ~14 × 2  + file-sync ~5 × 2   =  ~38
+#                                       total      ≈ 247 eq-min per publish
+#
+# Note: 247 > the previous ~197/PR consumer-only number because release-smoke
+# rolls the file-sync 3-OS matrix into the same dispatch. Pre-split that
+# matrix only ran on PRs that touched a path-filtered file list; rolling it
+# into every publish ensures cross-platform file-sync regressions can't ship
+# unnoticed between path-filtered runs. The net economic win remains: per-PR
+# drops from ~197 (or ~262 with file-sync paths touched) to ~29, paid against
+# the steady stream of PR throughput; ~247/publish is paid at publish cadence
+# (a few per week). ~85% reduction in CI cost at PR volume.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        # Required so the concurrency group below is deterministic. /publish
+        # passes the SHA it just pushed at Step 8.5; manual UI dispatches
+        # must explicitly type the SHA they want to verify (a deliberate
+        # "are you sure?" moment for an action that costs ~250 eq-min).
+        description: 'Commit SHA to verify (full or short SHA)'
+        required: true
+        type: string
+
+env:
+  NODE_VERSION: '22'
+
+# Do NOT cancel in-flight release-smoke runs. /publish polls a specific run;
+# a cancellation would cause /publish to misread the run as failed.
+# Keyed off the input SHA so two publishes against different commits run in
+# parallel, but two dispatches of the same SHA queue (the second waits for
+# the first to finish rather than racing).
+concurrency:
+  group: release-smoke-${{ github.event.inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  consumer-smoke:
+    # Full 3 × 2 matrix — what was previously the every-PR cost-driver.
+    # Same job body as `consumer-install-smoke.yml`; the only difference is
+    # the matrix axis and the trigger surface. If these two ever diverge in
+    # the per-step logic, fold the shared shape into a composite action.
+    name: ${{ matrix.harness }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        harness: [consumer, populated]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.sha }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # Same caching scheme as consumer-install-smoke.yml — see that file
+      # for the per-key rationale (ADR-EMB-001, issues #1021/#1153).
+      - name: Cache fastembed model
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/fastembed
+          key: fastembed-${{ runner.os }}-${{ hashFiles('src/cli/embeddings/fastembed-inline/**/*.ts') }}-fast-all-MiniLM-L6-v2
+
+      - name: Cache consumer-install node_modules
+        uses: actions/cache@v5
+        with:
+          path: .work/consumer-warm
+          key: consumer-warm-${{ runner.os }}-${{ matrix.harness }}-${{ hashFiles('package-lock.json', 'scripts/prune-native-binaries.mjs', 'scripts/post-install-bootstrap.mjs', 'scripts/post-install-notice.mjs') }}
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Run consumer smoke harness
+        if: matrix.harness == 'consumer'
+        run: npm run test:smoke -- --warm-donor .work/consumer-warm
+
+      - name: Run populated-consumer smoke harness
+        if: matrix.harness == 'populated'
+        run: npm run test:smoke:populated -- --warm-donor .work/consumer-warm
+
+  file-sync-smoke:
+    # 3-OS native: NTFS / APFS / ext4 each have their own lock + rename
+    # semantics. Same coverage as `file-sync-smoke.yml`'s pre-split shape.
+    name: file-sync / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.sha }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build (tsc only — tests need the source helpers under bin/lib/)
+        run: npm run build
+
+      - name: Run file-sync smoke tests
+        run: npx vitest run --reporter=default
+          src/cli/__tests__/file-sync-helper.test.ts
+          src/cli/__tests__/post-install-bootstrap.test.ts
+          src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
+          src/cli/__tests__/post-install-bootstrap-drift-guard.test.ts
+          tests/bin/launcher-854-fixes.test.ts
