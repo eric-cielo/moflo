@@ -112,6 +112,23 @@ describe('checkNestedMofloIslands (#1174)', () => {
     expect(result.status).toBe('pass');
   });
 
+  it('passes (not warn) when no islands found even if walk truncated at depth limit', async () => {
+    seedMofloDb(root);
+    // Build a 7-deep chain of nested directories with no .moflo state below
+    // the root. The walker caps at depth 5 → `truncated=true` internally,
+    // but the user-facing status must remain `pass` because no islands were
+    // actually found. A "warn with nothing to report" is alarmist noise.
+    let deep = root;
+    for (const seg of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
+      deep = path.join(deep, seg);
+    }
+    fs.mkdirSync(deep, { recursive: true });
+
+    const result = await checkNestedMofloIslands(root);
+    expect(result.status).toBe('pass');
+    expect(result.message).not.toMatch(/depth|truncat|deeper/i);
+  });
+
   it('skips archived .moflo-archived-* directories from prior fix runs', async () => {
     seedMofloDb(root);
     const sub = path.join(root, 'packages', 'api');

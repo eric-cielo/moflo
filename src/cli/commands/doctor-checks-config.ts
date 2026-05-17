@@ -367,8 +367,11 @@ export async function checkSwarmResidue(): Promise<HealthCheck> {
  * walks in massive monorepos — most consumer layouts nest at most 2-3 levels.
  *
  * `truncated` is set when any branch of the walk hit `maxDepth` without
- * finishing — a deeper nested island could be hiding past the limit. The
- * doctor check surfaces this so the user knows to inspect manually.
+ * finishing. The doctor check only mentions it in the islands-found branch,
+ * where it adds context to a real finding ("…and there may be more past
+ * depth 5"). When no islands are found, truncation is suppressed: in
+ * practice consumer layouts nest 1-2 levels, so a clean depth-5 walk is
+ * authoritative — surfacing the caveat would be alarmist with no signal.
  *
  * Skip-list match is case-INSENSITIVE because Windows NTFS and macOS APFS are
  * case-insensitive by default — `Node_Modules` should be skipped just like
@@ -480,13 +483,10 @@ export async function checkNestedMofloIslands(cwd?: string): Promise<HealthCheck
   }
   const { islands, truncated } = scan;
   if (islands.length === 0) {
-    const baseMsg = 'No nested .moflo/ directories detected';
     return {
       name: 'Nested .moflo/ Islands',
-      status: truncated ? 'warn' : 'pass',
-      message: truncated
-        ? `${baseMsg} within depth-5 walk — deeper subtrees not inspected`
-        : baseMsg,
+      status: 'pass',
+      message: 'No nested .moflo/ directories detected',
     };
   }
   const rels = islands.map(p => relative(root, p) || '.');
