@@ -337,6 +337,10 @@ export async function checkSwarmResidue(): Promise<HealthCheck> {
     'sona-patterns.json',
     'state.json',
     'code-map-hash.txt',
+    // patterns-hash.txt + tests-hash.txt are pre-#699 residue (writers now
+    // target `.moflo/` directly). Surfaced + migrated by #1170.
+    'patterns-hash.txt',
+    'tests-hash.txt',
     'hooks.log',
     'background.log',
   ];

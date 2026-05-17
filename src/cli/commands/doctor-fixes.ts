@@ -172,6 +172,9 @@ async function fixSwarmLegacyResidue(): Promise<boolean> {
   const neuralDir = join(moflo, 'neural');
   const swarmStateDir = join(moflo, 'swarm');
   const memoryStateDir = join(moflo, 'memory');
+  // patterns-hash.txt + tests-hash.txt: writers in bin/index-patterns.mjs +
+  //   bin/index-tests.mjs already target `.moflo/` directly (post-#699). Any
+  //   `.swarm/` copies are pre-#699 residue with no active writer (#1170).
   const stateFiles = [
     { name: 'q-learning-model.json', dest: movectorDir },
     { name: 'model-router-state.json', dest: movectorDir },
@@ -181,6 +184,8 @@ async function fixSwarmLegacyResidue(): Promise<boolean> {
     { name: 'sona-patterns.json', dest: neuralDir },
     { name: 'state.json', dest: swarmStateDir },
     { name: 'code-map-hash.txt', dest: memoryStateDir },
+    { name: 'patterns-hash.txt', dest: moflo },
+    { name: 'tests-hash.txt', dest: moflo },
   ];
   for (const { name, dest } of stateFiles) {
     const src = join(swarmDir, name);
