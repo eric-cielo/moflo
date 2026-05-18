@@ -400,7 +400,29 @@ function getMofloHelperBasenames(): Set<string> {
   return out;
 }
 
-/** True when a hook command references a moflo-shipped helper basename. */
+/**
+ * True when a hook command references a moflo-shipped helper basename.
+ *
+ * Design: moflo "owns" the slot for any command pointing at one of its shipped
+ * helpers, so wholesale regen is free to replace that slot with the current
+ * reference. Conversely, a command pointing at a non-moflo helper basename is
+ * a consumer-owned customisation that must survive (#1180).
+ *
+ * Trade-off — hand-edits to a moflo helper command (e.g. consumer adds
+ * `--my-flag` to `gate-hook.mjs check-dangerous-command`) are treated as
+ * moflo-owned and replaced with the current reference shape on regen. The
+ * alternative (preserve any non-exact match) would silently retain stale
+ * entries like `gate.cjs session-reset` (removed in #842), defeating the
+ * whole point of wholesale regen. Consumers who need a tweaked moflo command
+ * should either lock the hook block via `claudeFlow.hooks.locked: true` or
+ * route through their own helper basename.
+ *
+ * Cross-platform: regex matches forward slashes only — what moflo always
+ * emits (Claude Code expands `$CLAUDE_PROJECT_DIR` on every OS). A consumer
+ * who hand-edited `settings.json` with backslashes on Windows would fail to
+ * match here and be treated as a customisation (preserved). That's the safer
+ * default — we'd rather keep an unfamiliar entry than delete user work.
+ */
 function isMofloOwnedHookEntry(command: string): boolean {
   const m = command.match(/\.claude\/(?:helpers|scripts)\/([\w.\-]+)/);
   return m ? getMofloHelperBasenames().has(m[1]) : false;
