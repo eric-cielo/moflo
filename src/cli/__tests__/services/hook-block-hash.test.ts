@@ -15,6 +15,7 @@ import {
   applyWholesaleRegeneration,
   applyAdditiveRegeneration,
   isHookBlockLocked,
+  type HookEntry,
 } from '../../services/hook-block-hash.js';
 import { generateSettings } from '../../init/settings-generator.js';
 import { DEFAULT_INIT_OPTIONS } from '../../init/types.js';
@@ -237,6 +238,96 @@ describe('applyWholesaleRegeneration (#896)', () => {
     expect(result.removed).toBe(0);
   });
 
+  it('#1180: preserves consumer customisations (non-moflo helper commands) while dropping stale moflo entries', () => {
+    // Repro of the waxstak shape: consumer has a PostToolUse customisation
+    // calling their own helper (`project-analysis-gate.cjs`) alongside a
+    // stale moflo entry (`gate.cjs session-reset` from before #842). The
+    // wholesale path used to drop both — it must now preserve the consumer
+    // entry and only drop the stale moflo entry.
+    const customCmd = 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/project-analysis-gate.cjs"';
+    const staleMofloCmd = 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" session-reset';
+
+    const settings: Record<string, unknown> = {
+      permissions: { allow: ['Bash(npm:*)'] },
+      hooks: {
+        ...JSON.parse(JSON.stringify(getReferenceHookBlock())),
+        // Consumer-owned PostToolUse customisation on the Write/Edit matcher
+        PostToolUse: [
+          ...(getReferenceHookBlock().PostToolUse),
+          {
+            matcher: '^(Write|Edit|MultiEdit)$',
+            hooks: [{ type: 'command', command: customCmd, timeout: 4000 }],
+          },
+        ],
+        // Stale moflo SessionStart entry that wholesale regen should drop
+        SessionStart: [
+          {
+            hooks: [
+              ...(getReferenceHookBlock().SessionStart[0].hooks),
+              { type: 'command', command: staleMofloCmd, timeout: 2000 },
+            ],
+          },
+        ],
+      },
+    };
+
+    const report = computeHookBlockDrift(settings.hooks);
+    expect(report.drifted).toBe(true);
+    // Two extras: one customisation + one stale moflo entry.
+    expect(report.extra.some(e => e.command === customCmd)).toBe(true);
+    expect(report.extra.some(e => e.command === staleMofloCmd)).toBe(true);
+
+    const result = applyWholesaleRegeneration(settings, report);
+    // Only the stale moflo entry was removed; the customisation survived.
+    expect(result.removed).toBe(1);
+
+    // Post-regen, walk the hooks tree and assert both invariants:
+    // (a) the customisation is present, under its original matcher, with its
+    //     original timeout/type preserved;
+    // (b) the stale moflo entry is gone.
+    const hooks = settings.hooks as Record<string, Array<{ matcher?: string; hooks: HookEntry[] }>>;
+    const postBlock = hooks.PostToolUse?.find(b => b.matcher === '^(Write|Edit|MultiEdit)$');
+    expect(postBlock).toBeDefined();
+    const customHook = postBlock!.hooks.find(h => h.command === customCmd);
+    expect(customHook).toBeDefined();
+    expect(customHook!.timeout).toBe(4000);
+    expect(customHook!.type).toBe('command');
+
+    const sessionStartBlock = hooks.SessionStart?.[0];
+    expect(sessionStartBlock).toBeDefined();
+    expect(sessionStartBlock!.hooks.some(h => h.command === staleMofloCmd)).toBe(false);
+
+    // Non-hooks fields untouched.
+    expect(settings.permissions).toEqual({ allow: ['Bash(npm:*)'] });
+  });
+
+  it('#1180: grafts a customisation into a fresh matcher block when the matcher is new', () => {
+    // Customisation targets an event/matcher pair that doesn't exist in the
+    // reference at all — wholesale regen must create the block.
+    const customCmd = 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/my-custom-handler.cjs"';
+    const settings: Record<string, unknown> = {
+      hooks: {
+        ...JSON.parse(JSON.stringify(getReferenceHookBlock())),
+        PostToolUse: [
+          ...(getReferenceHookBlock().PostToolUse),
+          {
+            matcher: '^MyCustomTool$',
+            hooks: [{ type: 'command', command: customCmd, timeout: 1500 }],
+          },
+        ],
+      },
+    };
+    const report = computeHookBlockDrift(settings.hooks);
+    const result = applyWholesaleRegeneration(settings, report);
+    expect(result.removed).toBe(0);
+
+    const hooks = settings.hooks as Record<string, Array<{ matcher?: string; hooks: HookEntry[] }>>;
+    const block = hooks.PostToolUse?.find(b => b.matcher === '^MyCustomTool$');
+    expect(block).toBeDefined();
+    expect(block!.hooks[0].command).toBe(customCmd);
+    expect(block!.hooks[0].timeout).toBe(1500);
+  });
+
   it('does not corrupt the cached reference (returns a deep clone)', () => {
     // Defence-in-depth: if a future caller mutates settings.hooks after
     // wholesale regen, the cached reference used by computeHookBlockDrift
@@ -256,13 +347,33 @@ describe('applyWholesaleRegeneration (#896)', () => {
 });
 
 describe('isHookBlockLocked', () => {
-  it('returns true when claudeFlow.hooks.locked === true', () => {
+  it('returns true when moflo.hooks.locked === true (canonical)', () => {
+    expect(isHookBlockLocked({ moflo: { hooks: { locked: true } } })).toBe(true);
+  });
+
+  it('returns true when claudeFlow.hooks.locked === true (legacy alias)', () => {
     expect(isHookBlockLocked({ claudeFlow: { hooks: { locked: true } } })).toBe(true);
+  });
+
+  it('honours moflo.hooks.locked even when claudeFlow.hooks.locked is false', () => {
+    expect(isHookBlockLocked({
+      moflo: { hooks: { locked: true } },
+      claudeFlow: { hooks: { locked: false } },
+    })).toBe(true);
+  });
+
+  it('falls back to claudeFlow when moflo.hooks.locked is missing', () => {
+    expect(isHookBlockLocked({
+      moflo: { hooks: {} },
+      claudeFlow: { hooks: { locked: true } },
+    })).toBe(true);
   });
 
   it('returns false on missing/falsy/non-object input', () => {
     expect(isHookBlockLocked({})).toBe(false);
     expect(isHookBlockLocked(null)).toBe(false);
+    expect(isHookBlockLocked({ moflo: {} })).toBe(false);
+    expect(isHookBlockLocked({ moflo: { hooks: { locked: false } } })).toBe(false);
     expect(isHookBlockLocked({ claudeFlow: {} })).toBe(false);
     expect(isHookBlockLocked({ claudeFlow: { hooks: { locked: false } } })).toBe(false);
   });

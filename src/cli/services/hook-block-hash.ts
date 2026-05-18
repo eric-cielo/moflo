@@ -325,14 +325,25 @@ export function computeHookBlockDrift(
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * True when the user has set `claudeFlow.hooks.locked: true` in their
- * settings.json — a sentinel that suppresses drift surfacing entirely.
+ * True when the user has set `moflo.hooks.locked: true` (canonical) or
+ * `claudeFlow.hooks.locked: true` (legacy alias) in their settings.json —
+ * a sentinel that suppresses drift surfacing entirely.
+ *
+ * The `claudeFlow.*` settings tree is a pre-rebrand legacy name that survives
+ * in writers + readers across the codebase. Renaming the whole tree is a
+ * separate effort; this one reader accepts `moflo.hooks.locked` ahead of the
+ * legacy key so the #1180 escape hatch is documented under the canonical
+ * brand from day one and consumers never have to migrate the key after we
+ * tell them to set it.
  */
 export function isHookBlockLocked(settings: unknown): boolean {
   const root = settings as Record<string, unknown> | null | undefined;
+  const moflo = root?.moflo as Record<string, unknown> | undefined;
+  const mofloHooks = moflo?.hooks as Record<string, unknown> | undefined;
+  if (mofloHooks?.locked === true) return true;
   const cf = root?.claudeFlow as Record<string, unknown> | undefined;
-  const hooks = cf?.hooks as Record<string, unknown> | undefined;
-  return hooks?.locked === true;
+  const cfHooks = cf?.hooks as Record<string, unknown> | undefined;
+  return cfHooks?.locked === true;
 }
 
 /**
@@ -377,14 +388,76 @@ export function applyAdditiveRegeneration(
 }
 
 /**
+ * Set of helper-script basenames that moflo ships under `.claude/helpers/` and
+ * `.claude/scripts/`. Built once from `getReferenceHookBlock()` so it always
+ * tracks whatever the current reference block actually emits. Used by the
+ * wholesale-regen path to tell "stale moflo entry from a removed reference
+ * shape" (drop) apart from "consumer customisation we never owned" (preserve).
+ */
+let MOFLO_HELPER_BASENAMES_CACHE: Set<string> | null = null;
+function getMofloHelperBasenames(): Set<string> {
+  if (MOFLO_HELPER_BASENAMES_CACHE) return MOFLO_HELPER_BASENAMES_CACHE;
+  const out = new Set<string>();
+  const tree = getReferenceHookBlock();
+  for (const event of Object.keys(tree)) {
+    for (const block of tree[event]) {
+      for (const hook of block.hooks) {
+        const m = hook.command.match(/\.claude\/(?:helpers|scripts)\/([\w.\-]+)/);
+        if (m) out.add(m[1]);
+      }
+    }
+  }
+  MOFLO_HELPER_BASENAMES_CACHE = out;
+  return out;
+}
+
+/**
+ * True when a hook command references a moflo-shipped helper basename.
+ *
+ * Design: moflo "owns" the slot for any command pointing at one of its shipped
+ * helpers, so wholesale regen is free to replace that slot with the current
+ * reference. Conversely, a command pointing at a non-moflo helper basename is
+ * a consumer-owned customisation that must survive (#1180).
+ *
+ * Trade-off — hand-edits to a moflo helper command (e.g. consumer adds
+ * `--my-flag` to `gate-hook.mjs check-dangerous-command`) are treated as
+ * moflo-owned and replaced with the current reference shape on regen. The
+ * alternative (preserve any non-exact match) would silently retain stale
+ * entries like `gate.cjs session-reset` (removed in #842), defeating the
+ * whole point of wholesale regen. Consumers who need a tweaked moflo command
+ * should either lock the hook block via `moflo.hooks.locked: true`
+ * (`claudeFlow.hooks.locked` is still honoured as a legacy alias) or route
+ * through their own helper basename.
+ *
+ * Cross-platform: regex matches forward slashes only — what moflo always
+ * emits (Claude Code expands `$CLAUDE_PROJECT_DIR` on every OS). A consumer
+ * who hand-edited `settings.json` with backslashes on Windows would fail to
+ * match here and be treated as a customisation (preserved). That's the safer
+ * default — we'd rather keep an unfamiliar entry than delete user work.
+ */
+function isMofloOwnedHookEntry(command: string): boolean {
+  const m = command.match(/\.claude\/(?:helpers|scripts)\/([\w.\-]+)/);
+  return m ? getMofloHelperBasenames().has(m[1]) : false;
+}
+
+/**
  * Wholesale regeneration: replace `settings.hooks` with the canonical reference
- * block. Drops extras (stale entries from previous moflo versions, e.g. the
- * `gate.cjs session-reset` SessionStart hook removed in #842) AND adds missing
- * entries — the additive variant only does the latter.
+ * block, then graft consumer customisations back in. Drops stale moflo entries
+ * (e.g. the `gate.cjs session-reset` SessionStart hook removed in #842) AND
+ * adds missing entries — the additive variant only does the latter.
+ *
+ * #1180 — `report.extra` carries both stale moflo entries AND consumer-owned
+ * customisations (e.g. waxstak's `project-analysis-gate.cjs`). The wholesale
+ * path used to drop both; it now distinguishes them via the helper-basename
+ * discriminator: any extra command referencing a moflo-shipped helper under
+ * `.claude/helpers/` or `.claude/scripts/` is stale moflo and gets dropped;
+ * anything else is consumer-owned and gets grafted back into the fresh tree
+ * under the same `(event, matcher)`, with its original `HookEntry`
+ * (type/timeout) snapshotted before the replace.
  *
  * The caller MUST check `isHookBlockLocked(settings)` first; if locked, the
  * user has opted out and this function should not be called. Non-hooks fields
- * on `settings` (permissions, env, claudeFlow.*, etc.) are preserved.
+ * on `settings` (permissions, env, moflo.*, claudeFlow.*, etc.) are preserved.
  *
  * Mutates `settings` in place; caller is responsible for writing the file.
  */
@@ -393,11 +466,57 @@ export function applyWholesaleRegeneration(
   report: HookDriftReport,
 ): RegenerationResult {
   if (!report.drifted) return { settings, added: 0, removed: 0 };
+
+  // Snapshot full `HookEntry` objects for consumer customisations BEFORE we
+  // overwrite settings.hooks — the drift report carries command strings only,
+  // not timeout/type. Walk the consumer's existing tree, match against each
+  // non-moflo `extra` on (event, matcher, command).
+  const customisations: Array<{ event: string; matcher: string; hook: HookEntry }> = [];
+  const consumerHooks = (settings.hooks ?? {}) as Record<string, HookBlock[]>;
+  for (const extra of report.extra) {
+    if (isMofloOwnedHookEntry(extra.command)) continue;
+    const evtArr = consumerHooks[extra.event];
+    if (!Array.isArray(evtArr)) continue;
+    for (const block of evtArr) {
+      if ((block?.matcher ?? '') !== extra.matcher) continue;
+      const found = Array.isArray(block.hooks)
+        ? block.hooks.find((h: HookEntry | undefined) => h?.command === extra.command)
+        : undefined;
+      if (found) {
+        customisations.push({ event: extra.event, matcher: extra.matcher, hook: found });
+        break;
+      }
+    }
+  }
+
   // Clone the cached reference so a later mutation of settings.hooks (by the
   // launcher's settings.json migrations, doctor --fix, etc.) cannot corrupt
   // the cached tree shared across `computeHookBlockDrift` calls in this process.
-  settings.hooks = structuredClone(getCachedReference().tree);
-  return { settings, added: report.missing.length, removed: report.extra.length };
+  const fresh = structuredClone(getCachedReference().tree);
+
+  // Graft customisations into the fresh tree, slotting them under the same
+  // matcher block (created if absent).
+  for (const { event, matcher, hook } of customisations) {
+    let arr = fresh[event];
+    if (!Array.isArray(arr)) {
+      arr = [];
+      fresh[event] = arr;
+    }
+    let block = arr.find(b => (b?.matcher ?? '') === matcher);
+    if (!block) {
+      block = { hooks: [] };
+      if (matcher) block.matcher = matcher;
+      arr.push(block);
+    }
+    if (!Array.isArray(block.hooks)) block.hooks = [];
+    if (!block.hooks.some((h: HookEntry) => h?.command === hook.command)) {
+      block.hooks.push(hook);
+    }
+  }
+
+  settings.hooks = fresh;
+  const removed = report.extra.length - customisations.length;
+  return { settings, added: report.missing.length, removed };
 }
 
 /**
