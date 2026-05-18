@@ -325,14 +325,25 @@ export function computeHookBlockDrift(
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * True when the user has set `claudeFlow.hooks.locked: true` in their
- * settings.json — a sentinel that suppresses drift surfacing entirely.
+ * True when the user has set `moflo.hooks.locked: true` (canonical) or
+ * `claudeFlow.hooks.locked: true` (legacy alias) in their settings.json —
+ * a sentinel that suppresses drift surfacing entirely.
+ *
+ * The `claudeFlow.*` settings tree is a pre-rebrand legacy name that survives
+ * in writers + readers across the codebase. Renaming the whole tree is a
+ * separate effort; this one reader accepts `moflo.hooks.locked` ahead of the
+ * legacy key so the #1180 escape hatch is documented under the canonical
+ * brand from day one and consumers never have to migrate the key after we
+ * tell them to set it.
  */
 export function isHookBlockLocked(settings: unknown): boolean {
   const root = settings as Record<string, unknown> | null | undefined;
+  const moflo = root?.moflo as Record<string, unknown> | undefined;
+  const mofloHooks = moflo?.hooks as Record<string, unknown> | undefined;
+  if (mofloHooks?.locked === true) return true;
   const cf = root?.claudeFlow as Record<string, unknown> | undefined;
-  const hooks = cf?.hooks as Record<string, unknown> | undefined;
-  return hooks?.locked === true;
+  const cfHooks = cf?.hooks as Record<string, unknown> | undefined;
+  return cfHooks?.locked === true;
 }
 
 /**
@@ -414,8 +425,9 @@ function getMofloHelperBasenames(): Set<string> {
  * alternative (preserve any non-exact match) would silently retain stale
  * entries like `gate.cjs session-reset` (removed in #842), defeating the
  * whole point of wholesale regen. Consumers who need a tweaked moflo command
- * should either lock the hook block via `claudeFlow.hooks.locked: true` or
- * route through their own helper basename.
+ * should either lock the hook block via `moflo.hooks.locked: true`
+ * (`claudeFlow.hooks.locked` is still honoured as a legacy alias) or route
+ * through their own helper basename.
  *
  * Cross-platform: regex matches forward slashes only — what moflo always
  * emits (Claude Code expands `$CLAUDE_PROJECT_DIR` on every OS). A consumer
@@ -445,7 +457,7 @@ function isMofloOwnedHookEntry(command: string): boolean {
  *
  * The caller MUST check `isHookBlockLocked(settings)` first; if locked, the
  * user has opted out and this function should not be called. Non-hooks fields
- * on `settings` (permissions, env, claudeFlow.*, etc.) are preserved.
+ * on `settings` (permissions, env, moflo.*, claudeFlow.*, etc.) are preserved.
  *
  * Mutates `settings` in place; caller is responsible for writing the file.
  */

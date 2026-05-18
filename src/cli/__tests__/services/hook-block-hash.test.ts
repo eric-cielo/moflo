@@ -347,13 +347,33 @@ describe('applyWholesaleRegeneration (#896)', () => {
 });
 
 describe('isHookBlockLocked', () => {
-  it('returns true when claudeFlow.hooks.locked === true', () => {
+  it('returns true when moflo.hooks.locked === true (canonical)', () => {
+    expect(isHookBlockLocked({ moflo: { hooks: { locked: true } } })).toBe(true);
+  });
+
+  it('returns true when claudeFlow.hooks.locked === true (legacy alias)', () => {
     expect(isHookBlockLocked({ claudeFlow: { hooks: { locked: true } } })).toBe(true);
+  });
+
+  it('honours moflo.hooks.locked even when claudeFlow.hooks.locked is false', () => {
+    expect(isHookBlockLocked({
+      moflo: { hooks: { locked: true } },
+      claudeFlow: { hooks: { locked: false } },
+    })).toBe(true);
+  });
+
+  it('falls back to claudeFlow when moflo.hooks.locked is missing', () => {
+    expect(isHookBlockLocked({
+      moflo: { hooks: {} },
+      claudeFlow: { hooks: { locked: true } },
+    })).toBe(true);
   });
 
   it('returns false on missing/falsy/non-object input', () => {
     expect(isHookBlockLocked({})).toBe(false);
     expect(isHookBlockLocked(null)).toBe(false);
+    expect(isHookBlockLocked({ moflo: {} })).toBe(false);
+    expect(isHookBlockLocked({ moflo: { hooks: { locked: false } } })).toBe(false);
     expect(isHookBlockLocked({ claudeFlow: {} })).toBe(false);
     expect(isHookBlockLocked({ claudeFlow: { hooks: { locked: false } } })).toBe(false);
   });
