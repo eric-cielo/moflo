@@ -450,7 +450,7 @@ Beyond `/flo`, `/spell-builder`, and `/eldar`, MoFlo ships a handful of focused 
 
 | Skill | Purpose |
 |-------|---------|
-| `/guidance` | Author and audit guidance docs in `.claude/guidance/`. Default mode walks you through one doc; `/guidance -a` audits every doc against the universal guidance rules (Purpose lines, See Also, line counts, hedged language). |
+| `/guidance` | Author and audit guidance docs. Default writes guidance for Claude into `.claude/guidance/` as Markdown applying moflo's universal rules. `-h` switches the audience to humans (lighter ruleset, writes into `docs/`). `--html` emits HTML with a minimal default stylesheet instead of Markdown. `-a` audits every doc in `.claude/guidance/` against the universal rules. |
 | `/simplify` | Adaptive code review on the current diff. Tier-based fan-out — trivial edits get a self-review, small diffs get one routed agent, cross-cutting refactors get three parallel agents. Routes through the moflo model router for cost-aware execution. |
 | `/spell-schedule` | Schedule a spell on the local moflo daemon (cron, interval, or one-time) without leaving the chat. For remote Anthropic-cloud agents on a schedule, use Claude Code's built-in `/schedule` instead. |
 

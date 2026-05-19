@@ -1,21 +1,31 @@
 ---
 name: guidance
-description: Add, edit, or audit guidance docs in this project's .claude/guidance/ directory following moflo's universal guidance rules. Default mode walks the user through one doc (creating or improving it); the -a flag audits every doc in the directory and offers per-file improvements.
-arguments: "[-a] <topic-or-path>"
+description: Add, edit, or audit guidance docs. Default writes guidance for Claude (.claude/guidance/, Markdown, moflo universal rules). -h writes for human readers (docs/, lighter ruleset). --html emits HTML with a minimal default stylesheet instead of Markdown. -a audits the .claude/guidance/ directory.
+arguments: "[-a] [-h] [--html] <topic-or-path>"
 ---
 
 # /guidance — Author and audit project guidance
 
-Help the user write, edit, or audit guidance files in their `.claude/guidance/` directory so Claude actually follows the rules they wrote. The skill applies the universal rules from `.claude/guidance/moflo-guidance-rules.md` — that doc is the single source of truth, do not paraphrase or duplicate it here.
+Help the user write, edit, or audit guidance docs. By default the skill writes guidance **for Claude** into `.claude/guidance/` as Markdown and enforces the universal rules from `.claude/guidance/moflo-guidance-rules.md` (the single source of truth — do not paraphrase or duplicate). Flags switch the **audience** (`-h` → humans) and the **output format** (`--html` → HTML).
 
 **Arguments:** $ARGUMENTS
 
-## Modes
+## Modes and flags
 
-| Mode | Trigger | What it does |
-|------|---------|--------------|
-| Single-doc | no flag, optional `<topic-or-path>` arg | Walk the user through creating one new doc OR improving one existing doc |
-| Audit | `-a` flag | Two passes over `.claude/guidance/`: (1) **structural audit** scoring each existing doc against the universal rules, (2) **gap analysis** scanning the codebase to identify high-leverage topics that *should* have a guidance doc but don't. Both feed one combined triage report. |
+| Flag | Effect |
+|------|--------|
+| (none) | Single-doc mode for **Claude** — Markdown, full universal rules, destination `.claude/guidance/<kebab-topic>.md` |
+| `-h` | Switch audience to **humans** — Markdown, lighter human ruleset, destination `docs/<kebab-topic>.md` |
+| `--html` | Emit **HTML** (with the minimal default stylesheet from Step 2.5) instead of Markdown. Composes with `-h`. |
+| `-a` | **Audit** mode — two-pass triage of `.claude/guidance/` (Claude only). Cannot combine with `-h` or `--html`. |
+| `<topic-or-path>` | Topic name (kebab-cased into the default destination) or an explicit file path that overrides the default destination. |
+
+Combos:
+
+- `-h --html` → HTML for humans, default destination `docs/<kebab-topic>.html`
+- `--html` alone → HTML for Claude. Unusual: Claude reads Markdown, not HTML. Warn the user and offer to add `-h` (write to `docs/` instead).
+- An explicit `<path>` always wins over the default destination. If the path's directory contradicts the audience flag (e.g. `-h .claude/guidance/foo.md`), warn but honor the path.
+- `-a -h` / `-a --html` → reject; audit mode targets `.claude/guidance/` (Claude) and emits a triage report, not a doc.
 
 ## Step 0 — Memory First
 
@@ -27,21 +37,38 @@ mcp__moflo__memory_search { query: "guidance rules writing project conventions",
 
 This pulls the user's project-specific guidance conventions (if any) plus the moflo universal rules into context. The memory-first gate will block file reads otherwise.
 
-## Step 1 — Pick the Mode and Target
+## Step 1 — Parse Flags, Audience, Format, and Target
 
-Parse the argument:
+Parse `$ARGUMENTS` into four values: **mode** (single-doc or audit), **audience** (claude or human), **format** (md or html), and **target path**.
 
-| Input | Mode | Target |
-|-------|------|--------|
-| empty | single-doc | Ask the user for a topic; default destination is `.claude/guidance/<kebab-topic>.md` |
-| `<topic>` (no slash) | single-doc | Use `.claude/guidance/<kebab-topic>.md`; if it exists, edit; else create |
-| `<path>` (has `.claude/guidance/`) | single-doc | Edit that exact file; if it doesn't exist, create at that path |
-| `-a` | audit | All `.md` files under `.claude/guidance/` recursively |
-| `-a <subdir>` | audit | All `.md` files under `.claude/guidance/<subdir>/` recursively |
+**Mode** is `audit` if `-a` is present, otherwise `single-doc`.
+
+**Audience and format:**
+
+| Flag combo | Audience | Format | Default destination |
+|------------|----------|--------|---------------------|
+| (none) | claude | md | `.claude/guidance/<kebab-topic>.md` |
+| `-h` | human | md | `docs/<kebab-topic>.md` |
+| `--html` | claude | html | `.claude/guidance/<kebab-topic>.html` — **warn**: Claude reads MD; suggest adding `-h` |
+| `-h --html` | human | html | `docs/<kebab-topic>.html` |
+
+**Target path resolution:**
+
+| Remaining positional arg | Single-doc behavior | Audit behavior |
+|---|---|---|
+| empty | Ask user for a topic; use default destination from the audience+format table above | Audit all `.md` files under `.claude/guidance/` recursively |
+| `<topic>` (no slash) | Kebab-case and append to the default destination | Audit all `.md` files under `.claude/guidance/<topic>/` recursively |
+| `<path>` (contains a slash) | Use that exact path; if the path's directory contradicts the audience flag, warn but honor the path | n/a — audit ignores explicit paths |
+
+**Reject combos** that don't make sense and tell the user why: `-a -h`, `-a --html` (audit emits a triage report, not a doc; it's Claude-targeted by design).
 
 If single-doc and the file already exists, briefly summarize what it contains (one sentence) before walking the user through edits — confirm you have the right file.
 
 ## Step 2 — Single-Doc Mode
+
+The rules applied depend on the audience. Confirm audience + format with the user in one line before writing — e.g. *"Writing human-readable MD into `docs/auth-overview.md` — apply lighter human ruleset?"*
+
+### Audience: Claude (default) — full universal rules
 
 Apply the universal rules from `.claude/guidance/moflo-guidance-rules.md`. The rules cover (do not paraphrase — read the source):
 
@@ -54,6 +81,22 @@ Apply the universal rules from `.claude/guidance/moflo-guidance-rules.md`. The r
 7. Avoid the listed anti-patterns
 8. Optimize for RAG chunking
 9. End with a `## See Also` section
+
+### Audience: Humans (`-h` flag) — lighter human ruleset
+
+Drop the rules that serve Claude's RAG retrieval and imperative-mood enforcement; keep the rules that serve readability for any reader.
+
+| # | Universal rule | For humans | Why the change |
+|---|----------------|------------|----------------|
+| 1 | `**Purpose:**` line after H1 | **Keep** | Helps any reader orient quickly |
+| 2 | Imperative voice (must/always/never) | **Drop** | Humans tolerate narrative prose; rigid imperative reads cold |
+| 3 | Tables for decision logic | Keep when applicable | Tables aid scanning regardless of audience |
+| 4 | Concrete examples (no `[placeholder]`) | **Keep** | Always |
+| 5 | Under 500 lines | **Keep** | Readability cap |
+| 6 | Specific H2 headings (not "Overview") | **Keep** | Discoverability + TOC quality |
+| 7 | Avoid anti-patterns | **Modified** | Short prose preambles ARE allowed for humans; code-comments-as-rules still bad |
+| 8 | Optimize for RAG chunking | **Drop** | Humans don't query a vector index |
+| 9 | `## See Also` section at end | **Keep** | Helps human readers traverse to related docs |
 
 ### Creating a new doc — scaffold this shape
 
@@ -98,6 +141,87 @@ For the loaded file, evaluate against the universal rules and report findings as
 | Has prose preamble before first rule | yes / no |
 
 Then propose edits as concrete diffs — never rewrite the whole file unless the user asks.
+
+## Step 2.5 — HTML Output (`--html` flag)
+
+When `--html` is set, write the doc as a standalone HTML file with the minimal default stylesheet below. Author the content first as Markdown (so the audience-appropriate ruleset still drives structure and voice), then render it to HTML.
+
+### Conversion rules
+
+- `# H1` → `<h1>` (one per file — the title)
+- `## H2` → `<h2>` (section headings; emit a blank `<hr/>` between sections for readability parity with the MD `---` separators)
+- `### H3` → `<h3>`
+- `**Purpose:** …` → `<p class="purpose"><strong>Purpose:</strong> …</p>` (styled to stand out — see CSS below)
+- Paragraphs → `<p>`
+- Inline `code` → `<code>`; fenced ``` blocks → `<pre><code>` with no syntax highlighting (zero dependencies)
+- `**bold**` → `<strong>`, `*italic*` → `<em>`
+- Bulleted lists → `<ul><li>`; numbered lists → `<ol><li>`
+- Markdown tables → real `<table><thead><tr><th>` / `<tbody><tr><td>`
+- Relative `.md` links in `See Also` → rewrite to `.html` (so a `docs/` tree of `--html` docs cross-links correctly)
+- HTML-escape `<`, `>`, `&` in body text; do not escape inside `<pre><code>` beyond the standard three
+
+### Minimal default stylesheet
+
+Embed inline in `<style>` inside `<head>`. No external CSS, no JS, no web fonts. The goal is **readable standalone** on any browser without polish — restyle downstream if needed.
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title><!-- doc H1 here --></title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.6;
+    max-width: 48rem;
+    margin: 2rem auto;
+    padding: 0 1.25rem;
+    color: #222;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e6e6e6; background: #14171a; }
+    a { color: #6fa8ff; }
+    code, pre { background: #1f2429; }
+    th { background: #1f2429; }
+    hr { border-color: #2a3038; }
+  }
+  h1 { font-size: 1.9rem; margin-top: 0; }
+  h2 { font-size: 1.4rem; margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.25rem; }
+  h3 { font-size: 1.15rem; margin-top: 1.5rem; }
+  p.purpose {
+    border-left: 3px solid #6fa8ff;
+    padding: 0.5rem 0.75rem;
+    background: rgba(111, 168, 255, 0.08);
+    margin: 1rem 0;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #f4f4f4; padding: 0.75rem 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: transparent; padding: 0; }
+  table { border-collapse: collapse; margin: 1rem 0; width: 100%; }
+  th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; font-weight: 600; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  a { color: #0a58ca; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<!-- rendered content here -->
+</body>
+</html>
+```
+
+### Workflow
+
+1. Author the Markdown body in memory exactly as Step 2 would, applying the audience-appropriate ruleset.
+2. **Show the rendered Markdown to the user first** and get sign-off on content (cheaper to iterate on MD than HTML).
+3. Render to HTML using the conversion rules and embed the stylesheet.
+4. Write the `.html` file to the resolved destination.
+5. Offer to also save the Markdown source alongside (e.g. `docs/foo.html` + `docs/foo.md`) so the doc remains editable as MD — recommend yes when the audience is humans.
 
 ## Step 3 — Audit Mode (`-a`)
 
@@ -174,7 +298,7 @@ Once the user confirms the doc looks right:
 
 1. Save the file via `Write` (new) or `Edit` (existing).
 2. If you added a new doc, ask the user which existing doc should link to it via See Also (rule #9 needs bidirectional links to work).
-3. Suggest re-indexing if the user runs moflo: `node bin/index-guidance.mjs` (or just wait for next session-start auto-reindex).
+3. Suggest re-indexing if the user runs moflo: `node bin/index-guidance.mjs` (or just wait for next session-start auto-reindex). **Only Claude-audience MD docs in `.claude/guidance/` are indexed** — human docs in `docs/` and any `.html` output sit outside the RAG index by design.
 
 ## Cheatsheet — Universal Rules Recap
 
@@ -199,6 +323,8 @@ The full rules live in `.claude/guidance/moflo-guidance-rules.md`. Quick recap:
 - **Never auto-write opinionated content.** Guidance is the user's project policy; ask before injecting your own opinions.
 - **Confirm per file in audit mode.** Bulk edits to the user's guidance directory are high-blast-radius — confirm each one.
 - **The `moflo-` filename prefix is moflo-only.** Consumer projects writing their own guidance do not need it; it exists to avoid collisions when moflo's shipped guidance syncs into a consumer's directory.
+- **`-h` does not change Step 0.** Memory search is still mandatory — only the ruleset and destination change. Audit mode (`-a`) remains Claude-only and ignores `-h` / `--html`.
+- **`--html`: sign off on the Markdown first.** Render to HTML only after the user has approved the rendered Markdown — iterating on the HTML directly is slower and obscures content issues behind markup.
 
 ## See Also
 
