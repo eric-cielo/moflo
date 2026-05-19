@@ -23,6 +23,19 @@ Or — just ask Claude to install MoFlo into your project and initialize it!
 
 To verify everything is running, ask Claude to run `flo healer` with full diagnostics after restarting. If anything fails, ask Claude to fix it with `flo healer --fix`. (`flo doctor` is still accepted as an alias.)
 
+## Next Step: Consult the Eldar
+
+After installing moflo, the single highest-leverage thing you can do for the best experience is run **`/eldar`** inside a Claude Code session.
+
+Where `flo healer` verifies that *moflo itself* is wired up correctly, **`/eldar` audits how Claude is set up to actually use your project** — guidance docs, CLAUDE.md, memory namespaces, hook/MCP wiring, model routing, and whether every technology in your stack (TypeScript, Python, Rust, Go, etc.) has matching guidance for Claude to lean on. The stack → guidance cross-reference alone is often the difference between *"Claude feels lost in this codebase"* and *"Claude knows this codebase"*.
+
+```
+/eldar          # Read-only audit; categorized findings, severity-ranked
+/eldar --fix    # Interactive triage — pick what to fix and the Eldar walk you through it
+```
+
+Run it on day one in any new project, any time Claude feels off, or as a periodic health check. Outside of the core install, this is the most impactful thing moflo offers — full details in the **`/eldar`** section [further down](#eldar--consult-the-eldar-project-setup-audit--wizard).
+
 ## Opinionated Defaults
 
 MoFlo makes deliberate choices so you don't have to:
