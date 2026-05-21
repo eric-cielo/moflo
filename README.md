@@ -901,6 +901,10 @@ So I started from that foundation and narrowed the focus to my particular corner
 
 If you're exploring the full breadth of agent orchestration, go look at [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) — it's the real deal. If your needs are similar to mine — a focused, opinionated local dev setup that just works — MoFlo is for you.
 
+## Contributing
+
+Contributions are welcome — bug reports, documentation, tests, and code. See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for setup, conventions, and how to open a pull request. By participating, you agree to abide by our **[Code of Conduct](./CODE_OF_CONDUCT.md)**.
+
 ## License
 
 MIT
