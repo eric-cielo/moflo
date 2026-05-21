@@ -21,13 +21,13 @@ Restart Claude Code. That's it — memory, indexing, gates, and routing are all 
 
 Or — just ask Claude to install MoFlo into your project and initialize it!
 
-To verify everything is running, ask Claude to run `flo healer` with full diagnostics after restarting. If anything fails, ask Claude to fix it with `flo healer --fix`. (`flo doctor` is still accepted as an alias.)
+To verify everything is running, run the **`/healer`** skill inside Claude Code (or `flo healer` from the CLI) after restarting — it runs full diagnostics. If anything fails, run **`/healer --fix`** to automatically fix issues.
 
 ## Next Step: Consult the Eldar
 
 After installing moflo, the single highest-leverage thing you can do for the best experience is run **`/eldar`** inside a Claude Code session.
 
-Where `flo healer` verifies that *moflo itself* is wired up correctly, **`/eldar` audits how Claude is set up to actually use your project** — guidance docs, CLAUDE.md, memory namespaces, hook/MCP wiring, model routing, and whether every technology in your stack (TypeScript, Python, Rust, Go, etc.) has matching guidance for Claude to lean on. The stack → guidance cross-reference alone is often the difference between *"Claude feels lost in this codebase"* and *"Claude knows this codebase"*.
+Where `/healer` (or `flo healer` from the CLI) verifies that *moflo itself* is wired up correctly, **`/eldar` audits how Claude is set up to actually use your project** — guidance docs, CLAUDE.md, memory namespaces, hook/MCP wiring, model routing, and whether every technology in your stack (TypeScript, Python, Rust, Go, etc.) has matching guidance for Claude to lean on. The stack → guidance cross-reference alone is often the difference between *"Claude feels lost in this codebase"* and *"Claude knows this codebase"*.
 
 ```
 /eldar          # Read-only audit; categorized findings, severity-ranked
@@ -110,7 +110,7 @@ In interactive mode (`flo init` without `--yes`), it shows what it found and let
 If `flo init` detects an existing `.claude/settings.json` or `.claude-flow/` directory (from a prior Claude Flow or Ruflo installation), it treats the project as already initialized and runs in **update mode** — merging MoFlo's hooks and configuration into your existing setup without overwriting your data. Specifically:
 
 - **Hooks** — If your `.claude/settings.json` already has MoFlo-style gate hooks (`flo gate`), the hooks step is skipped. Otherwise, MoFlo's hooks are written into the file (existing non-MoFlo hooks are not removed).
-- **MCP servers** — MoFlo registers itself as the `moflo` server in `.mcp.json`. If you had `claude-flow` or `ruflo` MCP servers configured previously, those entries remain untouched — you can remove them manually once you've verified MoFlo is working. The `flo healer` command checks for the `moflo` server specifically.
+- **MCP servers** — MoFlo registers itself as the `moflo` server in `.mcp.json`. If you had `claude-flow` or `ruflo` MCP servers configured previously, those entries remain untouched — you can remove them manually once you've verified MoFlo is working. The `/healer` skill (or `flo healer` from the CLI) checks for the `moflo` server specifically.
 - **Config files** — `moflo.yaml`, `CLAUDE.md`, and `.claude/skills/flo/` follow the same skip-if-exists logic. Use `--force` to regenerate them.
 
 To force a clean re-initialization over an existing setup:
