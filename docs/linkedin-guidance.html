@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Writing Better Docs for Claude (and Humans) with MoFlo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fg: #1f2328;
+      --fg-muted: #57606a;
+      --bg: #faf9f6;
+      --accent: #b91c1c;
+      --accent-hover: #7f1d1d;
+      --code-bg: #f1ece4;
+      --code-fg: #1f2328;
+      --rule: #e3dfd8;
+      --shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--fg);
+      max-width: 740px;
+      margin: 3rem auto;
+      padding: 0 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.018em;
+      line-height: 1.22;
+      color: var(--fg);
+    }
+    h1 {
+      font-size: 2.25rem;
+      margin: 1.25rem 0 1rem;
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 0.25rem;
+    }
+    h3 {
+      font-size: 1.15rem;
+      margin: 1.75rem 0 0.5rem;
+    }
+    p {
+      margin: 0.95rem 0;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(185, 28, 28, 0.35);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      border-bottom-color: var(--accent-hover);
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: inset 0 0 0 1px rgba(31, 35, 40, 0.04);
+      margin: 1.25rem 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+    li::marker {
+      color: var(--fg-muted);
+    }
+    em {
+      font-style: italic;
+      color: var(--fg);
+    }
+    strong {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2rem 0;
+    }
+    h1 + p em {
+      color: var(--fg-muted);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.25rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    th {
+      font-weight: 600;
+      color: var(--fg);
+      background: rgba(241, 236, 228, 0.5);
+    }
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; margin: 1.5rem auto; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.25rem; }
+      table { font-size: 0.9rem; }
+      th, td { padding: 0.45rem 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_guidance2.png" alt="MoFlo — guidance docs as the bridge between Claude and your project's conventions" /></p>
+
+<h1>Writing Better Docs for Claude (and Humans) with MoFlo</h1>
+
+<p><em>How <a href="https://github.com/eric-cielo/moflo">MoFlo</a>'s <code>/guidance</code> skill helps you write project documentation that Claude actually uses well,
+  how the same tool produces clean human-facing docs with <code>-h</code> and <code>--html</code>, and how <code>/eldar</code> ties it all together
+  into a holistic audit of how Claude experiences your project.</em></p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+<hr />
+
+<h2>Claude is only as good as its context</h2>
+
+<p>If you've spent any time pairing with Claude on a real codebase, you've noticed something. Claude is extraordinarily capable at <em>general</em> software engineering.
+  But the moment the work touches something <em>specific</em> about your project — your conventions, your gotchas, your "we tried that once and it bit us" history —
+  capability stops mattering. Context starts mattering.</p>
+
+<p>A senior engineer joining your team reads the README, skims the architecture docs, asks a teammate "what's the convention for X?", and absorbs the institutional memory
+  before they touch a line of code. Claude can't do that on its own. It walks in cold every session. If your project doesn't have written-down conventions in a place Claude can find,
+  Claude will either guess (sometimes well, often not) or do the generic thing (which is rarely what <em>you</em> want).</p>
+
+<p>MoFlo's <code>/guidance</code> skill exists to make writing that context cheap, structured, and consistent. Not because writing docs is hard — it isn't — but because writing docs
+  <em>that Claude reads efficiently</em> has a different shape than writing docs for humans, and most of us don't naturally produce that shape on the first pass.</p>
+
+<h2>What "good for Claude" actually means</h2>
+
+<p>Claude reads your guidance docs in two different ways, and both reward a particular structure:</p>
+
+<ol>
+  <li><strong>Direct inclusion</strong> — your top-level <code>CLAUDE.md</code> and any docs it links to land in Claude's context window at the start of every session.</li>
+  <li><strong>RAG retrieval</strong> — MoFlo indexes everything in <code>.claude/guidance/</code> into a semantic search index. When Claude needs context mid-task,
+    it queries that index and gets back the most relevant <em>chunks</em> — sections of your docs, not whole files.</li>
+</ol>
+
+<p>The retrieval mode is the one that surprises people. Claude isn't reading your 400-line <code>database-conventions.md</code> end-to-end every time it writes a query.
+  It's pulling the most relevant H2 section based on a similarity search. Which means your <code>## Migration patterns</code> section needs to <em>stand alone</em> —
+  if a reader (human or otherwise) lands on that section with no preamble, it should still be useful.</p>
+
+<p>That's why <code>/guidance</code> enforces things like:</p>
+
+<ul>
+  <li><strong>One H1, then a <code>**Purpose:**</code> line.</strong> A future chunk that pulls in the H1 area has immediate context.</li>
+  <li><strong>Specific H2 headings.</strong> <code>## Migration patterns</code> is searchable; <code>## Examples</code> isn't.</li>
+  <li><strong>Imperative voice for rules.</strong> "Always use <code>path.join</code> for cross-platform paths" retrieves better than "you should probably consider using path.join".</li>
+  <li><strong>Tables for decision logic.</strong> Conditional rules in a table compress better than nested bullets.</li>
+  <li><strong>A <code>## See Also</code> section.</strong> Bidirectional links so Claude can traverse to related guidance instead of guessing.</li>
+  <li><strong>Under 500 lines.</strong> Long docs chunk worse and overwhelm the context window.</li>
+</ul>
+
+<p>These aren't arbitrary rules. They're the difference between Claude finding your convention and Claude inventing one.</p>
+
+<h2>The <code>/guidance</code> skill — one shape, three audiences</h2>
+
+<p>Run <code>/guidance &lt;topic&gt;</code> and the skill walks you through writing a doc to Claude's preferred shape: scaffold first, then 2–4 targeted questions to populate the body
+  with <em>your</em> conventions (not generic opinions). It checks the file against the universal rules before saving. Default destination is <code>.claude/guidance/&lt;topic&gt;.md</code>.</p>
+
+<p>That's the Claude path. But the skill knows that not every doc is for Claude. Two flags switch the audience:</p>
+
+<h3><code>-h</code> — write for humans</h3>
+
+<p>Pass <code>-h</code> and the skill switches to a lighter ruleset designed for human readers and writes to <code>docs/&lt;topic&gt;.md</code> instead.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rule</th>
+      <th>For Claude</th>
+      <th>For Humans</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>**Purpose:**</code> line after H1</td><td>Required</td><td>Kept — orients any reader fast</td></tr>
+    <tr><td>Imperative voice (must/always/never)</td><td>Required</td><td>Dropped — narrative prose is fine</td></tr>
+    <tr><td>Tables for decision logic</td><td>Required</td><td>Kept where applicable</td></tr>
+    <tr><td>Concrete examples (no <code>[placeholder]</code>)</td><td>Required</td><td>Kept — always</td></tr>
+    <tr><td>Under 500 lines</td><td>Required</td><td>Kept</td></tr>
+    <tr><td>Specific H2 headings</td><td>Required</td><td>Kept</td></tr>
+    <tr><td>RAG-friendly chunking</td><td>Required</td><td>Dropped — humans don't query a vector index</td></tr>
+    <tr><td><code>## See Also</code></td><td>Required</td><td>Kept — humans like to traverse too</td></tr>
+  </tbody>
+</table>
+
+<p>The result reads more like a normal technical doc — a short prose preamble before the first rule is fine, hedged language is fine, you don't have to bark "MUST" at the reader.
+  But it still has the bones that make it scannable.</p>
+
+<h3><code>--html</code> — emit standalone HTML</h3>
+
+<p>Pass <code>--html</code> (composable with <code>-h</code>) and the skill renders the doc to HTML with a minimal default stylesheet baked in. No external CSS, no JS, no web fonts —
+  just clean light/dark-aware typography that works in any browser. Good for publishing to a static site, sharing a single file with a stakeholder, or dropping into a wiki that accepts raw HTML.</p>
+
+<p>The skill authors the Markdown first, shows it to you for sign-off, <em>then</em> renders to HTML. Iterating on the Markdown is cheaper than iterating on markup.</p>
+
+<p>The combination is genuinely useful: one tool, one ruleset family, three outputs depending on who's reading.</p>
+
+<h2>Audit existing docs — <code>/guidance -a</code></h2>
+
+<p>Writing new docs is one half of the job. The other half is the docs you already have — the ones that have drifted, the ones with <code>## Overview</code> headings,
+  the ones missing a Purpose line, the ones over 800 lines because nobody split them.</p>
+
+<p><code>/guidance -a</code> is a two-pass audit:</p>
+
+<p><strong>Pass 1 — Structural conformance.</strong> Score every <code>.md</code> under <code>.claude/guidance/</code> against the universal rules. Render a sortable table:
+  file, lines, has-purpose, has-see-also, generic-headings count, hedged-language count. The worst offenders surface first.</p>
+
+<p><strong>Pass 2 — Gap analysis.</strong> Look at what <em>isn't</em> there. Read <code>package.json</code> (and <code>pyproject.toml</code>, <code>Cargo.toml</code>, <code>go.mod</code>,
+  whatever you have), scan the source layout, check for MCP tools and hooks, look at recent git activity. Cross-reference against your existing guidance. If your project uses Drizzle ORM
+  in 30 files and you have no <code>database-conventions.md</code>, that's a high-leverage gap — Claude is winging it every time it touches your data layer.</p>
+
+<p>The audit doesn't write anything. It surfaces the top 3–5 priority items across both passes, explains <em>why</em> (rule citation for structural; concern + evidence for gaps),
+  and proposes the fix. You confirm per-file before any change. Guidance is high-leverage; silent edits are dangerous.</p>
+
+<h2>Where <code>/eldar</code> comes in</h2>
+
+<p>Even with great guidance docs, there's a broader question: <strong>is Claude set up to find them at all?</strong></p>
+
+<p>You can write the world's best <code>database-conventions.md</code>, but if your <code>CLAUDE.md</code> doesn't reference it, the MoFlo daemon isn't running, the memory index is empty,
+  or the session-start hook never fires, Claude has no idea it exists. The doc is invisible.</p>
+
+<p><code>/eldar</code> is the holistic audit — the Eldar consult on whether your <em>entire</em> moflo + Claude Code setup is configured to give Claude the best shot.
+  It's read-only by default; pass <code>--fix</code> and it walks you through remediation interactively.</p>
+
+<p>What it checks:</p>
+
+<ul>
+  <li><strong>Setup health.</strong> Calls <code>flo healer</code> (the alias for <code>flo doctor</code>) and surfaces every failure or warning.</li>
+  <li><strong>Index freshness.</strong> Is <code>.moflo/moflo.db</code> present? Are the guidance and code-map namespaces populated? An empty guidance namespace means semantic search is degraded —
+    Claude can't <em>find</em> your docs even if you wrote them.</li>
+  <li><strong>Version skew.</strong> Are you behind on <code>moflo</code>? Several minor versions of drift means missing fixes you don't know about.</li>
+  <li><strong>CLAUDE.md.</strong> Does it exist? Is it the right shape? Do the relative paths it cites actually resolve?</li>
+  <li><strong>Guidance content.</strong> How many docs do you have? Zero is a warning. One or two is sparse.</li>
+  <li><strong>Guidance structure.</strong> This is the key tie-in: <code>/eldar</code> invokes <code>/guidance -a</code> <em>inline</em>, during the audit, and folds the structural + gap findings
+    into its own report. Single source of truth — <code>/guidance</code> owns the writing rules, <code>/eldar</code> surfaces them in the broader context.</li>
+  <li><strong>Memory health.</strong> Are your <code>guidance</code>, <code>patterns</code>, and <code>learnings</code> namespaces populated? An empty <code>learnings</code> namespace is fine for
+    new projects; an empty <code>guidance</code> namespace means RAG isn't going to help Claude.</li>
+  <li><strong>Hooks &amp; MCP wiring.</strong> Is the session-start hook configured? Is the MoFlo MCP server in <code>.claude/settings.json</code>? Without these, every other piece of MoFlo is dark.</li>
+  <li><strong>Spell inventory and subagent fleet.</strong> Have you registered any spells or project-specific subagents, or are you relying entirely on built-ins?</li>
+</ul>
+
+<p>The output is a single ranked table with severities (<code>error</code> → <code>warn</code> → <code>info</code>) and a top-3 recommendations list with rationale. Pass <code>--fix</code>
+  and you get an interactive triage menu: pick which findings to address, and the Eldar walks you through each — scaffolding CLAUDE.md, handing off to <code>/guidance</code> for any new docs,
+  running <code>flo healer --fix</code>, seeding empty namespaces.</p>
+
+<p>The neat part is the handoff to <code>/guidance</code>. When <code>/eldar</code> finds you're missing a guidance doc for Drizzle, it doesn't reimplement doc-writing logic — it routes you into
+  <code>/guidance</code>, which already knows the rules, the audience-switching flags, and the question-driven scaffolding flow. One source of truth for "how do I write a good doc";
+  one source of truth for "is my project set up well". They compose.</p>
+
+<h2>How they fit together</h2>
+
+<p>The pattern is the same one MoFlo uses everywhere: focused tools that compose.</p>
+
+<pre><code>/guidance &lt;topic&gt;             # write one doc for Claude
+/guidance -h &lt;topic&gt;          # write one doc for humans (docs/)
+/guidance -h --html &lt;topic&gt;   # write one doc for humans, as HTML
+/guidance -a                  # audit all guidance for structure + gaps
+/eldar                        # audit the whole moflo + Claude Code setup
+/eldar --fix                  # audit + interactive fix walk-through</code></pre>
+
+<p>You don't need to remember which tool does which check. You start at the level that matches what you're doing:</p>
+
+<ul>
+  <li><strong>New project, Claude feels lost?</strong> <code>/eldar</code> — see the full picture.</li>
+  <li><strong>Know you need a doc on X?</strong> <code>/guidance &lt;X&gt;</code>.</li>
+  <li><strong>Existing docs feel rotten?</strong> <code>/guidance -a</code>.</li>
+  <li><strong>Need to publish something for non-Claude readers?</strong> <code>/guidance -h</code> or <code>/guidance -h --html</code>.</li>
+</ul>
+
+<p>Each one knows when to hand off to another. The Eldar invoke <code>/guidance -a</code> inline. <code>/guidance -a</code> proposes new docs and routes you to single-doc mode to write them.
+  Single-doc mode knows the universal rules so the audit doesn't catch a doc you just wrote.</p>
+
+<h2>Why this matters</h2>
+
+<p>Documentation is the lowest-cost, highest-leverage way to make Claude better at <em>your</em> project. Models keep getting better at general code. They will never, on their own,
+  get better at <em>your</em> conventions — that information lives in your head, your wiki, your Slack channel, your PR review comments. Until it's written down somewhere Claude can find,
+  every session pays the cost of you re-explaining it.</p>
+
+<p>MoFlo's <code>/guidance</code> and <code>/eldar</code> skills exist to make that writing easy enough that you'll actually do it. Not because the skills do the writing for you —
+  they don't, and they explicitly refuse to auto-write opinionated content into your project — but because they handle the <em>shape</em>. They ask you the right questions.
+  They check the result against rules that make Claude's retrieval work. They surface what you're missing.</p>
+
+<p>Write the docs. Audit them. Audit the whole setup. Then watch Claude stop guessing.</p>
+
+<p><strong>MoFlo is, and will stay, free and open source.</strong></p>
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+</body>
+</html>
