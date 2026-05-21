@@ -92,8 +92,9 @@ jobs:
       # runners (issue #1021). No restore-keys — partial prefix matches could
       # restore the wrong model's binary blobs on a future model swap.
       # See ADR-EMB-001 / epic #527.
-      - name: Cache fastembed model
-        uses: actions/cache@v5
+      - name: Restore fastembed model
+        id: cache-fastembed
+        uses: actions/cache/restore@v5
         with:
           path: ~/.cache/fastembed
           key: fastembed-${{ runner.os }}-${{ hashFiles('src/cli/embeddings/fastembed-inline/**/*.ts') }}-fast-all-MiniLM-L6-v2
@@ -115,8 +116,12 @@ jobs:
       #     post-restore, so test coverage of the current source is intact.
       #   - No restore-keys: a partial-prefix match could resurrect a stale
       #     transitive after a `package-lock.json` bump.
-      - name: Cache consumer-install node_modules
-        uses: actions/cache@v5
+      # Restore/save split (not the combined actions/cache@v5) so the upload
+      # post-step can carry continue-on-error — see the Save steps at the end
+      # of the job. A transient cache-upload failure must never fail this gate.
+      - name: Restore consumer-install node_modules
+        id: cache-consumer-warm
+        uses: actions/cache/restore@v5
         with:
           path: .work/consumer-warm
           key: consumer-warm-${{ runner.os }}-${{ matrix.harness }}-${{ hashFiles('package-lock.json', 'scripts/prune-native-binaries.mjs', 'scripts/post-install-bootstrap.mjs', 'scripts/post-install-notice.mjs') }}
@@ -138,3 +143,23 @@ jobs:
       - name: Run populated-consumer smoke harness
         if: matrix.harness == 'populated'
         run: npm run test:smoke:populated -- --warm-donor .work/consumer-warm
+
+      # Save caches last with continue-on-error: a cache UPLOAD is an
+      # optimization that runs after every product assertion, so a transient
+      # actions/cache post-step failure must never fail this gate. Only save on
+      # a miss; key is the restore step's resolved primary key.
+      - name: Save fastembed model
+        if: always() && steps.cache-fastembed.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/fastembed
+          key: ${{ steps.cache-fastembed.outputs.cache-primary-key }}
+
+      - name: Save consumer-install node_modules
+        if: always() && steps.cache-consumer-warm.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: .work/consumer-warm
+          key: ${{ steps.cache-consumer-warm.outputs.cache-primary-key }}

@@ -81,15 +81,20 @@ jobs:
           cache: npm
 
       # Same caching scheme as consumer-install-smoke.yml — see that file
-      # for the per-key rationale (ADR-EMB-001, issues #1021/#1153).
-      - name: Cache fastembed model
-        uses: actions/cache@v5
+      # for the per-key rationale (ADR-EMB-001, issues #1021/#1153). Restore
+      # and save are SPLIT (not the combined actions/cache@v5) so the upload
+      # post-step can carry continue-on-error — see the Save steps at the end
+      # of the job for why a cache-upload hiccup must never fail the gate.
+      - name: Restore fastembed model
+        id: cache-fastembed
+        uses: actions/cache/restore@v5
         with:
           path: ~/.cache/fastembed
           key: fastembed-${{ runner.os }}-${{ hashFiles('src/cli/embeddings/fastembed-inline/**/*.ts') }}-fast-all-MiniLM-L6-v2
 
-      - name: Cache consumer-install node_modules
-        uses: actions/cache@v5
+      - name: Restore consumer-install node_modules
+        id: cache-consumer-warm
+        uses: actions/cache/restore@v5
         with:
           path: .work/consumer-warm
           key: consumer-warm-${{ runner.os }}-${{ matrix.harness }}-${{ hashFiles('package-lock.json', 'scripts/prune-native-binaries.mjs', 'scripts/post-install-bootstrap.mjs', 'scripts/post-install-notice.mjs') }}
@@ -107,6 +112,28 @@ jobs:
       - name: Run populated-consumer smoke harness
         if: matrix.harness == 'populated'
         run: npm run test:smoke:populated -- --warm-donor .work/consumer-warm
+
+      # Save caches last. A cache UPLOAD is a build-time optimization that runs
+      # after every product assertion — a transient actions/cache post-step
+      # failure once took down an otherwise-green 49/49 Windows leg and blocked
+      # a publish. continue-on-error guarantees an upload hiccup can never fail
+      # the release gate. Only save on a miss (an exact-key hit is already
+      # current); key is the restore step's resolved primary key.
+      - name: Save fastembed model
+        if: always() && steps.cache-fastembed.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/fastembed
+          key: ${{ steps.cache-fastembed.outputs.cache-primary-key }}
+
+      - name: Save consumer-install node_modules
+        if: always() && steps.cache-consumer-warm.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: .work/consumer-warm
+          key: ${{ steps.cache-consumer-warm.outputs.cache-primary-key }}
 
   file-sync-smoke:
     # 3-OS native: NTFS / APFS / ext4 each have their own lock + rename
