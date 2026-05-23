@@ -43,6 +43,18 @@ auto_index:
   code_map: true
   tests: true
 
+# Passive session-continuity — pick up where you left off across sessions.
+session_continuity:
+  capture: true
+  inject: true
+  max_age_hours: 72
+
+# Auto-reflect (#1198) — automatic counterpart to /reflect; recognizes durable
+# lessons in the live session and distills them into long-term memory. Ships ON;
+# set false to opt out.
+auto_reflect:
+  enabled: true
+
 # Memory backend
 memory:
   backend: node-sqlite
