@@ -253,6 +253,11 @@
       "notes": "Daemon worker subprocess — S3 adds content-diff"
     },
     {
+      "file": "bin/index-reference.mjs",
+      "classification": "daemon-offline",
+      "notes": "Daemon worker subprocess (library-docs grounding #1184) — content-diff via applyIncrementalChunks"
+    },
+    {
       "file": "bin/generate-code-map.mjs",
       "classification": "daemon-offline",
       "notes": "Daemon worker subprocess — S3 adds content-diff"

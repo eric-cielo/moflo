@@ -65,6 +65,7 @@ export const SCRIPT_FILES = [
   'semantic-search.mjs',
   'index-tests.mjs',
   'index-patterns.mjs',
+  'index-reference.mjs',
   'index-all.mjs',
   'setup-project.mjs',
   'run-migrations.mjs',

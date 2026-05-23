@@ -65,6 +65,12 @@ describe('hooks.mjs indexing integration', () => {
     );
   });
 
+  it('index-all.mjs registers reference (library-docs) indexer', () => {
+    expect(indexAllContent).toMatch(
+      /consider\(\s*'reference-index'\s*,\s*'reference'\s*,\s*'index-reference\.mjs'\s*,\s*'flo-reference'/,
+    );
+  });
+
   it('index-all.mjs registers pretrain step', () => {
     expect(indexAllContent).toMatch(/name:\s*'pretrain'/);
     expect(indexAllContent).toContain("'hooks', 'pretrain'");
@@ -87,9 +93,9 @@ describe('hooks.mjs indexing integration', () => {
     expect(indexAllContent).toMatch(/isIndexEnabled\(\s*cfgKey\s*\)/);
   });
 
-  it('index-all.mjs registers all four auto_index keys', () => {
+  it('index-all.mjs registers all auto_index keys', () => {
     // The cfgKey arg of each consider() call.
-    const keys = ['guidance', 'code_map', 'tests', 'patterns'];
+    const keys = ['guidance', 'code_map', 'tests', 'patterns', 'reference'];
     for (const k of keys) {
       expect(indexAllContent).toMatch(
         new RegExp(`consider\\(\\s*'[^']+'\\s*,\\s*'${k}'`),
