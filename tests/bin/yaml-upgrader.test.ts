@@ -95,8 +95,11 @@ describe('yaml-upgrader', () => {
       expect(content).toContain('tier: auto');
     });
 
-    it('is idempotent when sandbox is already present', () => {
-      const existing = 'project:\n  name: foo\nsandbox:\n  enabled: true\n  tier: full\n';
+    it('is idempotent when all required sections are already present', () => {
+      const existing =
+        'project:\n  name: foo\n' +
+        'session_continuity:\n  capture: true\n  inject: true\n' +
+        'sandbox:\n  enabled: true\n  tier: full\n';
       writeFileSync(yamlPath, existing, 'utf-8');
 
       const firstRun = ensureYamlSections(yamlPath);

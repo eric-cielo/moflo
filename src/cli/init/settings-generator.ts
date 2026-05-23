@@ -195,6 +195,12 @@ function autoMemoryCmd(subcommand: string): string {
   return hookCmdEsm('"$CLAUDE_PROJECT_DIR/.claude/helpers/auto-memory-hook.mjs"', subcommand);
 }
 
+/** Shorthand for the ESM session-continuity capture command (#1185). Lives in
+ *  .claude/scripts/ (a synced scriptFile), beside its ./lib/ helpers. */
+function continuityCmd(subcommand: string): string {
+  return hookCmdEsm('"$CLAUDE_PROJECT_DIR/.claude/scripts/session-continuity.mjs"', subcommand);
+}
+
 /** Shorthand for gate commands (lightweight JSON state checks) */
 function gateCmd(subcommand: string): string {
   return hookCmd('"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs"', subcommand);
@@ -405,13 +411,14 @@ function generateHooksConfig(config: HooksConfig): object {
     ];
   }
 
-  // Stop — persist session + sync auto memory
+  // Stop — persist session + sync auto memory + capture continuity digest (#1185)
   if (config.stop) {
     hooks.Stop = [
       {
         hooks: [
           { type: 'command', command: hookHandlerCmd('session-end'), timeout: 5000 },
           { type: 'command', command: autoMemoryCmd('sync'), timeout: 10000 },
+          { type: 'command', command: continuityCmd('capture'), timeout: 5000 },
         ],
       },
     ];

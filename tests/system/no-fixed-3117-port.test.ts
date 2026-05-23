@@ -32,6 +32,11 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 const ALLOWLIST = new Set<string>([
   'src/cli/services/daemon-port.ts',
   'bin/lib/daemon-port.mjs',
+  // Dogfood mirror twin of bin/lib/daemon-port.mjs — same LEGACY_DEFAULT_PORT
+  // constant. .claude/scripts/ is the byte-for-byte mirror a consumer's launcher
+  // syncs from bin/ (#1185 restored it after dogfood drift), so it carries the
+  // same allowlisted resolver.
+  '.claude/scripts/lib/daemon-port.mjs',
   'tests/system/no-fixed-3117-port.test.ts',
   'docs/internal/1145-daemon-port-collision-analysis.md',
   'CHANGELOG.md',

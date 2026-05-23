@@ -222,6 +222,17 @@ auto_index:
   code_map: ${codeMap}
   tests: ${tests}
 
+# Passive session-continuity — pick up where you left off across sessions.
+# capture: silently record a compact "where you left off" digest at turn-end.
+# inject:  surface the single most-relevant recent digest at session-start
+#          (relevance-gated by branch / changed files / recency, so an unrelated
+#          session shows nothing). Add "<private>" to a message to skip capturing
+#          that session. Set either to false to opt out.
+session_continuity:
+  capture: true
+  inject: true
+  max_age_hours: 72            # ignore digests older than this when injecting
+
 # Memory backend
 memory:
   backend: node-sqlite
@@ -331,6 +342,7 @@ export const REQUIRED_TOP_LEVEL_SECTIONS = [
   'tests',
   'gates',
   'auto_index',
+  'session_continuity',
   'memory',
   'hooks',
   'mcp',

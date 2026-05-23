@@ -23,6 +23,20 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
  */
 export const REQUIRED_SECTIONS = [
   {
+    key: 'session_continuity',
+    block: `# Passive session-continuity — pick up where you left off across sessions.
+# capture: silently record a compact "where you left off" digest at turn-end.
+# inject:  surface the single most-relevant recent digest at session-start
+#          (relevance-gated by branch / changed files / recency, so an unrelated
+#          session shows nothing). Add "<private>" to a message to skip capturing
+#          that session. Set either to false to opt out.
+session_continuity:
+  capture: true
+  inject: true
+  max_age_hours: 72            # ignore digests older than this when injecting
+`,
+  },
+  {
     key: 'sandbox',
     block: `# Spell step sandboxing (OS-level process isolation for bash steps)
 # Platform support: macOS (sandbox-exec), Linux/WSL (bwrap). Windows has no OS sandbox.
