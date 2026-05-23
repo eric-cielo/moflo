@@ -68,8 +68,8 @@ export interface MofloConfig {
    * Auto-reflect (#1198) — the automatic counterpart to `/reflect`. When
    * `enabled`, a UserPromptSubmit hook recognizes durable lessons in the LIVE
    * session and a session-start pass distills them into the `learnings`
-   * namespace via a bounded headless Haiku run. Touches the session hot path in
-   * every consumer, so it defaults OFF — opt-in until measured (#1198).
+   * namespace via a bounded headless Haiku run. Defaults ON (opt out with
+   * `enabled: false`); the `rc` dist-tag gated the initial rollout.
    */
   auto_reflect: {
     enabled: boolean;
@@ -210,7 +210,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     max_age_hours: 72,
   },
   auto_reflect: {
-    enabled: false,
+    enabled: true,
   },
   memory: {
     backend: 'node-sqlite',

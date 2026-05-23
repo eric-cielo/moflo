@@ -13,7 +13,7 @@
  * pollute `learnings` with junk it invented.
  *
  * GUARDS:
- *   - default-off (auto_reflect.enabled) — exit immediately when off.
+ *   - off (auto_reflect.enabled: false) — exit immediately. Default is ON.
  *   - CLAUDE_CODE_HEADLESS — exit immediately (defensive; the launcher already
  *     won't fire us in headless, but self-guarding prevents any infinite spawn).
  *   - empty ledger — exit without spawning anything.
@@ -97,7 +97,7 @@ function runHeadless(projectRoot, prompt) {
 async function main() {
   if (isHeadless(process.env)) return;                       // #860 self-guard
   const projectRoot = findProjectRoot();
-  if (!readReflectConfig(projectRoot).enabled) return;       // default-off
+  if (!readReflectConfig(projectRoot).enabled) return;       // off (opt-out)
 
   const pending = pendingEntries(readLedger(projectRoot));
   if (pending.length === 0) return;                          // nothing to do — no spawn

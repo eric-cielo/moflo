@@ -42,9 +42,9 @@ session_continuity:
 # moflo recognizes durable lessons in the LIVE session (a tiny answer-first note
 # on course-corrections / errors / decisions) and distills them into long-term
 # memory at the next session-start via a cheap headless Haiku pass — deduped.
-# Touches the session hot path, so it ships OFF; turn it on to opt in.
+# Ships ON; set false to opt out.
 auto_reflect:
-  enabled: false
+  enabled: true
 `,
   },
   {

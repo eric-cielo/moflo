@@ -48,20 +48,20 @@ function cleanTempRoot(root: string) {
   try { rmSync(root, { recursive: true, force: true }); } catch { /* Windows handle hold — non-fatal */ }
 }
 
-// ── Config (default OFF) ─────────────────────────────────────────────────────
+// ── Config (default ON, opt-out) ─────────────────────────────────────────────
 
 describe('readReflectConfig', () => {
   let root: string;
   beforeEach(() => { root = makeTempRoot('cfg'); });
   afterEach(() => cleanTempRoot(root));
 
-  it('defaults OFF with no moflo.yaml (blast-radius posture)', () => {
-    expect(readReflectConfig(root)).toEqual({ enabled: false });
+  it('defaults ON with no moflo.yaml (#1198 ships default-on)', () => {
+    expect(readReflectConfig(root)).toEqual({ enabled: true });
   });
 
-  it('defaults OFF when the block is absent', () => {
+  it('defaults ON when the block is absent', () => {
     writeFileSync(resolve(root, 'moflo.yaml'), 'auto_update:\n  enabled: true\n');
-    expect(readReflectConfig(root)).toEqual({ enabled: false });
+    expect(readReflectConfig(root)).toEqual({ enabled: true });
   });
 
   it('parses an explicit enabled: true', () => {
@@ -69,7 +69,7 @@ describe('readReflectConfig', () => {
     expect(readReflectConfig(root)).toEqual({ enabled: true });
   });
 
-  it('parses an explicit enabled: false', () => {
+  it('opts out on an explicit enabled: false', () => {
     writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: false\n');
     expect(readReflectConfig(root)).toEqual({ enabled: false });
   });

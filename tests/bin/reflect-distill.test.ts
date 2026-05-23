@@ -43,6 +43,9 @@ function cleanTempRoot(root: string) {
 function enable(root: string) {
   writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: true\n', 'utf-8');
 }
+function disable(root: string) {
+  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: false\n', 'utf-8');
+}
 function runDistill(root: string, stub: string, marker: string, extraEnv: Record<string, string> = {}) {
   return spawnSync('node', [DISTILL_SCRIPT], {
     cwd: root,
@@ -93,7 +96,8 @@ describe('reflect-distill', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
-  it('is a no-op when the flag is OFF (default)', () => {
+  it('is a no-op when explicitly disabled (enabled: false)', () => {
+    disable(root);
     appendLedgerEntries(root, [{ lesson: 'A durable lesson that must not be distilled while off.' }]);
     const r = runDistill(root, stub, marker);
     expect(r.status).toBe(0);

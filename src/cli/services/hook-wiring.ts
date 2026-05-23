@@ -55,8 +55,8 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   // just fresh `flo init`. Capture is default-on (silent); injection is
   // relevance-gated at session-start.
   { event: 'Stop', pattern: 'session-continuity.mjs' },
-  // #1198 — auto-reflect capture (default-OFF; gated in-script on
-  // auto_reflect.enabled). `reflect-detect` (UserPromptSubmit) injects the
+  // #1198 — auto-reflect capture (default-ON; opt out via
+  // auto_reflect.enabled: false). `reflect-detect` (UserPromptSubmit) injects the
   // answer-first directive on a strong signal; `reflect-scrape` (Stop) harvests
   // <reflect-capture> tags into the ledger. Both share reflect-capture.mjs, so
   // the unique subcommand token (not the shared filename) is the presence
@@ -109,9 +109,9 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // matcher), like the UserPromptSubmit entries; Claude Code fires every Stop
   // block, so a separate block alongside session-end/sync is fine.
   'session-continuity.mjs':   { event: 'Stop',             matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/session-continuity.mjs" capture', timeout: 5000 } },
-  // #1198 — auto-reflect capture. Default-OFF (the script early-returns unless
-  // auto_reflect.enabled), so wiring these into every consumer is inert until
-  // opt-in. Bare blocks (no matcher), like the other UserPromptSubmit/Stop entries.
+  // #1198 — auto-reflect capture. Default-ON (the script no-ops only when
+  // auto_reflect.enabled is false). Bare blocks (no matcher), like the other
+  // UserPromptSubmit/Stop entries.
   'reflect-detect':           { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs" reflect-detect', timeout: 3000 } },
   'reflect-scrape':           { event: 'Stop',             matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs" reflect-scrape', timeout: 5000 } },
 };

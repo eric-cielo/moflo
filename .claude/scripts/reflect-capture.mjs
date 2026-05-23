@@ -56,7 +56,7 @@ function warn(msg) {
 function gate() {
   if (isHeadless(process.env)) return null;          // #860 — never run inside the distill's own session
   const projectRoot = findProjectRoot();
-  if (!readReflectConfig(projectRoot).enabled) return null; // default-off
+  if (!readReflectConfig(projectRoot).enabled) return null; // off (opt-out)
   return { projectRoot };
 }
 

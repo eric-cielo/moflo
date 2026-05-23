@@ -10,6 +10,11 @@ import { defineConfig } from 'vitest/config';
  */
 export const isolationTests = [
   'tests/bin/process-manager-stress.test.ts',
+  // Spawns real `git` subprocesses to build temp repos per probe (#1093 already
+  // moved the classifier probes in-process; setup still shells out). Passes
+  // alone and in lighter runs, but the extra fork load from #1198's new bin
+  // tests tips its git setup past timeout under maxForks=2 Windows contention.
+  'tests/bin/simplify-classify.test.ts',
   'src/cli/memory/database-provider.test.ts',
   'src/cli/__tests__/spells/sandbox-tier-integration.test.ts',
   'src/cli/__tests__/spells/spell-sandboxing.test.ts',

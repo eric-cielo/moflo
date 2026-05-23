@@ -153,7 +153,7 @@ export function getReferenceHookBlock(): HooksTree {
       { hooks: [helperHook('prompt-hook.mjs', '', 3000)] },
       // #931 — Defensive safety-net hook. State reset only, no emission.
       { hooks: [gateHook('prompt-state-reset', 3000)] },
-      // #1198 — auto-reflect capture (detect). Default-OFF in-script.
+      // #1198 — auto-reflect capture (detect). Default-ON (opt-out in-script).
       { hooks: [scriptHookSub('reflect-capture.mjs', 'reflect-detect', 3000)] },
     ],
     SubagentStart: [

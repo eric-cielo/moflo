@@ -19,10 +19,11 @@
  *     judge: the durability gate already passed upstream in the live model, so
  *     unattended runs cannot pollute `learnings` with junk.
  *
- * Default-OFF (moflo.yaml `auto_reflect.enabled`). Every entry point early-
- * returns cheaply when the flag is off OR `CLAUDE_CODE_HEADLESS` is set — the
- * distill's own headless session must never re-enter capture or re-spawn distill
- * (the #860 / infinite-spawn guard the prior finding flagged).
+ * Default-ON (opt out via moflo.yaml `auto_reflect.enabled: false`). Shipped
+ * default-on from #1198; the `rc` dist-tag gated the initial rollout. Every
+ * entry point still early-returns cheaply when the flag is off OR
+ * `CLAUDE_CODE_HEADLESS` is set — the distill's own headless session must never
+ * re-enter capture or re-spawn distill (the #860 / infinite-spawn guard).
  *
  * STORAGE: `.moflo/reflect-ledger.json` (single file) + `.moflo/reflect-state.json`
  * (rate-limit). Deliberately NOT under `.moflo/continuity/` — that directory is
@@ -59,14 +60,15 @@ const STATE_FILE = 'reflect-state.json';
 
 /**
  * Read the `auto_reflect` block from moflo.yaml without a YAML parser. Defaults
- * OFF — auto-reflect touches the session hot path in every consumer and must be
- * opt-in until measured (#1198 blast-radius posture).
+ * ON — opt out with `auto_reflect.enabled: false`. (#1198 ships default-on; the
+ * `rc` dist-tag gated the initial rollout.) Stays ON on a mid-write/malformed
+ * file, consistent with the on default.
  *
  * @param {string} projectRoot
  * @returns {{enabled: boolean}}
  */
 export function readReflectConfig(projectRoot) {
-  const cfg = { enabled: false };
+  const cfg = { enabled: true };
   try {
     const yamlPath = resolve(projectRoot, 'moflo.yaml');
     if (!existsSync(yamlPath)) return cfg;
@@ -74,7 +76,7 @@ export function readReflectConfig(projectRoot) {
     const enabled = text.match(/auto_reflect:\s*\n(?:\s+\w+:.*\n)*?\s+enabled:\s*(true|false)/);
     if (enabled) cfg.enabled = enabled[1] === 'true';
   } catch {
-    // Default OFF keeps the feature inert if the file is mid-write / malformed.
+    // Default ON keeps the feature live if the file is mid-write / malformed.
   }
   return cfg;
 }

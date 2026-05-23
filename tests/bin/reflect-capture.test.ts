@@ -3,7 +3,7 @@
  * bin/reflect-capture.mjs (`detect` = UserPromptSubmit, `scrape` = Stop).
  *
  * Driven as a subprocess with JSON on stdin, matching how Claude Code invokes
- * hooks. Verifies the default-off + headless guards, signal-gated injection,
+ * hooks. Verifies the opt-out + headless guards, signal-gated injection,
  * rate-limiting, and the assistant-only tag scrape into the ledger.
  *
  * Cross-platform (Rule #1): temp dirs via path, spawnSync arg arrays, no shell.
@@ -31,6 +31,9 @@ function cleanTempRoot(root: string) {
 }
 function enable(root: string) {
   writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: true\n', 'utf-8');
+}
+function disable(root: string) {
+  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: false\n', 'utf-8');
 }
 function writeTranscript(root: string, events: object[]): string {
   const p = resolve(root, 'transcript.jsonl');
@@ -62,7 +65,8 @@ describe('reflect-capture detect (UserPromptSubmit)', () => {
     expect(r.stdout).toContain('FIRST');
   });
 
-  it('is silent when the flag is OFF (default)', () => {
+  it('is silent when explicitly disabled (enabled: false)', () => {
+    disable(root);
     const r = run(root, 'detect', { session_id: 's1', prompt: 'No, that is wrong, do it differently' });
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe('');
@@ -132,7 +136,8 @@ describe('reflect-capture scrape (Stop)', () => {
     expect(readLedger(root).entries).toHaveLength(0);
   });
 
-  it('is silent + writes nothing when the flag is OFF', () => {
+  it('is silent + writes nothing when explicitly disabled (enabled: false)', () => {
+    disable(root);
     const transcript = writeTranscript(root, [
       { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '<reflect-capture>A durable lesson that should not be stored.</reflect-capture>' }] } },
     ]);

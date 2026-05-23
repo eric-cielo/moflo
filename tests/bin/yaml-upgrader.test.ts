@@ -95,14 +95,14 @@ describe('yaml-upgrader', () => {
       expect(content).toContain('tier: auto');
     });
 
-    it('appends auto_reflect block (default-off) when missing (#1198)', () => {
+    it('appends auto_reflect block (default-on) when missing (#1198)', () => {
       writeFileSync(yamlPath, 'project:\n  name: foo\n', 'utf-8');
       const appended = ensureYamlSections(yamlPath);
 
       expect(appended).toContain('auto_reflect');
       const content = readFileSync(yamlPath, 'utf-8');
       expect(content).toMatch(/^auto_reflect:/m);
-      expect(content).toContain('enabled: false');
+      expect(content).toContain('enabled: true');
     });
 
     it('is idempotent when all required sections are already present', () => {
