@@ -16,6 +16,7 @@ import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
 import { makeSyncer, contentEqual } from './lib/file-sync.mjs';
+import { loadShippedScripts } from './lib/shipped-scripts.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -1025,6 +1026,24 @@ try {
         onSuccess: (key, dest) => recordManifestEntry(key, dest),
       });
 
+      // Single source of truth for what we sync into the consumer's .claude/ —
+      // bin/lib/shipped-scripts.json (#1191). Read from the freshly-installed
+      // package's binDir so an upgrade picks up newly-added scripts, not our
+      // own (older) synced copy. Degrade to no-op on a broken/unreadable
+      // manifest — the postinstall bootstrap already deployed the critical set,
+      // and crashing session-start would be worse than skipping one sync.
+      let scriptFiles = [];
+      let binHelperFiles = [];
+      let sourceHelperFiles = [];
+      try {
+        const shipped = loadShippedScripts(resolve(binDir, 'lib'));
+        scriptFiles = shipped.scriptFiles;
+        binHelperFiles = shipped.binHelperFiles;
+        sourceHelperFiles = shipped.sourceHelperFiles;
+      } catch (err) {
+        emitWarning(`shipped-scripts manifest unreadable (${errMessage(err)}) — skipping script/helper sync this session`);
+      }
+
       // Version changed — sync scripts from bin/
       if (autoUpdateConfig.scripts) {
         const scriptsDir = resolve(projectRoot, '.claude/scripts');
@@ -1032,12 +1051,6 @@ try {
         // not have it yet, in which case every copyFileSync below would
         // silently ENOENT (#854).
         if (!existsSync(scriptsDir)) mkdirSync(scriptsDir, { recursive: true });
-        const scriptFiles = [
-          'hooks.mjs', 'session-start-launcher.mjs', 'index-guidance.mjs',
-          'build-embeddings.mjs', 'generate-code-map.mjs', 'semantic-search.mjs',
-          'index-tests.mjs', 'index-patterns.mjs', 'index-reference.mjs', 'index-all.mjs',
-          'setup-project.mjs', 'run-migrations.mjs',
-        ];
         for (const file of scriptFiles) {
           await syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
         }
@@ -1087,10 +1100,8 @@ try {
         const helpersDir = resolve(projectRoot, '.claude/helpers');
         if (!existsSync(helpersDir)) mkdirSync(helpersDir, { recursive: true });
 
-        // Gate and hook helpers — shipped as static files in bin/
-        const binHelperFiles = [
-          'gate.cjs', 'gate-hook.mjs', 'prompt-hook.mjs', 'hook-handler.cjs', 'simplify-classify.cjs',
-        ];
+        // Gate and hook helpers — shipped as static files in bin/.
+        // List comes from the canonical manifest loaded above (#1191).
         for (const file of binHelperFiles) {
           await syncFile(resolve(binDir, file), resolve(helpersDir, file), `.claude/helpers/${file}`);
         }
@@ -1099,11 +1110,6 @@ try {
         const helperSources = [
           resolve(projectRoot, 'node_modules/moflo/.claude/helpers'),
           resolve(projectRoot, 'node_modules/moflo/src/cli/.claude/helpers'),
-        ];
-        const sourceHelperFiles = [
-          'auto-memory-hook.mjs', 'statusline.cjs', 'intelligence.cjs',
-          'subagent-start.cjs', 'subagent-bootstrap.json',
-          'pre-commit', 'post-commit',
         ];
         for (const file of sourceHelperFiles) {
           const dest = resolve(helpersDir, file);

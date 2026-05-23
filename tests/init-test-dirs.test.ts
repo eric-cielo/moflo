@@ -77,7 +77,6 @@ describe('moflo-init.ts test directory support', () => {
     expect(initContent).toContain('discoverTestDirs(root)');
   });
 
-  // SCRIPT_MAP membership is asserted strictly in init-copy-maps.test.ts
-  // ('shipped script lists agree across all sync sites'), which extracts the
-  // block and diffs all 3 sync sites — strictly stronger than a loose toContain.
+  // The shipped-script list is single-sourced in bin/lib/shipped-scripts.json
+  // (#1191); its contract is asserted in shipped-scripts-manifest.test.ts.
 });

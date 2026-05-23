@@ -130,14 +130,14 @@ When adding a new file, check which layer it falls into:
 | File location | Ships via | Sync requirement |
 |---|---|---|
 | `src/cli/**/*.ts` | `dist/src/cli/**/*.js` (auto, after `tsc`) | None — `package.json` `files` glob covers it |
-| `bin/*.mjs` (top level) | `bin/**` glob | **YES — add to `scriptFiles[]` in three places** (`bin/session-start-launcher.mjs` + `.claude/scripts/session-start-launcher.mjs` + `auto-update.test.ts`) — see `feedback_scriptfiles_sync.md` |
+| `bin/*.mjs` (top level) | `bin/**` glob | **Add the filename to the canonical manifest `bin/lib/shipped-scripts.json`** — one place (#1191). All four consumers (launcher §3, post-install bootstrap, `executor.ts`, `moflo-init.ts`) read it via `loadShippedScripts`. A `.moflo/moflo.db` writer ALSO needs a `tests/system/fixtures/writer-audit-whitelist.json` entry (intentional safety allowlist). |
 | `bin/lib/*.mjs` | `bin/**` glob | None — launcher's §3 sync recursively `readdirSync(libSrcDir)` picks it up automatically |
 | `bin/migrations/**` | `bin/**` glob | None — recursive sync |
 | `.claude/skills/**/*.md` | `.claude/skills/**/*.md` glob | None |
 | `.claude/guidance/shipped/**` | `.claude/guidance/shipped/**` glob | None (internal/ does NOT ship) |
 | `.claude/helpers/**` | `.claude/helpers/**` glob | None |
 
-The `scriptFiles[]` array hazard is the most common foot-gun because it's the only layer with a hand-maintained list. Everything else uses globs or `readdirSync`.
+Before #1191 the `scriptFiles[]` list was hand-duplicated across four files and was the most common foot-gun (it bit #1184 across all four sites). It's now single-sourced in `bin/lib/shipped-scripts.json`; adding a script is a one-line manifest edit. Everything else uses globs or `readdirSync`.
 
 ### 4. Round-trip cost — does the change need publish+reinstall to take effect locally?
 

@@ -24,10 +24,9 @@
  *
  *   The bootstrap only has to do enough to break the deadlock.
  *
- * The lists below MUST stay aligned with bin/session-start-launcher.mjs
- * section 3 (the launcher's own sync). A unit test asserts list parity
- * (mcp-tools-drift-guard pattern). See SCRIPT_FILES / BIN_HELPER_FILES /
- * SOURCE_HELPER_FILES exports.
+ * The script + helper lists are read at runtime from the canonical manifest
+ * bin/lib/shipped-scripts.json (#1191) — the SAME source the launcher §3 reads —
+ * so the npm-install path and the session-start path can no longer drift.
  *
  * Failure posture:
  *   - Surface per-file failures on stderr with `flo doctor --fix` advice
@@ -47,47 +46,16 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { errMessage, makeSyncer } from '../bin/lib/file-sync.mjs';
+import { loadShippedScripts } from '../bin/lib/shipped-scripts.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const MOFLO_ROOT = resolve(dirname(SCRIPT_PATH), '..');
 
-// ── Sync lists — keep in lockstep with bin/session-start-launcher.mjs §3 ─────
+// ── Sync lists ───────────────────────────────────────────────────────────────
 //
-// Drift guard: tests/unit/post-install-bootstrap-drift.test.ts asserts these
-// arrays match the launcher's section-3 sync lists by parsing both files.
-
-export const SCRIPT_FILES = [
-  'hooks.mjs',
-  'session-start-launcher.mjs',
-  'index-guidance.mjs',
-  'build-embeddings.mjs',
-  'generate-code-map.mjs',
-  'semantic-search.mjs',
-  'index-tests.mjs',
-  'index-patterns.mjs',
-  'index-reference.mjs',
-  'index-all.mjs',
-  'setup-project.mjs',
-  'run-migrations.mjs',
-];
-
-export const BIN_HELPER_FILES = [
-  'gate.cjs',
-  'gate-hook.mjs',
-  'prompt-hook.mjs',
-  'hook-handler.cjs',
-  'simplify-classify.cjs',
-];
-
-export const SOURCE_HELPER_FILES = [
-  'auto-memory-hook.mjs',
-  'statusline.cjs',
-  'intelligence.cjs',
-  'subagent-start.cjs',
-  'subagent-bootstrap.json',
-  'pre-commit',
-  'post-commit',
-];
+// The script + helper lists are read at runtime from the canonical manifest
+// bin/lib/shipped-scripts.json (#1191) — the SAME source the launcher §3 reads —
+// so the npm-install path and the session-start path can no longer drift.
 
 // ── Retry + atomic copy + circuit breaker (#854 / #975) ─────────────────────
 //
@@ -149,13 +117,24 @@ export async function runBootstrap({
     return { ran: false, reason: 'no-bin-dir' };
   }
 
+  // Canonical sync lists (#1191) — read from the freshly-installed package's
+  // bin/lib so the bootstrap and the launcher §3 can't drift. A broken manifest
+  // aborts gracefully (postinstall must never throw / block npm install).
+  let scriptFiles, binHelperFiles, sourceHelperFiles;
+  try {
+    ({ scriptFiles, binHelperFiles, sourceHelperFiles } = loadShippedScripts(resolve(binDir, 'lib')));
+  } catch (err) {
+    log(`bootstrap: shipped-scripts manifest unreadable (${errMessage(err)}) — skipping`);
+    return { ran: false, reason: 'no-manifest' };
+  }
+
   const { syncFile, failures } = makeSyncer();
   let synced = 0;
 
   // 1. Top-level scripts → .claude/scripts/
   const scriptsDir = resolve(claudeDir, 'scripts');
   if (!existsSync(scriptsDir)) mkdirSync(scriptsDir, { recursive: true });
-  for (const file of SCRIPT_FILES) {
+  for (const file of scriptFiles) {
     const result = await syncFile(
       resolve(binDir, file),
       resolve(scriptsDir, file),
@@ -211,7 +190,7 @@ export async function runBootstrap({
   // 4. bin/ helpers → .claude/helpers/
   const helpersDir = resolve(claudeDir, 'helpers');
   if (!existsSync(helpersDir)) mkdirSync(helpersDir, { recursive: true });
-  for (const file of BIN_HELPER_FILES) {
+  for (const file of binHelperFiles) {
     const result = await syncFile(
       resolve(binDir, file),
       resolve(helpersDir, file),
@@ -224,7 +203,7 @@ export async function runBootstrap({
   // (these never lived in bin/ — they're shipped via .claude/helpers/** in files[])
   const sourceHelpersDir = resolve(mofloRoot, '.claude/helpers');
   if (existsSync(sourceHelpersDir)) {
-    for (const file of SOURCE_HELPER_FILES) {
+    for (const file of sourceHelperFiles) {
       const src = resolve(sourceHelpersDir, file);
       if (!existsSync(src)) continue;
       const result = await syncFile(src, resolve(helpersDir, file), `.claude/helpers/${file}`);

@@ -166,5 +166,5 @@ jobs:
           src/cli/__tests__/file-sync-helper.test.ts
           src/cli/__tests__/post-install-bootstrap.test.ts
           src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
-          src/cli/__tests__/post-install-bootstrap-drift-guard.test.ts
+          src/cli/__tests__/shipped-scripts-manifest.test.ts
           tests/bin/launcher-854-fixes.test.ts

@@ -64,7 +64,7 @@ Real load-bearing references can be retired. Do it in this order, never reversed
 1. Replace or remove every load-bearing reference (with a passing test for each).
 2. Verify the registration map / dispatcher / consumer no longer needs the artifact.
 3. *Then* delete the artifact.
-4. Run the full drift-guard test suite (`mcp-tools-drift-guard`, `skills-classification-drift`, `published-package-drift-guard`, `post-install-bootstrap-drift-guard`). All must pass.
+4. Run the full drift-guard test suite (`mcp-tools-drift-guard`, `skills-classification-drift`, `published-package-drift-guard`, `shipped-scripts-manifest`). All must pass.
 
 If step 1 surfaces a reference that requires nontrivial migration (e.g. modernizing a stale agent body, retargeting a skill name across consumer projects), STOP and surface it as a separate concern. Do not bundle the migration into a "cleanup" PR — it deserves its own scope and its own review.
 

@@ -82,12 +82,21 @@ function stageDriftScenario(root: string, pkgName: string) {
   for (const f of [
     'hooks.mjs', 'session-start-launcher.mjs', 'index-guidance.mjs',
     'build-embeddings.mjs', 'generate-code-map.mjs', 'semantic-search.mjs',
-    'index-tests.mjs', 'index-patterns.mjs', 'index-all.mjs',
+    'index-tests.mjs', 'index-patterns.mjs', 'index-reference.mjs', 'index-all.mjs',
     'setup-project.mjs', 'run-migrations.mjs',
     'gate-hook.mjs', 'prompt-hook.mjs', 'hook-handler.cjs', 'simplify-classify.cjs',
   ]) {
     writeFileSync(join(nmDir, 'bin', f), '');
   }
+
+  // The launcher reads its sync lists from the canonical manifest in the
+  // installed package's bin/lib (#1191). Mirror the real manifest into the fake
+  // install so loadShippedScripts resolves the scripts + helpers to copy.
+  mkdirSync(join(nmDir, 'bin/lib'), { recursive: true });
+  writeFileSync(
+    join(nmDir, 'bin/lib/shipped-scripts.json'),
+    readFileSync(resolve(__dirname, '../../bin/lib/shipped-scripts.json'), 'utf-8'),
+  );
 
   // Working-tree dogfood-edited gate.cjs — bigger than the 4.9.18 version,
   // simulating a just-committed edit.

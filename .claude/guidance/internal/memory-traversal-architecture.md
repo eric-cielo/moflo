@@ -41,7 +41,7 @@ Effectiveness over deduplication. Each touchpoint carries the level of detail it
 
 | Stage | Mechanism | File:line |
 |-------|-----------|-----------|
-| Postinstall sync | Listed in `SOURCE_HELPER_FILES` | `scripts/post-install-bootstrap.mjs:86` |
+| Postinstall sync | Listed in `sourceHelperFiles` (`bin/lib/shipped-scripts.json`) | `scripts/post-install-bootstrap.mjs` |
 | Session-start re-sync | Re-copied on every session start | `bin/session-start-launcher.mjs:674` |
 | Hook handler | Reads JSON, falls back to inline literal if missing | `.claude/helpers/subagent-start.cjs` |
 | Settings wiring | `SubagentStart` hook auto-injected on `flo init` | `src/cli/init/settings-generator.ts:367-377` |
