@@ -119,3 +119,4 @@ In `--preview` mode, label it clearly as a preview and note that nothing was wri
 
 - `.claude/guidance/moflo-memory-protocol.md` — namespaces and the store/search protocol
 - `.claude/skills/brainstorm/SKILL.md` — the *pre-execution* counterpart (`/brainstorm` opens a unit of work; `/reflect` closes one)
+- `bin/lib/reflect.mjs` (#1198, auto-reflect) — the *automatic* counterpart. Default-off; recognizes durable lessons in the live session and distills them here via a headless Haiku pass. It reuses this skill's durability bar (the canonical wording lives in `DURABILITY_BAR`) and the same dedup-then-store protocol — Step 2/Step 3 here are the source of truth both paths apply.

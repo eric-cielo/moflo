@@ -37,6 +37,17 @@ session_continuity:
 `,
   },
   {
+    key: 'auto_reflect',
+    block: `# Auto-reflect (#1198) — the automatic counterpart to /reflect. When enabled,
+# moflo recognizes durable lessons in the LIVE session (a tiny answer-first note
+# on course-corrections / errors / decisions) and distills them into long-term
+# memory at the next session-start via a cheap headless Haiku pass — deduped.
+# Touches the session hot path, so it ships OFF; turn it on to opt in.
+auto_reflect:
+  enabled: false
+`,
+  },
+  {
     key: 'sandbox',
     block: `# Spell step sandboxing (OS-level process isolation for bash steps)
 # Platform support: macOS (sandbox-exec), Linux/WSL (bwrap). Windows has no OS sandbox.

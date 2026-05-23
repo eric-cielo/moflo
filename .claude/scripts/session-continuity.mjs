@@ -30,6 +30,7 @@ import { resolve, dirname } from 'path';
 import { findProjectRoot } from './lib/moflo-paths.mjs';
 import { openBackend } from './lib/get-backend.mjs';
 import { scrubSecrets } from './lib/pii-scrub.mjs';
+import { readHookStdin } from './lib/hook-io.mjs';
 import {
   readContinuityConfig,
   readGitState,
@@ -45,23 +46,6 @@ const LEARNINGS_SAMPLE = 5;     // how many recent learnings to fold in as "deci
 
 function warn(msg) {
   try { process.stderr.write(`moflo: session-continuity ${msg}\n`); } catch { /* never throw from a hook */ }
-}
-
-/** Read the Stop hook's JSON stdin (session_id, transcript_path). Bounded so a
- *  missing/withheld stdin can never hang the hook. */
-async function readHookInput() {
-  if (process.stdin.isTTY) return {};
-  return new Promise((res) => {
-    let data = '';
-    let done = false;
-    const parse = (s) => { try { return s ? JSON.parse(s) : {}; } catch { return {}; } };
-    const finish = () => { if (done) return; done = true; res(parse(data)); };
-    process.stdin.setEncoding('utf-8');
-    process.stdin.on('data', (c) => { if (!done) data += c; });
-    process.stdin.on('end', finish);
-    process.stdin.on('error', finish);
-    setTimeout(finish, 500);
-  });
 }
 
 /** First user message (the session goal) from a transcript JSONL head. */
@@ -174,7 +158,7 @@ async function capture() {
   const cfg = readContinuityConfig(projectRoot);
   if (!cfg.capture) return;
 
-  const input = await readHookInput();
+  const input = await readHookStdin();
   const sessionId = input.session_id || input.sessionId || null;
   const now = Date.now();
 

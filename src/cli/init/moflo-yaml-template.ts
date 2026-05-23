@@ -233,6 +233,14 @@ session_continuity:
   inject: true
   max_age_hours: 72            # ignore digests older than this when injecting
 
+# Auto-reflect (#1198) — the automatic counterpart to /reflect. When enabled,
+# moflo recognizes durable lessons in the LIVE session (a tiny answer-first note
+# on course-corrections / errors / decisions) and distills them into long-term
+# memory at the next session-start via a cheap headless Haiku pass — deduped.
+# Touches the session hot path, so it ships OFF; turn it on to opt in.
+auto_reflect:
+  enabled: false
+
 # Memory backend
 memory:
   backend: node-sqlite
@@ -343,6 +351,7 @@ export const REQUIRED_TOP_LEVEL_SECTIONS = [
   'gates',
   'auto_index',
   'session_continuity',
+  'auto_reflect',
   'memory',
   'hooks',
   'mcp',
