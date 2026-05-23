@@ -831,6 +831,32 @@ describe('Anonymization — modern secret shapes (#1193)', () => {
     expect(serialized).not.toContain('sk-ant-api03');
     expect(serialized).toContain('[REDACTED_API_KEY]');
   });
+
+  it('anonymizeCFP redacts a secret pasted into free-text metadata', async () => {
+    const cfp = createCFP({
+      name: 'note xoxb-1234567890-abcdefghij here',
+      description: 'deploy used sk-ant-api03-AABBCCDDEEFFGGHHIIJJKKLL last run',
+      patterns: createMockPatterns(),
+      tags: ['ghp_0123456789ABCDEFGHIJ0123456789abcdefij'],
+    });
+    const { cfp: anonymized } = await anonymizeCFP(cfp, 'standard');
+    expect(anonymized.metadata.description).not.toContain('sk-ant-api03');
+    expect(anonymized.metadata.description).toContain('[REDACTED_API_KEY]');
+    expect(anonymized.metadata.name).not.toContain('xoxb-1234567890');
+    expect(anonymized.metadata.tags.join(',')).not.toContain('ghp_0123456789');
+    expect(anonymized.metadata.tags.join(',')).toContain('[REDACTED_GITHUB_TOKEN]');
+  });
+
+  it('scanCFPForPII detects a secret in metadata.description', async () => {
+    const cfp = createCFP({
+      name: 'scan-meta',
+      description: 'token is sk-ant-api03-AABBCCDDEEFFGGHHIIJJKKLL',
+      patterns: createMockPatterns(),
+    });
+    const result = await scanCFPForPII(cfp);
+    expect(result.found).toBe(true);
+    expect(result.types['openai-anthropic-key'] ?? 0).toBeGreaterThanOrEqual(1);
+  });
 });
 
 // ============================================================================

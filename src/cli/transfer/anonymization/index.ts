@@ -113,7 +113,13 @@ function loadPiiScrub(): Promise<PiiScrubModule> {
         );
       }
       return mod as PiiScrubModule;
-    })();
+    })().catch((err) => {
+      // Never cache a rejected promise — a transient/early failure must not
+      // poison every later anonymize call. Clear the singleton so a subsequent
+      // call re-attempts the load (still fail-closed: it re-throws here).
+      piiScrubPromise = null;
+      throw err;
+    });
   }
   return piiScrubPromise;
 }
@@ -201,7 +207,13 @@ export async function redactPII(content: string): Promise<string> {
   for (const [type, pattern] of Object.entries(PII_PATTERNS)) {
     pattern.lastIndex = 0;
     const replacement = REDACTIONS[type];
-    result = result.replace(pattern, replacement as string);
+    // Narrow the union for `String.replace`'s overloads: email is a function
+    // replacer, the rest are literal strings. A blanket `as string` cast would
+    // mis-describe (and risk silently breaking) the function case.
+    result =
+      typeof replacement === 'function'
+        ? result.replace(pattern, replacement)
+        : result.replace(pattern, replacement);
   }
 
   return result;
@@ -228,10 +240,27 @@ export async function anonymizeCFP(
 
   // Level: Standard
   if (['standard', 'strict', 'paranoid'].includes(level)) {
-    // Redact PII from all string fields
+    // Redact secrets/PII from the patterns body...
     const jsonStr = JSON.stringify(anonymized.patterns);
     const redacted = await redactPII(jsonStr);
     anonymized.patterns = JSON.parse(redacted);
+
+    // ...and from free-text metadata (name / description / tags), which is the
+    // SAME external-share leak vector (#1193): a secret pasted into a CFP's
+    // description or a tag would otherwise survive at every level. The rest of
+    // metadata is structured (ids, timestamps, license); author displayName was
+    // already dropped at the minimal level above.
+    if (anonymized.metadata.name) {
+      anonymized.metadata.name = await redactPII(anonymized.metadata.name);
+    }
+    if (anonymized.metadata.description) {
+      anonymized.metadata.description = await redactPII(anonymized.metadata.description);
+    }
+    if (Array.isArray(anonymized.metadata.tags) && anonymized.metadata.tags.length > 0) {
+      anonymized.metadata.tags = await Promise.all(
+        anonymized.metadata.tags.map((tag) => redactPII(tag))
+      );
+    }
     transforms.push('pii-redacted');
 
     // Generalize timestamps
@@ -294,6 +323,15 @@ export async function anonymizeCFP(
  * Scan CFP for PII without modification
  */
 export async function scanCFPForPII(cfp: CFPFormat): Promise<PIIDetectionResult> {
-  const content = JSON.stringify(cfp.patterns);
+  // Scan the same surface anonymizeCFP redacts: the patterns body plus the
+  // free-text metadata fields (name / description / tags) — so the scan can't
+  // report "clean" on a CFP whose description carries a secret (#1193).
+  const meta = cfp.metadata;
+  const content = JSON.stringify({
+    patterns: cfp.patterns,
+    name: meta?.name,
+    description: meta?.description,
+    tags: meta?.tags,
+  });
   return detectPII(content);
 }
