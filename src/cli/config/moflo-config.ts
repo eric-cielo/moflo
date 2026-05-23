@@ -52,6 +52,18 @@ export interface MofloConfig {
     code_map: boolean;
   };
 
+  /**
+   * Passive session-continuity (#1185). `capture` silently records a compact
+   * "where you left off" digest at each turn-end; `inject` surfaces the single
+   * most-relevant recent digest at the next session-start (relevance-gated, so
+   * an unrelated session shows nothing). Both default on.
+   */
+  session_continuity: {
+    capture: boolean;
+    inject: boolean;
+    max_age_hours: number;
+  };
+
   memory: {
     /**
      * Memory backend selection. Maps directly to the
@@ -180,6 +192,11 @@ const DEFAULT_CONFIG: MofloConfig = {
   auto_index: {
     guidance: true,
     code_map: true,
+  },
+  session_continuity: {
+    capture: true,
+    inject: true,
+    max_age_hours: 72,
   },
   memory: {
     backend: 'node-sqlite',
@@ -346,6 +363,11 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     auto_index: {
       guidance: raw.auto_index?.guidance ?? raw.autoIndex?.guidance ?? DEFAULT_CONFIG.auto_index.guidance,
       code_map: raw.auto_index?.code_map ?? raw.autoIndex?.code_map ?? DEFAULT_CONFIG.auto_index.code_map,
+    },
+    session_continuity: {
+      capture: raw.session_continuity?.capture ?? raw.sessionContinuity?.capture ?? DEFAULT_CONFIG.session_continuity.capture,
+      inject: raw.session_continuity?.inject ?? raw.sessionContinuity?.inject ?? DEFAULT_CONFIG.session_continuity.inject,
+      max_age_hours: raw.session_continuity?.max_age_hours ?? raw.sessionContinuity?.maxAgeHours ?? DEFAULT_CONFIG.session_continuity.max_age_hours,
     },
     memory: {
       backend: coerceMemoryBackend(raw.memory?.backend),

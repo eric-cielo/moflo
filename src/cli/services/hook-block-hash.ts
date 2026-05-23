@@ -85,6 +85,13 @@ const scriptHook = (file: string, timeout: number): HookEntry => ({
   timeout,
 });
 
+/** Build a `node "<scripts/file>" <subcommand>` hook entry. */
+const scriptHookSub = (file: string, sub: string, timeout: number): HookEntry => ({
+  type: 'command',
+  command: `node "${SCRIPTS_PREFIX}/${file}"${sub ? ` ${sub}` : ''}`,
+  timeout,
+});
+
 const gateHook = (sub: string, timeout: number) => helperHook('gate-hook.mjs', sub, timeout);
 const gateCjs = (sub: string, timeout: number) => helperHook('gate.cjs', sub, timeout);
 const handler = (sub: string, timeout: number) => helperHook('hook-handler.cjs', sub, timeout);
@@ -156,7 +163,7 @@ export function getReferenceHookBlock(): HooksTree {
       },
     ],
     Stop: [
-      { hooks: [handler('session-end', 5000), autoMemory('sync', 10000)] },
+      { hooks: [handler('session-end', 5000), autoMemory('sync', 10000), scriptHookSub('session-continuity.mjs', 'capture', 5000)] },
     ],
     PreCompact: [
       { hooks: [gateCjs('compact-guidance', 3000)] },

@@ -12,7 +12,8 @@
     "index-reference.mjs",
     "index-all.mjs",
     "setup-project.mjs",
-    "run-migrations.mjs"
+    "run-migrations.mjs",
+    "session-continuity.mjs"
   ],
   "binHelperFiles": [
     "gate.cjs",

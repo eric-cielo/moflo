@@ -17,6 +17,13 @@ import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
 import { makeSyncer, contentEqual } from './lib/file-sync.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
+import {
+  readContinuityConfig,
+  readGitState,
+  readDigests,
+  selectBestDigest,
+  formatInjection,
+} from './lib/session-continuity.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -2197,6 +2204,39 @@ if (bootstrapSentinelData?.failures?.length > 0) {
   } catch (err) {
     emitWarning(`bootstrap sentinel verify skipped (${errMessage(err)})`);
   }
+}
+
+// Passive session-continuity injection (#1185). Relevance-gated: read recent
+// digests, score them against the current branch/changed-files/recency, and
+// emit ONLY the single best one if it clears the threshold. A fresh, unrelated
+// session injects nothing — that's what keeps it from going context-negative.
+// Framed as a verifiable lead, never ground truth. Wrapped so it can never
+// block or break session start. NOT routed through emitMutation: it's context,
+// not a mutation, so it must not inflate the count or trigger the spawn notice.
+function maybeInjectContinuity() {
+  const cfg = readContinuityConfig(projectRoot);
+  if (!cfg.inject) return;
+
+  const rows = readDigests(projectRoot, { limit: 12 });
+  if (rows.length === 0) return; // first-ever session — nothing to inject, no git calls
+
+  const git = readGitState(projectRoot);
+  const best = selectBestDigest(
+    rows,
+    { branch: git.branch, changedFiles: git.changedFiles },
+    { maxAgeHours: cfg.maxAgeHours, now: Date.now() },
+  );
+  if (!best) return;
+
+  const block = formatInjection(best, Date.now());
+  if (block) {
+    try { process.stdout.write(block + '\n'); } catch { /* broken stdout must not throw */ }
+  }
+}
+try {
+  maybeInjectContinuity();
+} catch (err) {
+  emitWarning(`continuity injection skipped (${errMessage(err)})`);
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.

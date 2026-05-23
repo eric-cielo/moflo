@@ -50,6 +50,11 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   // the duplicate `prompt-reminder` wiring that was emitting the TaskCreate
   // REMINDER twice per prompt (#931).
   { event: 'UserPromptSubmit', pattern: 'prompt-state-reset' },
+  // #1185 — passive session-continuity capture on the Stop hook. Self-heals
+  // into existing consumers on upgrade so the feature reaches everyone, not
+  // just fresh `flo init`. Capture is default-on (silent); injection is
+  // relevance-gated at session-start.
+  { event: 'Stop', pattern: 'session-continuity.mjs' },
 ];
 
 /**
@@ -92,6 +97,10 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // Defensive safety-net — runs gate.cjs `prompt-state-reset` if prompt-hook.mjs
   // throws before completing the per-prompt state reset. State-only, no emission.
   'prompt-state-reset':       { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-state-reset', timeout: 3000 } },
+  // #1185 — passive session-continuity capture (Stop hook). Bare block (no
+  // matcher), like the UserPromptSubmit entries; Claude Code fires every Stop
+  // block, so a separate block alongside session-end/sync is fine.
+  'session-continuity.mjs':   { event: 'Stop',             matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/session-continuity.mjs" capture', timeout: 5000 } },
 };
 
 export interface RepairResult {

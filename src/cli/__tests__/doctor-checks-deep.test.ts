@@ -131,7 +131,7 @@ describe('doctor-checks-deep', () => {
     });
 
     it('should have valid event types', () => {
-      const validEvents = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit'];
+      const validEvents = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop'];
       for (const hook of REQUIRED_HOOK_WIRING) {
         expect(validEvents).toContain(hook.event);
       }
