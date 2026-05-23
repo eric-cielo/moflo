@@ -31,6 +31,10 @@ export const isolationTests = [
   // load profile as doctor-checks-deep above; same isolation rationale.
   'src/cli/__tests__/doctor-checks-swarm.test.ts',
   'src/cli/__tests__/services/worker-daemon-resource-thresholds.test.ts',
+  // Spawns real fake-daemon processes for PID detection (~5s alone); the
+  // process-spawn + introspection timing intermittently exceeds its timeout
+  // under full-suite fork contention. Passes cleanly in isolation (8/8).
+  'src/cli/__tests__/services/daemon-lock-orphan.test.ts',
   'src/cli/__tests__/spells/connector-lifecycle.test.ts',
   // prerequisites.test.ts split into 4 files (#522) — all share the same
   // dynamic-import load profile, so all four stay on the isolation list.

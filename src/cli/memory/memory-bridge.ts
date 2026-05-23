@@ -16,6 +16,7 @@ import {
   generateId,
   getRegistry,
   persistBridgeDb,
+  searchCandidateCap,
   withDb,
 } from './bridge-core.js';
 import {
@@ -142,11 +143,15 @@ export async function bridgeSearchHNSW(
 
     let rows: Record<string, unknown>[];
     try {
+      // #1201 — recency-ordered candidate cap; see searchCandidateCap. A bare
+      // LIMIT truncated by rowid, hiding recent non-code-map namespaces from a
+      // no-namespace search.
       const sql = `
         SELECT id, key, namespace, content, embedding
         FROM memory_entries
         WHERE status = 'active' AND embedding IS NOT NULL ${nsFilter}
-        LIMIT 10000
+        ORDER BY created_at DESC
+        LIMIT ${searchCandidateCap()}
       `;
       rows = nsFilter ? execRows(ctx.db, sql, [options!.namespace]) : execRows(ctx.db, sql);
     } catch {

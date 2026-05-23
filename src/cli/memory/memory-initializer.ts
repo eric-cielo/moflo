@@ -23,7 +23,7 @@ import { HnswLite } from './hnsw-lite.js';
 import { tryLoadHnswSidecar } from './hnsw-persistence.js';
 import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder, isEphemeralNamespace } from './bridge-embedder.js';
 import { parseEmbeddingJson, toFloat32 } from './controllers/_shared.js';
-import { writeVectorStatsJson } from './bridge-core.js';
+import { searchCandidateCap, writeVectorStatsJson } from './bridge-core.js';
 import { serialiseMetadata } from './bridge-entries.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import {
@@ -2246,12 +2246,16 @@ export async function searchEntries(options: {
     const db = openDaemonDatabase(dbPath);
 
     // Get entries with embeddings
+    // #1201 — recency-ordered candidate cap (see searchCandidateCap). A bare
+    // LIMIT truncated by rowid, hiding recent non-code-map namespaces from a
+    // no-namespace search.
     const entries = db.exec(`
       SELECT id, key, namespace, content, metadata, embedding
       FROM memory_entries
       WHERE status = 'active'
         ${namespace !== 'all' ? `AND namespace = '${namespace.replace(/'/g, "''")}'` : ''}
-      LIMIT 1000
+      ORDER BY created_at DESC
+      LIMIT ${searchCandidateCap()}
     `);
 
     const results: { id: string; key: string; content: string; score: number; namespace: string; metadata?: string }[] = [];

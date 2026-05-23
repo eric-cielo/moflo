@@ -42,6 +42,27 @@ export function _getBridgeCoherenceCursorForTest(): number | null {
 }
 
 /**
+ * Candidate-pool ceiling for the brute-force search path (#1201).
+ *
+ * The bridge search scores candidates one-by-one (cosine + BM25), so it must
+ * cap how many rows it pulls. The old `LIMIT 1000` with NO `ORDER BY` truncated
+ * by rowid (insertion order): on a populated DB the first 1000 rows are all
+ * bulk-indexed `code-map`, so a no-namespace search silently scored ZERO
+ * `learnings`/`patterns`/etc. — they were invisible to default recall.
+ *
+ * The fix pairs this cap with `ORDER BY created_at DESC`, so when truncation
+ * does happen (DB larger than the cap) it keeps the most RECENT entries — where
+ * curated learnings and recent work live — instead of the oldest rowids.
+ * Realistic DBs (thousands–low tens of thousands) fall under the cap and are
+ * scored in full; measured ~13ms per 1000 rows. Env-overridable for ops tuning
+ * and tests. Beyond the cap, a true HNSW candidate path is the scale answer.
+ */
+export function searchCandidateCap(): number {
+  const raw = Number(process.env.MOFLO_SEARCH_CANDIDATE_CAP);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 25000;
+}
+
+/**
  * Resolve the bridge's project root.
  *
  * Delegates to the canonical resolver in `src/cli/services/project-root.ts`

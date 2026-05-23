@@ -399,6 +399,60 @@ describe('bridgeSearchEntries — query embedder wiring (#837 Defect A)', () => 
   });
 });
 
+describe('bridgeSearchEntries — cross-namespace candidate selection (#1201)', () => {
+  // Pre-fix, the candidate fetch was `LIMIT 1000` with NO ORDER BY: on a
+  // populated DB the first rows are bulk-indexed code-map, so a no-namespace
+  // search scored ZERO learnings/patterns/etc. The fix orders by created_at
+  // DESC before the cap, so recent curated entries stay in the pool.
+  async function setCreatedAt(key: string, ts: number): Promise<void> {
+    const reg = await getControllerRegistry(dbPath);
+    if (!reg) throw new Error('test bridge registry unavailable');
+    const ctx = getDb(reg);
+    if (!ctx) throw new Error('test bridge db ctx unavailable');
+    const stmt = ctx.db.prepare('UPDATE memory_entries SET created_at = ? WHERE key = ?');
+    stmt.run([ts, key]);
+  }
+
+  it('a recent learnings entry is NOT truncated out of a no-namespace search by an early code-map bulk', async () => {
+    const learnVec = new Float32Array(384); learnVec[0] = 1;
+    const codeVec = new Float32Array(384); codeVec[1] = 1;
+    setBridgeEmbedderForTest({
+      model: 'fast-all-MiniLM-L6-v2',
+      dimensions: 384,
+      embed: vi.fn(async (text: string) => (text.includes('LEARN') ? learnVec : codeVec)),
+    });
+
+    // Insert code-map rows first, learnings last — then pin created_at so the
+    // learnings row is the NEWEST regardless of same-ms insert ties.
+    await bridgeStoreEntry({ key: 'cm1', value: 'code map alpha', namespace: 'code-map', dbPath });
+    await bridgeStoreEntry({ key: 'cm2', value: 'code map beta', namespace: 'code-map', dbPath });
+    await bridgeStoreEntry({ key: 'lesson', value: 'LEARN durable lesson', namespace: 'learnings', dbPath });
+    await setCreatedAt('cm1', 1000);
+    await setCreatedAt('cm2', 2000);
+    await setCreatedAt('lesson', 3000);
+
+    // Tiny cap forces truncation: pre-fix (rowid LIMIT 2) keeps cm1+cm2 and
+    // drops the recent learnings row; post-fix (created_at DESC) keeps it.
+    const prev = process.env.MOFLO_SEARCH_CANDIDATE_CAP;
+    process.env.MOFLO_SEARCH_CANDIDATE_CAP = '2';
+    try {
+      const res = await bridgeSearchEntries({
+        query: 'LEARN durable lesson',
+        namespace: 'all',
+        threshold: 0,
+        dbPath,
+      });
+      expect(res?.success).toBe(true);
+      const keys = res!.results.map(r => r.key);
+      expect(keys).toContain('lesson');            // survived candidate selection
+      expect(res!.results[0]?.namespace).toBe('learnings'); // and ranks top by similarity
+    } finally {
+      if (prev === undefined) delete process.env.MOFLO_SEARCH_CANDIDATE_CAP;
+      else process.env.MOFLO_SEARCH_CANDIDATE_CAP = prev;
+    }
+  });
+});
+
 describe('bridgeDeleteEntry — error surfacing (#963)', () => {
   it('successfully deletes an existing entry and removes it from list', async () => {
     setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
