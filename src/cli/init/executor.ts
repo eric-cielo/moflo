@@ -51,6 +51,7 @@ export const SKILLS_MAP: Record<string, string[]> = {
     'flo-simplify',
     'luminarium',
     'reasoningbank-intelligence',
+    'reflect',
   ],
   memory: [
     'memory-patterns',
