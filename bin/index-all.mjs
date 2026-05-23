@@ -78,7 +78,7 @@ function isIndexEnabled(key) {
     if (existsSync(yamlPath)) {
       try {
         const content = readFileSync(yamlPath, 'utf-8');
-        for (const k of ['guidance', 'code_map', 'tests', 'patterns']) {
+        for (const k of ['guidance', 'code_map', 'tests', 'patterns', 'reference']) {
           const re = new RegExp(`auto_index:\\s*\\n(?:.*\\n)*?\\s+${k}:\\s*(true|false)`);
           const match = content.match(re);
           _autoIndexFlags[k] = match ? match[1] !== 'false' : true;
@@ -182,6 +182,7 @@ function buildStepPlan() {
   consider('code-map',       'code_map', 'generate-code-map.mjs', 'flo-codemap', ['--no-embeddings'], 180_000);
   consider('test-index',     'tests',    'index-tests.mjs',    'flo-testmap', ['--no-embeddings']);
   consider('patterns-index', 'patterns', 'index-patterns.mjs', 'flo-patterns', []);
+  consider('reference-index', 'reference', 'index-reference.mjs', 'flo-reference', []);
 
   // Pretrain extracts patterns from the repo via the CLI subcommand. No
   // direct script — invoke through the local flo binary.

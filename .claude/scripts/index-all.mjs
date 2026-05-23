@@ -18,7 +18,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, spawnSync } from 'child_process';
 import { platform } from 'os';
-import { hnswIndexPath } from './lib/moflo-paths.mjs';
+import { hnswIndexPath, findProjectRoot } from './lib/moflo-paths.mjs';
 import {
   decideStepGate,
   computeStepFingerprint,
@@ -38,20 +38,10 @@ const ONNX_THREAD_CAP = {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Detect project root by walking up from cwd to find package.json.
 // IMPORTANT: Do NOT use resolve(__dirname, '..') — this script lives in bin/
 // during development but gets synced to .claude/scripts/ in consumer projects,
-// so __dirname-relative paths break. findProjectRoot() works in both locations.
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
-
+// so __dirname-relative paths break. findProjectRoot() (lib/moflo-paths.mjs)
+// works in both locations and resolves identically to the TS bridge.
 const projectRoot = findProjectRoot();
 const LOG_PATH = resolve(projectRoot, '.moflo', 'logs', 'hooks.log');
 try { mkdirSync(dirname(LOG_PATH), { recursive: true }); } catch { /* best effort */ }
@@ -88,7 +78,7 @@ function isIndexEnabled(key) {
     if (existsSync(yamlPath)) {
       try {
         const content = readFileSync(yamlPath, 'utf-8');
-        for (const k of ['guidance', 'code_map', 'tests', 'patterns']) {
+        for (const k of ['guidance', 'code_map', 'tests', 'patterns', 'reference']) {
           const re = new RegExp(`auto_index:\\s*\\n(?:.*\\n)*?\\s+${k}:\\s*(true|false)`);
           const match = content.match(re);
           _autoIndexFlags[k] = match ? match[1] !== 'false' : true;
@@ -192,6 +182,7 @@ function buildStepPlan() {
   consider('code-map',       'code_map', 'generate-code-map.mjs', 'flo-codemap', ['--no-embeddings'], 180_000);
   consider('test-index',     'tests',    'index-tests.mjs',    'flo-testmap', ['--no-embeddings']);
   consider('patterns-index', 'patterns', 'index-patterns.mjs', 'flo-patterns', []);
+  consider('reference-index', 'reference', 'index-reference.mjs', 'flo-reference', []);
 
   // Pretrain extracts patterns from the repo via the CLI subcommand. No
   // direct script — invoke through the local flo binary.

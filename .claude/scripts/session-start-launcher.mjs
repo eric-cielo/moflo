@@ -11,7 +11,7 @@ import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { mofloDir, findProjectRoot } from './lib/moflo-paths.mjs';
+import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
@@ -47,6 +47,23 @@ function sessionStartMirrorHeader(file) {
 // package.json / .git. Inline walks here have caused N writers to land on
 // different DBs than the bridge reads from — never reintroduce one.
 const projectRoot = findProjectRoot();
+
+// Monorepo nested-.moflo guard (#1174). After the resolver fix, findProjectRoot
+// returns the topmost ancestor with .moflo/moflo.db, so an ancestor still
+// having one of those files means CLAUDE_PROJECT_DIR pinned us inside a
+// sub-workspace, or someone reintroduced an inline walk-up. Either way, the
+// daemon spawned from here would NOT be the same one a sibling cwd in the
+// same monorepo resolves to. Emit a clear stderr warning so the user can run
+// `flo doctor --fix` to consolidate.
+try {
+  const ancestor = findAncestorMofloRoot(projectRoot);
+  if (ancestor) {
+    process.stderr.write(
+      `moflo: nested .moflo/ detected — using "${projectRoot}" while ancestor "${ancestor}" also has .moflo/moflo.db. ` +
+      `This fragments monorepo state across multiple daemons (#1174). Run "flo doctor --fix" to consolidate.\n`,
+    );
+  }
+} catch { /* diagnostic-only — must never block session start */ }
 
 // Dogfood guard (#928). When this launcher runs inside the moflo repo itself,
 // .claude/scripts/, .claude/helpers/, and .claude/guidance/ are committed git
@@ -110,6 +127,82 @@ function emitWarning(message) {
 function errMessage(err) {
   return err && err.message ? err.message : String(err);
 }
+
+// Post-upgrade monorepo consolidation notice (#1174). The resolver change in
+// 4.10.13+ flips project-root resolution from "nearest .moflo/" to "topmost
+// .moflo/". Consumers with pre-fix nested .moflo/ residue will see their
+// effective projectRoot move upward, orphaning sub-daemons and changing the
+// per-project daemon port hash. Write a one-time restart-pending.json so the
+// user (via Claude's CLAUDE.md surface-and-delete rule) sees the guidance and
+// runs `flo doctor --fix -c nested-moflo` before the gate hooks start failing.
+//
+// Sentinel state-machine — re-arms after consolidation:
+//   !sentinel && nested  → notify (write json + sentinel, emit mutation)
+//   sentinel  && nested  → silent (already notified)
+//   sentinel  && !nested → cleanup sentinel (user consolidated; re-arm)
+//   !sentinel && !nested → silent (nothing to do)
+//
+// Best-effort — never blocks session start.
+try {
+  const nestedNoticeSentinel = join(mofloDir(projectRoot), 'nested-moflo-notice-shown');
+
+  // Cheap, depth-1 downward walk: just check the immediate children of
+  // projectRoot for `.moflo/moflo.db`. The full `flo doctor` BFS is depth-5
+  // — that's for the diagnostic. Here we only need a fast signal so the
+  // launcher stays under its perf budget.
+  //
+  // Skip-list is shared with the doctor BFS via COMMON_WALK_SKIP_NAMES to
+  // prevent divergence. Only `.moflo*`-prefixed dirs are filtered separately
+  // — a `.packages/` or `.workspaces/` directory with its own moflo state is
+  // legitimate (rare, but possible) and should still be detected.
+  let firstNested = null;
+  try {
+    const entries = readdirSync(projectRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const name = entry.name;
+      if (COMMON_WALK_SKIP_NAMES.has(name.toLowerCase())) continue;
+      if (name.toLowerCase().startsWith('.moflo')) continue;
+      const childDir = join(projectRoot, name);
+      if (existsSync(join(childDir, '.moflo', 'moflo.db'))) {
+        firstNested = childDir;
+        break;
+      }
+    }
+  } catch { /* depth-1 walk failure — fall through, no notice */ }
+
+  const sentinelExists = existsSync(nestedNoticeSentinel);
+
+  if (firstNested && !sentinelExists) {
+    try {
+      mkdirSync(mofloDir(projectRoot), { recursive: true });
+      const pendingPath = join(mofloDir(projectRoot), 'restart-pending.json');
+      writeFileSync(pendingPath, JSON.stringify({
+        // schemaVersion (not the moflo package version) lets future readers
+        // branch on the notice shape if it ever evolves. The launcher's §0d
+        // version-match cleanup compares `pending.version === installedVersion`
+        // (moflo semver), so this schema field is safely ignored there.
+        schemaVersion: 1,
+        kind: 'nested-moflo',
+        message:
+          `moflo consolidates monorepo state at the repo root (#1174). Nested .moflo/ ` +
+          `directories detected (e.g. ${firstNested}). Run \`flo doctor --fix -c nested-moflo\` ` +
+          `to archive them and stop any orphaned sub-daemons.`,
+        createdAt: new Date().toISOString(),
+      }, null, 2));
+      writeFileSync(nestedNoticeSentinel, new Date().toISOString());
+      emitMutation('nested .moflo/ detected — restart-pending.json written with consolidation guidance');
+    } catch (err) {
+      emitWarning(`nested-moflo notice write failed: ${errMessage(err)}`);
+    }
+  } else if (!firstNested && sentinelExists) {
+    // User has consolidated. Clear the sentinel so a future re-introduction
+    // of nested .moflo/ re-arms the notice path.
+    try {
+      unlinkSync(nestedNoticeSentinel);
+    } catch { /* may have just been removed concurrently */ }
+  }
+} catch { /* diagnostic-only — must never block session start */ }
 
 // Manifest schema (#854 hardening). Originally `string[]`; now `{path,size}[]`
 // so the launcher can detect *content* drift, not just *missing-file* drift.
@@ -189,7 +282,7 @@ function writeUpgradeNotice(status) {
   buildAndWriteNotice(upgradeNoticeContext, status);
 }
 
-// ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
+// ── 0-pre. Drop any stale upgrade notice (#738, #743, #1173) ────────────────
 // `upgrade-notice.json` is a transient handshake between launcher and
 // statusline — it should never survive past the launcher run that wrote it.
 // Pre-#738 launchers wrote a 1-hour-TTL "complete" notice after upgrade work
@@ -199,9 +292,46 @@ function writeUpgradeNotice(status) {
 // notice (legacy file, aborted launcher, future writer mistake) gets dropped
 // before the statusline can see it. The in-progress notice for THIS session,
 // if any, is written later in section 3 and cleared in section 3f.
-try {
-  unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
-} catch { /* non-fatal — file usually doesn't exist */ }
+//
+// #1173: capture the prior notice's parsed contents BEFORE deleting so §3 can
+// detect "prior session completed upgrade work but never committed the stamp"
+// and recover via eager-stamp (Option B). Without this read, the indefinite
+// re-detect loop reported in #1173 has no signal to break on. Wrapped in an
+// existsSync guard so the common no-upgrade path doesn't pay for an ENOENT
+// throw + stack unwind on every session-start.
+let priorUpgradeNotice = null;
+if (existsSync(UPGRADE_NOTICE_PATH())) {
+  try {
+    priorUpgradeNotice = JSON.parse(readFileSync(UPGRADE_NOTICE_PATH(), 'utf-8'));
+  } catch { /* unparseable — fall through; treat as no signal */ }
+  try {
+    unlinkSync(UPGRADE_NOTICE_PATH());
+  } catch { /* deleted between stat and unlink — fine */ }
+}
+
+// #1173 Option D: defensive cleanup of in-progress upgrade notice if the
+// launcher aborts before §3f writes 'completed'. Without this, a mid-flight
+// abort leaves the (updating…) badge on the statusline until the 5-min TTL
+// expires, even though no upgrade is actually in progress.
+//
+// Coverage matrix:
+//   - normal exit / process.exit() / uncaught exception → 'exit' fires
+//   - POSIX SIGTERM/SIGINT (Claude Code's 5s hook-timeout kill, Ctrl+C) →
+//     kernel terminates without running 'exit'; explicit handlers cover this
+//     path and call process.exit() so we leave with the conventional 128+sig
+//     status. The 'exit' listener also fires on those process.exit() calls,
+//     but the cleanup already ran and the guard returns early.
+//   - Windows TerminateProcess (no signal equivalent for POSIX SIGKILL) →
+//     no Node handler runs; the 5-min in-progress notice TTL is the safety
+//     net for this path.
+let upgradeNoticeFinalized = false;
+function clearAbortedUpgradeNotice() {
+  if (!upgradeNoticeContext || upgradeNoticeFinalized) return;
+  try { unlinkSync(UPGRADE_NOTICE_PATH()); } catch { /* already gone — fine */ }
+}
+process.on('exit', clearAbortedUpgradeNotice);
+process.on('SIGTERM', () => { clearAbortedUpgradeNotice(); process.exit(143); });
+process.on('SIGINT', () => { clearAbortedUpgradeNotice(); process.exit(130); });
 
 // ── 0-bootstrap-sentinel. Surface partial-bootstrap failures (#975) ─────────
 // `scripts/post-install-bootstrap.mjs` writes `.moflo/bootstrap-failed.json`
@@ -706,6 +836,37 @@ try {
     // Dogfood (#928): never drift-heal moflo's own committed copies.
     if (isMofloDogfood) manifestDrifted = false;
 
+    // #1173 Option B: eager-stamp recovery. A prior session reached §3f and
+    // wrote the 'completed' notice but was killed before §3g committed the
+    // stamp (5s SessionStart hook timeout, post-§3f exception, ...). The
+    // upgrade work is already done; we just need to land the stamp so
+    // subsequent sessions stop re-entering this branch. Heuristic: notice
+    // captured at §0-pre shows status='completed' AND to===installedVersion
+    // AND no manifest drift this session (drift means real new work to do).
+    // On success, promote cachedVersion in-memory so the next condition sees
+    // "no upgrade needed" and skips the full upgrade work block naturally —
+    // no else-if chain with a dead `if` body that confuses future readers.
+    // Stamp recovery throws → cachedVersion stays stale → fall through to
+    // the existing full-upgrade path as a safety net.
+    if (
+      installedVersion !== cachedVersion
+      && !manifestDrifted
+      && priorUpgradeNotice?.status === 'completed'
+      && priorUpgradeNotice?.to === installedVersion
+    ) {
+      try {
+        mkdirSync(dirname(versionStampPath), { recursive: true });
+        writeFileSync(versionStampPath, installedVersion);
+        cachedVersion = installedVersion;
+        emitMutation(
+          `recovered version stamp at ${installedVersion}`,
+          'prior session completed upgrade work but stamp write was missed (#1173)',
+        );
+      } catch (err) {
+        emitWarning(`stamp recovery failed (${errMessage(err)}) — running full upgrade as fallback`);
+      }
+    }
+
     if (installedVersion !== cachedVersion || manifestDrifted) {
       if (installedVersion !== cachedVersion) {
         upgradeNoticeContext = {
@@ -874,7 +1035,7 @@ try {
         const scriptFiles = [
           'hooks.mjs', 'session-start-launcher.mjs', 'index-guidance.mjs',
           'build-embeddings.mjs', 'generate-code-map.mjs', 'semantic-search.mjs',
-          'index-tests.mjs', 'index-patterns.mjs', 'index-all.mjs',
+          'index-tests.mjs', 'index-patterns.mjs', 'index-reference.mjs', 'index-all.mjs',
           'setup-project.mjs', 'run-migrations.mjs',
         ];
         for (const file of scriptFiles) {
@@ -1973,8 +2134,15 @@ function runMigrationsAndAnnounce(runnerPath) {
 // ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
 // See the TTL rationale at the constants above for why we switch to a
 // short-TTL completed badge instead of clearing the file.
+//
+// #1173: setting upgradeNoticeFinalized signals the exit handler (Option D
+// above) that the notice reached its terminal 'completed' state cleanly, so
+// the handler should NOT clear it on launcher exit. Without this flag the
+// exit cleanup would race with the statusline reader and drop the short-TTL
+// 'completed' badge the user is supposed to see.
 if (upgradeNoticeContext) {
   writeUpgradeNotice('completed');
+  upgradeNoticeFinalized = true;
 }
 
 // ── 3g. Commit deferred version stamp (#730) ────────────────────────────────

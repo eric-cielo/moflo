@@ -471,6 +471,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
       'semantic-search.mjs',
       'index-tests.mjs',
       'index-patterns.mjs',
+      'index-reference.mjs',
       'index-all.mjs',
       'setup-project.mjs',
       'run-migrations.mjs',

@@ -530,6 +530,7 @@ export const SCRIPT_MAP: string[] = [
   'semantic-search.mjs',
   'index-tests.mjs',
   'index-patterns.mjs',
+  'index-reference.mjs',
   'index-all.mjs',
   'setup-project.mjs',
   'run-migrations.mjs',

@@ -41,6 +41,7 @@ interface ConsumerTree {
   mofloPkg: string;
   guidanceFile: string;
   hnswSidecar: string;
+  packageLock: string;
 }
 
 function makeConsumer(): ConsumerTree {
@@ -50,6 +51,7 @@ function makeConsumer(): ConsumerTree {
   const mofloPkg = join(root, 'node_modules/moflo/package.json');
   const guidanceFile = join(root, '.claude/guidance/sample.md');
   const hnswSidecar = join(root, '.moflo/hnsw.index');
+  const packageLock = join(root, 'package-lock.json');
 
   mkdirSync(join(root, '.moflo'), { recursive: true });
   mkdirSync(join(root, 'node_modules/moflo'), { recursive: true });
@@ -58,8 +60,10 @@ function makeConsumer(): ConsumerTree {
   writeFileSync(memoryDb, 'fake-sqlite');
   writeFileSync(mofloPkg, JSON.stringify({ name: 'moflo', version: '4.9.7' }));
   writeFileSync(guidanceFile, '# sample\n');
+  // Lockfile drives the reference-index gate (library-docs grounding, #1184).
+  writeFileSync(packageLock, JSON.stringify({ name: 'consumer', lockfileVersion: 3 }));
 
-  return { root, memoryDb, mofloPkg, guidanceFile, hnswSidecar };
+  return { root, memoryDb, mofloPkg, guidanceFile, hnswSidecar, packageLock };
 }
 
 function bumpMtime(path: string, secondsAhead = 5) {
@@ -69,7 +73,7 @@ function bumpMtime(path: string, secondsAhead = 5) {
 
 // Steps whose fingerprint depends only on the filesystem, not on git ls-files.
 // We can drive these deterministically in a temp dir.
-const FS_ONLY_STEPS = ['guidance-index', 'build-embeddings', 'hnsw-rebuild'] as const;
+const FS_ONLY_STEPS = ['guidance-index', 'reference-index', 'build-embeddings', 'hnsw-rebuild'] as const;
 
 // Steps backed by git ls-files. In a fresh tmpdir the git call returns null,
 // so the fingerprint object is `{ <key>: null }`. The gate still works:
@@ -91,7 +95,7 @@ describe('index-fingerprint — per-step gate (#858)', () => {
     const { STEP_NAMES, computeStepFingerprint } = await loadGate();
     expect(STEP_NAMES).toEqual([
       'guidance-index', 'code-map', 'test-index', 'patterns-index',
-      'pretrain', 'build-embeddings', 'hnsw-rebuild',
+      'reference-index', 'pretrain', 'build-embeddings', 'hnsw-rebuild',
     ]);
     // Every name resolves to a working computer (no missing entries).
     for (const name of STEP_NAMES) {
@@ -163,6 +167,24 @@ describe('index-fingerprint — per-step gate (#858)', () => {
     saveStepFingerprint('build-embeddings', tree.root, computeStepFingerprint('build-embeddings', tree.root));
     bumpMtime(tree.guidanceFile);
     const decision = decideStepGate('build-embeddings', tree.root, {});
+    expect(decision.skip).toBe(true);
+  });
+
+  it('reference-index runs when the lockfile changes (a dep install/upgrade)', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    saveStepFingerprint('reference-index', tree.root, computeStepFingerprint('reference-index', tree.root));
+    bumpMtime(tree.packageLock);
+    const decision = decideStepGate('reference-index', tree.root, {});
+    expect(decision.skip).toBe(false);
+    expect(decision.reason).toBe('inputs-changed');
+  });
+
+  it('reference-index does NOT run on memory writes or guidance edits', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    saveStepFingerprint('reference-index', tree.root, computeStepFingerprint('reference-index', tree.root));
+    bumpMtime(tree.memoryDb);
+    bumpMtime(tree.guidanceFile);
+    const decision = decideStepGate('reference-index', tree.root, {});
     expect(decision.skip).toBe(true);
   });
 
