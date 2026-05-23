@@ -52,6 +52,7 @@ export const SKILLS_MAP: Record<string, string[]> = {
     'luminarium',
     'reasoningbank-intelligence',
     'reflect',
+    'deep-research',
   ],
   memory: [
     'memory-patterns',
