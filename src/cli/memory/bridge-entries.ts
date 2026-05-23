@@ -8,7 +8,7 @@
  * @module v3/cli/bridge-entries
  */
 
-import { cosineSim, execRows, generateId, logBridgeError, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
+import { cosineSim, execRows, generateId, logBridgeError, persistBridgeDb, refreshVectorStatsCache, searchCandidateCap, withDb } from './bridge-core.js';
 import { embeddingResponseFrom, getBridgeEmbedder, resolveBridgeEmbedding } from './bridge-embedder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
@@ -569,11 +569,17 @@ export async function bridgeSearchEntries(options: {
 
     let rows: Record<string, unknown>[];
     try {
+      // #1201 — ORDER BY created_at DESC before the cap. A bare `LIMIT 1000`
+      // (no ORDER BY) truncated the candidate pool by rowid, so on a populated
+      // DB the first 1000 rows were all bulk-indexed code-map and a
+      // no-namespace search never scored learnings/patterns/etc. Recency
+      // ordering keeps recent curated entries in the pool when truncation hits.
       const sql = `
         SELECT id, key, namespace, content, metadata, embedding
         FROM memory_entries
         WHERE status = 'active' ${nsFilter}
-        LIMIT 1000
+        ORDER BY created_at DESC
+        LIMIT ${searchCandidateCap()}
       `;
       rows = namespace !== 'all' ? execRows(ctx.db, sql, [namespace]) : execRows(ctx.db, sql);
     } catch {
