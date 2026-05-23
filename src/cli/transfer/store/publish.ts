@@ -41,7 +41,7 @@ export class PatternPublisher {
 
     try {
       // Step 1: Anonymize if needed
-      const anonymized = anonymizeCFP(cfp, options.anonymize);
+      const anonymized = await anonymizeCFP(cfp, options.anonymize);
       console.log(`[Publish] Anonymization level: ${options.anonymize}`);
 
       // Step 2: Serialize content

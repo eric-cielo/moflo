@@ -163,7 +163,7 @@ async function deploy(): Promise<void> {
 
   // Step 3: Scan for PII
   console.log('🔍 Scanning for PII...');
-  const piiScan = scanCFPForPII(genesis);
+  const piiScan = await scanCFPForPII(genesis);
   if (piiScan.found) {
     console.log(`   Found ${piiScan.count} PII items:`);
     for (const [type, count] of Object.entries(piiScan.types)) {
