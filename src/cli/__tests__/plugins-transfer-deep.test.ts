@@ -620,89 +620,91 @@ import {
 } from '../transfer/anonymization/index.js';
 
 describe('Anonymization', () => {
-  it('should detect email PII', () => {
-    const result = detectPII('Contact user@example.com for support');
+  it('should detect email PII', async () => {
+    const result = await detectPII('Contact user@example.com for support');
     expect(result.found).toBe(true);
     expect(result.types.email).toBe(1);
   });
 
-  it('should detect phone PII', () => {
-    const result = detectPII('Call 555-123-4567 for help');
+  it('should detect phone PII', async () => {
+    const result = await detectPII('Call 555-123-4567 for help');
     expect(result.found).toBe(true);
     expect(result.types.phone).toBe(1);
   });
 
-  it('should detect IPv4 PII', () => {
-    const result = detectPII('Server at 192.168.1.100');
+  it('should detect IPv4 PII', async () => {
+    const result = await detectPII('Server at 192.168.1.100');
     expect(result.found).toBe(true);
     expect(result.types.ipv4).toBe(1);
   });
 
-  it('should detect API key PII', () => {
-    const result = detectPII('Use sk-abcdefghijklmnopqrstuvwxyz123456');
+  it('should detect API key PII', async () => {
+    const result = await detectPII('Use sk-abcdefghijklmnopqrstuvwxyz123456');
     expect(result.found).toBe(true);
-    expect(result.types.apiKey).toBe(1);
+    // Secret shapes now come from the shared pii-scrub.mjs set, where the
+    // OpenAI/Anthropic key shape is named 'openai-anthropic-key' (#1193).
+    expect(result.types['openai-anthropic-key']).toBe(1);
   });
 
-  it('should detect JWT PII', () => {
-    const result = detectPII('Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc_def-ghi');
+  it('should detect JWT PII', async () => {
+    const result = await detectPII('Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc_def-ghi');
     expect(result.found).toBe(true);
     expect(result.types.jwt).toBe(1);
   });
 
-  it('should detect home path PII', () => {
-    const result = detectPII('File at /Users/johndoe/Documents');
+  it('should detect home path PII', async () => {
+    const result = await detectPII('File at /Users/johndoe/Documents');
     expect(result.found).toBe(true);
     expect(result.types.homePath).toBe(1);
   });
 
-  it('should not find PII in clean content', () => {
-    const result = detectPII('Just a normal description with no personal data');
+  it('should not find PII in clean content', async () => {
+    const result = await detectPII('Just a normal description with no personal data');
     expect(result.found).toBe(false);
     expect(result.count).toBe(0);
   });
 
-  it('should redact email', () => {
-    const redacted = redactPII('Contact user@example.com');
+  it('should redact email', async () => {
+    const redacted = await redactPII('Contact user@example.com');
     expect(redacted).not.toContain('user@example.com');
     expect(redacted).toContain('@example.com');
   });
 
-  it('should redact IP addresses', () => {
-    const redacted = redactPII('Server: 192.168.1.1');
+  it('should redact IP addresses', async () => {
+    const redacted = await redactPII('Server: 192.168.1.1');
     expect(redacted).toContain('0.0.0.0');
   });
 
-  it('should redact API keys', () => {
-    const redacted = redactPII('Key: sk-abcdefghijklmnopqrstuvwxyz123456');
+  it('should redact API keys', async () => {
+    const redacted = await redactPII('Key: sk-abcdefghijklmnopqrstuvwxyz123456');
     expect(redacted).toContain('[REDACTED_API_KEY]');
   });
 
-  it('should apply minimal anonymization (remove author name)', () => {
+  it('should apply minimal anonymization (remove author name)', async () => {
     const cfp = createCFP({
       name: 'anon-test',
       description: 'test',
       patterns: createMockPatterns(),
       author: { id: 'auth1', displayName: 'John Doe' },
     });
-    const { cfp: anonymized, transforms } = anonymizeCFP(cfp, 'minimal');
+    const { cfp: anonymized, transforms } = await anonymizeCFP(cfp, 'minimal');
     expect(anonymized.metadata.author?.displayName).toBeUndefined();
     expect(transforms).toContain('author-name-removed');
   });
 
-  it('should apply standard anonymization (PII redacted)', () => {
+  it('should apply standard anonymization (PII redacted)', async () => {
     const patterns = createMockPatterns();
     patterns.routing[0].context = { note: 'Contact user@example.com' };
     const cfp = createCFP({ name: 'std', description: 'test', patterns });
-    const { cfp: anonymized, transforms } = anonymizeCFP(cfp, 'standard');
+    const { cfp: anonymized, transforms } = await anonymizeCFP(cfp, 'standard');
     expect(transforms).toContain('pii-redacted');
     expect(transforms).toContain('timestamps-generalized');
     expect(anonymized.anonymization.piiRedacted).toBe(true);
   });
 
-  it('should apply strict anonymization (hash IDs, remove context)', () => {
+  it('should apply strict anonymization (hash IDs, remove context)', async () => {
     const cfp = createCFP({ name: 'strict', description: 'test', patterns: createMockPatterns() });
-    const { cfp: anonymized, transforms } = anonymizeCFP(cfp, 'strict');
+    const { cfp: anonymized, transforms } = await anonymizeCFP(cfp, 'strict');
     expect(transforms).toContain('ids-hashed');
     expect(transforms).toContain('context-removed');
     expect(transforms).toContain('paths-stripped');
@@ -710,21 +712,124 @@ describe('Anonymization', () => {
     expect(anonymized.patterns.routing[0].id).toMatch(/^pattern_/);
   });
 
-  it('should apply paranoid anonymization (differential privacy, remove learnings)', () => {
+  it('should apply paranoid anonymization (differential privacy, remove learnings)', async () => {
     const cfp = createCFP({ name: 'paranoid', description: 'test', patterns: createMockPatterns() });
-    const { cfp: anonymized, transforms } = anonymizeCFP(cfp, 'paranoid');
+    const { cfp: anonymized, transforms } = await anonymizeCFP(cfp, 'paranoid');
     expect(transforms).toContain('differential-privacy-noise');
     expect(transforms).toContain('learnings-removed');
     // Trajectory learnings should be empty
     expect(anonymized.patterns.trajectory[0].learnings).toHaveLength(0);
   });
 
-  it('scanCFPForPII detects PII in patterns', () => {
+  it('scanCFPForPII detects PII in patterns', async () => {
     const patterns = createMockPatterns();
     patterns.routing[0].context = { email: 'test@pii.com' };
     const cfp = createCFP({ name: 'scan', description: 'test', patterns });
-    const result = scanCFPForPII(cfp);
+    const result = await scanCFPForPII(cfp);
     expect(result.found).toBe(true);
+  });
+});
+
+// ----------------------------------------------------------------------------
+// #1193 — modern secret shapes single-sourced from bin/lib/pii-scrub.mjs.
+// The pre-#1193 `apiKey` regex (`(sk-|pk-|api_key)[a-z0-9]{20,}`) broke on the
+// first hyphen of `sk-ant-…`, so live Anthropic/GitHub/AWS/Slack/Google keys and
+// PEM blocks could survive anonymization and leak in an externally-shared CFP.
+// detectPII/redactPII now load the shared SECRET_PATTERNS, so each shape below
+// must be both detected and redacted.
+// ----------------------------------------------------------------------------
+describe('Anonymization — modern secret shapes (#1193)', () => {
+  const SECRET_SHAPES: Array<{
+    label: string;
+    sample: string;
+    typeName: string;
+    redactedTo: string;
+  }> = [
+    {
+      label: 'Anthropic sk-ant- key',
+      sample: 'sk-ant-api03-AABBCCDDEEFFGGHHIIJJKKLL',
+      typeName: 'openai-anthropic-key',
+      redactedTo: '[REDACTED_API_KEY]',
+    },
+    {
+      label: 'GitHub classic token (ghp_)',
+      sample: 'ghp_0123456789ABCDEFGHIJ0123456789abcdefij',
+      typeName: 'github-token',
+      redactedTo: '[REDACTED_GITHUB_TOKEN]',
+    },
+    {
+      label: 'GitHub fine-grained PAT (github_pat_)',
+      sample: 'github_pat_0123456789abcdefghij012345',
+      typeName: 'github-token',
+      redactedTo: '[REDACTED_GITHUB_TOKEN]',
+    },
+    {
+      label: 'AWS access key (AKIA)',
+      sample: 'AKIAIOSFODNN7EXAMPLE',
+      typeName: 'aws-access-key',
+      redactedTo: '[REDACTED_AWS_KEY]',
+    },
+    {
+      label: 'Slack token (xoxb-)',
+      sample: 'xoxb-1234567890-abcdefghij',
+      typeName: 'slack-token',
+      redactedTo: '[REDACTED_SLACK_TOKEN]',
+    },
+    {
+      label: 'Google API key (AIza)',
+      sample: `AIza${'b'.repeat(35)}`,
+      typeName: 'google-api-key',
+      redactedTo: '[REDACTED_GOOGLE_KEY]',
+    },
+  ];
+
+  for (const { label, sample, typeName, redactedTo } of SECRET_SHAPES) {
+    it(`detects ${label}`, async () => {
+      const result = await detectPII(`Found ${sample} in the logs`);
+      expect(result.found).toBe(true);
+      expect(result.types[typeName] ?? 0).toBeGreaterThanOrEqual(1);
+      // Secret shapes are always reported as the highest severity.
+      const loc = result.locations.find((l) => l.type === typeName);
+      expect(loc?.severity).toBe('critical');
+    });
+
+    it(`redacts ${label}`, async () => {
+      const redacted = await redactPII(`Found ${sample} in the logs`);
+      expect(redacted).not.toContain(sample);
+      expect(redacted).toContain(redactedTo);
+    });
+  }
+
+  const PEM_BLOCK = [
+    '-----BEGIN RSA PRIVATE KEY-----',
+    'MIIEpAIBAAKCAQEA0123456789abcdefghijklmnopqrstuvwxyz0123456789AB',
+    'CDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123',
+    '-----END RSA PRIVATE KEY-----',
+  ].join('\n');
+
+  it('detects PEM private-key blocks', async () => {
+    const result = await detectPII(`config:\n${PEM_BLOCK}\nend`);
+    expect(result.found).toBe(true);
+    expect(result.types['private-key'] ?? 0).toBeGreaterThanOrEqual(1);
+  });
+
+  it('redacts PEM private-key blocks', async () => {
+    const redacted = await redactPII(`config:\n${PEM_BLOCK}\nend`);
+    expect(redacted).not.toContain('BEGIN RSA PRIVATE KEY');
+    expect(redacted).toContain('[REDACTED_PRIVATE_KEY]');
+  });
+
+  it('anonymizeCFP redacts an Anthropic key embedded in pattern context', async () => {
+    const patterns = createMockPatterns();
+    patterns.routing[0].context = {
+      note: 'deploy used sk-ant-api03-AABBCCDDEEFFGGHHIIJJKKLL last run',
+    };
+    const cfp = createCFP({ name: 'secret-leak', description: 'test', patterns });
+    const { cfp: anonymized, transforms } = await anonymizeCFP(cfp, 'standard');
+    const serialized = JSON.stringify(anonymized.patterns);
+    expect(transforms).toContain('pii-redacted');
+    expect(serialized).not.toContain('sk-ant-api03');
+    expect(serialized).toContain('[REDACTED_API_KEY]');
   });
 });
 

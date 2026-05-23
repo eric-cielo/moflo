@@ -34,13 +34,13 @@ export async function exportPatterns(
   } = options;
 
   // Step 1: Scan for PII
-  const piiScan = scanCFPForPII(cfp);
+  const piiScan = await scanCFPForPII(cfp);
   if (piiScan.found && redactPii) {
     console.log(`Found ${piiScan.count} PII items, will be redacted`);
   }
 
   // Step 2: Apply anonymization
-  const { cfp: anonymizedCfp, transforms } = anonymizeCFP(cfp, anonymize);
+  const { cfp: anonymizedCfp, transforms } = await anonymizeCFP(cfp, anonymize);
   console.log(`Applied ${transforms.length} anonymization transforms: ${transforms.join(', ')}`);
 
   // Step 3: Serialize
