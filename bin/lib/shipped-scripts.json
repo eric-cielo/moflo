@@ -1,0 +1,33 @@
+{
+  "$comment": "CANONICAL single source of truth for the moflo scripts + helpers synced into a consumer's .claude/ on init/upgrade/postinstall. Read by bin/session-start-launcher.mjs §3, scripts/post-install-bootstrap.mjs, src/cli/init/executor.ts, and src/cli/init/moflo-init.ts via loadShippedScripts (bin/lib/shipped-scripts.mjs for .mjs, src/cli/init/shipped-scripts.ts for TS). Add a new shipped bin/*.mjs script HERE, once. NOTE: a script that mutates .moflo/moflo.db ALSO needs a tests/system/fixtures/writer-audit-whitelist.json entry — that is an intentional human-classified safety allowlist, not duplication. This file ships via the bin/** glob and auto-syncs to .claude/scripts/lib/ with the rest of bin/lib/.",
+  "scriptFiles": [
+    "hooks.mjs",
+    "session-start-launcher.mjs",
+    "index-guidance.mjs",
+    "build-embeddings.mjs",
+    "generate-code-map.mjs",
+    "semantic-search.mjs",
+    "index-tests.mjs",
+    "index-patterns.mjs",
+    "index-reference.mjs",
+    "index-all.mjs",
+    "setup-project.mjs",
+    "run-migrations.mjs"
+  ],
+  "binHelperFiles": [
+    "gate.cjs",
+    "gate-hook.mjs",
+    "prompt-hook.mjs",
+    "hook-handler.cjs",
+    "simplify-classify.cjs"
+  ],
+  "sourceHelperFiles": [
+    "auto-memory-hook.mjs",
+    "statusline.cjs",
+    "intelligence.cjs",
+    "subagent-start.cjs",
+    "subagent-bootstrap.json",
+    "pre-commit",
+    "post-commit"
+  ]
+}

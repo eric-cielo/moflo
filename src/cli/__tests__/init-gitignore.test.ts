@@ -14,7 +14,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { updateGitignore, SCRIPT_MAP } from '../init/moflo-init.js';
+import { updateGitignore } from '../init/moflo-init.js';
+import { loadShippedScripts } from '../init/shipped-scripts.js';
 
 describe('updateGitignore', () => {
   let tmpDir: string;
@@ -52,7 +53,7 @@ describe('updateGitignore', () => {
 
     // Auto-synced moflo files (the new entries)
     expect(content).toContain('/.claude/guidance/moflo-*.md');
-    for (const name of SCRIPT_MAP) {
+    for (const name of loadShippedScripts().scriptFiles) {
       expect(content).toContain(`/.claude/scripts/${name}`);
     }
   });
@@ -74,7 +75,7 @@ describe('updateGitignore', () => {
     // New entries appended under the heading
     expect(content).toContain('# MoFlo state (gitignored)');
     expect(content).toContain('/.claude/guidance/moflo-*.md');
-    for (const name of SCRIPT_MAP) {
+    for (const name of loadShippedScripts().scriptFiles) {
       expect(content).toContain(`/.claude/scripts/${name}`);
     }
   });
@@ -109,7 +110,7 @@ describe('updateGitignore', () => {
     expect(content).toContain('/.claude/guidance/moflo-*.md');
     expect(content).not.toMatch(/^\.claude\/guidance\/moflo-\*\.md$/m);
 
-    for (const name of SCRIPT_MAP) {
+    for (const name of loadShippedScripts().scriptFiles) {
       expect(content).toContain(`/.claude/scripts/${name}`);
     }
   });

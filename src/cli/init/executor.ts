@@ -27,6 +27,7 @@ import {
   generateHookHandlerScript,
 } from './helpers-generator.js';
 import { generateClaudeMd } from './claudemd-generator.js';
+import { loadShippedScripts } from './shipped-scripts.js';
 import { writeEnvrc } from './envrc-generator.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { locateMofloRootPath } from '../services/moflo-require.js';
@@ -459,26 +460,15 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     if (!fs.existsSync(scriptsDir)) {
       fs.mkdirSync(scriptsDir, { recursive: true });
     }
-    // Must mirror the list in bin/session-start-launcher.mjs — divergence
-    // here means the launcher's drift-repair will delete files this upgrade
-    // didn't track, even though they ship in the package (#777).
-    const UPGRADE_SCRIPT_MAP: string[] = [
-      'hooks.mjs',
-      'session-start-launcher.mjs',
-      'index-guidance.mjs',
-      'build-embeddings.mjs',
-      'generate-code-map.mjs',
-      'semantic-search.mjs',
-      'index-tests.mjs',
-      'index-patterns.mjs',
-      'index-reference.mjs',
-      'index-all.mjs',
-      'setup-project.mjs',
-      'run-migrations.mjs',
-    ];
     const binDir = findMofloBinDir();
     if (binDir) {
-      for (const name of UPGRADE_SCRIPT_MAP) {
+      // Canonical sync list — single source of truth in bin/lib/shipped-scripts.json
+      // (#1191). Read from the SAME binDir we copy from so the list and the files
+      // can't diverge (in dogfood, findMofloPackageRoot and findMofloBinDir can
+      // resolve to different installs). Drift across launcher / bootstrap / init
+      // is now impossible — there's one list.
+      const scriptFiles = loadShippedScripts(path.join(binDir, 'lib')).scriptFiles;
+      for (const name of scriptFiles) {
         const srcPath = path.join(binDir, name);
         const destPath = path.join(scriptsDir, name);
         if (!fs.existsSync(srcPath)) continue;

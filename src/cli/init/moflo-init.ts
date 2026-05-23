@@ -24,6 +24,7 @@ import {
 } from './moflo-yaml-template.js';
 import { generateClaudeMd as generateMofloSection } from './claudemd-generator.js';
 import { applyInjectionReplacement } from '../services/claudemd-injection.js';
+import { loadShippedScripts } from './shipped-scripts.js';
 import { DEFAULT_INIT_OPTIONS } from './types.js';
 
 export { discoverTestDirs };
@@ -517,24 +518,10 @@ function generateClaudeMd(root: string, _force?: boolean): MofloInitResult['step
 // Always overwrite to keep them in sync with the installed moflo version.
 // ============================================================================
 
-// Must mirror UPGRADE_SCRIPT_MAP in src/cli/init/executor.ts and the
-// scriptFiles array in bin/session-start-launcher.mjs — first-init drops any
-// script missing here, and the launcher's manifest cleanup later treats it as
-// orphan residue and deletes it (#777, feedback_scriptfiles_sync.md).
-export const SCRIPT_MAP: string[] = [
-  'hooks.mjs',
-  'session-start-launcher.mjs',
-  'index-guidance.mjs',
-  'build-embeddings.mjs',
-  'generate-code-map.mjs',
-  'semantic-search.mjs',
-  'index-tests.mjs',
-  'index-patterns.mjs',
-  'index-reference.mjs',
-  'index-all.mjs',
-  'setup-project.mjs',
-  'run-migrations.mjs',
-];
+// The script sync list is read from the canonical manifest
+// bin/lib/shipped-scripts.json (#1191) — single source of truth shared with the
+// launcher, the post-install bootstrap, and executor.ts. No more hand-mirrored
+// arrays that drift (which #1184 hit across all four sites).
 
 function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0] {
   const scriptsDir = path.join(root, '.claude', 'scripts');
@@ -554,8 +541,15 @@ function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0]
     return { name: '.claude/scripts/', status: 'skipped', detail: 'moflo bin/ not found' };
   }
 
+  let scriptFiles: string[];
+  try {
+    scriptFiles = loadShippedScripts(path.join(binDir, 'lib')).scriptFiles;
+  } catch (err) {
+    return { name: '.claude/scripts/', status: 'skipped', detail: `shipped-scripts manifest unreadable: ${errorDetail(err)}` };
+  }
+
   let copied = 0;
-  for (const name of SCRIPT_MAP) {
+  for (const name of scriptFiles) {
     const srcPath = path.join(binDir, name);
     const destPath = path.join(scriptsDir, name);
 
@@ -626,6 +620,12 @@ function isStale(srcPath: string, destPath: string): boolean {
 
 export function updateGitignore(root: string): MofloInitResult['steps'][0] {
   const gitignorePath = path.join(root, '.gitignore');
+  // Script ignore patterns from the canonical manifest (#1191); a broken/absent
+  // manifest just omits them — gitignore is non-critical (scripts are derived).
+  let scriptIgnorePatterns: string[] = [];
+  try {
+    scriptIgnorePatterns = loadShippedScripts().scriptFiles.map(name => `/.claude/scripts/${name}`);
+  } catch { /* manifest unreadable — omit (non-critical) */ }
   const entries = [
     '.claude-epic/',
     '.moflo/',
@@ -637,7 +637,7 @@ export function updateGitignore(root: string): MofloInitResult['steps'][0] {
     // swallowed shipped/internal subdirs and broke `npm pack`
     // (guidance-gitignore-shipped-trap).
     '/.claude/guidance/moflo-*.md',
-    ...SCRIPT_MAP.map(name => `/.claude/scripts/${name}`),
+    ...scriptIgnorePatterns,
   ];
 
   // Treat `/.foo` and `.foo` as the same rule when checking for prior presence
