@@ -15,7 +15,8 @@ import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAME
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
-import { makeSyncer, contentEqual } from './lib/file-sync.mjs';
+import { makeSyncer, contentEqual, syncDirRecursive } from './lib/file-sync.mjs';
+import { INTERNAL_SKILLS } from './lib/internal-skills.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
 import {
   readContinuityConfig,
@@ -1152,35 +1153,20 @@ try {
       // because they don't exist in node_modules/moflo/, so they never enter
       // the manifest and never get pruned — same proven safety story as
       // scripts/helpers above.
-      async function syncDirRecursive(srcDir, destPrefix) {
-        if (!existsSync(srcDir)) return;
-        let entries;
-        try {
-          entries = readdirSync(srcDir, { recursive: true, withFileTypes: true });
-        } catch (err) {
-          emitWarning(`${destPrefix} readdir failed (${errMessage(err)})`);
-          return;
-        }
-        for (const entry of entries) {
-          if (!entry.isFile()) continue;
-          if (!entry.name.toLowerCase().endsWith('.md')) continue;
-          const parent = entry.parentPath || entry.path || srcDir;
-          const absSrc = resolve(parent, entry.name);
-          const rel = absSrc.slice(srcDir.length + 1).split(/[\\/]/).join('/');
-          const absDest = resolve(projectRoot, destPrefix, rel);
-          try { mkdirSync(dirname(absDest), { recursive: true }); } catch (err) {
-            emitWarning(`${destPrefix} subdir mkdir failed for ${rel} (${errMessage(err)})`);
-          }
-          await syncFile(absSrc, absDest, `${destPrefix}/${rel}`);
-        }
-      }
+      //
+      // syncDirRecursive lives in bin/lib/file-sync.mjs so the exclusion logic
+      // is unit-testable (tests/bin/file-sync-dir.test.ts). Skills pass
+      // INTERNAL_SKILLS as excludeTopLevel so moflo-internal skills (`/publish`,
+      // `/reset-epic`) ship in the tarball but never land in a consumer project.
       await syncDirRecursive(
         resolve(projectRoot, 'node_modules/moflo/.claude/agents'),
         '.claude/agents',
+        { projectRoot, syncFile, onWarn: emitWarning },
       );
       await syncDirRecursive(
         resolve(projectRoot, 'node_modules/moflo/.claude/skills'),
         '.claude/skills',
+        { projectRoot, syncFile, excludeTopLevel: new Set(INTERNAL_SKILLS), onWarn: emitWarning },
       );
 
       // Sync all shipped guidance files from node_modules/moflo/.claude/guidance/shipped/
