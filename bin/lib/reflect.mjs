@@ -120,11 +120,12 @@ const DECISION_PATTERNS = [
 
 // Tight, low-false-positive markers only — tool output mentions "error" benignly
 // all the time, so we anchor on structured failure signals, not the bare word.
+// `[1-9]\d*` (not `\d+`) so a SUCCESS line like "0 failed" never triggers.
 const ERROR_PATTERNS = [
   /"is_error"\s*:\s*true/,
   /\bexit code [1-9]\d*/i,
   /Traceback \(most recent call last\)/,
-  /\b\d+ (failed|failing)\b/i,
+  /\b[1-9]\d* (failed|failing)\b/i,
 ];
 
 function anyMatch(patterns, text) {
@@ -149,6 +150,31 @@ export function detectSignal(prompt, transcriptTail = '') {
   if (anyMatch(DECISION_PATTERNS, p) || anyMatch(DECISION_PATTERNS, t)) return { hit: true, kind: 'decision' };
   if (anyMatch(ERROR_PATTERNS, t)) return { hit: true, kind: 'error_fix' };
   return { hit: false, kind: null };
+}
+
+/**
+ * Text of the MOST RECENT turn — everything in the transcript tail after the
+ * last user message. The detect hook scopes error/decision detection to this
+ * slice so STALE markers from earlier in the session (a test failure 20 turns
+ * ago) don't keep re-firing the capture directive. Falls back to the whole tail
+ * when no user line is present. Tolerates a truncated leading JSONL line.
+ *
+ * @param {string} tailText - raw JSONL tail
+ * @returns {string}
+ */
+export function recentTranscriptTurn(tailText) {
+  if (typeof tailText !== 'string' || !tailText) return '';
+  const lines = tailText.split('\n');
+  let lastUserIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t || t[0] !== '{') continue;
+    let obj;
+    try { obj = JSON.parse(t); } catch { continue; }
+    const role = obj?.message?.role ?? obj?.role;
+    if (role === 'user') lastUserIdx = i;
+  }
+  return (lastUserIdx >= 0 ? lines.slice(lastUserIdx + 1) : lines).join('\n');
 }
 
 // ── Stage 1: the injected directive (DRY with #1187 /reflect) ───────────────

@@ -34,6 +34,7 @@ import {
   readReflectConfig,
   isHeadless,
   detectSignal,
+  recentTranscriptTurn,
   buildCaptureDirective,
   injectionAllowed,
   readReflectState,
@@ -66,16 +67,20 @@ async function detect() {
   const { projectRoot } = ctx;
 
   const input = await readHookStdin();
-  const prompt = input.prompt || input.user_prompt || '';
+  const prompt = (input.prompt || input.user_prompt || '').trim();
+  // No real user prompt (system reminder / task-notification re-invocation) →
+  // there's no "moment" to attach a directive to. Skip — this is the dominant
+  // false-fire source the live dogfood surfaced.
+  if (!prompt) return;
 
   // Cheapest path first: corrections + in-prompt decisions need only the prompt.
-  // Read the (32KB) transcript tail for error→fix / in-transcript decisions ONLY
-  // when the prompt alone produced no signal — saves the read on the common
-  // correction case.
+  // Only when the prompt alone yields nothing do we read the transcript and scope
+  // to the MOST RECENT turn (post-last-user-message) — scanning the full tail
+  // re-fires on stale error/decision markers from earlier in the session.
   let signal = detectSignal(prompt, '');
   if (!signal.hit) {
     const tail = readFileTail(input.transcript_path || input.transcriptPath, TRANSCRIPT_TAIL_BYTES);
-    if (tail) signal = detectSignal(prompt, tail);
+    if (tail) signal = detectSignal(prompt, recentTranscriptTurn(tail));
   }
   if (!signal.hit) return;
 

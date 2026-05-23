@@ -23,6 +23,7 @@ import {
   readReflectConfig,
   isHeadless,
   detectSignal,
+  recentTranscriptTurn,
   buildCaptureDirective,
   injectionAllowed,
   readReflectState,
@@ -116,8 +117,44 @@ describe('detectSignal', () => {
     expect(detectSignal('add better error handling to the parser').hit).toBe(false);
   });
 
+  it('does NOT treat a "0 failed" SUCCESS line as error→fix ([1-9] guard)', () => {
+    expect(detectSignal('ok', 'Total passed: 9138, 0 failed').hit).toBe(false);
+    expect(detectSignal('ok', '9138 passed | 0 failed').hit).toBe(false);
+    // a real non-zero failure still fires
+    expect(detectSignal('ok', '3 failed, 10 passed').kind).toBe('error_fix');
+  });
+
   it('precedence: correction beats decision beats error_fix', () => {
     expect(detectSignal("no, let's go with X", '{"is_error":true}').kind).toBe('correction');
+  });
+});
+
+// ── Recent-turn scoping (stale-marker guard) ─────────────────────────────────
+
+describe('recentTranscriptTurn', () => {
+  it('returns only the text after the last user message', () => {
+    const lines = [
+      JSON.stringify({ message: { role: 'assistant', content: '3 failed earlier — STALE' } }),
+      JSON.stringify({ message: { role: 'user', content: 'ok next thing' } }),
+      JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: 'all good, 0 failed' }] } }),
+    ].join('\n') + '\n';
+    const recent = recentTranscriptTurn(lines);
+    expect(recent).toContain('all good, 0 failed');
+    expect(recent).not.toContain('STALE');
+  });
+
+  it('scopes error detection so a stale failure before the last user turn does NOT fire', () => {
+    const lines = [
+      JSON.stringify({ message: { role: 'assistant', content: 'process exited with exit code 1' } }), // stale
+      JSON.stringify({ message: { role: 'user', content: 'great, ship it' } }),
+      JSON.stringify({ message: { role: 'assistant', content: 'done, everything green' } }),
+    ].join('\n') + '\n';
+    expect(detectSignal('great, ship it', recentTranscriptTurn(lines)).hit).toBe(false);
+  });
+
+  it('falls back to the whole tail when no user line is present', () => {
+    const lines = JSON.stringify({ message: { role: 'assistant', content: 'exit code 1 here' } }) + '\n';
+    expect(detectSignal('ok', recentTranscriptTurn(lines)).kind).toBe('error_fix');
   });
 });
 

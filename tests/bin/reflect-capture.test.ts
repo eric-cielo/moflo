@@ -94,14 +94,38 @@ describe('reflect-capture detect (UserPromptSubmit)', () => {
     expect(second.stdout.trim()).toBe('');
   });
 
-  it('detects error→fix from the transcript tail', () => {
+  it('detects error→fix from the recent turn', () => {
     enable(root);
     const transcript = writeTranscript(root, [
+      { type: 'user', message: { role: 'user', content: 'run the tests' } },
       { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_result', text: 'process exited with exit code 1' }] } },
     ]);
     const r = run(root, 'detect', { session_id: 's1', prompt: 'ok keep going', transcript_path: transcript });
     expect(r.stdout).toContain('[auto-reflect]');
     expect(r.stdout).toContain('error-then-fix');
+  });
+
+  it('is silent on a system/notification turn with no real prompt', () => {
+    enable(root);
+    const transcript = writeTranscript(root, [
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_result', text: 'exit code 1' }] } },
+    ]);
+    // empty prompt (task-notification re-invocation) → nothing to attach to
+    const r = run(root, 'detect', { session_id: 's1', prompt: '   ', transcript_path: transcript });
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe('');
+  });
+
+  it('does NOT fire on a STALE error from before the last user turn', () => {
+    enable(root);
+    const transcript = writeTranscript(root, [
+      { type: 'assistant', message: { role: 'assistant', content: '3 failed earlier' } }, // stale failure
+      { type: 'user', message: { role: 'user', content: 'great, ship it' } },
+      { type: 'assistant', message: { role: 'assistant', content: 'all green now, 0 failed' } },
+    ]);
+    const r = run(root, 'detect', { session_id: 's1', prompt: 'thanks, all set', transcript_path: transcript });
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe('');
   });
 });
 
