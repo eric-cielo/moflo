@@ -119,3 +119,4 @@ In `--preview` mode, label it clearly as a preview and note that nothing was wri
 
 - `.claude/guidance/moflo-memory-protocol.md` — namespaces and the store/search protocol
 - `.claude/skills/brainstorm/SKILL.md` — the *pre-execution* counterpart (`/brainstorm` opens a unit of work; `/reflect` closes one)
+- **Auto-reflect** — the *automatic* counterpart. Instead of waiting for you to run `/reflect`, moflo can recognize durable lessons in the live session and distill them into `learnings` automatically via a cheap background pass. Toggle it with `auto_reflect.enabled` in `moflo.yaml`; it applies the same durability bar and dedup-then-store protocol, so Step 2 / Step 3 here remain the source of truth for both paths.

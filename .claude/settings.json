@@ -187,6 +187,15 @@
             "timeout": 3000
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs\" reflect-detect",
+            "timeout": 3000
+          }
+        ]
       }
     ],
     "SubagentStart": [
@@ -232,6 +241,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/scripts/session-continuity.mjs\" capture",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs\" reflect-scrape",
             "timeout": 5000
           }
         ]

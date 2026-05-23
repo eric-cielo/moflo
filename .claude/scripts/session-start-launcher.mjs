@@ -15,7 +15,8 @@ import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAME
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
-import { makeSyncer, contentEqual } from './lib/file-sync.mjs';
+import { makeSyncer, contentEqual, syncDirRecursive } from './lib/file-sync.mjs';
+import { INTERNAL_SKILLS } from './lib/internal-skills.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
 import {
   readContinuityConfig,
@@ -24,6 +25,11 @@ import {
   selectBestDigest,
   formatInjection,
 } from './lib/session-continuity.mjs';
+import {
+  readReflectConfig,
+  readLedger as readReflectLedger,
+  pendingEntries as pendingReflectEntries,
+} from './lib/reflect.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -1152,35 +1158,20 @@ try {
       // because they don't exist in node_modules/moflo/, so they never enter
       // the manifest and never get pruned — same proven safety story as
       // scripts/helpers above.
-      async function syncDirRecursive(srcDir, destPrefix) {
-        if (!existsSync(srcDir)) return;
-        let entries;
-        try {
-          entries = readdirSync(srcDir, { recursive: true, withFileTypes: true });
-        } catch (err) {
-          emitWarning(`${destPrefix} readdir failed (${errMessage(err)})`);
-          return;
-        }
-        for (const entry of entries) {
-          if (!entry.isFile()) continue;
-          if (!entry.name.toLowerCase().endsWith('.md')) continue;
-          const parent = entry.parentPath || entry.path || srcDir;
-          const absSrc = resolve(parent, entry.name);
-          const rel = absSrc.slice(srcDir.length + 1).split(/[\\/]/).join('/');
-          const absDest = resolve(projectRoot, destPrefix, rel);
-          try { mkdirSync(dirname(absDest), { recursive: true }); } catch (err) {
-            emitWarning(`${destPrefix} subdir mkdir failed for ${rel} (${errMessage(err)})`);
-          }
-          await syncFile(absSrc, absDest, `${destPrefix}/${rel}`);
-        }
-      }
+      //
+      // syncDirRecursive lives in bin/lib/file-sync.mjs so the exclusion logic
+      // is unit-testable (tests/bin/file-sync-dir.test.ts). Skills pass
+      // INTERNAL_SKILLS as excludeTopLevel so moflo-internal skills (`/publish`,
+      // `/reset-epic`) ship in the tarball but never land in a consumer project.
       await syncDirRecursive(
         resolve(projectRoot, 'node_modules/moflo/.claude/agents'),
         '.claude/agents',
+        { projectRoot, syncFile, onWarn: emitWarning },
       );
       await syncDirRecursive(
         resolve(projectRoot, 'node_modules/moflo/.claude/skills'),
         '.claude/skills',
+        { projectRoot, syncFile, excludeTopLevel: new Set(INTERNAL_SKILLS), onWarn: emitWarning },
       );
 
       // Sync all shipped guidance files from node_modules/moflo/.claude/guidance/shipped/
@@ -2237,6 +2228,26 @@ try {
   maybeInjectContinuity();
 } catch (err) {
   emitWarning(`continuity injection skipped (${errMessage(err)})`);
+}
+
+// Auto-reflect Stage 2 — DISTILL (#1198). Default-off. When enabled AND the
+// capture ledger holds un-distilled lessons, fire-and-forget the DETACHED
+// distill orchestrator — it runs ONE bounded headless Haiku /reflect over the
+// ledger one-liners and writes `learnings` via memory_store (daemon-routed,
+// writer-safe). The gate here is cheap (a config read + a ledger read); the
+// spawn + model call live entirely in the detached child, so the launcher's
+// spawn-and-exit contract holds. CLAUDE_CODE_HEADLESS is guarded at the top of
+// this file, so a headless session never reaches here (no infinite spawn).
+function maybeFireReflectDistill() {
+  if (!readReflectConfig(projectRoot).enabled) return;
+  if (pendingReflectEntries(readReflectLedger(projectRoot)).length === 0) return;
+  const distillScript = resolveMofloBin(projectRoot, null, 'reflect-distill.mjs');
+  if (distillScript) fireAndForget('node', [distillScript], 'reflect-distill');
+}
+try {
+  maybeFireReflectDistill();
+} catch (err) {
+  emitWarning(`reflect distill spawn skipped (${errMessage(err)})`);
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.

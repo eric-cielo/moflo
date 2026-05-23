@@ -25,6 +25,11 @@ import {
   selectBestDigest,
   formatInjection,
 } from './lib/session-continuity.mjs';
+import {
+  readReflectConfig,
+  readLedger as readReflectLedger,
+  pendingEntries as pendingReflectEntries,
+} from './lib/reflect.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -2223,6 +2228,26 @@ try {
   maybeInjectContinuity();
 } catch (err) {
   emitWarning(`continuity injection skipped (${errMessage(err)})`);
+}
+
+// Auto-reflect Stage 2 — DISTILL (#1198). Default-off. When enabled AND the
+// capture ledger holds un-distilled lessons, fire-and-forget the DETACHED
+// distill orchestrator — it runs ONE bounded headless Haiku /reflect over the
+// ledger one-liners and writes `learnings` via memory_store (daemon-routed,
+// writer-safe). The gate here is cheap (a config read + a ledger read); the
+// spawn + model call live entirely in the detached child, so the launcher's
+// spawn-and-exit contract holds. CLAUDE_CODE_HEADLESS is guarded at the top of
+// this file, so a headless session never reaches here (no infinite spawn).
+function maybeFireReflectDistill() {
+  if (!readReflectConfig(projectRoot).enabled) return;
+  if (pendingReflectEntries(readReflectLedger(projectRoot)).length === 0) return;
+  const distillScript = resolveMofloBin(projectRoot, null, 'reflect-distill.mjs');
+  if (distillScript) fireAndForget('node', [distillScript], 'reflect-distill');
+}
+try {
+  maybeFireReflectDistill();
+} catch (err) {
+  emitWarning(`reflect distill spawn skipped (${errMessage(err)})`);
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.
