@@ -36,7 +36,7 @@ export type PluginEvent = 'initialized' | 'shutdown' | 'error';
 export type PluginEventHandler = (event: PluginEvent, data?: unknown) => void;
 
 /**
- * Claude Flow Plugin Interface
+ * MoFlo Plugin Interface
  *
  * All plugins must implement this interface.
  */

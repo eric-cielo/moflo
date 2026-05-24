@@ -1,6 +1,6 @@
 /**
  * V3 CLI Init Command
- * Comprehensive initialization for Claude Flow with Claude Code integration
+ * Comprehensive initialization for MoFlo with Claude Code integration
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

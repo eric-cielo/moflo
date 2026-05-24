@@ -1,6 +1,6 @@
 /**
  * V3 CLI Session Command
- * Session management for Claude Flow
+ * Session management for MoFlo
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

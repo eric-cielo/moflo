@@ -153,7 +153,7 @@ export function generateShellHook(projectRoot: string): string {
   const hookPath = path.join(projectRoot, 'v3', '@claude-flow', 'hooks');
 
   return `#!/bin/bash
-# Claude Flow V3 Workers - Session Start Hook
+# MoFlo V3 Workers - Session Start Hook
 # Auto-generated - do not edit manually
 
 set -euo pipefail

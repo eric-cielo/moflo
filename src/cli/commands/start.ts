@@ -1,6 +1,6 @@
 /**
  * V3 CLI Start Command
- * System startup for Claude Flow orchestration
+ * System startup for MoFlo orchestration
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

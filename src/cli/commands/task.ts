@@ -1,6 +1,6 @@
 /**
  * V3 CLI Task Command
- * Task management for Claude Flow
+ * Task management for MoFlo
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

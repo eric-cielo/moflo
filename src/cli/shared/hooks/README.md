@@ -529,4 +529,4 @@ src/cli/shared/hooks/
 
 ## License
 
-Part of Claude-Flow V3 - See main LICENSE file
+Part of MoFlo V3 - See main LICENSE file

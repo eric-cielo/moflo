@@ -2,7 +2,7 @@
  * V3 Plugin Interface
  * Domain-Driven Design - Plugin-Based Architecture (ADR-004)
  *
- * Microkernel pattern for extensible Claude-Flow V3
+ * Microkernel pattern for extensible MoFlo V3
  * Enables modular extension points for agents, tasks, MCP tools, CLI commands, and memory backends
  */
 

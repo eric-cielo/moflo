@@ -1,7 +1,7 @@
 /**
  * Event Store Usage Example
  *
- * Demonstrates how to use the Event Sourcing system in V3 Claude Flow.
+ * Demonstrates how to use the Event Sourcing system in V3 MoFlo.
  *
  * Usage:
  *   npx tsx v3/@moflo/shared/src/events/example-usage.ts
@@ -26,7 +26,7 @@ import {
 } from './domain-events.js';
 
 async function main() {
-  console.log('Event Sourcing Example - V3 Claude Flow\n');
+  console.log('Event Sourcing Example - V3 MoFlo\n');
 
   // =========================================================================
   // 1. Initialize Event Store

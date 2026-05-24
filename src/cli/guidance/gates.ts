@@ -1,7 +1,7 @@
 /**
  * Hook-based Enforcement Gates
  *
- * Uses Claude Flow hooks to enforce non-negotiable rules.
+ * Uses MoFlo hooks to enforce non-negotiable rules.
  * The model can forget. The hook does not.
  *
  * Gates:

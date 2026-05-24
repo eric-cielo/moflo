@@ -2,7 +2,7 @@
 /**
  * @moflo/cli - CLI Entry Point
  *
- * Claude Flow V3 Command Line Interface
+ * MoFlo V3 Command Line Interface
  *
  * Auto-detects MCP mode when stdin is piped and no args provided.
  * This allows: echo '{"jsonrpc":"2.0",...}' | npx @moflo/cli

@@ -1,7 +1,7 @@
 /**
  * V3 MCP Module
  *
- * Optimized MCP (Model Context Protocol) implementation for Claude-Flow V3
+ * Optimized MCP (Model Context Protocol) implementation for MoFlo V3
  *
  * Features:
  * - High-performance server with <400ms startup
