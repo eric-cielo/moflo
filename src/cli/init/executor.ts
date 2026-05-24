@@ -49,6 +49,7 @@ export const SKILLS_MAP: Record<string, string[]> = {
     'guidance',
     'healer',
     'flo-simplify',
+    'distill', // alias for flo-simplify (pointer skill); installed alongside it
     'luminarium',
     'reasoningbank-intelligence',
     'meditate',

@@ -29,7 +29,7 @@ These drive code changes against GitHub issues and the working tree.
 | Skill | Use it when |
 |-------|-------------|
 | `/flo` (alias `/fl`) | Execute a GitHub issue end to end: research → ticket → implement → test → simplify → PR. Detects and processes epics automatically. |
-| `/flo-simplify` | Review the current diff for reuse, quality, and efficiency, then fix what it finds. Effort scales to the diff size. |
+| `/flo-simplify` (alias `/distill`) | Review the current diff for reuse, quality, and efficiency, then fix what it finds. Effort scales to the diff size. |
 
 ## Setup, health, and audit skills
 
