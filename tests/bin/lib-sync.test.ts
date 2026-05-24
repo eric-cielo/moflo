@@ -22,6 +22,40 @@ function cleanTempRoot(root: string) {
   try { rmSync(root, { recursive: true, force: true }); } catch { /* ok */ }
 }
 
+/**
+ * Statically extract the set of named ES-module exports from source, without
+ * executing it. Covers every export form moflo's bin/lib uses today plus the
+ * common ones (default, grouped, class) so a NEW export style added to bin/ but
+ * not propagated to the twin still trips the parity check instead of silently
+ * passing.
+ *
+ * Deliberately a text parser, not a dynamic import(): several bin/lib modules
+ * have import-time side effects (suppress-sqlite-warning patches process
+ * warnings; daemon/db helpers touch the filesystem) that must not run inside a
+ * unit test.
+ */
+function extractNamedExports(src: string): string[] {
+  const names = new Set<string>();
+  // export [async] function[*] NAME | export class NAME | export const|let|var NAME
+  const declRe = /\bexport\s+(?:async\s+)?(?:function\s*\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = declRe.exec(src))) names.add(m[1]);
+  // export default ...
+  if (/\bexport\s+default\b/.test(src)) names.add('default');
+  // export { a, b as c, type T } — capture the exported binding name
+  const groupRe = /\bexport\s*\{([^}]*)\}/g;
+  while ((m = groupRe.exec(src))) {
+    for (const part of m[1].split(',')) {
+      const seg = part.trim();
+      if (!seg || seg.startsWith('type ')) continue;
+      const asMatch = seg.match(/\bas\s+([A-Za-z_$][\w$]*)\s*$/);
+      const name = asMatch ? asMatch[1] : seg.replace(/^type\s+/, '');
+      if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
 describe('bin/lib/ subdirectory sync', () => {
   let root: string;
   beforeEach(() => { root = makeTempRoot(); });
@@ -82,5 +116,41 @@ describe('bin/lib/ subdirectory sync', () => {
     expect(existsSync(join(libDestDir, 'process-manager.mjs'))).toBe(true);
     expect(existsSync(join(libDestDir, 'registry-cleanup.cjs'))).toBe(true);
     expect(existsSync(join(libDestDir, 'moflo-resolve.mjs'))).toBe(true);
+  });
+});
+
+describe('bin/lib ↔ .claude/scripts/lib committed twin parity (#1196/#1205 launcher-crash guard)', () => {
+  // The launcher runs from .claude/scripts/ and statically imports ./lib/*.mjs.
+  // In the dogfood repo the launcher's own bin/lib→.claude/scripts/lib sync is
+  // SKIPPED (committed dogfood copies are preserved), so the two trees are
+  // hand-maintained twins that silently drift. Two drift modes have each shipped
+  // a crash-dead launcher — caught here so neither recurs:
+  //   #1196 — a MISSING twin (.claude/scripts/lib/internal-skills.mjs absent)
+  //   #1205 — a twin that exists but DROPS a named export the launcher imports
+  //           (.claude/scripts/lib/file-sync.mjs lacked syncDirRecursive) → an
+  //           ESM SyntaxError at link time kills the module before any statement
+  //           (even the diagnostic boot probe) runs.
+  const binLibDir = resolve(__dirname, '../../bin/lib');
+  const scriptsLibDir = resolve(__dirname, '../../.claude/scripts/lib');
+
+  it('every bin/lib file is mirrored as a committed .claude/scripts/lib twin', () => {
+    const missing = readdirSync(binLibDir).filter((f) => !existsSync(join(scriptsLibDir, f)));
+    expect(missing, `bin/lib files with no .claude/scripts/lib twin: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('every .mjs twin exports the exact same named exports as its bin/lib source', () => {
+    const drift: string[] = [];
+    for (const file of readdirSync(binLibDir).filter((f) => f.endsWith('.mjs'))) {
+      const twin = join(scriptsLibDir, file);
+      if (!existsSync(twin)) continue; // presence asserted by the test above
+      const want = extractNamedExports(readFileSync(join(binLibDir, file), 'utf-8'));
+      const got = extractNamedExports(readFileSync(twin, 'utf-8'));
+      if (JSON.stringify(want) !== JSON.stringify(got)) {
+        const lost = want.filter((n) => !got.includes(n));
+        const extra = got.filter((n) => !want.includes(n));
+        drift.push(`${file}: missing=[${lost.join(',')}] extra=[${extra.join(',')}]`);
+      }
+    }
+    expect(drift, `export-signature drift between bin/lib and .claude/scripts/lib:\n${drift.join('\n')}`).toEqual([]);
   });
 });
