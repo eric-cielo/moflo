@@ -253,10 +253,24 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // can persist `.moflo/upgrade-notice.json` for the statusline (#636).
 let upgradeNoticeContext = null;
 
-// Deferred so we commit it AFTER every upgrade-work block (see 3g). The stamp
-// is the "launcher fully completed" signal — writing it mid-flight lets an
-// aborted launcher strand consumers on a half-applied upgrade (#730).
-let pendingVersionStampWrite = null;
+// Commit the version stamp = "this version's files are in place". Written the
+// moment sync + manifest succeed (dogfood has no sync to do), NOT deferred to
+// the end of §3 — so a launcher killed by the 5s SessionStart hook-timeout
+// during later best-effort §3 work (hook-drift, CLAUDE.md injection drift,
+// embeddings migration, …) still records the upgrade, and the next session
+// stops re-detecting it. That end-of-§3 deferral was the root of the indefinite
+// "updating…" re-detect loop. #730 is still honored: the stamp commits only
+// after the sync that installs this version's files succeeds; every section
+// after the §3 sync block runs unconditionally + idempotently each session, so
+// an abort past this point strands no upgrade work.
+function commitVersionStamp(stampPath, version) {
+  try {
+    mkdirSync(dirname(stampPath), { recursive: true });
+    writeFileSync(stampPath, version);
+  } catch (err) {
+    emitWarning(`version stamp write failed (${errMessage(err)}) — next launcher will re-detect the upgrade`);
+  }
+}
 
 // 5-min TTL is a safety net for zombie launchers (statusline ignores past-TTL
 // files). The 2-min "completed" TTL lets the user see the post-upgrade badge
@@ -1002,7 +1016,7 @@ try {
       // (the stopDaemon call earlier handled this) and 3a-pre will spawn a
       // fresh daemon under the new code.
       if (isMofloDogfood) {
-        pendingVersionStampWrite = { path: versionStampPath, version: installedVersion };
+        commitVersionStamp(versionStampPath, installedVersion);
         emitMutation('skipped file-sync', 'moflo dogfood — committed dogfood copies preserved');
       } else {
 
@@ -1297,8 +1311,10 @@ try {
         );
       }
 
-      // Manifest reflects synced files immediately; version stamp is deferred
-      // to 3g so an aborted launcher re-runs upgrade detection (#730).
+      // Manifest reflects synced files immediately; the version stamp is
+      // committed right after the manifest write (below), gated on it succeeding
+      // — so an abort BEFORE sync still re-runs upgrade detection (#730), while
+      // an abort AFTER sync no longer strands the stamp in a re-detect loop.
       //
       // Exclude paths that `applyRetiredPrune` just deleted from disk —
       // recording a non-existent file in `installed-files.json` triggers
@@ -1316,7 +1332,7 @@ try {
         const cfDir = resolve(projectRoot, '.moflo');
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
         writeFileSync(manifestPath, JSON.stringify(persistedManifest, null, 2));
-        pendingVersionStampWrite = { path: versionStampPath, version: installedVersion };
+        commitVersionStamp(versionStampPath, installedVersion);
       } catch (err) {
         // #854: manifest write must surface — without it the next launcher
         // can't tell what was installed and the version stamp never gets
@@ -2159,18 +2175,15 @@ if (upgradeNoticeContext) {
   upgradeNoticeFinalized = true;
 }
 
-// ── 3g. Commit deferred version stamp (#730) ────────────────────────────────
-// Written LAST so an abort above leaves the stamp unchanged and the next
-// launcher re-detects the upgrade. Failure here is surfaced (#854) so a
-// permanently-broken stamp write (filesystem permissions, AV holds) doesn't
-// silently strand consumers in re-detect-on-every-session loops.
-if (pendingVersionStampWrite) {
-  try {
-    writeFileSync(pendingVersionStampWrite.path, pendingVersionStampWrite.version);
-  } catch (err) {
-    emitWarning(`version stamp write failed (${errMessage(err)}) — next launcher will re-detect the upgrade`);
-  }
-}
+// ── 3g. (removed) Version stamp now commits eagerly on sync success ──────────
+// The stamp used to be deferred to here ("written LAST", #730). That made it
+// vulnerable to the 5s SessionStart hook-timeout kill: a launcher killed during
+// the best-effort §3 stages above never reached this point, so the stamp stayed
+// stale and every subsequent session re-detected the same upgrade — the
+// indefinite "updating…" loop. The stamp now commits inside §3's sync block the
+// moment this version's files are in place (see commitVersionStamp). #730 is
+// preserved because that commit is gated on sync success; every stage after the
+// sync block runs unconditionally + idempotently each session.
 
 // ── 3h. Clear bootstrap sentinel if section-3 sync resolved it (#975) ───────
 // Section 3 above re-attempts the same file copies the bootstrap was supposed

@@ -136,11 +136,13 @@ describe('session-start-launcher — dogfood drift skip (#928)', () => {
       expect(src).toMatch(/if\s*\(\s*isMofloDogfood\s*\)\s*manifestDrifted\s*=\s*false/);
     });
 
-    it('skips file-sync stages in dogfood mode but still queues version stamp', () => {
+    it('skips file-sync stages in dogfood mode but still commits version stamp', () => {
       // The if/else fork wraps the entire manifest-based sync block. Dogfood
-      // path queues pendingVersionStampWrite (so we don't re-enter forever)
-      // and emits a visible mutation; consumer path runs the full sync.
-      expect(src).toMatch(/if\s*\(\s*isMofloDogfood\s*\)\s*\{[\s\S]*?pendingVersionStampWrite\s*=/);
+      // path commits the version stamp eagerly (so we don't re-enter forever)
+      // and emits a visible mutation; consumer path runs the full sync. The
+      // stamp commits here on sync success rather than being deferred to the end
+      // of §3 — see the eager-commit fix for the "updating…" re-detect loop.
+      expect(src).toMatch(/if\s*\(\s*isMofloDogfood\s*\)\s*\{[\s\S]*?commitVersionStamp\(/);
       expect(src).toMatch(/skipped file-sync/);
       expect(src).toMatch(/end !isMofloDogfood file-sync branch/);
     });
