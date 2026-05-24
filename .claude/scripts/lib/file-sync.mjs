@@ -28,13 +28,14 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   statSync,
   unlinkSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { dirname } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 
 export const TRANSIENT_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
 export const RETRY_BACKOFF_MS = [50, 200, 800];
@@ -197,4 +198,52 @@ export function makeSyncer({ onSuccess } = {}) {
     failures,
     isCircuitOpen: () => circuitOpen,
   };
+}
+
+/**
+ * Recursively sync every `.md` under `srcDir` into `<projectRoot>/<destPrefix>`,
+ * skipping any entry whose top-level directory is listed in `excludeTopLevel`.
+ *
+ * The session-start launcher uses this to mirror `node_modules/moflo/.claude/
+ * agents` and `.claude/skills` into the consumer project. `excludeTopLevel`
+ * keeps moflo-internal skills (`bin/lib/internal-skills.mjs`) out of consumer
+ * installs — without it the blanket copy would land `/publish` and `/reset-epic`
+ * in every consumer (they ship in the tarball but must not be installed).
+ *
+ * Each file is copied through `syncFile` so the manifest, hash-skip, and
+ * retry/breaker behaviour are identical to every other synced path.
+ *
+ * @param {string} srcDir   Absolute source directory (e.g. node_modules/moflo/.claude/skills).
+ * @param {string} destPrefix  Project-relative destination prefix (e.g. '.claude/skills').
+ * @param {object} opts
+ * @param {string} opts.projectRoot  Consumer project root the destPrefix is resolved against.
+ * @param {(src: string, dest: string, key: string) => Promise<unknown>} opts.syncFile  From makeSyncer().
+ * @param {Set<string>|string[]} [opts.excludeTopLevel]  Top-level dir names to skip.
+ * @param {(message: string) => void} [opts.onWarn]  Non-fatal warning sink.
+ */
+export async function syncDirRecursive(srcDir, destPrefix, { projectRoot, syncFile, excludeTopLevel, onWarn } = {}) {
+  if (!existsSync(srcDir)) return;
+  let entries;
+  try {
+    entries = readdirSync(srcDir, { recursive: true, withFileTypes: true });
+  } catch (err) {
+    onWarn?.(`${destPrefix} readdir failed (${errMessage(err)})`);
+    return;
+  }
+  const exclude = excludeTopLevel instanceof Set
+    ? excludeTopLevel
+    : new Set(excludeTopLevel || []);
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!entry.name.toLowerCase().endsWith('.md')) continue;
+    const parent = entry.parentPath || entry.path || srcDir;
+    const absSrc = resolve(parent, entry.name);
+    // path.relative (not slice) so a trailing separator on srcDir can't shift
+    // the top-level segment and silently defeat the exclusion check.
+    const rel = relative(srcDir, absSrc).split(/[\\/]/).join('/');
+    if (exclude.size > 0 && exclude.has(rel.split('/')[0])) continue;
+    const absDest = resolve(projectRoot, destPrefix, rel);
+    // syncFile owns dir creation (mkdir recursive) — no outer mkdir needed.
+    await syncFile(absSrc, absDest, `${destPrefix}/${rel}`);
+  }
 }
