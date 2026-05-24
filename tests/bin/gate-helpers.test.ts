@@ -1553,7 +1553,7 @@ describe('end-to-end: spell lifecycle', () => {
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(2);
-      expect(r.stderr).toContain('/flo-simplify has not run');
+      expect(r.stderr).toContain('/flo-simplify (or /distill) has not run');
     });
 
     it('lists every missing gate when more than one is unsatisfied', () => {
@@ -1563,7 +1563,7 @@ describe('end-to-end: spell lifecycle', () => {
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(2);
       expect(r.stderr).toContain('tests have not run');
-      expect(r.stderr).toContain('/flo-simplify has not run');
+      expect(r.stderr).toContain('/flo-simplify (or /distill) has not run');
       expect(r.stderr).toContain('learnings have not been stored');
     });
 
@@ -1770,6 +1770,14 @@ describe('end-to-end: spell lifecycle', () => {
       writeState(tmpDir, { simplifyRun: false });
       const env = baseEnv(tmpDir);
       env.TOOL_INPUT_skill = 'flo-simplify';
+      runGate('record-skill-run', env);
+      expect(readState(tmpDir).simplifyRun).toBe(true);
+    });
+
+    it('sets simplifyRun=true when /distill is invoked (wizardy alias for /flo-simplify)', () => {
+      writeState(tmpDir, { simplifyRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_skill = 'distill';
       runGate('record-skill-run', env);
       expect(readState(tmpDir).simplifyRun).toBe(true);
     });

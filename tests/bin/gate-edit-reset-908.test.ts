@@ -129,7 +129,7 @@ describe('#908 gate scope — test-file edits do not retrip /simplify', () => {
       env.TOOL_INPUT_command = 'gh pr create --title "fix"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(2);
-      expect(r.stderr).toContain('/flo-simplify has not run');
+      expect(r.stderr).toContain('/flo-simplify (or /distill) has not run');
     });
 
     it('blocked message lists the file that tripped the reset', () => {
