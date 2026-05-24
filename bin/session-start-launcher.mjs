@@ -953,7 +953,7 @@ try {
       // memory; a concurrent sql.js flush would clobber the cherry-picked
       // rows below, and old-path writes would resurrect ghost files in legacy
       // dirs. Section 4's `hooks.mjs session-start` spawns a fresh daemon
-      // under the current code once 3g writes the version stamp.
+      // under the current code after the version stamp is committed (below).
       const upgradeDaemonLock = resolve(projectRoot, '.moflo', 'daemon.lock');
       if (stopDaemon(upgradeDaemonLock)) {
         emitMutation('stopped daemon for upgrade', 'will restart fresh after upgrade work');
@@ -1297,7 +1297,7 @@ try {
       // The daemon was already stopped above so the lock file is gone and
       // there's no live PID to recycle here. Section 4's `hooks.mjs
       // session-start` will spawn a fresh daemon under the current moflo
-      // image once 3g writes the version stamp.
+      // image after the version stamp is committed (below, on sync success).
 
       // Surface per-file copy failures so the user / Claude can see what
       // didn't sync (#854). The file isn't in the manifest either, so the
