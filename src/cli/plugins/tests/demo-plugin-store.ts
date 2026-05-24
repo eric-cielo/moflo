@@ -14,7 +14,7 @@ import {
 async function demo() {
   console.log('');
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║  CLAUDE FLOW V3 - IPFS PLUGIN STORE DEMO                     ║');
+  console.log('║  MoFlo V3 - IPFS PLUGIN STORE DEMO                           ║');
   console.log('║  Decentralized Plugin Marketplace                            ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');

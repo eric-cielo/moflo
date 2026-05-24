@@ -21,7 +21,7 @@
  * - Immutability protection
  *
  * @module moflo/cli/guidance/meta-governance
- * @author Claude Flow Team
+ * @author MoFlo Team
  */
 
 import { randomUUID } from 'node:crypto';

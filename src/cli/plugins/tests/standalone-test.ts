@@ -23,7 +23,7 @@ import {
 async function main() {
   console.log('');
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║  CLAUDE FLOW V3 - STANDALONE PLUGIN STORE TEST               ║');
+  console.log('║  MoFlo V3 - STANDALONE PLUGIN STORE TEST                     ║');
   console.log('║  IPFS-Based Decentralized Plugin Marketplace                 ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');

@@ -204,13 +204,13 @@ async function generateRegistry(): Promise<PluginRegistry> {
       id: pkg,
       name: pkg,
       displayName: pkg.replace('@moflo/plugin-', '').replace('@moflo/', ''),
-      description: `Official Claude Flow plugin: ${pkg}`,
+      description: `Official MoFlo plugin: ${pkg}`,
       version: stats?.version || '0.0.0',
       size: 100000,
       checksum: `sha256:${crypto.randomBytes(32).toString('hex')}`,
       author: {
-        id: 'claude-flow-team',
-        displayName: 'Claude Flow Team',
+        id: 'moflo-team',
+        displayName: 'MoFlo Team',
         verified: true,
       },
       license: 'MIT',
@@ -239,7 +239,7 @@ async function generateRegistry(): Promise<PluginRegistry> {
     ipnsName: '', // Will be set after publishing
     plugins,
     categories: [
-      { id: 'official', name: 'Official', description: 'Official Claude Flow plugins', pluginCount: plugins.length },
+      { id: 'official', name: 'Official', description: 'Official MoFlo plugins', pluginCount: plugins.length },
     ],
     totalPlugins: plugins.length,
     totalDownloads,
@@ -306,7 +306,7 @@ async function main() {
   // Pin to IPFS
   console.log('\n📌 Pinning to IPFS via Pinata...');
   try {
-    const result = await pinToIPFS(registry, 'claude-flow-plugin-registry', jwt);
+    const result = await pinToIPFS(registry, 'moflo-plugin-registry', jwt);
 
     console.log('\n✅ Published successfully!');
     console.log(`   CID: ${result.IpfsHash}`);
@@ -326,7 +326,7 @@ async function main() {
     console.log('\n📝 Next steps:');
     console.log('   1. Update DEFAULT_PLUGIN_STORE_CONFIG in discovery.ts with the new CID');
     console.log('   2. If using IPNS, update the IPNS pointer via Pinata dashboard');
-    console.log('   3. Test with: npx claude-flow@latest plugins list');
+    console.log('   3. Test with: npx moflo@latest plugins list');
   } catch (error) {
     console.error('\n❌ Publish failed:', error);
     process.exit(1);

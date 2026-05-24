@@ -1,17 +1,14 @@
 /**
  * Credential / secret scrubber for the session-continuity persist path (#1185).
  *
- * THREAT MODEL — this is deliberately NOT the transfer/anonymization pipeline
- * (`src/cli/transfer/anonymization/index.ts`). That module makes a CFP safe to
- * publish *externally* (aggressive, lossy, deterministic pseudonymisation of
- * emails / home paths / IPs). This module has a narrower job: a session digest
+ * THREAT MODEL — this scrubber has a deliberately narrow job: a session digest
  * is written to the user's OWN local `.moflo/moflo.db`, so the only thing we
  * must never persist is a literal *secret* that happened to appear in the
  * session (an API key, a JWT, a private-key block). We intentionally KEEP
  * benign context like file paths and branch names — they're the whole point of
  * a "where you left off" digest and are not sensitive on the user's own disk.
  *
- * Two different purposes → two focused scrubbers, not one over-coupled one.
+ * Scope is intentionally minimal: persist useful context, never persist secrets.
  *
  * Pure + synchronous + dependency-free so a bin/*.mjs hook can call it on the
  * hot path without loading a model. Cross-platform (Rule #1): plain regex, no

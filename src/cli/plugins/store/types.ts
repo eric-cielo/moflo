@@ -4,7 +4,11 @@
  * Extends the pattern store architecture for plugins
  */
 
-import type { TrustLevel } from '../../transfer/types.js';
+/**
+ * Trust level for registries, authors, and plugins.
+ * (Relocated from the deleted transfer/ tree in #1210 — the plugin store is the sole consumer.)
+ */
+export type TrustLevel = 'official' | 'verified' | 'community' | 'unverified' | 'untrusted';
 
 /**
  * Plugin entry in the registry
@@ -37,6 +41,9 @@ export interface PluginEntry {
   createdAt: string;
 
   // Requirements
+  // LEGACY (#1210): wire-schema field names kept for compat with the already-pinned
+  // registry payload. Renaming desyncs with the published registry JSON — do not rename
+  // without a reader shim that accepts both the old and new keys.
   minClaudeFlowVersion: string;
   maxClaudeFlowVersion?: string;
   dependencies: PluginDependency[];
@@ -187,7 +194,7 @@ export interface PluginRegistry {
 export interface CompatibilityEntry {
   pluginId: string;
   pluginVersion: string;
-  claudeFlowVersions: string[];
+  claudeFlowVersions: string[]; // LEGACY (#1210): wire-schema field kept for registry compat
   tested: boolean;
   notes?: string;
 }

@@ -13,7 +13,7 @@ import type {
   PluginStoreConfig,
   PluginEntry,
 } from './types.js';
-import { resolveIPNS, fetchFromIPFS } from '../../transfer/ipfs/client.js';
+import { resolveIPNS, fetchFromIPFS } from './ipfs-client.js';
 
 /**
  * Fetch real npm download stats for a package
@@ -66,8 +66,8 @@ export const MODEL_REGISTRY_CID = 'QmNr1yYMKi7YBaL8JSztQyuB5ZUaTdRMLxJC1pBpGbjsT
 export const DEFAULT_PLUGIN_STORE_CONFIG: PluginStoreConfig = {
   registries: [
     {
-      name: 'claude-flow-official',
-      description: 'Official Claude Flow plugin registry',
+      name: 'moflo-official',
+      description: 'Official MoFlo plugin registry',
       // Use direct CID for reliable resolution (IPNS can be slow)
       ipnsName: LIVE_REGISTRY_CID,
       gateway: 'https://gateway.pinata.cloud',
@@ -85,7 +85,7 @@ export const DEFAULT_PLUGIN_STORE_CONFIG: PluginStoreConfig = {
       official: false,
     },
   ],
-  defaultRegistry: 'claude-flow-official',
+  defaultRegistry: 'moflo-official',
   gateway: 'https://gateway.pinata.cloud',
   timeout: 30000,
   cacheDir: '.moflo/plugins/cache',
@@ -227,8 +227,8 @@ export class PluginDiscoveryService {
       ],
       authors: [
         {
-          id: 'claude-flow-team',
-          displayName: 'Claude Flow Team',
+          id: 'moflo-team',
+          displayName: 'MoFlo Team',
           verified: true,
           plugins: plugins.length,
           totalDownloads: plugins.reduce((sum, p) => sum + p.downloads, 0),
@@ -268,8 +268,8 @@ export class PluginDiscoveryService {
   private getDemoPlugins(): PluginEntry[] {
     const baseTime = new Date().toISOString();
     const officialAuthor = {
-      id: 'claude-flow-team',
-      displayName: 'Claude Flow Team',
+      id: 'moflo-team',
+      displayName: 'MoFlo Team',
       verified: true,
       plugins: 5,
       totalDownloads: 50000,
@@ -319,7 +319,7 @@ export class PluginDiscoveryService {
         id: 'community-analytics',
         name: 'community-analytics',
         displayName: 'Analytics Dashboard',
-        description: 'Analytics and metrics visualization for Claude Flow operations',
+        description: 'Analytics and metrics visualization for MoFlo operations',
         version: '1.2.0',
         cid: 'bafybeianalyticsplugin',
         size: 210000,

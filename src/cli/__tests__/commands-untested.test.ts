@@ -1,6 +1,6 @@
 /**
  * Tests for CLI commands with zero prior coverage:
- *   benchmark, diagnose, gate, epic, transfer-store
+ *   benchmark, diagnose, gate, epic
  *
  * Structural + basic smoke tests following the commands-deep.test.ts pattern.
  */
@@ -75,27 +75,6 @@ vi.mock('../services/spell-gate.js', () => ({
   processGateCommand: vi.fn(),
 }));
 
-// Mock the transfer/index for transfer-store command
-vi.mock('../transfer/index.js', () => ({
-  createPatternStore: vi.fn(),
-  createDiscoveryService: vi.fn(() => ({
-    discoverRegistry: vi.fn(async () => ({
-      success: true,
-      source: 'mock',
-      registry: {
-        patterns: [],
-        featured: [],
-        trending: [],
-        newest: [],
-        totalPatterns: 0,
-      },
-    })),
-  })),
-  createDownloader: vi.fn(),
-  createPublisher: vi.fn(),
-  searchPatterns: vi.fn(() => ({ patterns: [], total: 0 })),
-}));
-
 // Mock the output module to suppress console noise in tests
 vi.mock('../output.js', () => {
   const noop = () => {};
@@ -133,14 +112,6 @@ import { benchmarkCommand } from '../commands/benchmark.js';
 import { diagnoseCommand } from '../commands/diagnose.js';
 import gateCommand from '../commands/gate.js';
 import epicCommand from '../commands/epic.js';
-import {
-  storeCommand,
-  storeListCommand,
-  storeSearchCommand,
-  storeDownloadCommand,
-  storePublishCommand,
-  storeInfoCommand,
-} from '../commands/transfer-store.js';
 
 import type { Command, CommandContext } from '../types.js';
 
@@ -335,183 +306,5 @@ describe('epic command', () => {
     const result = await epicCommand.action!(makeCtx({ args: ['bogus'], flags: { _: [] } }));
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
-  });
-});
-
-// ============================================================================
-// 5. transfer-store
-// ============================================================================
-
-describe('transfer-store commands', () => {
-  describe('storeCommand (parent)', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(storeCommand, 'store');
-    });
-
-    it('should have 5 subcommands: list, search, download, publish, info', () => {
-      expect(storeCommand.subcommands).toBeDefined();
-      expect(storeCommand.subcommands!.length).toBe(5);
-      const subNames = storeCommand.subcommands!.map(s => s.name);
-      expect(subNames).toContain('list');
-      expect(subNames).toContain('search');
-      expect(subNames).toContain('download');
-      expect(subNames).toContain('publish');
-      expect(subNames).toContain('info');
-    });
-
-    it('should have examples', () => {
-      expect(storeCommand.examples).toBeDefined();
-      expect(storeCommand.examples!.length).toBeGreaterThan(0);
-    });
-
-    it('should have an action function', () => {
-      expect(typeof storeCommand.action).toBe('function');
-    });
-
-    it('action returns success when called without subcommand (shows help)', async () => {
-      const result = await storeCommand.action!(makeCtx());
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(true);
-    });
-  });
-
-  describe('storeListCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(storeListCommand, 'list');
-    });
-
-    it('should have aliases', () => {
-      expect(storeListCommand.aliases).toContain('ls');
-    });
-
-    it('should have options including --category and --featured', () => {
-      const names = storeListCommand.options!.map(o => o.name);
-      expect(names).toContain('category');
-      expect(names).toContain('featured');
-    });
-
-    it('should have examples', () => {
-      expect(storeListCommand.examples).toBeDefined();
-      expect(storeListCommand.examples!.length).toBeGreaterThan(0);
-    });
-
-    it('should have an action function', () => {
-      expect(typeof storeListCommand.action).toBe('function');
-    });
-  });
-
-  describe('storeSearchCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(storeSearchCommand, 'search');
-    });
-
-    it('should have options including --query', () => {
-      const names = storeSearchCommand.options!.map(o => o.name);
-      expect(names).toContain('query');
-    });
-
-    it('should have examples', () => {
-      expect(storeSearchCommand.examples).toBeDefined();
-      expect(storeSearchCommand.examples!.length).toBeGreaterThan(0);
-    });
-
-    it('should have an action function', () => {
-      expect(typeof storeSearchCommand.action).toBe('function');
-    });
-
-    it('action returns failure when query is missing', async () => {
-      const result = await storeSearchCommand.action!(makeCtx({ args: [], flags: { _: [] } }));
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(false);
-    });
-  });
-
-  describe('storeDownloadCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(storeDownloadCommand, 'download');
-    });
-
-    it('should have aliases', () => {
-      expect(storeDownloadCommand.aliases).toContain('get');
-      expect(storeDownloadCommand.aliases).toContain('install');
-    });
-
-    it('should have options including --name', () => {
-      const names = storeDownloadCommand.options!.map(o => o.name);
-      expect(names).toContain('name');
-    });
-
-    it('should have examples', () => {
-      expect(storeDownloadCommand.examples).toBeDefined();
-      expect(storeDownloadCommand.examples!.length).toBeGreaterThan(0);
-    });
-
-    it('should have an action function', () => {
-      expect(typeof storeDownloadCommand.action).toBe('function');
-    });
-
-    it('action returns failure when pattern name is missing', async () => {
-      const result = await storeDownloadCommand.action!(makeCtx({ args: [], flags: { _: [] } }));
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(false);
-    });
-  });
-
-  describe('storePublishCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(storePublishCommand, 'publish');
-    });
-
-    it('should have aliases', () => {
-      expect(storePublishCommand.aliases).toContain('contribute');
-    });
-
-    it('should have options including --input, --name, --description', () => {
-      const names = storePublishCommand.options!.map(o => o.name);
-      expect(names).toContain('input');
-      expect(names).toContain('name');
-      expect(names).toContain('description');
-    });
-
-    it('should have examples', () => {
-      expect(storePublishCommand.examples).toBeDefined();
-      expect(storePublishCommand.examples!.length).toBeGreaterThan(0);
-    });
-
-    it('should have an action function', () => {
-      expect(typeof storePublishCommand.action).toBe('function');
-    });
-
-    it('action returns failure when required flags are missing', async () => {
-      const result = await storePublishCommand.action!(makeCtx({ flags: { _: [] } }));
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(false);
-    });
-  });
-
-  describe('storeInfoCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(storeInfoCommand, 'info');
-    });
-
-    it('should have options including --name', () => {
-      const names = storeInfoCommand.options!.map(o => o.name);
-      expect(names).toContain('name');
-    });
-
-    it('should have examples', () => {
-      expect(storeInfoCommand.examples).toBeDefined();
-      expect(storeInfoCommand.examples!.length).toBeGreaterThan(0);
-    });
-
-    it('should have an action function', () => {
-      expect(typeof storeInfoCommand.action).toBe('function');
-    });
-
-    it('action returns failure when pattern name is missing', async () => {
-      const result = await storeInfoCommand.action!(makeCtx({ args: [], flags: { _: [] } }));
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(false);
-    });
   });
 });
