@@ -49,7 +49,7 @@ function extractNamedExports(src: string): string[] {
       const seg = part.trim();
       if (!seg || seg.startsWith('type ')) continue;
       const asMatch = seg.match(/\bas\s+([A-Za-z_$][\w$]*)\s*$/);
-      const name = asMatch ? asMatch[1] : seg.replace(/^type\s+/, '');
+      const name = asMatch ? asMatch[1] : seg; // type-only handled by the continue above
       if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
     }
   }
@@ -134,6 +134,9 @@ describe('bin/lib ↔ .claude/scripts/lib committed twin parity (#1196/#1205 lau
   const scriptsLibDir = resolve(__dirname, '../../.claude/scripts/lib');
 
   it('every bin/lib file is mirrored as a committed .claude/scripts/lib twin', () => {
+    // Intentionally all formats, not just .mjs: the launcher's dir-sync mirrors
+    // the whole bin/lib tree, and synced scripts consume the non-.mjs files too
+    // (registry-cleanup.cjs, shipped-scripts.json). A bin/lib-only file is a gap.
     const missing = readdirSync(binLibDir).filter((f) => !existsSync(join(scriptsLibDir, f)));
     expect(missing, `bin/lib files with no .claude/scripts/lib twin: ${missing.join(', ')}`).toEqual([]);
   });
