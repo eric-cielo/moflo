@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { spawn, type ChildProcess } from 'child_process';
@@ -125,40 +125,64 @@ describe('daemon-lock orphan detection (#1150)', () => {
   }
 
   // ---------------------------------------------------------------------
-  // findProjectDaemonPids
+  // findProjectDaemonPids — pure matching logic
   // ---------------------------------------------------------------------
+  //
+  // These cases exercise the matcher (`projectCliCandidates` +
+  // `cmdlineMatchesProject`), NOT the OS-introspection chain. They inject a
+  // synthetic process list through the production `pidsHint` seam instead of
+  // spawning a real process and triggering a machine-wide scan.
+  //
+  // Why: under full-suite load the real Windows scan
+  // (`Get-CimInstance Win32_Process -Filter Name='node.exe'` via a cold
+  // PowerShell) is slow enough to blow the per-test budget — a timeout vitest
+  // surfaces under the test's name, masquerading as an assertion failure.
+  // That's the same "execSync introspection starves under parallel vitest
+  // workers" class #1086 fixed for `isDaemonProcess` via
+  // `MOFLO_TEST_TRUST_DAEMON_PID`. Injection makes these matcher tests
+  // deterministic, instant, and immune to PID reuse / sibling-test
+  // contamination. The real scan + real SIGTERM path stays covered
+  // end-to-end by the `reapSameProjectOrphans` / `acquireDaemonLock` tests
+  // below, which spawn and reap real processes (so `listMofloDaemons*` is
+  // still exercised transitively).
   describe('findProjectDaemonPids', () => {
-    it('returns empty array when MOFLO_TEST_SKIP_ORPHAN_SCAN=1', async () => {
-      const pid = await spawnFakeDaemon();
-      expect(isAlive(pid)).toBe(true);
+    function hintFor(root: string, pid: number): Array<{ pid: number; cmdline: string }> {
+      // Build the cmdline from the realpath'd cli.js so it matches the
+      // realpath-normalised candidate the matcher derives (Windows 8.3 /
+      // symlink resolution + case-folding handled by both sides).
+      const cli = realpathSync(join(root, 'bin', 'cli.js'));
+      return [{ pid, cmdline: `"${process.execPath}" ${cli} daemon start --moflo-fake-tag` }];
+    }
 
+    it('returns empty array when MOFLO_TEST_SKIP_ORPHAN_SCAN=1 (skip wins over a matching hint)', () => {
+      const hint = hintFor(tempDir, 4242);
       process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = '1';
       try {
-        const pids = findProjectDaemonPids(tempDir);
-        expect(pids).toEqual([]);
+        expect(findProjectDaemonPids(tempDir, { pidsHint: hint })).toEqual([]);
       } finally {
         delete process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN;
       }
-    }, 15000);
+    });
 
-    it('detects a same-project fake daemon', async () => {
-      const pid = await spawnFakeDaemon();
-      const pids = findProjectDaemonPids(tempDir);
-      expect(pids).toContain(pid);
-    }, 15000);
+    it('detects a same-project daemon', () => {
+      const hint = hintFor(tempDir, 4242);
+      expect(findProjectDaemonPids(tempDir, { pidsHint: hint })).toContain(4242);
+    });
 
-    it('does NOT detect a daemon rooted at a different project path', async () => {
-      const pid = await spawnFakeDaemon();
-
-      // Probe with a different tempDir — the same fake daemon must not match.
+    it('does NOT detect a daemon rooted at a different project path', () => {
+      const hint = hintFor(tempDir, 4242);
+      // Probe with a different project root — the tempDir-rooted daemon must
+      // not match. This is the exact assertion that flaked under load when it
+      // depended on a real machine-wide scan.
       const otherDir = mkdtempSync(join(tmpdir(), 'orphan-scan-other-'));
+      mkdirSync(join(otherDir, 'bin'), { recursive: true });
+      writeFileSync(join(otherDir, 'bin', 'cli.js'), FAKE_DAEMON_SCRIPT);
       try {
-        const pids = findProjectDaemonPids(otherDir);
-        expect(pids).not.toContain(pid);
+        expect(findProjectDaemonPids(otherDir, { pidsHint: hint })).not.toContain(4242);
       } finally {
         rmSync(otherDir, { recursive: true, force: true });
       }
-    }, 15000);
+    });
   });
 
   // ---------------------------------------------------------------------
