@@ -260,23 +260,23 @@ export const progressCommand: Command = {
   ],
   examples: [
     {
-      command: 'claude-flow progress',
+      command: 'flo progress',
       description: 'Check current progress',
     },
     {
-      command: 'claude-flow progress --detailed',
+      command: 'flo progress --detailed',
       description: 'Show detailed breakdown',
     },
     {
-      command: 'claude-flow progress sync',
+      command: 'flo progress sync',
       description: 'Sync and persist progress',
     },
     {
-      command: 'claude-flow progress watch',
+      command: 'flo progress watch',
       description: 'Watch for changes',
     },
     {
-      command: 'claude-flow progress --json',
+      command: 'flo progress --json',
       description: 'Output as JSON',
     },
   ],

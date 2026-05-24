@@ -180,16 +180,16 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Quick Commands:'));
     output.printList([
-      `${output.highlight('claude-flow status')} - View system status`,
-      `${output.highlight('claude-flow agent spawn -t coder')} - Spawn an agent`,
-      `${output.highlight('claude-flow swarm status')} - View swarm details`,
-      `${output.highlight('claude-flow stop')} - Stop the system`
+      `${output.highlight('flo status')} - View system status`,
+      `${output.highlight('flo agent spawn -t coder')} - Spawn an agent`,
+      `${output.highlight('flo swarm status')} - View swarm details`,
+      `${output.highlight('flo stop')} - Stop the system`
     ]);
 
     // Daemon mode
     if (daemon) {
       output.writeln();
-      output.printInfo('Running in daemon mode. Use "claude-flow stop" to stop.');
+      output.printInfo('Running in daemon mode. Use "flo stop" to stop.');
 
       // Store PID for daemon management
       const daemonPidPath = path.join(cwd, '.moflo', 'daemon.pid');
@@ -464,12 +464,12 @@ export const startCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow start', description: 'Start with configuration defaults' },
-    { command: 'claude-flow start --daemon', description: 'Start as background daemon' },
-    { command: 'claude-flow start --topology mesh', description: 'Start with mesh topology' },
-    { command: 'claude-flow start --skip-mcp', description: 'Start without MCP server' },
-    { command: 'claude-flow start quick', description: 'Quick start with defaults' },
-    { command: 'claude-flow start stop', description: 'Stop the running system' }
+    { command: 'flo start', description: 'Start with configuration defaults' },
+    { command: 'flo start --daemon', description: 'Start as background daemon' },
+    { command: 'flo start --topology mesh', description: 'Start with mesh topology' },
+    { command: 'flo start --skip-mcp', description: 'Start without MCP server' },
+    { command: 'flo start quick', description: 'Quick start with defaults' },
+    { command: 'flo start stop', description: 'Stop the running system' }
   ],
   action: startAction
 };

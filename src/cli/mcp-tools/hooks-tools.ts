@@ -2463,7 +2463,7 @@ export const hooksPatternSearch: MCPTool = {
       results: [],
       searchTimeMs: 0,
       backend: 'unavailable',
-      note: 'Real vector search not available. Initialize memory database with: claude-flow memory init',
+      note: 'Real vector search not available. Initialize memory database with: flo memory init',
     };
   },
 };

@@ -127,8 +127,8 @@ const getCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow config get swarm.topology', description: 'Get swarm topology' },
-    { command: 'claude-flow config get -k memory.backend', description: 'Get memory backend' }
+    { command: 'flo config get swarm.topology', description: 'Get swarm topology' },
+    { command: 'flo config get -k memory.backend', description: 'Get memory backend' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const key = ctx.flags.key as string || ctx.args[0];
@@ -207,8 +207,8 @@ const setCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow config set swarm.maxAgents 20', description: 'Set max agents' },
-    { command: 'claude-flow config set -k memory.backend -v agentdb', description: 'Set memory backend' }
+    { command: 'flo config set swarm.maxAgents 20', description: 'Set max agents' },
+    { command: 'flo config set -k memory.backend -v agentdb', description: 'Set memory backend' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const key = ctx.flags.key as string || ctx.args[0];
@@ -457,15 +457,15 @@ export const configCommand: Command = {
   subcommands: [initCommand, getCommand, setCommand, providersCommand, resetCommand, exportCommand, importCommand, showCommand, generateCommand],
   options: [],
   examples: [
-    { command: 'claude-flow config init --v3', description: 'Initialize V3 config' },
-    { command: 'claude-flow config get swarm.topology', description: 'Get config value' },
-    { command: 'claude-flow config set swarm.maxAgents 20', description: 'Set config value' }
+    { command: 'flo config init --v3', description: 'Initialize V3 config' },
+    { command: 'flo config get swarm.topology', description: 'Get config value' },
+    { command: 'flo config set swarm.maxAgents 20', description: 'Set config value' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Configuration Management'));
     output.writeln();
-    output.writeln('Usage: claude-flow config <subcommand> [options]');
+    output.writeln('Usage: flo config <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([

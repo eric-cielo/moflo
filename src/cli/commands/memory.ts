@@ -14,6 +14,8 @@ import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { legacySwarmPath, runtimePath } from '../services/moflo-paths.js';
+import { resolveBridgeDbPath } from '../memory/bridge-core.js';
+import { findProjectRoot } from '../services/project-root.js';
 
 // Memory backends
 const BACKENDS = [
@@ -73,9 +75,9 @@ const storeCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory store -k "api/auth" -v "JWT implementation"', description: 'Store text' },
-    { command: 'claude-flow memory store -k "pattern/singleton" --vector', description: 'Store vector' },
-    { command: 'claude-flow memory store -k "pattern" -v "updated" --upsert', description: 'Update existing' }
+    { command: 'flo memory store -k "api/auth" -v "JWT implementation"', description: 'Store text' },
+    { command: 'flo memory store -k "pattern/singleton" --vector', description: 'Store vector' },
+    { command: 'flo memory store -k "pattern" -v "updated" --upsert', description: 'Update existing' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const key = ctx.flags.key as string;
@@ -289,9 +291,9 @@ const searchCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory search -q "authentication patterns"', description: 'Semantic search' },
-    { command: 'claude-flow memory search -q "JWT" -t keyword', description: 'Keyword search' },
-    { command: 'claude-flow memory search -q "test" --build-hnsw', description: 'Build HNSW index and search' }
+    { command: 'flo memory search -q "authentication patterns"', description: 'Semantic search' },
+    { command: 'flo memory search -q "JWT" -t keyword', description: 'Keyword search' },
+    { command: 'flo memory search -q "test" --build-hnsw', description: 'Build HNSW index and search' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const query = ctx.flags.query as string || ctx.args[0];
@@ -370,7 +372,7 @@ const searchCommand: Command = {
 
       if (results.length === 0) {
         output.printWarning('No results found');
-        output.writeln(output.dim('Try: claude-flow memory store -k "key" --value "data"'));
+        output.writeln(output.dim('Try: flo memory store -k "key" --value "data"'));
         return { success: true, data: [] };
       }
 
@@ -456,7 +458,7 @@ const listCommand: Command = {
 
       if (entries.length === 0) {
         output.printWarning('No entries found');
-        output.printInfo('Store data: claude-flow memory store -k "key" --value "data"');
+        output.printInfo('Store data: flo memory store -k "key" --value "data"');
         return { success: true, data: [] };
       }
 
@@ -528,9 +530,9 @@ const deleteCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory delete -k "mykey"', description: 'Delete entry with default namespace' },
-    { command: 'claude-flow memory delete -k "lesson" -n "lessons"', description: 'Delete entry from specific namespace' },
-    { command: 'claude-flow memory delete mykey -f', description: 'Delete without confirmation' }
+    { command: 'flo memory delete -k "mykey"', description: 'Delete entry with default namespace' },
+    { command: 'flo memory delete -k "lesson" -n "lessons"', description: 'Delete entry from specific namespace' },
+    { command: 'flo memory delete mykey -f', description: 'Delete without confirmation' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     // Support both --key flag and positional argument
@@ -789,9 +791,9 @@ const cleanupCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory cleanup --dry-run', description: 'Preview cleanup' },
-    { command: 'claude-flow memory cleanup --older-than 30d', description: 'Delete entries older than 30 days' },
-    { command: 'claude-flow memory cleanup --expired-only', description: 'Clean expired entries' }
+    { command: 'flo memory cleanup --dry-run', description: 'Preview cleanup' },
+    { command: 'flo memory cleanup --older-than 30d', description: 'Delete entries older than 30 days' },
+    { command: 'flo memory cleanup --expired-only', description: 'Clean expired entries' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const dryRun = ctx.flags.dryRun as boolean;
@@ -928,9 +930,9 @@ const compressCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory compress', description: 'Balanced compression' },
-    { command: 'claude-flow memory compress --quantize --bits 4', description: '4-bit quantization (32x reduction)' },
-    { command: 'claude-flow memory compress -l max -t vectors', description: 'Max compression on vectors' }
+    { command: 'flo memory compress', description: 'Balanced compression' },
+    { command: 'flo memory compress --quantize --bits 4', description: '4-bit quantization (32x reduction)' },
+    { command: 'flo memory compress -l max -t vectors', description: 'Max compression on vectors' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const level = ctx.flags.level as string || 'balanced';
@@ -1077,8 +1079,8 @@ const exportCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory export -o ./backup.json', description: 'Export all to JSON' },
-    { command: 'claude-flow memory export -o ./data.csv -f csv', description: 'Export to CSV' }
+    { command: 'flo memory export -o ./backup.json', description: 'Export all to JSON' },
+    { command: 'flo memory export -o ./data.csv -f csv', description: 'Export to CSV' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const outputPath = ctx.flags.output as string;
@@ -1155,8 +1157,8 @@ const importCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory import -i ./backup.json', description: 'Import from file' },
-    { command: 'claude-flow memory import -i ./data.json -n archive', description: 'Import to namespace' }
+    { command: 'flo memory import -i ./backup.json', description: 'Import from file' },
+    { command: 'flo memory import -i ./data.json -n archive', description: 'Import to namespace' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const inputPath = ctx.flags.input as string || ctx.args[0];
@@ -1250,10 +1252,10 @@ const initMemoryCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory init', description: 'Initialize hybrid backend with all features' },
-    { command: 'claude-flow memory init -b agentdb', description: 'Initialize AgentDB backend' },
-    { command: 'claude-flow memory init -p ./data/memory.db --force', description: 'Reinitialize at custom path' },
-    { command: 'claude-flow memory init --verbose --verify', description: 'Initialize with full verification' }
+    { command: 'flo memory init', description: 'Initialize hybrid backend with all features' },
+    { command: 'flo memory init -b agentdb', description: 'Initialize AgentDB backend' },
+    { command: 'flo memory init -p ./data/memory.db --force', description: 'Reinitialize at custom path' },
+    { command: 'flo memory init --verbose --verify', description: 'Initialize with full verification' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const backend = (ctx.flags.backend as string) || 'hybrid';
@@ -1432,10 +1434,10 @@ const initMemoryCommand: Command = {
       // Show next steps
       output.writeln(output.bold('Next Steps:'));
       output.printList([
-        `Store data: ${output.highlight('claude-flow memory store -k "key" --value "data"')}`,
-        `Search: ${output.highlight('claude-flow memory search -q "query"')}`,
-        `Train patterns: ${output.highlight('claude-flow neural train -p coordination')}`,
-        `View stats: ${output.highlight('claude-flow memory stats')}`
+        `Store data: ${output.highlight('flo memory store -k "key" --value "data"')}`,
+        `Search: ${output.highlight('flo memory search -q "query"')}`,
+        `Train patterns: ${output.highlight('flo neural train -p coordination')}`,
+        `View stats: ${output.highlight('flo memory stats')}`
       ]);
 
       // Also sync to .claude directory
@@ -1470,12 +1472,18 @@ const initMemoryCommand: Command = {
 // Shared DB helpers for batch commands (index-guidance, rebuild-index, code-map)
 // ============================================================================
 
-const DB_FILENAME = 'memory.db';
-const SWARM_DIR = '.swarm';
-
-async function openDb(cwd: string): Promise<{ db: SqlJsLikeDatabase; dbPath: string }> {
-  const path = await import('path');
-  const dbPath = path.join(cwd, SWARM_DIR, DB_FILENAME);
+// Exported for test access (swarm-path-relocation.test.ts pins the canonical
+// resolution); production callers use it via the `flo memory` command actions.
+export async function openDb(cwd: string): Promise<{ db: SqlJsLikeDatabase; dbPath: string }> {
+  // Canonical store is `.moflo/moflo.db`. Route through the shared bridge
+  // resolver so these `flo memory` CLI writers land on the exact path the
+  // daemon, MCP server, and bridge read — and so the post-#727 migration
+  // window is honoured (legacy `.swarm/memory.db` is preferred only when it
+  // is the sole existing file). Pre-fix this joined `.swarm/` under cwd
+  // unconditionally, recreating the legacy dir on every call and stranding
+  // user data in a store nothing else reads (#1168 follow-up — `openDb` was
+  // the explicit-command writer the original relocation sweep missed).
+  const dbPath = resolveBridgeDbPath(findProjectRoot({ cwd }));
   // openDaemonDatabase ensures the parent directory exists and applies WAL.
   const db = openDaemonDatabase(dbPath);
 
@@ -1817,9 +1825,9 @@ const indexGuidanceCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory index-guidance', description: 'Index all guidance files' },
-    { command: 'claude-flow memory index-guidance --force', description: 'Force reindex all' },
-    { command: 'claude-flow memory index-guidance --file .claude/guidance/coding-rules.md', description: 'Index specific file' }
+    { command: 'flo memory index-guidance', description: 'Index all guidance files' },
+    { command: 'flo memory index-guidance --force', description: 'Force reindex all' },
+    { command: 'flo memory index-guidance --file .claude/guidance/coding-rules.md', description: 'Index specific file' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const forceReindex = ctx.flags.force as boolean;
@@ -2105,9 +2113,9 @@ const rebuildIndexCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory rebuild-index', description: 'Embed entries without embeddings' },
-    { command: 'claude-flow memory rebuild-index --force', description: 'Re-embed all entries' },
-    { command: 'claude-flow memory rebuild-index -n guidance', description: 'Only guidance namespace' }
+    { command: 'flo memory rebuild-index', description: 'Embed entries without embeddings' },
+    { command: 'flo memory rebuild-index --force', description: 'Re-embed all entries' },
+    { command: 'flo memory rebuild-index -n guidance', description: 'Only guidance namespace' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const forceAll = ctx.flags.force as boolean;
@@ -2420,9 +2428,9 @@ const codeMapCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow memory code-map', description: 'Incremental code map update' },
-    { command: 'claude-flow memory code-map --force', description: 'Full regeneration' },
-    { command: 'claude-flow memory code-map --stats', description: 'Show stats only' }
+    { command: 'flo memory code-map', description: 'Incremental code map update' },
+    { command: 'flo memory code-map --force', description: 'Full regeneration' },
+    { command: 'flo memory code-map --stats', description: 'Show stats only' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const forceRegen = ctx.flags.force as boolean;
@@ -2990,15 +2998,15 @@ export const memoryCommand: Command = {
   subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand],
   options: [],
   examples: [
-    { command: 'claude-flow memory store -k "key" -v "value"', description: 'Store data' },
-    { command: 'claude-flow memory search -q "auth patterns"', description: 'Search memory' },
-    { command: 'claude-flow memory stats', description: 'Show statistics' }
+    { command: 'flo memory store -k "key" -v "value"', description: 'Store data' },
+    { command: 'flo memory search -q "auth patterns"', description: 'Search memory' },
+    { command: 'flo memory stats', description: 'Show statistics' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Memory Management Commands'));
     output.writeln();
-    output.writeln('Usage: claude-flow memory <subcommand> [options]');
+    output.writeln('Usage: flo memory <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([

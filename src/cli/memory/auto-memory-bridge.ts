@@ -923,7 +923,7 @@ function buildIndexLines(
   topicMapping: Record<string, string>,
   sectionOrder?: string[],
 ): string[] {
-  const lines: string[] = ['# Claude Flow V3 Project Memory', ''];
+  const lines: string[] = ['# moflo Project Memory', ''];
 
   // Use provided order, then append any remaining sections
   const orderedCategories = sectionOrder

@@ -612,7 +612,7 @@ Already in DB
       await bridge.curateIndex();
 
       const indexContent = fsSync.readFileSync(bridge.getIndexPath(), 'utf-8');
-      expect(indexContent).toContain('# Claude Flow V3 Project Memory');
+      expect(indexContent).toContain('# moflo Project Memory');
       expect(indexContent).toContain('Init HNSW before search');
       expect(indexContent).toContain('Use Int8 quantization');
     });

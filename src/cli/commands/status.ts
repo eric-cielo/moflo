@@ -719,14 +719,14 @@ export const statusCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow status', description: 'Show current system status' },
-    { command: 'claude-flow status --watch', description: 'Watch mode with live updates' },
-    { command: 'claude-flow status --watch -i 5', description: 'Watch mode updating every 5 seconds' },
-    { command: 'claude-flow status --health-check', description: 'Run health checks' },
-    { command: 'claude-flow status --json', description: 'Output status as JSON' },
-    { command: 'claude-flow status agents', description: 'Show detailed agent status' },
-    { command: 'claude-flow status tasks', description: 'Show detailed task status' },
-    { command: 'claude-flow status memory', description: 'Show detailed memory status' }
+    { command: 'flo status', description: 'Show current system status' },
+    { command: 'flo status --watch', description: 'Watch mode with live updates' },
+    { command: 'flo status --watch -i 5', description: 'Watch mode updating every 5 seconds' },
+    { command: 'flo status --health-check', description: 'Run health checks' },
+    { command: 'flo status --json', description: 'Output status as JSON' },
+    { command: 'flo status agents', description: 'Show detailed agent status' },
+    { command: 'flo status tasks', description: 'Show detailed task status' },
+    { command: 'flo status memory', description: 'Show detailed memory status' }
   ],
   action: statusAction
 };

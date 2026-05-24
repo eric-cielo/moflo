@@ -10,12 +10,12 @@ import type { InitOptions } from './types.js';
  */
 export function generatePreCommitHook(): string {
   return `#!/bin/bash
-# Claude Flow Pre-Commit Hook
+# moflo Pre-Commit Hook
 # Validates code quality before commit
 
 set -e
 
-echo "🔍 Running Claude Flow pre-commit checks..."
+echo "🔍 Running moflo pre-commit checks..."
 
 # Get staged files
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
@@ -43,7 +43,7 @@ echo "✅ Pre-commit checks complete"
  */
 export function generatePostCommitHook(): string {
   return `#!/bin/bash
-# Claude Flow Post-Commit Hook
+# moflo Post-Commit Hook
 # Records commit metrics and trains patterns
 
 COMMIT_HASH=$(git rev-parse HEAD)
@@ -51,7 +51,7 @@ COMMIT_MSG=$(git log -1 --pretty=%B)
 
 echo "📊 Recording commit metrics..."
 
-# Notify claude-flow of commit
+# Notify flo of commit
 npx moflo hooks notify \\
   --message "Commit: $COMMIT_MSG" \\
   --level info \\

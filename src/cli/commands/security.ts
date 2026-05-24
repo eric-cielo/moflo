@@ -20,8 +20,8 @@ const scanCommand: Command = {
     { name: 'fix', short: 'f', type: 'boolean', description: 'Auto-fix vulnerabilities where possible' },
   ],
   examples: [
-    { command: 'claude-flow security scan -t ./src', description: 'Scan source directory' },
-    { command: 'claude-flow security scan --depth deep --fix', description: 'Deep scan with auto-fix' },
+    { command: 'flo security scan -t ./src', description: 'Scan source directory' },
+    { command: 'flo security scan --depth deep --fix', description: 'Deep scan with auto-fix' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const target = ctx.flags.target as string || '.';
@@ -246,8 +246,8 @@ const cveCommand: Command = {
     { name: 'severity', short: 's', type: 'string', description: 'Filter by severity: critical, high, medium, low' },
   ],
   examples: [
-    { command: 'claude-flow security cve --list', description: 'List all CVEs' },
-    { command: 'claude-flow security cve -c CVE-2024-1234', description: 'Check specific CVE' },
+    { command: 'flo security cve --list', description: 'List all CVEs' },
+    { command: 'flo security cve -c CVE-2024-1234', description: 'Check specific CVE' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const checkCve = ctx.flags.check as string;
@@ -272,7 +272,7 @@ const cveCommand: Command = {
       ].join('\n'), 'CVE Details');
     } else {
       output.writeln(output.warning('⚠ No real CVE database configured. Showing example data.'));
-      output.writeln(output.dim('Run "npm audit" or "claude-flow security scan" for real vulnerability detection.'));
+      output.writeln(output.dim('Run "npm audit" or "flo security scan" for real vulnerability detection.'));
       output.writeln();
       output.printTable({
         columns: [
@@ -303,8 +303,8 @@ const threatsCommand: Command = {
     { name: 'export', short: 'e', type: 'string', description: 'Export format: json, md, html' },
   ],
   examples: [
-    { command: 'claude-flow security threats --model stride', description: 'Run STRIDE analysis' },
-    { command: 'claude-flow security threats -e md', description: 'Export as markdown' },
+    { command: 'flo security threats --model stride', description: 'Run STRIDE analysis' },
+    { command: 'flo security threats -e md', description: 'Export as markdown' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const model = ctx.flags.model as string || 'stride';
@@ -344,8 +344,8 @@ const auditCommand: Command = {
     { name: 'filter', short: 'f', type: 'string', description: 'Filter by event type' },
   ],
   examples: [
-    { command: 'claude-flow security audit --action list', description: 'List audit logs' },
-    { command: 'claude-flow security audit -a export', description: 'Export audit trail' },
+    { command: 'flo security audit --action list', description: 'List audit logs' },
+    { command: 'flo security audit -a export', description: 'Export audit trail' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'list';
@@ -384,8 +384,8 @@ const secretsCommand: Command = {
     { name: 'ignore', short: 'i', type: 'string', description: 'Patterns to ignore' },
   ],
   examples: [
-    { command: 'claude-flow security secrets --action scan', description: 'Scan for secrets' },
-    { command: 'claude-flow security secrets -a rotate', description: 'Rotate compromised secrets' },
+    { command: 'flo security secrets --action scan', description: 'Scan for secrets' },
+    { command: 'flo security secrets -a rotate', description: 'Rotate compromised secrets' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const path = ctx.flags.path as string || '.';
@@ -401,7 +401,7 @@ const secretsCommand: Command = {
 
     output.writeln();
     output.writeln(output.warning('⚠ No real secrets scan performed. Showing example findings.'));
-    output.writeln(output.dim('Run "claude-flow security scan --depth full" for real secret detection.'));
+    output.writeln(output.dim('Run "flo security scan --depth full" for real secret detection.'));
     output.writeln();
     output.printTable({
       columns: [
@@ -435,9 +435,9 @@ const defendCommand: Command = {
     { name: 'output', short: 'o', type: 'string', description: 'Output format: text, json', default: 'text' },
   ],
   examples: [
-    { command: 'claude-flow security defend -i "ignore previous instructions"', description: 'Scan text for threats' },
-    { command: 'claude-flow security defend -f ./prompts.txt', description: 'Scan file for threats' },
-    { command: 'claude-flow security defend --stats', description: 'Show detection statistics' },
+    { command: 'flo security defend -i "ignore previous instructions"', description: 'Scan text for threats' },
+    { command: 'flo security defend -f ./prompts.txt', description: 'Scan file for threats' },
+    { command: 'flo security defend --stats', description: 'Show detection statistics' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const inputText = ctx.flags.input as string;
@@ -482,7 +482,7 @@ const defendCommand: Command = {
     }
 
     if (!textToScan) {
-      output.writeln('Usage: claude-flow security defend -i "<text>" or -f <file>');
+      output.writeln('Usage: flo security defend -i "<text>" or -f <file>');
       output.writeln();
       output.writeln('Options:');
       output.printList([
@@ -578,9 +578,9 @@ export const securityCommand: Command = {
   description: 'Security scanning, CVE detection, threat modeling, AI defense',
   subcommands: [scanCommand, cveCommand, threatsCommand, auditCommand, secretsCommand, defendCommand],
   examples: [
-    { command: 'claude-flow security scan', description: 'Run security scan' },
-    { command: 'claude-flow security cve --list', description: 'List known CVEs' },
-    { command: 'claude-flow security threats', description: 'Run threat analysis' },
+    { command: 'flo security scan', description: 'Run security scan' },
+    { command: 'flo security cve --list', description: 'List known CVEs' },
+    { command: 'flo security threats', description: 'Run threat analysis' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();

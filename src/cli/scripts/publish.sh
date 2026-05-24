@@ -18,7 +18,7 @@ echo ""
 echo "=== Publishing @claude-flow/cli@$VERSION (alpha tag) ==="
 npm publish --tag alpha
 
-# 2. Publish to claude-flow with v3alpha tag
+# 2. Publish to flo with v3alpha tag
 echo ""
 echo "=== Publishing claude-flow@$VERSION (v3alpha tag) ==="
 

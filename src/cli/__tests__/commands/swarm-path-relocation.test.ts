@@ -75,3 +75,24 @@ describe('#1168 — neural runtime defaults land under .moflo/, never .swarm/', 
     expect(persistencePath).not.toMatch(/\.swarm/);
   });
 });
+
+describe('#1168 follow-up — `flo memory` command writer (openDb) lands under .moflo/', () => {
+  it('openDb resolves to canonical .moflo/moflo.db, never .swarm/memory.db', async () => {
+    const { openDb } = await import('../../commands/memory.js');
+    const { db, dbPath } = await openDb(tmpDir);
+    try {
+      expect(dbPath).toBe(join(tmpDir, '.moflo', 'moflo.db'));
+      expect(dbPath).not.toMatch(/\.swarm/);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('openDb never recreates the legacy .swarm/ directory', async () => {
+    const { existsSync } = await import('node:fs');
+    const { openDb } = await import('../../commands/memory.js');
+    const { db } = await openDb(tmpDir);
+    db.close();
+    expect(existsSync(join(tmpDir, '.swarm'))).toBe(false);
+  });
+});

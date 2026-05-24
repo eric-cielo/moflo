@@ -346,8 +346,8 @@ const startCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow swarm start -o "Build REST API" -s development', description: 'Start development swarm' },
-    { command: 'claude-flow swarm start -o "Analyze codebase" --parallel', description: 'Parallel analysis' }
+    { command: 'flo swarm start -o "Build REST API" -s development', description: 'Start development swarm' },
+    { command: 'flo swarm start -o "Analyze codebase" --parallel', description: 'Parallel analysis' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const objective = ctx.args[0] || ctx.flags.objective as string;
@@ -424,7 +424,7 @@ const startCommand: Command = {
 
     output.writeln();
     output.printSuccess('Swarm execution started');
-    output.writeln(output.dim(`  Monitor: claude-flow swarm status ${executionState.swarmId}`));
+    output.writeln(output.dim(`  Monitor: flo swarm status ${executionState.swarmId}`));
 
     return { success: true, data: executionState };
   }
@@ -711,15 +711,15 @@ export const swarmCommand: Command = {
   subcommands: [initCommand, startCommand, statusCommand, stopCommand, scaleCommand, coordinateCommand],
   options: [],
   examples: [
-    { command: 'claude-flow swarm init --v3-mode', description: 'Initialize V3 swarm' },
-    { command: 'claude-flow swarm start -o "Build API" -s development', description: 'Start development swarm' },
-    { command: 'claude-flow swarm coordinate --agents 15', description: 'V3 coordination' }
+    { command: 'flo swarm init --v3-mode', description: 'Initialize V3 swarm' },
+    { command: 'flo swarm start -o "Build API" -s development', description: 'Start development swarm' },
+    { command: 'flo swarm coordinate --agents 15', description: 'V3 coordination' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Swarm Coordination Commands'));
     output.writeln();
-    output.writeln('Usage: claude-flow swarm <subcommand> [options]');
+    output.writeln('Usage: flo swarm <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([

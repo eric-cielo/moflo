@@ -34,8 +34,8 @@ const generateCommand: Command = {
     { name: 'output', short: 'o', type: 'string', description: 'Output format: json, array, preview', default: 'preview' },
   ],
   examples: [
-    { command: 'claude-flow embeddings generate -t "Hello world"', description: 'Generate embedding' },
-    { command: 'claude-flow embeddings generate -t "Test" -o json', description: 'Output as JSON' },
+    { command: 'flo embeddings generate -t "Hello world"', description: 'Generate embedding' },
+    { command: 'flo embeddings generate -t "Test" -o json', description: 'Output as JSON' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const text = ctx.flags.text as string;
@@ -117,8 +117,8 @@ const searchCommand: Command = {
     { name: 'db-path', type: 'string', description: 'Database path', default: DEFAULT_DB_PATH_FLAG },
   ],
   examples: [
-    { command: 'claude-flow embeddings search -q "error handling"', description: 'Search for similar' },
-    { command: 'claude-flow embeddings search -q "test" -l 5', description: 'Limit results' },
+    { command: 'flo embeddings search -q "error handling"', description: 'Search for similar' },
+    { command: 'flo embeddings search -q "test" -l 5', description: 'Limit results' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const query = ctx.flags.query as string;
@@ -148,7 +148,7 @@ const searchCommand: Command = {
       if (!fs.existsSync(fullDbPath)) {
         spinner.fail('Database not found');
         output.printWarning(`No database at ${fullDbPath}`);
-        output.printInfo('Run: claude-flow memory init');
+        output.printInfo('Run: flo memory init');
         return { success: false, exitCode: 1 };
       }
 
@@ -242,7 +242,7 @@ const searchCommand: Command = {
       if (topResults.length === 0) {
         output.writeln();
         output.printWarning('No matches found');
-        output.printInfo(`Try: claude-flow memory store -k "key" --value "your data"`);
+        output.printInfo(`Try: flo memory store -k "key" --value "your data"`);
         return { success: true, data: [] };
       }
 
@@ -306,7 +306,7 @@ const compareCommand: Command = {
     { name: 'metric', short: 'm', type: 'string', description: 'Metric: cosine, euclidean, dot', default: 'cosine' },
   ],
   examples: [
-    { command: 'claude-flow embeddings compare --text1 "Hello" --text2 "Hi there"', description: 'Compare texts' },
+    { command: 'flo embeddings compare --text1 "Hello" --text2 "Hi there"', description: 'Compare texts' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const text1 = ctx.flags.text1 as string;
@@ -402,8 +402,8 @@ const collectionsCommand: Command = {
     { name: 'db-path', type: 'string', description: 'Database path', default: DEFAULT_DB_PATH_FLAG },
   ],
   examples: [
-    { command: 'claude-flow embeddings collections', description: 'List collections' },
-    { command: 'claude-flow embeddings collections -a stats', description: 'Show detailed stats' },
+    { command: 'flo embeddings collections', description: 'List collections' },
+    { command: 'flo embeddings collections -a stats', description: 'Show detailed stats' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'list';
@@ -421,7 +421,7 @@ const collectionsCommand: Command = {
       // Check if database exists
       if (!fs.existsSync(fullDbPath)) {
         output.printWarning('No database found');
-        output.printInfo('Run: claude-flow memory init');
+        output.printInfo('Run: flo memory init');
         output.writeln();
         output.writeln(output.dim('No collections yet - initialize memory first'));
         return { success: true, data: [] };
@@ -470,7 +470,7 @@ const collectionsCommand: Command = {
         output.printWarning('No collections found');
         output.writeln();
         output.writeln(output.dim('Store some data first:'));
-        output.writeln(output.highlight('  claude-flow memory store -k "key" --value "data"'));
+        output.writeln(output.highlight('  flo memory store -k "key" --value "data"'));
         return { success: true, data: [] };
       }
 
@@ -517,9 +517,9 @@ const indexCommand: Command = {
     { name: 'm', type: 'number', description: 'HNSW M parameter', default: '16' },
   ],
   examples: [
-    { command: 'claude-flow embeddings index', description: 'Show index status' },
-    { command: 'claude-flow embeddings index -a build -c documents', description: 'Build index' },
-    { command: 'claude-flow embeddings index -a optimize -c patterns', description: 'Optimize index' },
+    { command: 'flo embeddings index', description: 'Show index status' },
+    { command: 'flo embeddings index -a build -c documents', description: 'Build index' },
+    { command: 'flo embeddings index -a optimize -c patterns', description: 'Optimize index' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'status';
@@ -584,7 +584,7 @@ const indexCommand: Command = {
         } else {
           output.writeln();
           output.printInfo('Index is empty. Store some entries to populate it.');
-          output.printInfo('Run: claude-flow memory store -k "key" --value "text"');
+          output.printInfo('Run: flo memory store -k "key" --value "text"');
         }
 
         return { success: true, data: status };
@@ -667,11 +667,11 @@ export const initCommand: Command = {
     { name: 'force', short: 'f', type: 'boolean', description: 'Overwrite existing configuration', default: 'false' },
   ],
   examples: [
-    { command: 'claude-flow embeddings init', description: 'Initialize with defaults' },
-    { command: 'claude-flow embeddings init --model all-mpnet-base-v2', description: 'Use higher quality model' },
-    { command: 'claude-flow embeddings init --no-hyperbolic', description: 'Euclidean only' },
-    { command: 'claude-flow embeddings init --curvature=-0.5', description: 'Custom curvature (use = for negative)' },
-    { command: 'claude-flow embeddings init --force', description: 'Overwrite existing config' },
+    { command: 'flo embeddings init', description: 'Initialize with defaults' },
+    { command: 'flo embeddings init --model all-mpnet-base-v2', description: 'Use higher quality model' },
+    { command: 'flo embeddings init --no-hyperbolic', description: 'Euclidean only' },
+    { command: 'flo embeddings init --curvature=-0.5', description: 'Custom curvature (use = for negative)' },
+    { command: 'flo embeddings init --force', description: 'Overwrite existing config' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const model = ctx.flags.model as string || 'all-MiniLM-L6-v2';
@@ -801,7 +801,7 @@ const providersCommand: Command = {
   description: 'List available embedding providers',
   options: [],
   examples: [
-    { command: 'claude-flow embeddings providers', description: 'List providers' },
+    { command: 'flo embeddings providers', description: 'List providers' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
@@ -844,8 +844,8 @@ const chunkCommand: Command = {
     { name: 'file', short: 'f', type: 'string', description: 'File to chunk (instead of text)' },
   ],
   examples: [
-    { command: 'claude-flow embeddings chunk -t "Long text..." -s 256', description: 'Chunk with 256 char limit' },
-    { command: 'claude-flow embeddings chunk -f doc.txt --strategy paragraph', description: 'Chunk file by paragraph' },
+    { command: 'flo embeddings chunk -t "Long text..." -s 256', description: 'Chunk with 256 char limit' },
+    { command: 'flo embeddings chunk -f doc.txt --strategy paragraph', description: 'Chunk file by paragraph' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const text = ctx.flags.text as string || '';
@@ -892,8 +892,8 @@ const normalizeCommand: Command = {
     { name: 'check', short: 'c', type: 'boolean', description: 'Check if already normalized' },
   ],
   examples: [
-    { command: 'claude-flow embeddings normalize -i "[0.5, 0.3, 0.8]" -t l2', description: 'L2 normalize' },
-    { command: 'claude-flow embeddings normalize --check -i "[...]"', description: 'Check if normalized' },
+    { command: 'flo embeddings normalize -i "[0.5, 0.3, 0.8]" -t l2', description: 'L2 normalize' },
+    { command: 'flo embeddings normalize --check -i "[...]"', description: 'Check if normalized' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const type = ctx.flags.type as string || 'l2';
@@ -935,8 +935,8 @@ const hyperbolicCommand: Command = {
     { name: 'input', short: 'i', type: 'string', description: 'Input embedding(s) JSON' },
   ],
   examples: [
-    { command: 'claude-flow embeddings hyperbolic -a convert -i "[0.5, 0.3]"', description: 'Convert to Poincaré' },
-    { command: 'claude-flow embeddings hyperbolic -a distance', description: 'Compute hyperbolic distance' },
+    { command: 'flo embeddings hyperbolic -a convert -i "[0.5, 0.3]"', description: 'Convert to Poincaré' },
+    { command: 'flo embeddings hyperbolic -a distance', description: 'Compute hyperbolic distance' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'convert';
@@ -1043,11 +1043,11 @@ const neuralCommand: Command = {
     { name: 'consolidation-interval', type: 'string', description: 'Memory consolidation interval (ms)', default: '60000' },
   ],
   examples: [
-    { command: 'claude-flow embeddings neural --init', description: 'Initialize MoVector substrate' },
-    { command: 'claude-flow embeddings neural -f drift', description: 'Semantic drift detection' },
-    { command: 'claude-flow embeddings neural -f memory', description: 'Memory physics (hippocampal)' },
-    { command: 'claude-flow embeddings neural -f coherence', description: 'Safety & alignment monitoring' },
-    { command: 'claude-flow embeddings neural --drift-threshold=0.2', description: 'Custom drift threshold' },
+    { command: 'flo embeddings neural --init', description: 'Initialize MoVector substrate' },
+    { command: 'flo embeddings neural -f drift', description: 'Semantic drift detection' },
+    { command: 'flo embeddings neural -f memory', description: 'Memory physics (hippocampal)' },
+    { command: 'flo embeddings neural -f coherence', description: 'Safety & alignment monitoring' },
+    { command: 'flo embeddings neural --drift-threshold=0.2', description: 'Custom drift threshold' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const feature = ctx.flags.feature as string || 'all';
@@ -1201,8 +1201,8 @@ export const modelsCommand: Command = {
     { name: 'list', short: 'l', type: 'boolean', description: 'List available models', default: 'true' },
   ],
   examples: [
-    { command: 'claude-flow embeddings models', description: 'List models' },
-    { command: 'claude-flow embeddings models -d all-MiniLM-L6-v2', description: 'Download model' },
+    { command: 'flo embeddings models', description: 'List models' },
+    { command: 'flo embeddings models -d all-MiniLM-L6-v2', description: 'Download model' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const download = ctx.flags.download as string;
@@ -1261,8 +1261,8 @@ const cacheCommand: Command = {
     { name: 'db-path', type: 'string', description: 'SQLite database path', default: '.cache/embeddings.db' },
   ],
   examples: [
-    { command: 'claude-flow embeddings cache', description: 'Show cache stats' },
-    { command: 'claude-flow embeddings cache -a clear', description: 'Clear cache' },
+    { command: 'flo embeddings cache', description: 'Show cache stats' },
+    { command: 'flo embeddings cache -a clear', description: 'Clear cache' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'stats';
@@ -1393,8 +1393,8 @@ const warmupCommand: Command = {
     { name: 'test', short: 't', type: 'boolean', description: 'Run test embedding after warmup', default: 'true' },
   ],
   examples: [
-    { command: 'claude-flow embeddings warmup', description: 'Preload model with test' },
-    { command: 'claude-flow embeddings warmup -b', description: 'Background warmup' },
+    { command: 'flo embeddings warmup', description: 'Preload model with test' },
+    { command: 'flo embeddings warmup -b', description: 'Background warmup' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const runTest = ctx.flags.test !== false;
@@ -1481,8 +1481,8 @@ const benchmarkCommand: Command = {
     { name: 'full', short: 'f', type: 'boolean', description: 'Run full benchmark suite', default: 'false' },
   ],
   examples: [
-    { command: 'claude-flow embeddings benchmark', description: 'Quick benchmark' },
-    { command: 'claude-flow embeddings benchmark -n 50 -f', description: 'Full benchmark' },
+    { command: 'flo embeddings benchmark', description: 'Quick benchmark' },
+    { command: 'flo embeddings benchmark -n 50 -f', description: 'Full benchmark' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const iterations = parseInt(ctx.flags.iterations as string || '10', 10);
@@ -1639,8 +1639,8 @@ const migrateCommand: Command = {
     { name: 'verbose', short: 'v', type: 'boolean', description: 'Verbose output', default: 'false' },
   ],
   examples: [
-    { command: 'claude-flow embeddings migrate', description: `Migrate ${DEFAULT_DB_PATH_FLAG} to current version` },
-    { command: 'claude-flow embeddings migrate -d .custom/mem.db', description: 'Migrate a custom DB' },
+    { command: 'flo embeddings migrate', description: `Migrate ${DEFAULT_DB_PATH_FLAG} to current version` },
+    { command: 'flo embeddings migrate -d .custom/mem.db', description: 'Migrate a custom DB' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const dbPath = (ctx.flags.db as string) || memoryDbPath(process.cwd());
@@ -1679,13 +1679,13 @@ export const embeddingsCommand: Command = {
     benchmarkCommand,
   ],
   examples: [
-    { command: 'claude-flow embeddings init', description: 'Initialize ONNX embedding system' },
-    { command: 'claude-flow embeddings init --model all-mpnet-base-v2', description: 'Init with larger model' },
-    { command: 'claude-flow embeddings generate -t "Hello"', description: 'Generate embedding' },
-    { command: 'claude-flow embeddings search -q "error handling"', description: 'Semantic search' },
-    { command: 'claude-flow embeddings chunk -t "Long doc..."', description: 'Chunk document' },
-    { command: 'claude-flow embeddings hyperbolic -a convert', description: 'Hyperbolic space' },
-    { command: 'claude-flow embed neural -f drift', description: 'Neural substrate' },
+    { command: 'flo embeddings init', description: 'Initialize ONNX embedding system' },
+    { command: 'flo embeddings init --model all-mpnet-base-v2', description: 'Init with larger model' },
+    { command: 'flo embeddings generate -t "Hello"', description: 'Generate embedding' },
+    { command: 'flo embeddings search -q "error handling"', description: 'Semantic search' },
+    { command: 'flo embeddings chunk -t "Long doc..."', description: 'Chunk document' },
+    { command: 'flo embeddings hyperbolic -a convert', description: 'Hyperbolic space' },
+    { command: 'flo embed neural -f drift', description: 'Neural substrate' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();

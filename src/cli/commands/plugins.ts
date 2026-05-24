@@ -35,10 +35,10 @@ const listCommand: Command = {
     { name: 'registry', short: 'r', type: 'string', description: 'Registry to use (default: claude-flow-official)' },
   ],
   examples: [
-    { command: 'claude-flow plugins list', description: 'List all plugins from registry' },
-    { command: 'claude-flow plugins list --installed', description: 'List installed only' },
-    { command: 'claude-flow plugins list --official', description: 'List official plugins' },
-    { command: 'claude-flow plugins list --category security', description: 'List security plugins' },
+    { command: 'flo plugins list', description: 'List all plugins from registry' },
+    { command: 'flo plugins list --installed', description: 'List installed only' },
+    { command: 'flo plugins list --official', description: 'List official plugins' },
+    { command: 'flo plugins list --category security', description: 'List security plugins' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const installedOnly = ctx.flags.installed as boolean;
@@ -62,8 +62,8 @@ const listCommand: Command = {
         if (installed.length === 0) {
           output.writeln(output.dim('No plugins installed.'));
           output.writeln();
-          output.writeln(output.dim('Run "claude-flow plugins list" to see available plugins'));
-          output.writeln(output.dim('Run "claude-flow plugins install -n <plugin>" to install'));
+          output.writeln(output.dim('Run "flo plugins list" to see available plugins'));
+          output.writeln(output.dim('Run "flo plugins install -n <plugin>" to install'));
           return { success: true };
         }
 
@@ -211,8 +211,8 @@ const installCommand: Command = {
     { name: 'registry', short: 'r', type: 'string', description: 'Registry to use' },
   ],
   examples: [
-    { command: 'claude-flow plugins install -n community-analytics', description: 'Install plugin from IPFS' },
-    { command: 'claude-flow plugins install -n ./my-plugin --dev', description: 'Install local plugin' },
+    { command: 'flo plugins install -n community-analytics', description: 'Install plugin from IPFS' },
+    { command: 'flo plugins install -n ./my-plugin --dev', description: 'Install local plugin' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -247,7 +247,7 @@ const installCommand: Command = {
       if (existingPlugin) {
         spinner.fail(`Plugin ${name} is already installed (v${existingPlugin.version})`);
         output.writeln();
-        output.writeln(output.dim('Use "claude-flow plugins upgrade -n ' + name + '" to update'));
+        output.writeln(output.dim('Use "flo plugins upgrade -n ' + name + '" to update'));
         return { success: false, exitCode: 1 };
       }
 
@@ -322,7 +322,7 @@ const uninstallCommand: Command = {
     { name: 'force', short: 'f', type: 'boolean', description: 'Force uninstall without confirmation' },
   ],
   examples: [
-    { command: 'claude-flow plugins uninstall -n community-analytics', description: 'Uninstall plugin' },
+    { command: 'flo plugins uninstall -n community-analytics', description: 'Uninstall plugin' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -378,8 +378,8 @@ const toggleCommand: Command = {
     { name: 'disable', short: 'd', type: 'boolean', description: 'Disable the plugin' },
   ],
   examples: [
-    { command: 'claude-flow plugins toggle -n analytics --enable', description: 'Enable plugin' },
-    { command: 'claude-flow plugins toggle -n analytics --disable', description: 'Disable plugin' },
+    { command: 'flo plugins toggle -n analytics --enable', description: 'Enable plugin' },
+    { command: 'flo plugins toggle -n analytics --disable', description: 'Disable plugin' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -447,7 +447,7 @@ const infoCommand: Command = {
     { name: 'registry', short: 'r', type: 'string', description: 'Registry to use' },
   ],
   examples: [
-    { command: 'claude-flow plugins info -n example-org/sample-plugin', description: 'Show plugin info' },
+    { command: 'flo plugins info -n example-org/sample-plugin', description: 'Show plugin info' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -616,8 +616,8 @@ const createCommand: Command = {
     { name: 'path', short: 'p', type: 'string', description: 'Output path', default: '.' },
   ],
   examples: [
-    { command: 'claude-flow plugins create -n my-plugin', description: 'Create basic plugin' },
-    { command: 'claude-flow plugins create -n my-plugin -t hooks', description: 'Create hooks plugin' },
+    { command: 'flo plugins create -n my-plugin', description: 'Create basic plugin' },
+    { command: 'flo plugins create -n my-plugin -t hooks', description: 'Create hooks plugin' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -675,8 +675,8 @@ const upgradeCommand: Command = {
     { name: 'version', short: 'v', type: 'string', description: 'Target version (default: latest)' },
   ],
   examples: [
-    { command: 'claude-flow plugins upgrade -n example-org/sample-plugin', description: 'Upgrade to latest' },
-    { command: 'claude-flow plugins upgrade -n example-org/sample-plugin -v 3.1.0', description: 'Upgrade to specific version' },
+    { command: 'flo plugins upgrade -n example-org/sample-plugin', description: 'Upgrade to latest' },
+    { command: 'flo plugins upgrade -n example-org/sample-plugin -v 3.1.0', description: 'Upgrade to specific version' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -737,8 +737,8 @@ const searchCommand: Command = {
     { name: 'registry', short: 'r', type: 'string', description: 'Registry to use' },
   ],
   examples: [
-    { command: 'claude-flow plugins search -q neural', description: 'Search for neural plugins' },
-    { command: 'claude-flow plugins search -q security --verified', description: 'Search verified security plugins' },
+    { command: 'flo plugins search -q neural', description: 'Search for neural plugins' },
+    { command: 'flo plugins search -q security --verified', description: 'Search verified security plugins' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const query = ctx.flags.query as string;
@@ -837,8 +837,8 @@ const rateCommand: Command = {
     { name: 'rating', short: 'r', type: 'number', description: 'Rating (1-5)', required: true },
   ],
   examples: [
-    { command: 'claude-flow plugins rate -n example-org/sample-plugin -r 5', description: 'Rate 5 stars' },
-    { command: 'claude-flow plugins rate -n my-plugin -r 4', description: 'Rate 4 stars' },
+    { command: 'flo plugins rate -n example-org/sample-plugin -r 5', description: 'Rate 5 stars' },
+    { command: 'flo plugins rate -n my-plugin -r 4', description: 'Rate 4 stars' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const { rateItem } = await import('../services/registry-api.js');
@@ -885,10 +885,10 @@ export const pluginsCommand: Command = {
   description: 'Plugin management with IPFS-based decentralized registry',
   subcommands: [listCommand, searchCommand, installCommand, uninstallCommand, upgradeCommand, toggleCommand, infoCommand, createCommand, rateCommand],
   examples: [
-    { command: 'claude-flow plugins list', description: 'List plugins from IPFS registry' },
-    { command: 'claude-flow plugins search -q neural', description: 'Search for plugins' },
-    { command: 'claude-flow plugins install -n community-analytics', description: 'Install from IPFS' },
-    { command: 'claude-flow plugins create -n my-plugin', description: 'Create new plugin' },
+    { command: 'flo plugins list', description: 'List plugins from IPFS registry' },
+    { command: 'flo plugins search -q neural', description: 'Search for plugins' },
+    { command: 'flo plugins install -n community-analytics', description: 'Install from IPFS' },
+    { command: 'flo plugins create -n my-plugin', description: 'Create new plugin' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
@@ -921,7 +921,7 @@ export const pluginsCommand: Command = {
       'example-org/sample-plugin              - Example community plugin (replace with a real plugin name)',
     ]);
     output.writeln();
-    output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));
+    output.writeln(output.dim('Run "flo plugins list --official" to see all official plugins'));
     output.writeln(output.dim('Created with ❤️ by motailz.com'));
     return { success: true };
   },

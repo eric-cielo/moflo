@@ -225,7 +225,7 @@ async function spawnClaudeCodeInstance(
       `Worker Count: ${output.highlight(String(workers.length))}`,
       `Worker Types: ${output.highlight(Object.keys(workerGroups).join(', '))}`,
       `Consensus: ${output.highlight((flags.consensus as string) || 'byzantine')}`,
-      `MCP Tools: ${output.success('Full Claude-Flow integration enabled')}`
+      `MCP Tools: ${output.success('Full moflo integration enabled')}`
     ]);
 
     // Ensure sessions directory exists
@@ -421,8 +421,8 @@ const initCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow hive-mind init -t hierarchical-mesh', description: 'Init hierarchical mesh' },
-    { command: 'claude-flow hive-mind init -c byzantine -m 20', description: 'Init with Byzantine consensus' }
+    { command: 'flo hive-mind init -t hierarchical-mesh', description: 'Init hierarchical mesh' },
+    { command: 'flo hive-mind init -c byzantine -m 20', description: 'Init with Byzantine consensus' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     let topology = ctx.flags.topology as string;
@@ -491,8 +491,8 @@ const initCommand: Command = {
 
       output.writeln();
       output.printInfo('Queen agent is ready to coordinate worker agents');
-      output.writeln(output.dim('  Use "claude-flow hive-mind spawn" to add workers'));
-      output.writeln(output.dim('  Use "claude-flow hive-mind spawn --claude" to launch Claude Code'));
+      output.writeln(output.dim('  Use "flo hive-mind spawn" to add workers'));
+      output.writeln(output.dim('  Use "flo hive-mind spawn --claude" to launch Claude Code'));
 
       return { success: true, data: result };
     } catch (error) {
@@ -580,11 +580,11 @@ const spawnCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow hive-mind spawn -n 5', description: 'Spawn 5 workers' },
-    { command: 'claude-flow hive-mind spawn -n 3 -r specialist', description: 'Spawn 3 specialists' },
-    { command: 'claude-flow hive-mind spawn -t coder -p my-coder', description: 'Spawn coder with custom prefix' },
-    { command: 'claude-flow hive-mind spawn --claude -o "Build a REST API"', description: 'Launch Claude Code with objective' },
-    { command: 'claude-flow hive-mind spawn -n 5 --claude -o "Research AI patterns"', description: 'Spawn workers and launch Claude Code' }
+    { command: 'flo hive-mind spawn -n 5', description: 'Spawn 5 workers' },
+    { command: 'flo hive-mind spawn -n 3 -r specialist', description: 'Spawn 3 specialists' },
+    { command: 'flo hive-mind spawn -t coder -p my-coder', description: 'Spawn coder with custom prefix' },
+    { command: 'flo hive-mind spawn --claude -o "Build a REST API"', description: 'Launch Claude Code with objective' },
+    { command: 'flo hive-mind spawn -n 5 --claude -o "Research AI patterns"', description: 'Spawn workers and launch Claude Code' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     // Parse count with fallback to default
@@ -838,7 +838,7 @@ const statusCommand: Command = {
       output.writeln();
       output.writeln(output.bold('Worker Agents'));
       if (workerData.length === 0) {
-        output.printInfo('No workers in hive. Use "claude-flow hive-mind spawn" to add workers.');
+        output.printInfo('No workers in hive. Use "flo hive-mind spawn" to add workers.');
       } else {
         output.printTable({
           columns: [
@@ -929,8 +929,8 @@ const taskCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow hive-mind task -d "Implement auth module"', description: 'Submit task' },
-    { command: 'claude-flow hive-mind task -d "Security review" -p critical -c', description: 'Critical task with consensus' }
+    { command: 'flo hive-mind task -d "Implement auth module"', description: 'Submit task' },
+    { command: 'flo hive-mind task -d "Security review" -p critical -c', description: 'Critical task with consensus' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     let description = ctx.flags.description as string || ctx.args.join(' ');
@@ -989,7 +989,7 @@ const taskCommand: Command = {
 
       output.writeln();
       output.printSuccess('Task submitted to hive');
-      output.writeln(output.dim(`  Track with: claude-flow hive-mind task-status ${result.taskId}`));
+      output.writeln(output.dim(`  Track with: flo hive-mind task-status ${result.taskId}`));
 
       return { success: true, data: result };
     } catch (error) {
@@ -1289,16 +1289,16 @@ export const hiveMindCommand: Command = {
   subcommands: [initCommand, spawnCommand, statusCommand, taskCommand, joinCommand, leaveCommand, consensusCommand, broadcastCommand, memorySubCommand, optimizeMemoryCommand, shutdownCommand],
   options: [],
   examples: [
-    { command: 'claude-flow hive-mind init -t hierarchical-mesh', description: 'Initialize hive' },
-    { command: 'claude-flow hive-mind spawn -n 5', description: 'Spawn workers' },
-    { command: 'claude-flow hive-mind spawn --claude -o "Build a feature"', description: 'Launch Claude Code with hive mind' },
-    { command: 'claude-flow hive-mind task -d "Build feature"', description: 'Submit task' }
+    { command: 'flo hive-mind init -t hierarchical-mesh', description: 'Initialize hive' },
+    { command: 'flo hive-mind spawn -n 5', description: 'Spawn workers' },
+    { command: 'flo hive-mind spawn --claude -o "Build a feature"', description: 'Launch Claude Code with hive mind' },
+    { command: 'flo hive-mind task -d "Build feature"', description: 'Submit task' }
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Hive Mind - Consensus-Based Multi-Agent Coordination'));
     output.writeln();
-    output.writeln('Usage: claude-flow hive-mind <subcommand> [options]');
+    output.writeln('Usage: flo hive-mind <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
@@ -1326,8 +1326,8 @@ export const hiveMindCommand: Command = {
     ]);
     output.writeln();
     output.writeln('Quick Start with Claude Code:');
-    output.writeln(output.dim('  claude-flow hive-mind init'));
-    output.writeln(output.dim('  claude-flow hive-mind spawn -n 5 --claude -o "Your objective here"'));
+    output.writeln(output.dim('  flo hive-mind init'));
+    output.writeln(output.dim('  flo hive-mind spawn -n 5 --claude -o "Your objective here"'));
 
     return { success: true };
   }

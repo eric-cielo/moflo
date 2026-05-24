@@ -83,9 +83,9 @@ const startCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow mcp start', description: 'Start with defaults (stdio)' },
-    { command: 'claude-flow mcp start -d', description: 'Start as daemon' },
-    { command: 'claude-flow mcp start -f', description: 'Force restart (kill existing)' }
+    { command: 'flo mcp start', description: 'Start with defaults (stdio)' },
+    { command: 'flo mcp start -d', description: 'Start as daemon' },
+    { command: 'flo mcp start -f', description: 'Force restart (kill existing)' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const transport = (ctx.flags.transport as 'stdio') ?? 'stdio';
@@ -297,7 +297,7 @@ const statusCommand: Command = {
         });
 
         output.writeln();
-        output.writeln(output.dim('Run "claude-flow mcp start" to start the server'));
+        output.writeln(output.dim('Run "flo mcp start" to start the server'));
         return { success: true, data: status };
       }
 
@@ -527,7 +527,7 @@ const execCommand: Command = {
     }
   ],
   examples: [
-    { command: 'claude-flow mcp exec -t swarm_init -p \'{"topology":"mesh"}\'', description: 'Execute tool' }
+    { command: 'flo mcp exec -t swarm_init -p \'{"topology":"mesh"}\'', description: 'Execute tool' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const tool = ctx.flags.tool as string || ctx.args[0];
@@ -748,16 +748,16 @@ export const mcpCommand: Command = {
   ],
   options: [],
   examples: [
-    { command: 'claude-flow mcp start', description: 'Start MCP server (stdio)' },
-    { command: 'claude-flow mcp status', description: 'Show server status' },
-    { command: 'claude-flow mcp tools', description: 'List tools' },
-    { command: 'claude-flow mcp stop', description: 'Stop the server' }
+    { command: 'flo mcp start', description: 'Start MCP server (stdio)' },
+    { command: 'flo mcp status', description: 'Show server status' },
+    { command: 'flo mcp tools', description: 'List tools' },
+    { command: 'flo mcp stop', description: 'Stop the server' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('MCP Server Management'));
     output.writeln();
-    output.writeln('Usage: claude-flow mcp <subcommand> [options]');
+    output.writeln('Usage: flo mcp <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([

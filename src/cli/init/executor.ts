@@ -574,7 +574,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
         ddd: { progress: 0, modules: 0, totalFiles: 0, totalLines: 0 },
         swarm: { activeAgents: 0, maxAgents: 15, topology: 'hierarchical-mesh' },
         learning: { status: 'READY', patternsLearned: 0, sessionsCompleted: 0 },
-        _note: 'Metrics will update as you use Claude Flow'
+        _note: 'Metrics will update as you use moflo'
       };
       fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2), 'utf-8');
       result.created.push('.moflo/metrics/v3-progress.json');
@@ -606,7 +606,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
         routing: { accuracy: 0, decisions: 0 },
         patterns: { shortTerm: 0, longTerm: 0, quality: 0 },
         sessions: { total: 0, current: null },
-        _note: 'Intelligence grows as you use Claude Flow'
+        _note: 'Intelligence grows as you use moflo'
       };
       fs.writeFileSync(learningPath, JSON.stringify(learning, null, 2), 'utf-8');
       result.created.push('.moflo/metrics/learning.json');
@@ -1458,7 +1458,7 @@ mcp:
 
   // Write .gitignore
   const gitignorePath = path.join(targetDir, '.moflo', '.gitignore');
-  const gitignore = `# Claude Flow runtime files
+  const gitignore = `# moflo runtime files
 data/
 logs/
 sessions/
@@ -1523,7 +1523,7 @@ async function writeInitialMetrics(
         patternsLearned: 0,
         sessionsCompleted: 0
       },
-      _note: 'Metrics will update as you use Claude Flow. Run: npx moflo daemon start'
+      _note: 'Metrics will update as you use moflo. Run: npx moflo daemon start'
     };
     fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2), 'utf-8');
     result.created.files.push('.moflo/metrics/v3-progress.json');
@@ -1572,7 +1572,7 @@ async function writeInitialMetrics(
         total: 0,
         current: null
       },
-      _note: 'Intelligence grows as you use Claude Flow'
+      _note: 'Intelligence grows as you use moflo'
     };
     fs.writeFileSync(learningPath, JSON.stringify(learning, null, 2), 'utf-8');
     result.created.files.push('.moflo/metrics/learning.json');
@@ -1937,7 +1937,7 @@ npx moflo hive-mind consensus --propose "task"
 
 ### MCP Server Setup
 \`\`\`bash
-# Add Claude Flow MCP
+# Add moflo MCP
 claude mcp add moflo -- npx -y moflo
 
 # Optional servers

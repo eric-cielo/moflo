@@ -262,15 +262,23 @@ describe('published-package drift guard (issue #585)', () => {
     // Issue #1168: moflo's canonical runtime store is `.moflo/`. The legacy
     // `.swarm/` path is read-only — used by the cherry-pick recovery, the
     // bridge migration window probe, and the doctor 'Swarm Residue' fix as
-    // a source. Production code MUST NOT *write* to `.swarm/` (mkdirSync,
-    // writeFileSync, or join-then-write) — that's the bug class #1168 closed.
+    // a source. Production code MUST NOT *write* to `.swarm/`.
     //
-    // Read-only references (legacyMemoryDbPath, fallback existsSync probes,
-    // doc strings, comments) are allowed without a marker. The guard flags
-    // only suspicious *mutating* patterns; if a contributor adds a new
-    // legitimate read path the regex won't fire. If a future PR genuinely
-    // needs to write `.swarm/` (e.g. for a new migration codepath), they
-    // add an explicit `LEGACY-V2-WRITE` marker on the same line.
+    // The original guard only matched an fs call with an inline `.swarm`
+    // string literal on the SAME line. That missed the shape that let
+    // `memory.ts:openDb` keep recreating `.swarm/memory.db` long after #1168:
+    // a path built from a constant (`const SWARM_DIR = '.swarm'; join(cwd,
+    // SWARM_DIR, file)`) and written through a WRAPPER (`openDaemonDatabase`)
+    // rather than a bare `fs.*` call. This version is constant-aware and
+    // wrapper-aware: it collects every identifier bound to a `.swarm` path,
+    // then flags any writer call referencing such an id (or an inline literal).
+    //
+    // Read-only references (legacyMemoryDbPath, fallback existsSync/readFileSync
+    // probes, doc strings, comments) are still allowed without a marker — only
+    // writer call-sites are flagged. `unlinkSync` is intentionally NOT a writer
+    // here: deleting `.swarm/` residue is cleanup, not recreation. If a future
+    // PR genuinely needs to write `.swarm/`, add a `LEGACY-V2-WRITE` marker on
+    // the same line.
     const SCAN_ROOTS = [
       join(REPO_ROOT, 'src', 'cli'),
       join(REPO_ROOT, 'bin'),
@@ -279,16 +287,67 @@ describe('published-package drift guard (issue #585)', () => {
       join(REPO_ROOT, '.claude', 'helpers'),
       join(REPO_ROOT, '.claude', 'skills'),
     ];
-    // A "writer" pattern: any of mkdirSync/mkdir/writeFileSync/renameSync/
-    // appendFileSync called on a path string that contains `.swarm`. We scan
-    // for the call-site shape on the same line as `.swarm` to keep this
-    // simple — multi-line writer chains aren't a current shape in the repo.
-    const WRITER_RE = /(mkdirSync|writeFileSync|renameSync|appendFileSync|fs\.mkdir\b)[^\n]*['"`][^'"`]*\.swarm/;
+    // Functions that persist to disk: fs primitives PLUS moflo's DB wrapper
+    // `openDaemonDatabase` (it mkdir's the parent dir + opens read-write).
+    const WRITER_FNS =
+      /\b(mkdirSync|writeFileSync|renameSync|appendFileSync|cpSync|copyFileSync|createWriteStream|openSync|openDaemonDatabase|fs\.mkdir)\s*\(/;
+    // A `.swarm` path literal, e.g. '.swarm', "./.swarm", `.swarm/memory.db`.
+    const SWARM_LITERAL = /['"`]\.?[/\\]?\.swarm(?:[/\\][^'"`]*)?['"`]/;
     const ALLOWED_MARKERS = /LEGACY-V2-WRITE|pre-#1168/;
-    // Files whose entire purpose is `.swarm/` migration logic — they may
-    // legitimately write to `.swarm/` (e.g. for restore-during-migration).
-    // Currently empty: post-#1168 there's no such writer in moflo.
     const MIGRATION_FILES = new Set<string>([]);
+    // For move/copy writers the WRITE target is the 2nd argument (source-first
+    // signature). For every other writer it's the 1st. We only inspect the
+    // target-position arg so that *reading* from or *moving out of* `.swarm/`
+    // (renameSync(swarmSrc, canonicalDst), appendFileSync(canonical,
+    // readFileSync(swarmSrc))) is correctly allowed — only writes *into*
+    // `.swarm/` are flagged.
+    const MOVE_COPY_FNS = new Set(['renameSync', 'cpSync', 'copyFileSync']);
+
+    // Split a call's argument string on top-level commas, respecting nested
+    // parens/brackets/braces and string literals.
+    const topLevelArgs = (argStr: string): string[] => {
+      const args: string[] = [];
+      let depth = 0;
+      let cur = '';
+      let inStr: string | null = null;
+      for (let k = 0; k < argStr.length; k++) {
+        const ch = argStr[k];
+        if (inStr) {
+          cur += ch;
+          if (ch === inStr && argStr[k - 1] !== '\\') inStr = null;
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === '`') { inStr = ch; cur += ch; continue; }
+        if (ch === '(' || ch === '[' || ch === '{') { depth++; cur += ch; continue; }
+        if (ch === ')' || ch === ']' || ch === '}') { depth--; cur += ch; continue; }
+        if (ch === ',' && depth === 0) { args.push(cur.trim()); cur = ''; continue; }
+        cur += ch;
+      }
+      if (cur.trim()) args.push(cur.trim());
+      return args;
+    };
+
+    // Extract `{ fnName, args }` for a single-line writer call, or null when
+    // the call spans lines (no balanced close on this line).
+    const extractWriterCall = (line: string): { fnName: string; args: string[] } | null => {
+      const m = line.match(WRITER_FNS);
+      if (!m || m.index === undefined) return null;
+      const fnName = m[1].replace(/^fs\./, '');
+      const open = line.indexOf('(', m.index);
+      if (open < 0) return null;
+      let depth = 0;
+      let end = -1;
+      let inStr: string | null = null;
+      for (let k = open; k < line.length; k++) {
+        const ch = line[k];
+        if (inStr) { if (ch === inStr && line[k - 1] !== '\\') inStr = null; continue; }
+        if (ch === '"' || ch === "'" || ch === '`') { inStr = ch; continue; }
+        if (ch === '(') depth++;
+        else if (ch === ')') { depth--; if (depth === 0) { end = k; break; } }
+      }
+      if (end < 0) return null;
+      return { fnName, args: topLevelArgs(line.slice(open + 1, end)) };
+    };
 
     const offenders: string[] = [];
     for (const root of SCAN_ROOTS) {
@@ -300,18 +359,59 @@ describe('published-package drift guard (issue #585)', () => {
         const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
         if (MIGRATION_FILES.has(rel)) continue;
         const text = readFileSync(file, 'utf8');
-        if (!WRITER_RE.test(text)) continue;
+        if (!text.includes('.swarm')) continue;
         const lines = text.split('\n');
+
+        // Collect identifiers bound to a `.swarm` path. Two sweeps cover the
+        // real shapes: (1) a dir-name constant `const SWARM_DIR = '.swarm'`,
+        // (2) a path var built via join/resolve/template/concat that references
+        // a `.swarm` literal or a dir-name constant from sweep 1.
+        const swarmIds = new Set<string>();
+        for (const line of lines) {
+          const m = line.match(/\b(?:const|let|var)\s+(\w+)\s*=\s*['"`]\.?[/\\]?\.swarm[/\\]?['"`]/);
+          if (m) swarmIds.add(m[1]);
+        }
+        const idAlt = () => [...swarmIds].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+        for (const line of lines) {
+          const m = line.match(/\b(?:const|let|var)\s+(\w+)\s*=\s*(.+)$/);
+          if (!m) continue;
+          const [, id, rhs] = m;
+          if (swarmIds.has(id)) continue;
+          const refsConst = swarmIds.size > 0 && new RegExp(`\\b(?:${idAlt()})\\b`).test(rhs);
+          const refsLiteral = SWARM_LITERAL.test(rhs);
+          const isPathExpr = /\b(?:path\.)?(?:join|resolve)\(|`|\+/.test(rhs);
+          if ((refsConst || refsLiteral) && isPathExpr) swarmIds.add(id);
+        }
+
+        // Flag writer call-sites whose WRITE-TARGET arg is a `.swarm` path
+        // (inline literal or a collected swarm-path identifier).
+        const idRe = swarmIds.size > 0 ? new RegExp(`\\b(?:${idAlt()})\\b`) : null;
+        const targetIsSwarm = (arg: string | undefined): boolean =>
+          !!arg && (SWARM_LITERAL.test(arg) || (idRe !== null && idRe.test(arg)));
         for (let i = 0; i < lines.length; i++) {
-          if (!WRITER_RE.test(lines[i])) continue;
-          if (ALLOWED_MARKERS.test(lines[i])) continue;
-          offenders.push(`${rel}:${i + 1}`);
+          const line = lines[i];
+          if (!WRITER_FNS.test(line)) continue;
+          if (ALLOWED_MARKERS.test(line)) continue;
+          const call = extractWriterCall(line);
+          if (call) {
+            const targetIdx = MOVE_COPY_FNS.has(call.fnName) ? 1 : 0;
+            if (targetIsSwarm(call.args[targetIdx])) offenders.push(`${rel}:${i + 1}`);
+          } else {
+            // Multi-line writer call: fall back to a conservative scan of the
+            // call portion (no balanced close on this line to position-parse).
+            const callArgs = line.slice(line.search(WRITER_FNS));
+            if (SWARM_LITERAL.test(callArgs) || (idRe && idRe.test(callArgs))) {
+              offenders.push(`${rel}:${i + 1}`);
+            }
+          }
         }
       }
     }
     expect(
       offenders,
       `Production code writes to .swarm/ (issue #1168 moved every writer to .moflo/).\n` +
+        `This includes paths built from a constant and written via a wrapper\n` +
+        `(e.g. openDaemonDatabase) — not just inline fs.*('...swarm...') calls.\n` +
         `If the new write is intentional (e.g. a new migration codepath), add\n` +
         `the marker LEGACY-V2-WRITE or pre-#1168 to the same line.\n` +
         `Offenders:\n  ${offenders.join('\n  ')}`,
@@ -350,6 +450,63 @@ describe('published-package drift guard (issue #585)', () => {
     expect(
       offenders,
       `Stale "npm install @moflo/<pkg>" strings — moflo publishes as a single package called "moflo":\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('no `claude-flow <subcommand>` invocation strings remain in user-facing output', () => {
+    // moflo's CLI binary is `flo` (package `moflo`). Any user-facing string
+    // that tells a user to run `claude-flow <cmd>` — help examples, the daemon
+    // "Stop with: …" hint, status-box headers, "Starting claude-flow daemon…"
+    // logs — is stale branding that sends users to a binary they don't have.
+    //
+    // This flags the COMMAND-INVOCATION shape `claude-flow <subcommand>` (a
+    // space + lowercase word after the name). It deliberately does NOT match
+    // the legitimate keeps that share the prefix:
+    //   - `claude-flow.config.json` (dot, not space) — legacy config reader
+    //   - `@claude-flow/...` (slash) — upstream package identity refs
+    //   - `cmdline.includes('claude-flow')` — backward-compat daemon detection
+    //   - comments (skipped) — historical/explanatory prose
+    // If a user-facing string must mention the legacy CLI verbatim (rare),
+    // add the marker `LEGACY-CLI` or `claude-flow-backup-` on the same line.
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'helpers'),
+      join(REPO_ROOT, '.claude', 'skills'),
+    ];
+    // `claude-flow` immediately followed by whitespace + a lowercase
+    // subcommand-like word. `(?<![@./\w-])` rejects `@claude-flow`, `.claude-flow`,
+    // and word-joined forms so only the bare CLI name matches.
+    const CLI_INVOCATION_RE = /(?<![@./\w-])claude-flow\s+[a-z][a-z-]*/;
+    const ALLOWED_MARKERS = /LEGACY-CLI|claude-flow-backup-/;
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (/[/\\]__tests__[/\\]/.test(file)) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!text.includes('claude-flow')) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (isCommentLine(line)) continue;
+          if (!CLI_INVOCATION_RE.test(line)) continue;
+          if (ALLOWED_MARKERS.test(line)) continue;
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Stale "claude-flow <cmd>" invocation strings — moflo's CLI binary is "flo":\n` +
+        `replace with "flo <cmd>" (or "npx moflo <cmd>" where PATH isn't guaranteed).\n` +
+        `If a verbatim legacy reference is intentional, add a "LEGACY-CLI" marker.\n` +
+        `Offenders:\n  ${offenders.join('\n  ')}`,
     ).toEqual([]);
   });
 });

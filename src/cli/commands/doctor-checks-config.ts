@@ -68,7 +68,7 @@ export async function checkConfigFile(): Promise<HealthCheck> {
     }
   }
 
-  return { name: 'Config File', status: 'warn', message: 'No config file (using defaults)', fix: 'claude-flow config init' };
+  return { name: 'Config File', status: 'warn', message: 'No config file (using defaults)', fix: 'npx moflo config init' };
 }
 
 export async function checkStatusLine(): Promise<HealthCheck> {
@@ -116,15 +116,15 @@ export async function checkDaemonStatus(): Promise<HealthCheck> {
     // getDaemonLockHolder auto-cleans stale locks, but check for legacy PID file
     const lockFile = '.moflo/daemon.lock';
     if (existsSync(lockFile)) {
-      return { name: 'Daemon Status', status: 'warn', message: 'Stale lock file', fix: 'rm .moflo/daemon.lock && claude-flow daemon start' };
+      return { name: 'Daemon Status', status: 'warn', message: 'Stale lock file', fix: 'npx moflo daemon start' };
     }
     const pidFile = '.moflo/daemon.pid';
     if (existsSync(pidFile)) {
-      return { name: 'Daemon Status', status: 'warn', message: 'Legacy PID file found', fix: 'rm .moflo/daemon.pid && claude-flow daemon start' };
+      return { name: 'Daemon Status', status: 'warn', message: 'Legacy PID file found', fix: 'npx moflo daemon start' };
     }
-    return { name: 'Daemon Status', status: 'warn', message: 'Not running', fix: 'claude-flow daemon start' };
+    return { name: 'Daemon Status', status: 'warn', message: 'Not running', fix: 'npx moflo daemon start' };
   } catch (e) {
-    return { name: 'Daemon Status', status: 'warn', message: `Unable to check: ${errorDetail(e)}`, fix: 'claude-flow daemon status' };
+    return { name: 'Daemon Status', status: 'warn', message: `Unable to check: ${errorDetail(e)}`, fix: 'npx moflo daemon status' };
   }
 }
 
@@ -298,7 +298,7 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
     };
   }
 
-  return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
+  return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'npx moflo memory configure --backend hybrid' };
 }
 
 /**

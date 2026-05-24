@@ -1954,7 +1954,7 @@ export async function storeEntry(options: {
 
   try {
     if (!fs.existsSync(dbPath)) {
-      return { success: false, id: '', error: 'Database not initialized. Run: claude-flow memory init' };
+      return { success: false, id: '', error: 'Database not initialized. Run: flo memory init' };
     }
 
     // Ensure schema has all required columns (migration for older DBs)

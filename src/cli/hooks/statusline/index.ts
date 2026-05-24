@@ -5,7 +5,7 @@
  * Provides real-time progress, metrics, and status information.
  *
  * Format matches the working .claude/statusline.sh output:
- * ▊ Claude Flow V3 ● ruvnet  │  ⎇ v3  │  Opus 4.5
+ * ▊ MoFlo ● <user>  │  ⎇ <branch>  │  Opus 4.7
  * ─────────────────────────────────────────────────────
  * 🏗️  DDD Domains    [●●●●●]  5/5    ⚡ 1.0x → 2.49x-7.47x
  * 🤖 Swarm  ◉ [58/15]  👥 0    🟢 CVE 3/3    💾 22282MB    📂  47%    🧠  10%
@@ -145,7 +145,7 @@ export class StatuslineGenerator {
     const lines: string[] = [];
 
     // Header Line: V3 Project + User + Branch + Model
-    let header = `${c.bold}${c.brightPurple}▊ Claude Flow V3 ${c.reset}`;
+    let header = `${c.bold}${c.brightPurple}▊ MoFlo ${c.reset}`;
     header += `${data.swarm.coordinationActive ? c.brightCyan : c.dim}● ${c.brightCyan}${data.user.name}${c.reset}`;
     if (data.user.gitBranch) {
       header += `  ${c.dim}│${c.reset}  ${c.brightBlue}⎇ ${data.user.gitBranch}${c.reset}`;
@@ -293,7 +293,7 @@ export class StatuslineGenerator {
     const lines: string[] = [];
 
     // Line 1: Header (NOT collision zone)
-    let header = `${c.bold}${c.brightPurple}▊ Claude Flow V3 ${c.reset}`;
+    let header = `${c.bold}${c.brightPurple}▊ MoFlo ${c.reset}`;
     header += `${data.swarm.coordinationActive ? c.brightCyan : c.dim}● ${c.brightCyan}${data.user.name}${c.reset}`;
     if (data.user.gitBranch) {
       header += `  ${c.dim}│${c.reset}  ${c.brightBlue}⎇ ${data.user.gitBranch}${c.reset}`;

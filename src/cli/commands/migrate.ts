@@ -388,7 +388,7 @@ const breakingCommand: Command = {
       output.writeln();
     }
 
-    output.printInfo('Run "claude-flow migrate run" to automatically handle these changes');
+    output.printInfo('Run "flo migrate run" to automatically handle these changes');
 
     return { success: true, data: changes };
   }
@@ -401,15 +401,15 @@ export const migrateCommand: Command = {
   subcommands: [statusCommand, runCommand, verifyCommand, rollbackCommand, breakingCommand],
   options: [],
   examples: [
-    { command: 'claude-flow migrate status', description: 'Check migration status' },
-    { command: 'claude-flow migrate run --dry-run', description: 'Preview migration' },
-    { command: 'claude-flow migrate run -t all', description: 'Run full migration' }
+    { command: 'flo migrate status', description: 'Check migration status' },
+    { command: 'flo migrate run --dry-run', description: 'Preview migration' },
+    { command: 'flo migrate run -t all', description: 'Run full migration' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('V2 to V3 Migration Tools'));
     output.writeln();
-    output.writeln('Usage: claude-flow migrate <subcommand> [options]');
+    output.writeln('Usage: flo migrate <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([

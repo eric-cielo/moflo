@@ -65,10 +65,10 @@ const startCommand: Command = {
     { name: 'no-dashboard', type: 'boolean', description: 'Disable the dashboard HTTP server' },
   ],
   examples: [
-    { command: 'claude-flow daemon start', description: 'Start daemon in background (default)' },
-    { command: 'claude-flow daemon start --foreground', description: 'Start in foreground (blocks terminal)' },
-    { command: 'claude-flow daemon start -w map,optimize', description: 'Start with specific workers' },
-    { command: 'claude-flow daemon start --headless --sandbox strict', description: 'Start with headless workers in strict sandbox' },
+    { command: 'flo daemon start', description: 'Start daemon in background (default)' },
+    { command: 'flo daemon start --foreground', description: 'Start in foreground (blocks terminal)' },
+    { command: 'flo daemon start -w map,optimize', description: 'Start with specific workers' },
+    { command: 'flo daemon start --headless --sandbox strict', description: 'Start with headless workers in strict sandbox' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
@@ -502,7 +502,7 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
       }
     }
     output.printInfo(`Logs: ${logFile}`);
-    output.printInfo(`Stop with: claude-flow daemon stop`);
+    output.printInfo(`Stop with: flo daemon stop`);
   }
 
   return { success: true };
@@ -516,7 +516,7 @@ const stopCommand: Command = {
     { name: 'quiet', short: 'Q', type: 'boolean', description: 'Suppress output' },
   ],
   examples: [
-    { command: 'claude-flow daemon stop', description: 'Stop the daemon' },
+    { command: 'flo daemon stop', description: 'Stop the daemon' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
@@ -645,9 +645,9 @@ const statusCommand: Command = {
     { name: 'show-modes', type: 'boolean', description: 'Show worker execution modes (local/headless) and sandbox settings' },
   ],
   examples: [
-    { command: 'claude-flow daemon status', description: 'Show daemon status' },
-    { command: 'claude-flow daemon status -v', description: 'Show detailed status' },
-    { command: 'claude-flow daemon status --show-modes', description: 'Show worker execution modes' },
+    { command: 'flo daemon status', description: 'Show daemon status' },
+    { command: 'flo daemon status -v', description: 'Show detailed status' },
+    { command: 'flo daemon status --show-modes', description: 'Show worker execution modes' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const verbose = ctx.flags.verbose as boolean;
@@ -781,7 +781,7 @@ const statusCommand: Command = {
           `Autostart: ${autostartIcon} ${autostartInstalled ? 'registered' : 'not registered'}`,
           `Scheduler: ${schedIcon} ${schedulerConfig.enabled ? 'enabled' : 'disabled'} (config)`,
           '',
-          'Run "claude-flow daemon start" to start the daemon',
+          'Run "flo daemon start" to start the daemon',
         ].join('\n'),
         'MoFlo Daemon'
       );
@@ -800,8 +800,8 @@ const triggerCommand: Command = {
     { name: 'headless', type: 'boolean', description: 'Run triggered worker in headless mode (E2B sandbox)' },
   ],
   examples: [
-    { command: 'claude-flow daemon trigger -w map', description: 'Trigger the map worker' },
-    { command: 'claude-flow daemon trigger -w optimize --headless', description: 'Trigger optimize in headless sandbox' },
+    { command: 'flo daemon trigger -w map', description: 'Trigger the map worker' },
+    { command: 'flo daemon trigger -w optimize --headless', description: 'Trigger optimize in headless sandbox' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workerType = ctx.flags.worker as WorkerType;
@@ -850,8 +850,8 @@ const enableCommand: Command = {
     { name: 'disable', short: 'd', type: 'boolean', description: 'Disable instead of enable' },
   ],
   examples: [
-    { command: 'claude-flow daemon enable -w testgaps', description: 'Enable testgaps worker' },
-    { command: 'claude-flow daemon enable -w refactor --disable', description: 'Disable refactor worker' },
+    { command: 'flo daemon enable -w testgaps', description: 'Enable testgaps worker' },
+    { command: 'flo daemon enable -w refactor --disable', description: 'Disable refactor worker' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workerType = ctx.flags.worker as WorkerType;
@@ -884,7 +884,7 @@ const installCommand: Command = {
     { name: 'quiet', short: 'Q', type: 'boolean', description: 'Suppress output' },
   ],
   examples: [
-    { command: 'claude-flow daemon install', description: 'Register daemon as login service' },
+    { command: 'flo daemon install', description: 'Register daemon as login service' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
@@ -920,7 +920,7 @@ const uninstallCommand: Command = {
     { name: 'quiet', short: 'Q', type: 'boolean', description: 'Suppress output' },
   ],
   examples: [
-    { command: 'claude-flow daemon uninstall', description: 'Remove daemon login service' },
+    { command: 'flo daemon uninstall', description: 'Remove daemon login service' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
@@ -982,13 +982,13 @@ export const daemonCommand: Command = {
   ],
   options: [],
   examples: [
-    { command: 'claude-flow daemon start', description: 'Start the daemon' },
-    { command: 'claude-flow daemon start --headless', description: 'Start with headless workers (E2B sandbox)' },
-    { command: 'claude-flow daemon status', description: 'Check daemon status' },
-    { command: 'claude-flow daemon stop', description: 'Stop the daemon' },
-    { command: 'claude-flow daemon trigger -w optimize', description: 'Run the optimize worker' },
-    { command: 'claude-flow daemon install', description: 'Register as OS login service' },
-    { command: 'claude-flow daemon uninstall', description: 'Remove OS login service' },
+    { command: 'flo daemon start', description: 'Start the daemon' },
+    { command: 'flo daemon start --headless', description: 'Start with headless workers (E2B sandbox)' },
+    { command: 'flo daemon status', description: 'Check daemon status' },
+    { command: 'flo daemon stop', description: 'Stop the daemon' },
+    { command: 'flo daemon trigger -w optimize', description: 'Run the optimize worker' },
+    { command: 'flo daemon install', description: 'Register as OS login service' },
+    { command: 'flo daemon uninstall', description: 'Remove OS login service' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
@@ -1028,7 +1028,7 @@ export const daemonCommand: Command = {
     ]);
 
     output.writeln();
-    output.writeln('Run "claude-flow daemon <subcommand> --help" for details');
+    output.writeln('Run "flo daemon <subcommand> --help" for details');
 
     return { success: true };
   },

@@ -17,8 +17,8 @@ const listCommand: Command = {
     { name: 'active', short: 'a', type: 'boolean', description: 'Show only active providers' },
   ],
   examples: [
-    { command: 'claude-flow providers list', description: 'List all providers' },
-    { command: 'claude-flow providers list -t embedding', description: 'List embedding providers' },
+    { command: 'flo providers list', description: 'List all providers' },
+    { command: 'flo providers list -t embedding', description: 'List embedding providers' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const type = ctx.flags.type as string || 'all';
@@ -59,8 +59,8 @@ const configureCommand: Command = {
     { name: 'endpoint', short: 'e', type: 'string', description: 'Custom endpoint URL' },
   ],
   examples: [
-    { command: 'claude-flow providers configure -p openai -k sk-...', description: 'Set OpenAI key' },
-    { command: 'claude-flow providers configure -p anthropic -m claude-3.5-sonnet', description: 'Set default model' },
+    { command: 'flo providers configure -p openai -k sk-...', description: 'Set OpenAI key' },
+    { command: 'flo providers configure -p anthropic -m claude-3.5-sonnet', description: 'Set default model' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const provider = ctx.flags.provider as string;
@@ -102,8 +102,8 @@ const testCommand: Command = {
     { name: 'all', short: 'a', type: 'boolean', description: 'Test all configured providers' },
   ],
   examples: [
-    { command: 'claude-flow providers test -p openai', description: 'Test OpenAI connection' },
-    { command: 'claude-flow providers test --all', description: 'Test all providers' },
+    { command: 'flo providers test -p openai', description: 'Test OpenAI connection' },
+    { command: 'flo providers test --all', description: 'Test all providers' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const provider = ctx.flags.provider as string;
@@ -140,8 +140,8 @@ const modelsCommand: Command = {
     { name: 'capability', short: 'c', type: 'string', description: 'Filter by capability: chat, completion, embedding' },
   ],
   examples: [
-    { command: 'claude-flow providers models', description: 'List all models' },
-    { command: 'claude-flow providers models -p anthropic', description: 'List Anthropic models' },
+    { command: 'flo providers models', description: 'List all models' },
+    { command: 'flo providers models -p anthropic', description: 'List Anthropic models' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
@@ -180,8 +180,8 @@ const usageCommand: Command = {
     { name: 'timeframe', short: 't', type: 'string', description: 'Timeframe: 24h, 7d, 30d', default: '7d' },
   ],
   examples: [
-    { command: 'claude-flow providers usage', description: 'View all usage' },
-    { command: 'claude-flow providers usage -t 30d', description: 'View 30-day usage' },
+    { command: 'flo providers usage', description: 'View all usage' },
+    { command: 'flo providers usage -t 30d', description: 'View 30-day usage' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const timeframe = ctx.flags.timeframe as string || '7d';
@@ -225,9 +225,9 @@ export const providersCommand: Command = {
   description: 'Manage AI providers, models, and configurations',
   subcommands: [listCommand, configureCommand, testCommand, modelsCommand, usageCommand],
   examples: [
-    { command: 'claude-flow providers list', description: 'List all providers' },
-    { command: 'claude-flow providers configure -p openai', description: 'Configure OpenAI' },
-    { command: 'claude-flow providers test --all', description: 'Test all providers' },
+    { command: 'flo providers list', description: 'List all providers' },
+    { command: 'flo providers configure -p openai', description: 'Configure OpenAI' },
+    { command: 'flo providers test --all', description: 'Test all providers' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();

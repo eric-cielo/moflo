@@ -571,12 +571,12 @@ export const issuesCommand: Command = {
     boardCommand,
   ],
   examples: [
-    { command: 'claude-flow issues list', description: 'List all claims' },
-    { command: 'claude-flow issues claim 123 --agent coder:coder-1', description: 'Claim as agent' },
-    { command: 'claude-flow issues handoff 123 --to agent:tester:tester-1', description: 'Handoff to tester' },
-    { command: 'claude-flow issues stealable', description: 'List stealable' },
-    { command: 'claude-flow issues steal 123 --agent coder:coder-2', description: 'Steal issue' },
-    { command: 'claude-flow issues board', description: 'Visual board' },
+    { command: 'flo issues list', description: 'List all claims' },
+    { command: 'flo issues claim 123 --agent coder:coder-1', description: 'Claim as agent' },
+    { command: 'flo issues handoff 123 --to agent:tester:tester-1', description: 'Handoff to tester' },
+    { command: 'flo issues stealable', description: 'List stealable' },
+    { command: 'flo issues steal 123 --agent coder:coder-2', description: 'Steal issue' },
+    { command: 'flo issues board', description: 'Visual board' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();

@@ -26,9 +26,9 @@ const pretrainCommand: Command = {
     { name: 'verbose', short: 'v', type: 'boolean', description: 'Verbose output', default: 'false' },
   ],
   examples: [
-    { command: 'claude-flow benchmark pretrain', description: 'Run pre-training benchmarks' },
-    { command: 'claude-flow benchmark pretrain -i 500 --save results.json', description: 'Extended benchmark with results saved' },
-    { command: 'claude-flow benchmark pretrain -o json', description: 'Output results as JSON' },
+    { command: 'flo benchmark pretrain', description: 'Run pre-training benchmarks' },
+    { command: 'flo benchmark pretrain -i 500 --save results.json', description: 'Extended benchmark with results saved' },
+    { command: 'flo benchmark pretrain -o json', description: 'Output results as JSON' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const iterations = parseInt(ctx.flags.iterations as string || '100', 10);
@@ -95,8 +95,8 @@ const neuralCommand: Command = {
     { name: 'output', short: 'o', type: 'string', description: 'Output format: text, json', default: 'text' },
   ],
   examples: [
-    { command: 'claude-flow benchmark neural', description: 'Run neural benchmarks' },
-    { command: 'claude-flow benchmark neural -d 768 -n 5000', description: 'Higher dimension, more vectors' },
+    { command: 'flo benchmark neural', description: 'Run neural benchmarks' },
+    { command: 'flo benchmark neural -d 768 -n 5000', description: 'Higher dimension, more vectors' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const iterations = parseInt(ctx.flags.iterations as string || '100', 10);
@@ -271,7 +271,7 @@ const memoryCommand: Command = {
     { name: 'output', short: 'o', type: 'string', description: 'Output format: text, json', default: 'text' },
   ],
   examples: [
-    { command: 'claude-flow benchmark memory', description: 'Run memory benchmarks' },
+    { command: 'flo benchmark memory', description: 'Run memory benchmarks' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const iterations = parseInt(ctx.flags.iterations as string || '100', 10);
@@ -400,8 +400,8 @@ const allCommand: Command = {
     { name: 'save', short: 's', type: 'string', description: 'Save results to file' },
   ],
   examples: [
-    { command: 'claude-flow benchmark all', description: 'Run all benchmarks' },
-    { command: 'claude-flow benchmark all --save full-results.json', description: 'Run all and save results' },
+    { command: 'flo benchmark all', description: 'Run all benchmarks' },
+    { command: 'flo benchmark all --save full-results.json', description: 'Run all and save results' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
@@ -477,10 +477,10 @@ export const benchmarkCommand: Command = {
     allCommand,
   ],
   examples: [
-    { command: 'claude-flow benchmark pretrain', description: 'Benchmark pre-training system' },
-    { command: 'claude-flow benchmark neural', description: 'Benchmark neural operations' },
-    { command: 'claude-flow benchmark memory', description: 'Benchmark memory operations' },
-    { command: 'claude-flow benchmark all', description: 'Run all benchmarks' },
+    { command: 'flo benchmark pretrain', description: 'Benchmark pre-training system' },
+    { command: 'flo benchmark neural', description: 'Benchmark neural operations' },
+    { command: 'flo benchmark memory', description: 'Benchmark memory operations' },
+    { command: 'flo benchmark all', description: 'Run all benchmarks' },
   ],
   action: async (_ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
@@ -494,8 +494,8 @@ export const benchmarkCommand: Command = {
     output.writeln(`  ${output.highlight('all')}       - Run all benchmark suites`);
     output.writeln();
     output.writeln('Examples:');
-    output.writeln('  claude-flow benchmark pretrain -i 200');
-    output.writeln('  claude-flow benchmark all --save results.json');
+    output.writeln('  flo benchmark pretrain -i 200');
+    output.writeln('  flo benchmark all --save results.json');
     output.writeln();
 
     return { success: true, message: 'Use a subcommand to run benchmarks' };

@@ -20,8 +20,8 @@ const deployCommand: Command = {
     { name: 'rollback-on-fail', type: 'boolean', description: 'Auto rollback on failure', default: 'true' },
   ],
   examples: [
-    { command: 'claude-flow deployment deploy -e prod', description: 'Deploy to production' },
-    { command: 'claude-flow deployment deploy --dry-run', description: 'Simulate deployment' },
+    { command: 'flo deployment deploy -e prod', description: 'Deploy to production' },
+    { command: 'flo deployment deploy --dry-run', description: 'Simulate deployment' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const env = ctx.flags.env as string || 'staging';
@@ -78,8 +78,8 @@ const statusCommand: Command = {
     { name: 'watch', short: 'w', type: 'boolean', description: 'Watch for changes' },
   ],
   examples: [
-    { command: 'claude-flow deployment status', description: 'Show all environments' },
-    { command: 'claude-flow deployment status -e prod', description: 'Check production' },
+    { command: 'flo deployment status', description: 'Show all environments' },
+    { command: 'flo deployment status -e prod', description: 'Check production' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
@@ -116,8 +116,8 @@ const rollbackCommand: Command = {
     { name: 'steps', short: 's', type: 'number', description: 'Number of versions to rollback', default: '1' },
   ],
   examples: [
-    { command: 'claude-flow deployment rollback -e prod', description: 'Rollback production' },
-    { command: 'claude-flow deployment rollback -e prod -v v3.0.0', description: 'Rollback to specific version' },
+    { command: 'flo deployment rollback -e prod', description: 'Rollback production' },
+    { command: 'flo deployment rollback -e prod -v v3.0.0', description: 'Rollback to specific version' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const env = ctx.flags.env as string;
@@ -166,8 +166,8 @@ const historyCommand: Command = {
     { name: 'limit', short: 'l', type: 'number', description: 'Number of entries', default: '10' },
   ],
   examples: [
-    { command: 'claude-flow deployment history', description: 'Show all history' },
-    { command: 'claude-flow deployment history -e prod', description: 'Production history' },
+    { command: 'flo deployment history', description: 'Show all history' },
+    { command: 'flo deployment history -e prod', description: 'Production history' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const env = ctx.flags.env as string;
@@ -208,8 +208,8 @@ const environmentsCommand: Command = {
     { name: 'name', short: 'n', type: 'string', description: 'Environment name' },
   ],
   examples: [
-    { command: 'claude-flow deployment environments', description: 'List environments' },
-    { command: 'claude-flow deployment envs -a create -n preview', description: 'Create environment' },
+    { command: 'flo deployment environments', description: 'List environments' },
+    { command: 'flo deployment envs -a create -n preview', description: 'Create environment' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
@@ -246,8 +246,8 @@ const logsCommand: Command = {
     { name: 'lines', short: 'n', type: 'number', description: 'Number of lines', default: '50' },
   ],
   examples: [
-    { command: 'claude-flow deployment logs -e prod', description: 'View production logs' },
-    { command: 'claude-flow deployment logs -d dep-123', description: 'View specific deployment' },
+    { command: 'flo deployment logs -e prod', description: 'View production logs' },
+    { command: 'flo deployment logs -d dep-123', description: 'View specific deployment' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const env = ctx.flags.env as string || 'staging';
@@ -288,9 +288,9 @@ export const deploymentCommand: Command = {
   aliases: ['deploy'],
   subcommands: [deployCommand, statusCommand, rollbackCommand, historyCommand, environmentsCommand, logsCommand],
   examples: [
-    { command: 'claude-flow deployment deploy -e prod', description: 'Deploy to production' },
-    { command: 'claude-flow deployment status', description: 'Check all environments' },
-    { command: 'claude-flow deployment rollback -e prod', description: 'Rollback production' },
+    { command: 'flo deployment deploy -e prod', description: 'Deploy to production' },
+    { command: 'flo deployment status', description: 'Check all environments' },
+    { command: 'flo deployment rollback -e prod', description: 'Rollback production' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();

@@ -120,7 +120,7 @@ const checkCommand: Command = {
       if (manualUpdates.length > 0) {
         output.writeln();
         output.printInfo('To update manually, run:');
-        output.writeln('  claude-flow update all');
+        output.writeln('  flo update all');
       }
 
       return { success: true };
@@ -331,7 +331,7 @@ const updateCommand: Command = {
       `${output.dim('CLAUDE_FLOW_FORCE_UPDATE=true')} - Force update check`,
     ]);
     output.writeln();
-    output.writeln('Run "claude-flow update <subcommand> --help" for subcommand help');
+    output.writeln('Run "flo update <subcommand> --help" for subcommand help');
 
     return { success: true };
   },
