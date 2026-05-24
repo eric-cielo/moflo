@@ -9,7 +9,7 @@
  *   npx moflo headless --benchmark
  *
  * Environment:
- *   CLAUDE_FLOW_HEADLESS=true
+ *   MOFLO_HEADLESS=true
  *   CLAUDE_CODE_HEADLESS=true
  *
  * @module v3/cli/runtime/headless
@@ -29,6 +29,7 @@ import {
   batchCosineSim,
   flashAttentionSearch
 } from '../memory/memory-initializer.js';
+import { readMofloEnv } from '../services/env-compat.js';
 
 // ============================================================================
 // Types
@@ -120,7 +121,7 @@ Options:
   -h, --help            Show help
 
 Environment:
-  CLAUDE_FLOW_HEADLESS=true   Enable headless mode
+  MOFLO_HEADLESS=true         Enable headless mode
   CLAUDE_CODE_HEADLESS=true   Enable Claude Code headless
 
 Examples:
@@ -297,7 +298,7 @@ async function showStatus(): Promise<void> {
   console.log(`  Entries: ${hnsw.entryCount}`);
 
   console.log('\nEnvironment:');
-  console.log(`  CLAUDE_FLOW_HEADLESS: ${process.env.CLAUDE_FLOW_HEADLESS || 'not set'}`);
+  console.log(`  MOFLO_HEADLESS: ${readMofloEnv('HEADLESS') || 'not set'}`);
   console.log(`  CLAUDE_CODE_HEADLESS: ${process.env.CLAUDE_CODE_HEADLESS || 'not set'}`);
   console.log(`  NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 }
@@ -307,7 +308,7 @@ async function showStatus(): Promise<void> {
  */
 async function main(): Promise<void> {
   // Set headless environment
-  process.env.CLAUDE_FLOW_HEADLESS = 'true';
+  process.env.MOFLO_HEADLESS = 'true';
 
   const config = parseArgs();
 

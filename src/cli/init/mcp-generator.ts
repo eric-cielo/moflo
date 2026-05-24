@@ -75,17 +75,19 @@ export function generateMCPConfig(options: InitOptions): object {
   // demand via ToolSearch instead of putting 150+ schemas into context at startup.
   const deferProps = config.toolDefer ? { toolDefer: 'deferred' } : {};
 
+  // #1209 — write MOFLO_* into the consumer's .mcp.json; the runtime readers
+  // (loader.ts etc.) still accept the pre-rebrand CLAUDE_FLOW_* names.
   const mcpEnv = {
     ...npmEnv,
-    CLAUDE_FLOW_MODE: 'v3',
-    CLAUDE_FLOW_HOOKS_ENABLED: 'true',
-    CLAUDE_FLOW_TOPOLOGY: options.runtime.topology,
-    CLAUDE_FLOW_MAX_AGENTS: String(options.runtime.maxAgents),
-    CLAUDE_FLOW_MEMORY_BACKEND: options.runtime.memoryBackend,
+    MOFLO_MODE: 'v3',
+    MOFLO_HOOKS_ENABLED: 'true',
+    MOFLO_TOPOLOGY: options.runtime.topology,
+    MOFLO_MAX_AGENTS: String(options.runtime.maxAgents),
+    MOFLO_MEMORY_BACKEND: options.runtime.memoryBackend,
   };
 
-  // Claude Flow MCP server (core) — use direct node when locally installed
-  if (config.claudeFlow) {
+  // moflo MCP server (core) — use direct node when locally installed
+  if (config.moflo) {
     const projectRoot = options.targetDir ?? process.cwd();
     const localCli = findMofloCli(projectRoot);
 
@@ -143,7 +145,7 @@ export function generateMCPCommands(options: InitOptions): string[] {
 
   const cmdPrefix = isWindows ? 'cmd /c ' : '';
 
-  if (config.claudeFlow) {
+  if (config.moflo) {
     const projectRoot = options.targetDir ?? process.cwd();
     const localCli = findMofloCli(projectRoot);
     if (localCli) {

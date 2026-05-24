@@ -213,7 +213,7 @@ function generateSystemdUnit(projectRoot: string, nodePath: string, cliPath: str
     `WorkingDirectory=${projectRoot}`,
     'Restart=on-failure',
     'RestartSec=10',
-    `Environment=CLAUDE_FLOW_DAEMON=1`,
+    `Environment=MOFLO_DAEMON=1`,
     '',
     '[Install]',
     'WantedBy=default.target',

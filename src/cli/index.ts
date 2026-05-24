@@ -556,14 +556,14 @@ export class CLI {
       ? spawn(`"${process.execPath}" ${spawnArgs.map(a => `"${a}"`).join(' ')}`, [], {
           cwd: projectRoot,
           stdio: ['ignore', openSync(logFile, 'a'), openSync(logFile, 'a')],
-          env: { ...process.env, CLAUDE_FLOW_DAEMON: '1' },
+          env: { ...process.env, MOFLO_DAEMON: '1' },
           shell: true, windowsHide: true,
         })
       : spawn(process.execPath, spawnArgs, {
           cwd: projectRoot,
           detached: true,
           stdio: ['ignore', openSync(logFile, 'a'), openSync(logFile, 'a')],
-          env: { ...process.env, CLAUDE_FLOW_DAEMON: '1' },
+          env: { ...process.env, MOFLO_DAEMON: '1' },
         });
 
     child.unref();

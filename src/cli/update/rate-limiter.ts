@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { readMofloEnv } from '../services/env-compat.js';
 
 export interface RateLimitState {
   lastCheck: string;
@@ -69,12 +70,12 @@ export function shouldCheckForUpdates(
   }
 
   // Skip if explicitly disabled
-  if (process.env.CLAUDE_FLOW_AUTO_UPDATE === 'false') {
+  if (readMofloEnv('AUTO_UPDATE') === 'false') {
     return { allowed: false, reason: 'Auto-update disabled via environment' };
   }
 
   // Force update if requested
-  if (process.env.CLAUDE_FLOW_FORCE_UPDATE === 'true') {
+  if (readMofloEnv('FORCE_UPDATE') === 'true') {
     return { allowed: true };
   }
 

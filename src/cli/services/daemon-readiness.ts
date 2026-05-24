@@ -122,7 +122,7 @@ async function defaultStartDaemon(projectRoot: string): Promise<boolean> {
     const spawnArgs = [cliPath, 'daemon', 'start', '--foreground', '--quiet'];
     const daemonEnv = {
       ...process.env,
-      CLAUDE_FLOW_DAEMON: '1',
+      MOFLO_DAEMON: '1',
       ...(process.platform === 'darwin' ? { NOHUP: '1' } : {}),
     };
 

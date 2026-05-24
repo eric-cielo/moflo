@@ -148,8 +148,8 @@ export interface StatuslineConfig {
  * MCP configuration
  */
 export interface MCPConfig {
-  /** Include claude-flow MCP server */
-  claudeFlow: boolean;
+  /** Include the core moflo MCP server */
+  moflo: boolean;
   /** Include ruv-swarm MCP server */
   ruvSwarm: boolean;
   /** Include flow-nexus MCP server */
@@ -368,7 +368,7 @@ export const DEFAULT_INIT_OPTIONS: InitOptions = {
     refreshInterval: 5000,
   },
   mcp: {
-    claudeFlow: true,
+    moflo: true,
     ruvSwarm: false,
     flowNexus: false,
     autoStart: false,
@@ -491,7 +491,7 @@ export const FULL_INIT_OPTIONS: InitOptions = {
     all: true,
   },
   mcp: {
-    claudeFlow: true,
+    moflo: true,
     ruvSwarm: true,
     flowNexus: true,
     autoStart: false,

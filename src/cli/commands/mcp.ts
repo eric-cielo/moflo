@@ -21,6 +21,7 @@ import {
 } from '../mcp-server.js';
 import { listMCPTools, callMCPTool, hasTool, getToolMetadata } from '../mcp-client.js';
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder } from '../services/daemon-lock.js';
+import { readMofloEnv } from '../services/env-compat.js';
 
 // MCP tools categories
 const TOOL_CATEGORIES = [
@@ -266,7 +267,7 @@ const statusCommand: Command = {
       // If PID-based check says not running, detect stdio mode
       if (!status.running) {
         const isStdio = !process.stdin.isTTY;
-        const envTransport = process.env.CLAUDE_FLOW_MCP_TRANSPORT;
+        const envTransport = readMofloEnv('MCP_TRANSPORT');
         if (isStdio || envTransport === 'stdio') {
           status = {
             running: true,

@@ -47,23 +47,26 @@ export function generateSettings(options: InitOptions): object {
   };
 
   // Note: Claude Code expects 'model' to be a string, not an object
-  // Model preferences are stored in claudeFlow settings instead
+  // Model preferences are stored in moflo settings instead
   // settings.model = 'claude-sonnet-4-5-20250929'; // Uncomment if you want to set a default model
 
   // Add Agent Teams configuration (experimental feature)
   settings.env = {
     // Enable Claude Code Agent Teams for multi-agent coordination
     CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-    // Claude Flow specific environment
-    CLAUDE_FLOW_V3_ENABLED: 'true',
-    CLAUDE_FLOW_HOOKS_ENABLED: 'true',
+    // moflo-specific environment (#1209 — emit MOFLO_*; readers still accept
+    // the pre-rebrand CLAUDE_FLOW_* names as a fallback via env-compat.ts)
+    MOFLO_V3_ENABLED: 'true',
+    MOFLO_HOOKS_ENABLED: 'true',
   };
 
   // Detect platform for platform-aware configuration
   const platform = detectPlatform();
 
-  // Add V3-specific settings
-  settings.claudeFlow = {
+  // Add V3-specific settings (#1209 — canonical `moflo.*` tree; the pre-rebrand
+  // `claudeFlow.*` tree is still read as a fallback by hook-block-hash + the
+  // upgrade merge for consumers who haven't re-run init yet)
+  settings.moflo = {
     version: '3.0.0',
     enabled: true,
     platform: {
@@ -466,7 +469,7 @@ function generateHooksConfig(config: HooksConfig): object {
   }
 
   // NOTE: TeammateIdle and TaskCompleted are NOT valid Claude Code hook events.
-  // Their configuration lives in claudeFlow.agentTeams.hooks instead (see generateSettings).
+  // Their configuration lives in moflo.agentTeams.hooks instead (see generateSettings).
 
   return hooks;
 }

@@ -36,10 +36,10 @@ Usage:
   statusline --help       Show this help
 
 Environment Variables:
-  CLAUDE_FLOW_STATUSLINE_REFRESH   Refresh interval in ms
-  CLAUDE_FLOW_SHOW_HOOKS_METRICS   Show hooks metrics (true/false)
-  CLAUDE_FLOW_SHOW_SWARM_ACTIVITY  Show swarm activity (true/false)
-  CLAUDE_FLOW_SHOW_PERFORMANCE     Show performance targets (true/false)
+  MOFLO_STATUSLINE_REFRESH   Refresh interval in ms
+  MOFLO_SHOW_HOOKS_METRICS   Show hooks metrics (true/false)
+  MOFLO_SHOW_SWARM_ACTIVITY  Show swarm activity (true/false)
+  MOFLO_SHOW_PERFORMANCE     Show performance targets (true/false)
 
 Examples:
   statusline                       # Display formatted status
@@ -49,13 +49,17 @@ Examples:
     process.exit(0);
   }
 
-  // Create generator with environment-based config
+  // Create generator with environment-based config.
+  // #1209 — prefer MOFLO_* toggles, fall back to the pre-rebrand CLAUDE_FLOW_*
+  // names so consumers who set the old vars keep their statusline preferences.
+  const showEnv = (suffix) =>
+    process.env['MOFLO_' + suffix] ?? process.env['CLAUDE_' + 'FLOW_' + suffix];
   const generator = new StatuslineGenerator({
     enabled: true,
     refreshOnHook: true,
-    showHooksMetrics: process.env.CLAUDE_FLOW_SHOW_HOOKS_METRICS !== 'false',
-    showSwarmActivity: process.env.CLAUDE_FLOW_SHOW_SWARM_ACTIVITY !== 'false',
-    showPerformance: process.env.CLAUDE_FLOW_SHOW_PERFORMANCE !== 'false',
+    showHooksMetrics: showEnv('SHOW_HOOKS_METRICS') !== 'false',
+    showSwarmActivity: showEnv('SHOW_SWARM_ACTIVITY') !== 'false',
+    showPerformance: showEnv('SHOW_PERFORMANCE') !== 'false',
   });
 
   // Try to read from metrics database or files
