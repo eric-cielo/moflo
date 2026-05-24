@@ -27,6 +27,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { errorDetail } from './shared/utils/error-detail.js';
 import { findProjectRoot } from './services/project-root.js';
+import { readMofloEnv } from './services/env-compat.js';
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -259,7 +260,7 @@ export class MCPServerManager extends EventEmitter {
       // No PID file found. Detect if we are running in stdio mode
       // (e.g., launched by Claude Code via `claude mcp add`).
       const isStdio = !process.stdin.isTTY;
-      const envTransport = process.env.CLAUDE_FLOW_MCP_TRANSPORT;
+      const envTransport = readMofloEnv('MCP_TRANSPORT');
       if (isStdio || envTransport === 'stdio' || this.options.transport === 'stdio') {
         return {
           running: true,

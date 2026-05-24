@@ -710,7 +710,7 @@ export async function checkHookBlockDrift(): Promise<HealthCheck> {
     return {
       name: 'Hook Block Drift',
       status: 'pass',
-      message: 'drift check skipped — claudeFlow.hooks.locked: true',
+      message: 'drift check skipped — moflo.hooks.locked: true',
     };
   }
   // #896: respect `auto_update.hook_block_drift: off` — opt-out for consumers
@@ -745,7 +745,7 @@ export async function checkHookBlockDrift(): Promise<HealthCheck> {
     name: 'Hook Block Drift',
     status: 'warn',
     message: parts.join(', '),
-    fix: 'set auto_update.hook_block_drift: regenerate in moflo.yaml, or claudeFlow.hooks.locked: true to suppress',
+    fix: 'set auto_update.hook_block_drift: regenerate in moflo.yaml, or moflo.hooks.locked: true to suppress',
   };
 }
 

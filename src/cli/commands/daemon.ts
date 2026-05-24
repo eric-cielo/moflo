@@ -18,6 +18,7 @@ import { spawn, execFile, execFileSync } from 'child_process';
 import { join, resolve, isAbsolute } from 'path';
 import * as fs from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { readMofloEnv } from '../services/env-compat.js';
 
 /**
  * Resolve the dashboard port from CLI flag and env, in that precedence order.
@@ -76,7 +77,7 @@ const startCommand: Command = {
     const noDashboard = ctx.flags.noDashboard as boolean;
     const rawDashboardPort = ctx.flags.dashboardPort as string | undefined;
     const projectRoot = process.cwd();
-    const isDaemonProcess = process.env.CLAUDE_FLOW_DAEMON === '1';
+    const isDaemonProcess = readMofloEnv('DAEMON') === '1';
 
     // Resolve dashboard port; see `resolveDashboardPort` for precedence.
     const portResult = resolveDashboardPort(rawDashboardPort, process.env.MOFLO_DAEMON_PORT);
@@ -145,7 +146,7 @@ const startCommand: Command = {
       process.env.MOFLO_IS_DAEMON = '1';
 
       // Acquire atomic daemon lock (prevents duplicate daemons).
-      // Always acquire here — even when spawned as a child (CLAUDE_FLOW_DAEMON=1)
+      // Always acquire here — even when spawned as a child (MOFLO_DAEMON=1)
       // because on Windows the parent's child.pid is the shell PID (cmd.exe),
       // not the actual node process. The child must write its own real PID.
       const lockResult = acquireDaemonLock(projectRoot);
@@ -433,7 +434,7 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
 
   const daemonEnv = {
     ...process.env,
-    CLAUDE_FLOW_DAEMON: '1',
+    MOFLO_DAEMON: '1',
     // #981 — daemon process must skip its own write-routing client.
     MOFLO_IS_DAEMON: '1',
     // Prevent macOS SIGHUP kill when terminal closes

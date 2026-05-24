@@ -10,6 +10,7 @@ import os from 'os';
 import type { SystemConfig } from './schema.js';
 import { validateSystemConfig, type ValidationResult } from './validator.js';
 import { defaultSystemConfig, mergeWithDefaults } from './defaults.js';
+import { readMofloEnv } from '../../../services/env-compat.js';
 
 /**
  * Configuration source type
@@ -70,32 +71,40 @@ async function loadJsonConfig(path: string): Promise<unknown> {
 function loadEnvConfig(): Partial<SystemConfig> {
   const config: Partial<SystemConfig> = {};
 
+  // Env reads go through readMofloEnv (MOFLO_* preferred, CLAUDE_FLOW_* legacy
+  // fallback — see env-compat.ts / #1209).
+  const envMaxAgents = readMofloEnv('MAX_AGENTS');
+  const envDataDir = readMofloEnv('DATA_DIR');
+  const envMemoryType = readMofloEnv('MEMORY_TYPE');
+  const envMcpTransport = readMofloEnv('MCP_TRANSPORT');
+  const envSwarmTopology = readMofloEnv('SWARM_TOPOLOGY');
+
   // Orchestrator settings
-  if (process.env.CLAUDE_FLOW_MAX_AGENTS) {
+  if (envMaxAgents) {
     config.orchestrator = {
       ...defaultSystemConfig.orchestrator,
       lifecycle: {
         ...defaultSystemConfig.orchestrator.lifecycle,
-        maxConcurrentAgents: parseInt(process.env.CLAUDE_FLOW_MAX_AGENTS, 10),
+        maxConcurrentAgents: parseInt(envMaxAgents, 10),
       },
     };
   }
 
   // Data directory
-  if (process.env.CLAUDE_FLOW_DATA_DIR) {
+  if (envDataDir) {
     config.orchestrator = {
       ...config.orchestrator,
       ...defaultSystemConfig.orchestrator,
       session: {
         ...defaultSystemConfig.orchestrator.session,
-        dataDir: process.env.CLAUDE_FLOW_DATA_DIR,
+        dataDir: envDataDir,
       },
     };
   }
 
   // Memory type
-  if (process.env.CLAUDE_FLOW_MEMORY_TYPE) {
-    const memoryType = process.env.CLAUDE_FLOW_MEMORY_TYPE as NonNullable<SystemConfig['memory']>['type'];
+  if (envMemoryType) {
+    const memoryType = envMemoryType as NonNullable<SystemConfig['memory']>['type'];
     if (['sqlite', 'agentdb', 'hybrid', 'redis', 'memory'].includes(memoryType)) {
       config.memory = {
         ...(defaultSystemConfig.memory ?? { type: 'hybrid' }),
@@ -106,8 +115,8 @@ function loadEnvConfig(): Partial<SystemConfig> {
 
   // MCP transport (only 'stdio' is supported; env var kept for forward-compat but narrowed)
   const defaultMcp = defaultSystemConfig.mcp ?? { name: 'moflo', version: '3.0.0', transport: { type: 'stdio' as const } };
-  if (process.env.CLAUDE_FLOW_MCP_TRANSPORT) {
-    const transport = process.env.CLAUDE_FLOW_MCP_TRANSPORT;
+  if (envMcpTransport) {
+    const transport = envMcpTransport;
     if (transport === 'stdio') {
       config.mcp = {
         ...defaultMcp,
@@ -119,12 +128,12 @@ function loadEnvConfig(): Partial<SystemConfig> {
     }
   }
 
-  // CLAUDE_FLOW_MCP_PORT removed — stdio transport does not use a port.
+  // MOFLO_MCP_PORT / CLAUDE_FLOW_MCP_PORT removed — stdio transport does not use a port.
 
   // Swarm topology
   const defaultSwarm = defaultSystemConfig.swarm ?? { topology: 'hierarchical-mesh' as const, maxAgents: 20 };
-  if (process.env.CLAUDE_FLOW_SWARM_TOPOLOGY) {
-    const topology = process.env.CLAUDE_FLOW_SWARM_TOPOLOGY as NonNullable<SystemConfig['swarm']>['topology'];
+  if (envSwarmTopology) {
+    const topology = envSwarmTopology as NonNullable<SystemConfig['swarm']>['topology'];
     if (['hierarchical', 'mesh', 'ring', 'star', 'adaptive', 'hierarchical-mesh'].includes(topology)) {
       config.swarm = {
         ...defaultSwarm,

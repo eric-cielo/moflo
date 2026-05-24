@@ -300,10 +300,10 @@
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "CLAUDE_FLOW_V3_ENABLED": "true",
-    "CLAUDE_FLOW_HOOKS_ENABLED": "true"
+    "MOFLO_V3_ENABLED": "true",
+    "MOFLO_HOOKS_ENABLED": "true"
   },
-  "claudeFlow": {
+  "moflo": {
     "version": "3.0.0",
     "enabled": true,
     "platform": {

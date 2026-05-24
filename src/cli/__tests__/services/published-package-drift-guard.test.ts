@@ -509,6 +509,68 @@ describe('published-package drift guard (issue #585)', () => {
         `Offenders:\n  ${offenders.join('\n  ')}`,
     ).toEqual([]);
   });
+
+  it('no production code *writes* CLAUDE_FLOW_* env vars or the claudeFlow.* settings tree (#1209)', () => {
+    // Issue #1209: the claude-flow → moflo rebrand migrated every WRITER to
+    // emit `MOFLO_*` env vars and the `moflo.*` settings tree. READS still
+    // accept the pre-rebrand names as a fallback (see services/env-compat.ts
+    // and hook-block-hash.ts), so this guard is deliberately write-only: it
+    // flags new writers that would re-introduce the legacy brand into a
+    // consumer's environment, .mcp.json, settings.json, or systemd unit.
+    //
+    // The write shapes below intentionally do NOT match: reads
+    // (`readMofloEnv('X')`, `existingEnv.CLAUDE_FLOW_X || …`), comparisons
+    // (`=== '1'`), deletions (`delete x.claudeFlow`), the upstream package-list
+    // identifier `CLAUDE_FLOW_PACKAGES`, or the legacy `.claude-flow` dir
+    // constant `LEGACY_CLAUDE_FLOW_DIR`. If a genuine new writer is required
+    // (e.g. a migration codepath), add the marker `LEGACY-ENV-WRITE` on the
+    // same line.
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'helpers'),
+      join(REPO_ROOT, '.claude', 'skills'),
+    ];
+    const WRITE_PATTERNS: RegExp[] = [
+      /\bCLAUDE_FLOW_[A-Z0-9_]+\s*:/,                  // object-literal env key: `CLAUDE_FLOW_X: 'v'`
+      /process\.env\.CLAUDE_FLOW_[A-Z0-9_]+\s*=(?!=)/, // assignment: `process.env.CLAUDE_FLOW_X = …`
+      /\bCLAUDE_FLOW_[A-Z0-9_]+=(?!=)/,                // KEY=value string: systemd unit, .env, help text
+      /\.claudeFlow\s*=(?!=)/,                          // settings member write: `settings.claudeFlow = …`
+    ];
+    const ALLOWED_MARKERS = /LEGACY-ENV-WRITE/;
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (/[/\\]__tests__[/\\]/.test(file)) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!text.includes('CLAUDE_FLOW_') && !text.includes('claudeFlow')) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (isCommentLine(line)) continue;
+          if (ALLOWED_MARKERS.test(line)) continue;
+          if (WRITE_PATTERNS.some((re) => re.test(line))) {
+            offenders.push(`${rel}:${i + 1}`);
+          }
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Production code WRITES legacy claude-flow branding (#1209 migrated every\n` +
+        `writer to MOFLO_* / moflo.*). Switch the writer to the MOFLO_* env name\n` +
+        `or the moflo.* settings key (reads still fall back to the old name).\n` +
+        `If a legacy write is genuinely required, add a "LEGACY-ENV-WRITE" marker\n` +
+        `on the same line.\n` +
+        `Offenders:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
 });
 
 /**

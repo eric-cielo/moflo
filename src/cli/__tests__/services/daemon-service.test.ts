@@ -100,7 +100,7 @@ describe('daemon-service', () => {
       expect(unit).toContain('WorkingDirectory=/home/dev/myapp');
       expect(unit).toContain('WantedBy=default.target');
       expect(unit).toContain('Restart=on-failure');
-      expect(unit).toContain('CLAUDE_FLOW_DAEMON=1');
+      expect(unit).toContain('MOFLO_DAEMON=1');
     });
   });
 

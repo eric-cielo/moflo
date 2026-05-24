@@ -32,6 +32,7 @@ import { writeEnvrc } from './envrc-generator.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { locateMofloRootPath } from '../services/moflo-require.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { readMofloEnv } from '../services/env-compat.js';
 
 /**
  * Skills to copy based on configuration. Exported for integrity tests.
@@ -259,16 +260,20 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
   // Mac/Linux: Use bash-compatible commands with 2>/dev/null
   // NOTE: teammateIdleCmd and taskCompletedCmd were removed.
   // TeammateIdle/TaskCompleted are not valid Claude Code hook events and caused warnings.
-  // Agent Teams hook config lives in claudeFlow.agentTeams.hooks instead.
+  // Agent Teams hook config lives in moflo.agentTeams.hooks instead.
 
   // 1. Merge env vars (preserve existing, add new)
   const existingEnv = (existing.env as Record<string, string>) || {};
   const newEnv: Record<string, string> = {
     ...existingEnv,
     CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-    CLAUDE_FLOW_V3_ENABLED: existingEnv.CLAUDE_FLOW_V3_ENABLED || 'true',
-    CLAUDE_FLOW_HOOKS_ENABLED: existingEnv.CLAUDE_FLOW_HOOKS_ENABLED || 'true',
+    // #1209 — emit MOFLO_* names; carry any pre-rebrand value forward, then
+    // drop the legacy keys so a consumer's settings.json ends up clean.
+    MOFLO_V3_ENABLED: existingEnv.MOFLO_V3_ENABLED || existingEnv.CLAUDE_FLOW_V3_ENABLED || 'true',
+    MOFLO_HOOKS_ENABLED: existingEnv.MOFLO_HOOKS_ENABLED || existingEnv.CLAUDE_FLOW_HOOKS_ENABLED || 'true',
   };
+  delete newEnv.CLAUDE_FLOW_V3_ENABLED;
+  delete newEnv.CLAUDE_FLOW_HOOKS_ENABLED;
   // Remove stale PATH override — ${PATH} isn't expanded by Claude Code,
   // which replaces the inherited PATH and breaks node resolution in hooks.
   delete newEnv.PATH;
@@ -328,7 +333,7 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
   // Remove them if they exist from a previous init.
   delete (merged.hooks as Record<string, unknown>).TeammateIdle;
   delete (merged.hooks as Record<string, unknown>).TaskCompleted;
-  // Their configuration lives in claudeFlow.agentTeams.hooks instead.
+  // Their configuration lives in moflo.agentTeams.hooks instead.
 
   // 3. Fix statusLine config (remove invalid fields, ensure correct format)
   // Claude Code only supports: type, command, padding
@@ -340,13 +345,20 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
     // Remove invalid fields: refreshMs, enabled (not supported by Claude Code)
   };
 
-  // 4. Merge claudeFlow settings (preserve existing, add agentTeams + memory)
-  const existingClaudeFlow = (existing.claudeFlow as Record<string, unknown>) || {};
-  const existingMemory = (existingClaudeFlow.memory as Record<string, unknown>) || {};
-  merged.claudeFlow = {
-    ...existingClaudeFlow,
-    version: existingClaudeFlow.version || '3.0.0',
-    enabled: existingClaudeFlow.enabled !== false,
+  // 4. Merge moflo settings (preserve existing, add agentTeams + memory).
+  // #1209 — read the canonical `moflo.*` tree, falling back to the pre-rebrand
+  // `claudeFlow.*` tree, write `moflo.*`, then drop the legacy tree so the
+  // consumer's settings.json migrates in place. The `hooks.locked` escape
+  // hatch survives the move via the spread.
+  const existingMofloTree =
+    (existing.moflo as Record<string, unknown>) ||
+    (existing.claudeFlow as Record<string, unknown>) ||
+    {};
+  const existingMemory = (existingMofloTree.memory as Record<string, unknown>) || {};
+  merged.moflo = {
+    ...existingMofloTree,
+    version: existingMofloTree.version || '3.0.0',
+    enabled: existingMofloTree.enabled !== false,
     agentTeams: {
       enabled: true,
       teammateMode: 'auto',
@@ -370,6 +382,8 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
       agentScopes: existingMemory.agentScopes ?? { enabled: true },
     },
   };
+  // Drop the pre-rebrand tree now that its content lives under `moflo.*`.
+  delete merged.claudeFlow;
 
   // 5. Repair any missing required hook wirings (same logic doctor --fix uses)
   repairHookWiring(merged);
@@ -664,8 +678,8 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
             'hooks.TeammateIdle (removed — not a valid Claude Code hook)',
             'hooks.TaskCompleted (removed — not a valid Claude Code hook)',
             'hooks (repaired missing gate wirings)',
-            'claudeFlow.agentTeams',
-            'claudeFlow.memory (learningBridge, memoryGraph, agentScopes)',
+            'moflo.agentTeams',
+            'moflo.memory (learningBridge, memoryGraph, agentScopes)',
             'statusLine',
           ];
         } catch (settingsError) {
@@ -779,7 +793,7 @@ export async function executeUpgradeWithMissing(targetDir: string, _upgradeSetti
     const sourceCommandsDir = findSourceDir('commands');
 
     // Debug: Log source directories found
-    if (process.env.DEBUG || process.env.CLAUDE_FLOW_DEBUG) {
+    if (process.env.DEBUG || readMofloEnv('DEBUG')) {
       console.log('[DEBUG] Source directories:');
       console.log(`  Skills: ${sourceSkillsDir || 'NOT FOUND'}`);
       console.log(`  Agents: ${sourceAgentsDir || 'NOT FOUND'}`);
@@ -789,7 +803,7 @@ export async function executeUpgradeWithMissing(targetDir: string, _upgradeSetti
     // Add missing skills
     if (sourceSkillsDir) {
       const allSkills = Object.values(SKILLS_MAP).flat();
-      const debugMode = process.env.DEBUG || process.env.CLAUDE_FLOW_DEBUG;
+      const debugMode = process.env.DEBUG || readMofloEnv('DEBUG');
       if (debugMode) {
         console.log(`[DEBUG] Checking ${allSkills.length} skills from SKILLS_MAP`);
       }

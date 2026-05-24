@@ -62,7 +62,7 @@ const checkCommand: Command = {
     const { flags } = ctx;
 
     if (flags.force) {
-      process.env.CLAUDE_FLOW_FORCE_UPDATE = 'true';
+      process.env.MOFLO_FORCE_UPDATE = 'true';
     }
 
     try {
@@ -125,7 +125,7 @@ const checkCommand: Command = {
 
       return { success: true };
     } finally {
-      delete process.env.CLAUDE_FLOW_FORCE_UPDATE;
+      delete process.env.MOFLO_FORCE_UPDATE;
     }
   },
 };
@@ -140,7 +140,7 @@ const allCommand: Command = {
   ],
   async action(ctx: CommandContext): Promise<CommandResult> {
     const { flags } = ctx;
-    process.env.CLAUDE_FLOW_FORCE_UPDATE = 'true';
+    process.env.MOFLO_FORCE_UPDATE = 'true';
 
     try {
       output.printInfo('Checking for updates...');
@@ -204,7 +204,7 @@ const allCommand: Command = {
 
       return { success: failed.length === 0 };
     } finally {
-      delete process.env.CLAUDE_FLOW_FORCE_UPDATE;
+      delete process.env.MOFLO_FORCE_UPDATE;
     }
   },
 };
@@ -327,8 +327,8 @@ const updateCommand: Command = {
     output.writeln();
     output.writeln('Environment Variables:');
     output.printList([
-      `${output.dim('CLAUDE_FLOW_AUTO_UPDATE=false')}  - Disable auto-update`,
-      `${output.dim('CLAUDE_FLOW_FORCE_UPDATE=true')} - Force update check`,
+      `${output.dim('MOFLO_AUTO_UPDATE=false')}  - Disable auto-update`,
+      `${output.dim('MOFLO_FORCE_UPDATE=true')} - Force update check`,
     ]);
     output.writeln();
     output.writeln('Run "flo update <subcommand> --help" for subcommand help');

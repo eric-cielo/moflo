@@ -338,12 +338,11 @@ export function computeHookBlockDrift(
  * `claudeFlow.hooks.locked: true` (legacy alias) in their settings.json —
  * a sentinel that suppresses drift surfacing entirely.
  *
- * The `claudeFlow.*` settings tree is a pre-rebrand legacy name that survives
- * in writers + readers across the codebase. Renaming the whole tree is a
- * separate effort; this one reader accepts `moflo.hooks.locked` ahead of the
- * legacy key so the #1180 escape hatch is documented under the canonical
- * brand from day one and consumers never have to migrate the key after we
- * tell them to set it.
+ * The `claudeFlow.*` settings tree was migrated to `moflo.*` in #1209: every
+ * writer now emits `moflo.*` and the upgrade merge folds an existing
+ * `claudeFlow.*` tree into `moflo.*`. This reader keeps the `claudeFlow.hooks.locked`
+ * fallback for one deprecation cycle so a consumer who set the escape hatch but
+ * hasn't re-run init yet stays covered.
  */
 export function isHookBlockLocked(settings: unknown): boolean {
   const root = settings as Record<string, unknown> | null | undefined;

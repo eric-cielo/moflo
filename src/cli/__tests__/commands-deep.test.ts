@@ -1427,7 +1427,7 @@ describe('Init System', () => {
     });
 
     it('should have all MCP servers enabled', () => {
-      expect(FULL_INIT_OPTIONS.mcp.claudeFlow).toBe(true);
+      expect(FULL_INIT_OPTIONS.mcp.moflo).toBe(true);
       expect(FULL_INIT_OPTIONS.mcp.ruvSwarm).toBe(true);
       expect(FULL_INIT_OPTIONS.mcp.flowNexus).toBe(true);
     });
@@ -1483,12 +1483,14 @@ describe('Init System', () => {
       expect(env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('1');
     });
 
-    it('should include claudeFlow v3 settings', () => {
+    it('should include moflo v3 settings', () => {
       const settings = generateSettings(DEFAULT_INIT_OPTIONS) as Record<string, unknown>;
-      expect(settings.claudeFlow).toBeDefined();
-      const cf = settings.claudeFlow as Record<string, unknown>;
+      expect(settings.moflo).toBeDefined();
+      const cf = settings.moflo as Record<string, unknown>;
       expect(cf.version).toBe('3.0.0');
       expect(cf.enabled).toBe(true);
+      // The pre-rebrand tree must not be emitted any more (#1209).
+      expect(settings.claudeFlow).toBeUndefined();
     });
 
     it('should deny reading .env files', () => {

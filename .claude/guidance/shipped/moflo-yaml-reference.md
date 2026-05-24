@@ -164,17 +164,17 @@ Config is loaded from `moflo.yaml` at the project root — there is no env var t
 
 ```bash
 # Logging
-CLAUDE_FLOW_LOG_LEVEL=info               # debug | info | warn | error
+MOFLO_LOG_LEVEL=info               # debug | info | warn | error
 
 # MCP Server (stdio transport — no port)
-CLAUDE_FLOW_MCP_TRANSPORT=stdio
+MOFLO_MCP_TRANSPORT=stdio
 
 # Memory backend (legacy SystemConfig env vars — moflo.yaml `memory.backend` is the modern surface)
-CLAUDE_FLOW_MEMORY_BACKEND=sqlite        # informational only; not consumed by selectProvider
-CLAUDE_FLOW_MEMORY_TYPE=sqlite           # SystemConfig override (legacy)
+MOFLO_MEMORY_BACKEND=sqlite        # informational only; not consumed by selectProvider
+MOFLO_MEMORY_TYPE=sqlite           # SystemConfig override (legacy)
 ```
 
-Variable names retain the `CLAUDE_FLOW_` prefix for backward compatibility with consumers upgraded from claude-flow.
+These use the canonical `MOFLO_` prefix. The pre-rebrand `CLAUDE_FLOW_` names are still read as a fallback for one deprecation cycle, so consumers upgraded from `claude-flow` keep working without a manual rename.
 
 ---
 
