@@ -1609,7 +1609,7 @@ async function writeInitialMetrics(
 }
 
 /**
- * Write CAPABILITIES.md - comprehensive overview of all Claude Flow features
+ * Write CAPABILITIES.md - comprehensive overview of all MoFlo features
  */
 async function writeCapabilitiesDoc(
   targetDir: string,

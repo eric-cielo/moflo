@@ -1,7 +1,7 @@
 /**
  * Security Module
  *
- * Shared security utilities for V3 Claude Flow.
+ * Shared security utilities for V3 MoFlo.
  *
  * @module v3/shared/security
  */

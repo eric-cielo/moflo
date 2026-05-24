@@ -1,7 +1,7 @@
 /**
  * Plugins System - ADR-004 Implementation
  *
- * Plugin architecture for extending Claude Flow functionality.
+ * Plugin architecture for extending MoFlo functionality.
  *
  * @module v3/shared/plugins
  */

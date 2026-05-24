@@ -1,6 +1,6 @@
 /**
  * V3 CLI Status Command
- * System status display for Claude Flow
+ * System status display for MoFlo
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

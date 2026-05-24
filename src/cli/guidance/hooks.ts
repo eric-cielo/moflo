@@ -1,7 +1,7 @@
 /**
  * Guidance Hook Integration Layer
  *
- * Wires the EnforcementGates and ShardRetriever into the Claude Flow V3
+ * Wires the EnforcementGates and ShardRetriever into the MoFlo V3
  * hook lifecycle. Each guidance concern is registered as a hook that
  * participates in the standard HookRegistry event flow.
  *

@@ -1,5 +1,5 @@
 /**
- * MoVector Integration Module for Claude Flow CLI
+ * MoVector Integration Module for MoFlo CLI
  *
  * Provides pure TS vector and neural utilities for:
  * - Q-Learning based task routing

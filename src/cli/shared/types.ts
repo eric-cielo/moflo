@@ -1,5 +1,5 @@
 /**
- * V3 Claude-Flow Shared Types
+ * V3 MoFlo Shared Types
  * Core type definitions for the 15-agent swarm coordination system
  *
  * Based on ADR-002 (DDD) and ADR-003 (Single Coordination Engine)

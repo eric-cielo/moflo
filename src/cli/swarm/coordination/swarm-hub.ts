@@ -681,7 +681,7 @@ export class SwarmHub implements ISwarmHub {
       {
         id: 'ms-v3-release',
         name: 'V3.0.0 Released',
-        description: 'Claude-Flow v3.0.0 published to npm',
+        description: 'MoFlo v3.0.0 published to npm',
         criteria: [
           { description: 'All tests passing (>90% coverage)', met: false, evidence: null },
           { description: 'Documentation complete', met: false, evidence: null },

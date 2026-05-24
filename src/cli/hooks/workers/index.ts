@@ -1,7 +1,7 @@
 /**
  * V3 Workers System - Cross-Platform Background Workers
  *
- * Optimizes Claude Flow with non-blocking, scheduled workers.
+ * Optimizes MoFlo with non-blocking, scheduled workers.
  * Works on Linux, macOS, and Windows.
  */
 

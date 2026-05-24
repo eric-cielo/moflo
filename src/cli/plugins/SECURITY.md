@@ -14,7 +14,7 @@ type TrustLevel = 'official' | 'verified' | 'community' | 'unverified';
 
 | Level | Description | Requirements |
 |-------|-------------|--------------|
-| **Official** | Claude Flow team maintained | Core team, security audit passed |
+| **Official** | MoFlo team maintained | Core team, security audit passed |
 | **Verified** | Audited by trusted parties | Third-party security audit |
 | **Community** | Community contributed | Author identity verified |
 | **Unverified** | Unknown origin | None (use with caution) |
@@ -165,4 +165,4 @@ In the current demo implementation:
 
 Security Review Version: 1.0.0
 Last Updated: 2026-01-08
-Reviewed By: Claude Flow Security Team
+Reviewed By: MoFlo Security Team

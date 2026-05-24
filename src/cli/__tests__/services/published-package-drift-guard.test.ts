@@ -510,6 +510,59 @@ describe('published-package drift guard (issue #585)', () => {
     ).toEqual([]);
   });
 
+  it('no branded `Claude Flow` / `Claude-Flow` form remains in shipped source (#1211)', () => {
+    // #1211 removed the legacy product name from every internal comment, header,
+    // JSDoc, and output string under the shipped tree. This guard locks that in:
+    // the capitalized, branded form `Claude Flow` / `Claude-Flow` must not reappear.
+    //
+    // It deliberately covers BOTH comments and output strings — a superset of the
+    // sibling `claude-flow <subcommand>` guard (which only checks output strings) —
+    // because post-#1211 the branded form has no legitimate use anywhere in shipped
+    // code. The lowercase package / CLI identity (`claude-flow`, `@claude-flow/`,
+    // `.claude-flow`) is intentionally NOT matched here: requiring a capital "C" and
+    // "F" excludes it, and those forms are governed by the guards above.
+    //
+    // If a verbatim historical reference is genuinely required, add a
+    // `LEGACY-BRAND` marker on the same line (a precise token, not the bare
+    // word "LEGACY", so unrelated LEGACY-annotated lines can't suppress a real hit).
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'helpers'),
+      join(REPO_ROOT, '.claude', 'skills'),
+    ];
+    const BRANDED_RE = /Claude[- ]Flow/;
+    const ALLOWED_MARKERS = /LEGACY-BRAND/;
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (/[/\\]__tests__[/\\]/.test(file)) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!BRANDED_RE.test(text)) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (!BRANDED_RE.test(line)) continue;
+          if (ALLOWED_MARKERS.test(line)) continue;
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Stale branded "Claude Flow"/"Claude-Flow" references — the product is "MoFlo" (#1211):\n` +
+        `replace with "MoFlo" (or "moflo" where it reads as the package).\n` +
+        `If a verbatim historical reference is intentional, add a "LEGACY-BRAND" marker.\n` +
+        `Offenders:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
   it('no production code *writes* CLAUDE_FLOW_* env vars or the claudeFlow.* settings tree (#1209)', () => {
     // Issue #1209: the claude-flow → moflo rebrand migrated every WRITER to
     // emit `MOFLO_*` env vars and the `moflo.*` settings tree. READS still
