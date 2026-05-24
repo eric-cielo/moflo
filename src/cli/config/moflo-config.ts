@@ -65,13 +65,13 @@ export interface MofloConfig {
   };
 
   /**
-   * Auto-reflect (#1198) — the automatic counterpart to `/reflect`. When
+   * Auto-meditate (#1198) — the automatic counterpart to `/meditate`. When
    * `enabled`, a UserPromptSubmit hook recognizes durable lessons in the LIVE
    * session and a session-start pass distills them into the `learnings`
    * namespace via a bounded headless Haiku run. Defaults ON (opt out with
    * `enabled: false`); the `rc` dist-tag gated the initial rollout.
    */
-  auto_reflect: {
+  auto_meditate: {
     enabled: boolean;
   };
 
@@ -209,7 +209,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     inject: true,
     max_age_hours: 72,
   },
-  auto_reflect: {
+  auto_meditate: {
     enabled: true,
   },
   memory: {
@@ -383,8 +383,10 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       inject: raw.session_continuity?.inject ?? raw.sessionContinuity?.inject ?? DEFAULT_CONFIG.session_continuity.inject,
       max_age_hours: raw.session_continuity?.max_age_hours ?? raw.sessionContinuity?.maxAgeHours ?? DEFAULT_CONFIG.session_continuity.max_age_hours,
     },
-    auto_reflect: {
-      enabled: raw.auto_reflect?.enabled ?? raw.autoReflect?.enabled ?? DEFAULT_CONFIG.auto_reflect.enabled,
+    auto_meditate: {
+      // Back-compat: honour the legacy auto_reflect / autoReflect keys (pre-rebrand)
+      // so an existing opt-out survives until the yaml-upgrader renames the key.
+      enabled: raw.auto_meditate?.enabled ?? raw.autoMeditate?.enabled ?? raw.auto_reflect?.enabled ?? raw.autoReflect?.enabled ?? DEFAULT_CONFIG.auto_meditate.enabled,
     },
     memory: {
       backend: coerceMemoryBackend(raw.memory?.backend),

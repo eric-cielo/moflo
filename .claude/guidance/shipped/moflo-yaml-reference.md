@@ -45,6 +45,16 @@ auto_index:
   guidance: true                  # Run flo-index (guidance RAG indexer)
   code_map: true                  # Run flo-codemap (structural code index)
 
+# Auto-meditate — distill durable session lessons into the learnings namespace
+auto_meditate:
+  enabled: true                   # On by default; recognizes lessons live, distills at next session start
+
+# Session-continuity — capture a "where you left off" digest, re-inject when relevant
+session_continuity:
+  capture: true                   # Write a per-session digest on the Stop hook
+  inject: true                    # Relevance-gated injection at next session start
+  max_age_hours: 72               # Ignore digests older than this when injecting
+
 # Memory backend
 memory:
   backend: node-sqlite            # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider (#1144).
@@ -119,6 +129,9 @@ If your `moflo.yaml` predates the `sandbox:` or `auto_update:` blocks, they are 
 |--------|--------|
 | `auto_index.guidance: false` | Skip guidance indexing on session start |
 | `auto_index.code_map: false` | Skip code map generation on session start |
+| `auto_meditate.enabled: false` | Opt out of automatic session-lesson distillation (`/meditate` still works manually) |
+| `session_continuity.capture: false` | Stop writing per-session "where you left off" digests |
+| `session_continuity.inject: false` | Keep capturing digests but never auto-inject them at session start |
 | `gates.memory_first: true` | Block Glob/Grep/Read until memory is searched first |
 | `gates.task_create_first: true` | Advisory reminder before Agent tool (not blocking) |
 | `gates.context_tracking: true` | Show FRESH/MODERATE/DEPLETED/CRITICAL context bracket |

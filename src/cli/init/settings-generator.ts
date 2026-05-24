@@ -201,11 +201,11 @@ function continuityCmd(subcommand: string): string {
   return hookCmdEsm('"$CLAUDE_PROJECT_DIR/.claude/scripts/session-continuity.mjs"', subcommand);
 }
 
-/** Shorthand for the ESM auto-reflect capture command (#1198). Default-ON
- *  (the script no-ops only when auto_reflect.enabled is false). Lives in
+/** Shorthand for the ESM auto-meditate capture command (#1198). Default-ON
+ *  (the script no-ops only when auto_meditate.enabled is false). Lives in
  *  .claude/scripts/ beside its ./lib/ helpers. */
-function reflectCaptureCmd(subcommand: string): string {
-  return hookCmdEsm('"$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs"', subcommand);
+function meditateCaptureCmd(subcommand: string): string {
+  return hookCmdEsm('"$CLAUDE_PROJECT_DIR/.claude/scripts/meditate-capture.mjs"', subcommand);
 }
 
 /** Shorthand for gate commands (lightweight JSON state checks) */
@@ -382,11 +382,11 @@ function generateHooksConfig(config: HooksConfig): object {
           { type: 'command', command: gateHookCmd('prompt-state-reset'), timeout: 3000 },
         ],
       },
-      // #1198 — auto-reflect Stage 1 (detect). Default-ON; injects an
+      // #1198 — auto-meditate Stage 1 (detect). Default-ON; injects an
       // answer-first capture directive only on a strong signal + within limits.
       {
         hooks: [
-          { type: 'command', command: reflectCaptureCmd('reflect-detect'), timeout: 3000 },
+          { type: 'command', command: meditateCaptureCmd('meditate-detect'), timeout: 3000 },
         ],
       },
     ];
@@ -433,9 +433,9 @@ function generateHooksConfig(config: HooksConfig): object {
           { type: 'command', command: hookHandlerCmd('session-end'), timeout: 5000 },
           { type: 'command', command: autoMemoryCmd('sync'), timeout: 10000 },
           { type: 'command', command: continuityCmd('capture'), timeout: 5000 },
-          // #1198 — auto-reflect Stage 1 (scrape). Default-ON; harvests
-          // <reflect-capture> tags from the assistant turn into the ledger.
-          { type: 'command', command: reflectCaptureCmd('reflect-scrape'), timeout: 5000 },
+          // #1198 — auto-meditate Stage 1 (scrape). Default-ON; harvests
+          // <meditate-capture> tags from the assistant turn into the ledger.
+          { type: 'command', command: meditateCaptureCmd('meditate-scrape'), timeout: 5000 },
         ],
       },
     ];

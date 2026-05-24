@@ -1,7 +1,7 @@
 /**
- * Reflect Skill — Content Validation Tests (#1187)
+ * Meditate Skill — Content Validation Tests (#1187)
  *
- * `/reflect` is a skill-only feature: a structured-prompt + `memory_store`
+ * `/meditate` is a skill-only feature: a structured-prompt + `memory_store`
  * wrapper, no new runtime. There is no executable logic to unit-test, so the
  * meaningful guards are (a) the SKILL.md is well-formed and documents the
  * contract the issue specified, and (b) the skill is registered for shipping.
@@ -17,9 +17,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const SKILL_PATH = path.resolve(__dirname, '../../.claude/skills/reflect/SKILL.md');
+const SKILL_PATH = path.resolve(__dirname, '../../.claude/skills/meditate/SKILL.md');
 
-describe('reflect skill', () => {
+describe('meditate skill', () => {
   let content: string;
   let frontmatter: string;
   let fmName: string;
@@ -31,7 +31,7 @@ describe('reflect skill', () => {
     const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     expect(fm, 'SKILL.md must open with YAML frontmatter').not.toBeNull();
     frontmatter = fm![1];
-    // This skill uses unquoted name/description (the brainstorm/healer style).
+    // This skill uses unquoted name/description (the commune/healer style).
     fmName = (frontmatter.match(/name:\s*(.+)/)?.[1] ?? '').trim();
     fmDescription = (frontmatter.match(/description:\s*(.+)/)?.[1] ?? '').trim();
     fmArguments = (frontmatter.match(/arguments:\s*"([^"]*)"/)?.[1] ?? '').trim();
@@ -49,8 +49,8 @@ describe('reflect skill', () => {
   });
 
   describe('YAML frontmatter', () => {
-    it('name is "reflect" and matches the directory', () => {
-      expect(fmName).toBe('reflect');
+    it('name is "meditate" and matches the directory', () => {
+      expect(fmName).toBe('meditate');
       expect(fmName.length).toBeLessThanOrEqual(64);
     });
 
@@ -117,7 +117,7 @@ describe('reflect skill', () => {
     });
   });
 
-  // Registration ("reflect" must be in SKILLS_MAP and exist on disk) is the
+  // Registration ("meditate" must be in SKILLS_MAP and exist on disk) is the
   // canonical job of tests/skills/skills-classification-drift.test.ts — not
   // duplicated here. This file owns only the SKILL.md content contract.
 });

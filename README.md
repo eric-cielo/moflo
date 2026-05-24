@@ -66,6 +66,7 @@ MoFlo makes deliberate choices so you don't have to:
 | Feature | What It Does |
 |---------|-------------|
 | **Semantic Memory** | 384-dim domain-aware embeddings. Store knowledge, search it instantly. |
+| **Reflection** | Distills durable lessons from your sessions into searchable memory — automatically (auto-meditate), or on demand with `/meditate`. |
 | **Code Navigation** | Indexes your codebase structure so Claude can answer "where does X live?" without Glob/Grep. |
 | **Guidance Indexing** | Chunks your project docs (`.claude/guidance/`, `docs/`) and makes them searchable. |
 | **Gates** | Enforces memory-first and task-creation patterns via Claude Code hooks. Prevents Claude from skipping steps. |
@@ -227,6 +228,31 @@ flo memory refresh           # Reindex everything + rebuild embeddings + vacuum
 Without auto-indexing, Claude Code starts every session with a blank slate — it doesn't know what documentation exists, where code lives, or what tests cover which files. It resorts to Glob/Grep exploration, which burns tokens and context window on rediscovery.
 
 With auto-indexing, Claude can search semantically ("how does auth work?") and get relevant documentation chunks ranked by similarity, or ask "where is the user model defined?" and get a direct answer from the code map — all without touching the filesystem.
+
+## Learning From Your Sessions
+
+MoFlo turns the work you do into durable knowledge. A lesson worth keeping — a reusable pattern, a gotcha that cost you an hour, a decision and the rationale behind it — lands in the `learnings` memory namespace, where it's embedded and semantically searchable in every future session. Two paths feed that namespace: one you trigger, one that runs on its own.
+
+### `/meditate` — deliberate retrospective
+
+Run **`/meditate`** at the end of a meaningful chunk of work. It reviews the session, distills the handful of lessons that would help a *future* session on a *different* task, deduplicates them against what's already stored, and writes the survivors to `learnings`. It's the curated pass — you choose when to capture, and it keeps only high-signal items (an empty reflection is a valid result, not a failure to pad).
+
+```
+/meditate                  # Review the whole session and store durable lessons
+/meditate --preview        # Show the candidate lessons without writing anything
+/meditate <focus>          # Scope the retrospective to one thread, e.g. "the auth refactor"
+```
+
+### Auto-meditate — the automatic counterpart
+
+**Auto-meditate** does the same job without being asked. While you work, a lightweight hook notices when a durable lesson emerges — a correction, an error you fixed, a decision you made. At the next session start, a brief background pass distills those into `learnings` using the same durability bar and dedup-then-store protocol as `/meditate`. It reuses your existing Claude Code session (no extra API key), runs in the background, and **ships on by default**.
+
+```yaml
+auto_meditate:
+  enabled: true            # Set to false to opt out — /meditate still works manually
+```
+
+The two are complementary: auto-meditate is the always-on safety net, `/meditate` is the deliberate, curated pass. Both write to the same `learnings` namespace and both deduplicate, so neither pollutes the other — and anything they store is available to semantic search from then on.
 
 ## The Gate System
 
@@ -451,7 +477,10 @@ Beyond `/flo`, `/spell-builder`, and `/eldar`, MoFlo ships a handful of focused 
 | Skill | Purpose |
 |-------|---------|
 | `/guidance` | Author and audit guidance docs. Default writes guidance for Claude into `.claude/guidance/` as Markdown applying moflo's universal rules. `-h` switches the audience to humans (lighter ruleset, writes into `docs/`). `--html` emits HTML with a minimal default stylesheet instead of Markdown. `-a` audits every doc in `.claude/guidance/` against the universal rules. |
-| `/simplify` | Adaptive code review on the current diff. Tier-based fan-out — trivial edits get a self-review, small diffs get one routed agent, cross-cutting refactors get three parallel agents. Routes through the moflo model router for cost-aware execution. |
+| `/flo-simplify` | Adaptive code review on the current diff. Tier-based fan-out — trivial edits get a self-review, small diffs get one routed agent, cross-cutting refactors get three parallel agents. Routes through the moflo model router for cost-aware execution. (Named `/flo-simplify` to avoid colliding with Claude Code's built-in `/simplify`.) |
+| `/commune` | Socratic requirements elicitation. Turns a fuzzy "I'm not sure exactly what I want yet" idea into a concrete spec through a short Q&A, then hands the result off to a `/flo` ticket, a spell, or memory. The pre-execution counterpart to `/meditate` — use it to *open* a unit of work. |
+| `/divine` | Multi-hop web research with explicit confidence gating. Plans the inquiry, searches the web, scores its own confidence, and keeps digging until the answer is well-supported (or a hop cap is hit) — then returns a cited synthesis and remembers what worked so the next research run starts smarter. |
+| `/meditate` | Deliberate session retrospective — distills durable lessons into the `learnings` memory namespace, deduped against what's already there. See [Learning From Your Sessions](#learning-from-your-sessions) for the full picture, including its automatic counterpart, auto-meditate. |
 | `/spell-schedule` | Schedule a spell on the local moflo daemon (cron, interval, or one-time) without leaving the chat. For remote Anthropic-cloud agents on a schedule, use Claude Code's built-in `/schedule` instead. |
 
 Run any of them with no arguments to see full usage, or browse the source in `.claude/skills/` (each skill is a single `SKILL.md` file).
@@ -647,7 +676,7 @@ flo --version                    # Show version
 
 ### Hooks (enabled OOTB)
 
-Hooks are shell commands that Claude Code runs automatically at specific points in its lifecycle. MoFlo installs 23 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
+Hooks are shell commands that Claude Code runs automatically at specific points in its lifecycle. MoFlo installs 26 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
 
 | Hook Event | What fires | What it does | Enabled OOTB |
 |------------|-----------|-------------|:---:|
@@ -667,11 +696,14 @@ Hooks are shell commands that Claude Code runs automatically at specific points 
 | **PostToolUse: TaskUpdate** | `flo gate check-task-transition` | Validates task state transitions (prevents skipping states) | Yes |
 | **PostToolUse: memory_store** | `flo gate record-learnings-stored` | Records that learnings were persisted to memory | Yes |
 | **UserPromptSubmit** | `prompt-hook.mjs` | Resets per-prompt gate state, tracks context bracket, routes task to agent | Yes |
+| **UserPromptSubmit** | `meditate-capture.mjs meditate-detect` | Auto-meditate: notices when a durable lesson emerges in the live session and queues it for distillation | Yes |
 | **SubagentStart** | `subagent-start` | Injects context and guidance into spawned sub-agents | Yes |
-| **SessionStart** | `session-start-launcher.mjs` | Launches auto-indexers (guidance, code map, tests), restores session state | Yes |
+| **SessionStart** | `session-start-launcher.mjs` | Launches auto-indexers (guidance, code map, tests), restores session state, fires the auto-meditate distillation pass | Yes |
 | **SessionStart** | `auto-memory-hook.mjs` | Imports auto-memory entries from Claude's persistent memory | Yes |
 | **Stop** | `flo hooks session-end` | Persists session metrics, exports learning data | Yes |
 | **Stop** | `auto-memory-hook.mjs` | Syncs auto-memory state on session close | Yes |
+| **Stop** | `session-continuity.mjs capture` | Captures a "where you left off" session digest for relevance-gated injection at the next session start | Yes |
+| **Stop** | `meditate-capture.mjs meditate-scrape` | Auto-meditate: scrapes the lessons recognized this session into the distillation queue | Yes |
 | **PreCompact** | `flo gate compact-guidance` | Injects guidance summary before context compaction | Yes |
 | **Notification** | `flo hooks notification` | Routes Claude Code notifications through MoFlo | Yes |
 
@@ -694,6 +726,7 @@ These are the backend systems that hooks and commands interact with.
 | **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | Fine-grained model adaptation without full retraining | Yes |
 | **EWC++ Consolidation** | Elastic Weight Consolidation that prevents catastrophic forgetting | New learning doesn't overwrite patterns from earlier sessions | Yes |
 | **Session Persistence** | Stop hook exports session metrics; SessionStart hook restores prior state | Patterns learned on Monday are available on Friday | Yes |
+| **Auto-Meditate** | Recognizes durable lessons in the live session and distills them into the `learnings` namespace in a background pass at the next session start | The high-signal lessons from each session are kept automatically — no need to remember to run `/meditate` | Yes |
 | **Status Line** | Live dashboard showing git branch, session state, memory stats, MCP status | At-a-glance visibility into what MoFlo is doing | Yes |
 | **MCP Tool Server** | 80+ MCP tools for memory, hooks, coordination, spells, swarm, etc. (schemas deferred by default) | Lets Claude Code call MoFlo functionality directly | Yes (deferred) |
 
@@ -813,6 +846,9 @@ auto_index:
   guidance: true                     # Auto-index docs on session start
   code_map: true                     # Auto-index code on session start
   tests: true                        # Auto-index test files on session start
+
+auto_meditate:
+  enabled: true                      # Distill durable session lessons into the learnings namespace
 
 mcp:
   tool_defer: true                   # Defer MCP tool schemas (100+); loaded on demand via ToolSearch

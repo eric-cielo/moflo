@@ -1,7 +1,7 @@
 /**
- * Deep-Research Skill — Content Validation Tests (#1186)
+ * Divine Skill — Content Validation Tests (#1186)
  *
- * `/deep-research` is a skill-only feature: a structured-prompt loop over the
+ * `/divine` is a skill-only feature: a structured-prompt loop over the
  * WebSearch/WebFetch tools + `memory_*`, no new runtime. There is no executable
  * logic to unit-test, so the meaningful guards are (a) the SKILL.md is
  * well-formed and (b) it documents the loop contract the issue specified.
@@ -19,9 +19,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const SKILL_PATH = path.resolve(__dirname, '../../.claude/skills/deep-research/SKILL.md');
+const SKILL_PATH = path.resolve(__dirname, '../../.claude/skills/divine/SKILL.md');
 
-describe('deep-research skill', () => {
+describe('divine skill', () => {
   let content: string;
   let frontmatter: string;
   let fmName: string;
@@ -33,7 +33,7 @@ describe('deep-research skill', () => {
     const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     expect(fm, 'SKILL.md must open with YAML frontmatter').not.toBeNull();
     frontmatter = fm![1];
-    // This skill uses unquoted name/description (the brainstorm/reflect style).
+    // This skill uses unquoted name/description (the commune/meditate style).
     fmName = (frontmatter.match(/name:\s*(.+)/)?.[1] ?? '').trim();
     fmDescription = (frontmatter.match(/description:\s*(.+)/)?.[1] ?? '').trim();
     fmArguments = (frontmatter.match(/arguments:\s*"([^"]*)"/)?.[1] ?? '').trim();
@@ -51,8 +51,8 @@ describe('deep-research skill', () => {
   });
 
   describe('YAML frontmatter', () => {
-    it('name is "deep-research" and matches the directory', () => {
-      expect(fmName).toBe('deep-research');
+    it('name is "divine" and matches the directory', () => {
+      expect(fmName).toBe('divine');
       expect(fmName.length).toBeLessThanOrEqual(64);
     });
 
@@ -142,7 +142,7 @@ describe('deep-research skill', () => {
     });
   });
 
-  // Registration ("deep-research" must be in SKILLS_MAP and exist on disk) is the
+  // Registration ("divine" must be in SKILLS_MAP and exist on disk) is the
   // canonical job of tests/skills/skills-classification-drift.test.ts (mirrored at
   // src/cli/__tests__/) — not duplicated here. This file owns only the SKILL.md
   // content contract.

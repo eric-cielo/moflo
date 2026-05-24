@@ -14,8 +14,8 @@
     "setup-project.mjs",
     "run-migrations.mjs",
     "session-continuity.mjs",
-    "reflect-capture.mjs",
-    "reflect-distill.mjs"
+    "meditate-capture.mjs",
+    "meditate-distill.mjs"
   ],
   "binHelperFiles": [
     "gate.cjs",

@@ -26,10 +26,11 @@ import {
   formatInjection,
 } from './lib/session-continuity.mjs';
 import {
-  readReflectConfig,
-  readLedger as readReflectLedger,
-  pendingEntries as pendingReflectEntries,
-} from './lib/reflect.mjs';
+  readMeditateConfig,
+  readLedger as readMeditateLedger,
+  pendingEntries as pendingMeditateEntries,
+  purgeLegacyFiles as purgeLegacyMeditateFiles,
+} from './lib/meditate.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -322,6 +323,15 @@ if (existsSync(UPGRADE_NOTICE_PATH())) {
     unlinkSync(UPGRADE_NOTICE_PATH());
   } catch { /* deleted between stat and unlink — fine */ }
 }
+
+// ── 0-pre.b Purge orphaned pre-rebrand reflect-*.json (auto-meditate rebrand) ─
+// auto-reflect → auto-meditate renamed the ledger/state files. The old pair is
+// never read again by the new code, so on a consumer's first session after
+// upgrade we delete them here — self-healing, same posture as the upgrade-notice
+// and hook-command migrations. Idempotent: a no-op once the files are gone.
+try {
+  purgeLegacyMeditateFiles(projectRoot);
+} catch { /* cleanup is best-effort; never block session start on it */ }
 
 // #1173 Option D: defensive cleanup of in-progress upgrade notice if the
 // launcher aborts before §3f writes 'completed'. Without this, a mid-flight
@@ -2230,24 +2240,24 @@ try {
   emitWarning(`continuity injection skipped (${errMessage(err)})`);
 }
 
-// Auto-reflect Stage 2 — DISTILL (#1198). Default-off. When enabled AND the
+// Auto-meditate Stage 2 — DISTILL (#1198). Default-off. When enabled AND the
 // capture ledger holds un-distilled lessons, fire-and-forget the DETACHED
-// distill orchestrator — it runs ONE bounded headless Haiku /reflect over the
+// distill orchestrator — it runs ONE bounded headless Haiku /meditate over the
 // ledger one-liners and writes `learnings` via memory_store (daemon-routed,
 // writer-safe). The gate here is cheap (a config read + a ledger read); the
 // spawn + model call live entirely in the detached child, so the launcher's
 // spawn-and-exit contract holds. CLAUDE_CODE_HEADLESS is guarded at the top of
 // this file, so a headless session never reaches here (no infinite spawn).
-function maybeFireReflectDistill() {
-  if (!readReflectConfig(projectRoot).enabled) return;
-  if (pendingReflectEntries(readReflectLedger(projectRoot)).length === 0) return;
-  const distillScript = resolveMofloBin(projectRoot, null, 'reflect-distill.mjs');
-  if (distillScript) fireAndForget('node', [distillScript], 'reflect-distill');
+function maybeFireMeditateDistill() {
+  if (!readMeditateConfig(projectRoot).enabled) return;
+  if (pendingMeditateEntries(readMeditateLedger(projectRoot)).length === 0) return;
+  const distillScript = resolveMofloBin(projectRoot, null, 'meditate-distill.mjs');
+  if (distillScript) fireAndForget('node', [distillScript], 'meditate-distill');
 }
 try {
-  maybeFireReflectDistill();
+  maybeFireMeditateDistill();
 } catch (err) {
-  emitWarning(`reflect distill spawn skipped (${errMessage(err)})`);
+  emitWarning(`meditate distill spawn skipped (${errMessage(err)})`);
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.

@@ -1,8 +1,8 @@
 /**
- * Tests for auto-reflect pure logic (#1198) — bin/lib/reflect.mjs.
+ * Tests for auto-meditate pure logic (#1198) — bin/lib/meditate.mjs.
  *
  * Covers config read (default-OFF), headless guard, signal detection,
- * injection rate-limiting, <reflect-capture> tag extraction (incl. the
+ * injection rate-limiting, <meditate-capture> tag extraction (incl. the
  * assistant-only transcript scrape that ignores the injected directive),
  * ledger round-trip + dedup + cap + mark-distilled, and the distill prompt.
  *
@@ -20,13 +20,13 @@ import {
   MAX_LEDGER_ENTRIES,
   MAX_LESSON_CHARS,
   DURABILITY_BAR,
-  readReflectConfig,
+  readMeditateConfig,
   isHeadless,
   detectSignal,
   recentTranscriptTurn,
   buildCaptureDirective,
   injectionAllowed,
-  readReflectState,
+  readMeditateState,
   recordInjection,
   extractCaptureTags,
   extractCapturesFromTranscript,
@@ -35,12 +35,14 @@ import {
   appendLedgerEntries,
   markLedgerDistilled,
   buildDistillPrompt,
-} from '../../bin/lib/reflect.mjs';
+  purgeLegacyFiles,
+  LEGACY_STATE_FILES,
+} from '../../bin/lib/meditate.mjs';
 
 function makeTempRoot(label: string): string {
   const root = resolve(
     __dirname,
-    '../../.testoutput/.test-reflect-' + label + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    '../../.testoutput/.test-meditate-' + label + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   );
   mkdirSync(join(root, '.moflo'), { recursive: true });
   return root;
@@ -51,28 +53,75 @@ function cleanTempRoot(root: string) {
 
 // ── Config (default ON, opt-out) ─────────────────────────────────────────────
 
-describe('readReflectConfig', () => {
+describe('readMeditateConfig', () => {
   let root: string;
   beforeEach(() => { root = makeTempRoot('cfg'); });
   afterEach(() => cleanTempRoot(root));
 
   it('defaults ON with no moflo.yaml (#1198 ships default-on)', () => {
-    expect(readReflectConfig(root)).toEqual({ enabled: true });
+    expect(readMeditateConfig(root)).toEqual({ enabled: true });
   });
 
   it('defaults ON when the block is absent', () => {
     writeFileSync(resolve(root, 'moflo.yaml'), 'auto_update:\n  enabled: true\n');
-    expect(readReflectConfig(root)).toEqual({ enabled: true });
+    expect(readMeditateConfig(root)).toEqual({ enabled: true });
   });
 
   it('parses an explicit enabled: true', () => {
-    writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: true\n');
-    expect(readReflectConfig(root)).toEqual({ enabled: true });
+    writeFileSync(resolve(root, 'moflo.yaml'), 'auto_meditate:\n  enabled: true\n');
+    expect(readMeditateConfig(root)).toEqual({ enabled: true });
   });
 
   it('opts out on an explicit enabled: false', () => {
+    writeFileSync(resolve(root, 'moflo.yaml'), 'auto_meditate:\n  enabled: false\n');
+    expect(readMeditateConfig(root)).toEqual({ enabled: false });
+  });
+
+  it('honours the legacy auto_reflect key for back-compat (pre-rebrand opt-out survives)', () => {
     writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: false\n');
-    expect(readReflectConfig(root)).toEqual({ enabled: false });
+    expect(readMeditateConfig(root)).toEqual({ enabled: false });
+  });
+});
+
+// ── Legacy file purge (auto-reflect → auto-meditate rebrand) ─────────────────
+
+describe('purgeLegacyFiles', () => {
+  let root: string;
+  beforeEach(() => { root = makeTempRoot('purge'); });
+  afterEach(() => cleanTempRoot(root));
+
+  it('deletes orphaned reflect-ledger.json and reflect-state.json, reporting them', () => {
+    for (const name of LEGACY_STATE_FILES) {
+      writeFileSync(join(root, '.moflo', name), '{"legacy":true}');
+    }
+    const removed = purgeLegacyFiles(root);
+
+    expect(removed.sort()).toEqual([...LEGACY_STATE_FILES].sort());
+    for (const name of LEGACY_STATE_FILES) {
+      expect(existsSync(join(root, '.moflo', name))).toBe(false);
+    }
+  });
+
+  it('is idempotent — a second run after cleanup removes nothing', () => {
+    writeFileSync(join(root, '.moflo', 'reflect-state.json'), '{}');
+    expect(purgeLegacyFiles(root)).toEqual(['reflect-state.json']);
+    expect(purgeLegacyFiles(root)).toEqual([]);
+  });
+
+  it('leaves the new meditate-*.json files untouched', () => {
+    writeFileSync(join(root, '.moflo', 'meditate-ledger.json'), '{"keep":true}');
+    writeFileSync(join(root, '.moflo', 'meditate-state.json'), '{"keep":true}');
+    writeFileSync(join(root, '.moflo', 'reflect-ledger.json'), '{}');
+
+    const removed = purgeLegacyFiles(root);
+
+    expect(removed).toEqual(['reflect-ledger.json']);
+    expect(existsSync(join(root, '.moflo', 'meditate-ledger.json'))).toBe(true);
+    expect(existsSync(join(root, '.moflo', 'meditate-state.json'))).toBe(true);
+  });
+
+  it('no-ops cleanly when no legacy files exist', () => {
+    expect(purgeLegacyFiles(root)).toEqual([]);
   });
 });
 
@@ -164,7 +213,7 @@ describe('buildCaptureDirective', () => {
   it('is answer-first and embeds the shared durability bar + the tag format', () => {
     const d = buildCaptureDirective('correction');
     expect(d).toContain('FIRST');
-    expect(d).toContain('<reflect-capture>LESSON</reflect-capture>');
+    expect(d).toContain('<meditate-capture>LESSON</meditate-capture>');
     expect(d).toContain(DURABILITY_BAR);
     expect(d).toContain('append nothing');
     expect(d).toContain('course-correction');
@@ -192,26 +241,26 @@ describe('injectionAllowed', () => {
   });
 });
 
-describe('reflect state round-trip', () => {
+describe('meditate state round-trip', () => {
   let root: string;
   beforeEach(() => { root = makeTempRoot('state'); });
   afterEach(() => cleanTempRoot(root));
 
   it('recordInjection persists and increments per-session count', () => {
-    expect(readReflectState(root)).toBeNull();
+    expect(readMeditateState(root)).toBeNull();
     recordInjection(root, 's1', 100);
-    let s = readReflectState(root);
+    let s = readMeditateState(root);
     expect(s).toMatchObject({ sessionId: 's1', lastInjectMs: 100, count: 1 });
     recordInjection(root, 's1', 200, s);
-    s = readReflectState(root);
+    s = readMeditateState(root);
     expect(s.count).toBe(2);
   });
 
   it('a new session resets count to 1', () => {
     recordInjection(root, 's1', 100);
-    const prev = readReflectState(root);
+    const prev = readMeditateState(root);
     recordInjection(root, 's2', 200, prev);
-    expect(readReflectState(root)).toMatchObject({ sessionId: 's2', count: 1 });
+    expect(readMeditateState(root)).toMatchObject({ sessionId: 's2', count: 1 });
   });
 });
 
@@ -219,22 +268,22 @@ describe('reflect state round-trip', () => {
 
 describe('extractCaptureTags', () => {
   it('extracts one or many real lessons, bounded', () => {
-    const text = 'answer\n<reflect-capture>For Windows spell steps, use node -e fs because mkdir is absent.</reflect-capture>';
+    const text = 'answer\n<meditate-capture>For Windows spell steps, use node -e fs because mkdir is absent.</meditate-capture>';
     expect(extractCaptureTags(text)).toEqual(['For Windows spell steps, use node -e fs because mkdir is absent.']);
-    const two = '<reflect-capture>Lesson one is long enough.</reflect-capture> mid <reflect-capture>Lesson two is also long.</reflect-capture>';
+    const two = '<meditate-capture>Lesson one is long enough.</meditate-capture> mid <meditate-capture>Lesson two is also long.</meditate-capture>';
     expect(extractCaptureTags(two)).toHaveLength(2);
   });
 
   it('drops the directive placeholder, empties and fragments', () => {
-    expect(extractCaptureTags('<reflect-capture>LESSON</reflect-capture>')).toEqual([]);
-    expect(extractCaptureTags('<reflect-capture>   </reflect-capture>')).toEqual([]);
-    expect(extractCaptureTags('<reflect-capture>none</reflect-capture>')).toEqual([]);
-    expect(extractCaptureTags('<reflect-capture>tiny</reflect-capture>')).toEqual([]);
+    expect(extractCaptureTags('<meditate-capture>LESSON</meditate-capture>')).toEqual([]);
+    expect(extractCaptureTags('<meditate-capture>   </meditate-capture>')).toEqual([]);
+    expect(extractCaptureTags('<meditate-capture>none</meditate-capture>')).toEqual([]);
+    expect(extractCaptureTags('<meditate-capture>tiny</meditate-capture>')).toEqual([]);
   });
 
   it('caps an over-long lesson', () => {
     const long = 'x'.repeat(MAX_LESSON_CHARS + 200);
-    expect(extractCaptureTags(`<reflect-capture>${long}</reflect-capture>`)[0].length).toBe(MAX_LESSON_CHARS);
+    expect(extractCaptureTags(`<meditate-capture>${long}</meditate-capture>`)[0].length).toBe(MAX_LESSON_CHARS);
   });
 });
 
@@ -243,14 +292,14 @@ describe('extractCapturesFromTranscript', () => {
     const directive = buildCaptureDirective('correction'); // contains the example tag
     const lines = [
       JSON.stringify({ type: 'user', message: { role: 'user', content: 'do the thing\n' + directive } }),
-      JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done.\n<reflect-capture>Route learnings writes through the daemon, never a raw db write.</reflect-capture>' }] } }),
+      JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done.\n<meditate-capture>Route learnings writes through the daemon, never a raw db write.</meditate-capture>' }] } }),
     ];
     const got = extractCapturesFromTranscript(lines.join('\n') + '\n');
     expect(got).toEqual(['Route learnings writes through the daemon, never a raw db write.']);
   });
 
   it('tolerates a truncated leading JSONL line', () => {
-    const good = JSON.stringify({ message: { role: 'assistant', content: 'x\n<reflect-capture>A genuinely durable captured lesson here.</reflect-capture>' } });
+    const good = JSON.stringify({ message: { role: 'assistant', content: 'x\n<meditate-capture>A genuinely durable captured lesson here.</meditate-capture>' } });
     const tail = '{"partial": "cut off mid li\n' + good + '\n';
     expect(extractCapturesFromTranscript(tail)).toHaveLength(1);
   });
@@ -293,7 +342,7 @@ describe('ledger', () => {
 
   it('readLedger tolerates absent + malformed files', () => {
     expect(readLedger(root)).toEqual({ entries: [] });
-    writeFileSync(resolve(root, '.moflo', 'reflect-ledger.json'), '{ not json');
+    writeFileSync(resolve(root, '.moflo', 'meditate-ledger.json'), '{ not json');
     expect(readLedger(root)).toEqual({ entries: [] });
   });
 
@@ -307,7 +356,7 @@ describe('ledger', () => {
 // ── Distill prompt ───────────────────────────────────────────────────────────
 
 describe('buildDistillPrompt', () => {
-  it('reuses the /reflect protocol, numbers candidates, and embeds the bar', () => {
+  it('reuses the /meditate protocol, numbers candidates, and embeds the bar', () => {
     const p = buildDistillPrompt([{ lesson: 'Alpha lesson.' }, { lesson: 'Beta lesson.' }]);
     expect(p).toContain('1. Alpha lesson.');
     expect(p).toContain('2. Beta lesson.');

@@ -1,6 +1,6 @@
 /**
- * End-to-end tests for the auto-reflect capture hook (#1198) —
- * bin/reflect-capture.mjs (`detect` = UserPromptSubmit, `scrape` = Stop).
+ * End-to-end tests for the auto-meditate capture hook (#1198) —
+ * bin/meditate-capture.mjs (`detect` = UserPromptSubmit, `scrape` = Stop).
  *
  * Driven as a subprocess with JSON on stdin, matching how Claude Code invokes
  * hooks. Verifies the opt-out + headless guards, signal-gated injection,
@@ -14,14 +14,14 @@ import { spawnSync } from 'child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { resolve, join } from 'path';
 
-import { readLedger } from '../../bin/lib/reflect.mjs';
+import { readLedger } from '../../bin/lib/meditate.mjs';
 
-const CAPTURE_SCRIPT = resolve(__dirname, '../../bin/reflect-capture.mjs');
+const CAPTURE_SCRIPT = resolve(__dirname, '../../bin/meditate-capture.mjs');
 
 function makeTempRoot(label: string): string {
   const root = resolve(
     __dirname,
-    '../../.testoutput/.test-reflectcap-' + label + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    '../../.testoutput/.test-meditatecap-' + label + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   );
   mkdirSync(join(root, '.moflo'), { recursive: true });
   return root;
@@ -30,10 +30,10 @@ function cleanTempRoot(root: string) {
   try { rmSync(root, { recursive: true, force: true }); } catch { /* Windows handle hold */ }
 }
 function enable(root: string) {
-  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: true\n', 'utf-8');
+  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_meditate:\n  enabled: true\n', 'utf-8');
 }
 function disable(root: string) {
-  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: false\n', 'utf-8');
+  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_meditate:\n  enabled: false\n', 'utf-8');
 }
 function writeTranscript(root: string, events: object[]): string {
   const p = resolve(root, 'transcript.jsonl');
@@ -41,7 +41,7 @@ function writeTranscript(root: string, events: object[]): string {
   return p;
 }
 function run(root: string, sub: 'detect' | 'scrape', input: object, extraEnv: Record<string, string> = {}) {
-  const argv = sub === 'detect' ? 'reflect-detect' : 'reflect-scrape';
+  const argv = sub === 'detect' ? 'meditate-detect' : 'meditate-scrape';
   return spawnSync('node', [CAPTURE_SCRIPT, argv], {
     cwd: root,
     input: JSON.stringify(input),
@@ -51,7 +51,7 @@ function run(root: string, sub: 'detect' | 'scrape', input: object, extraEnv: Re
   });
 }
 
-describe('reflect-capture detect (UserPromptSubmit)', () => {
+describe('meditate-capture detect (UserPromptSubmit)', () => {
   let root: string;
   beforeEach(() => { root = makeTempRoot('detect'); });
   afterEach(() => cleanTempRoot(root));
@@ -60,8 +60,8 @@ describe('reflect-capture detect (UserPromptSubmit)', () => {
     enable(root);
     const r = run(root, 'detect', { session_id: 's1', prompt: 'No, that is wrong — use the daemon instead' });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('[auto-reflect]');
-    expect(r.stdout).toContain('<reflect-capture>');
+    expect(r.stdout).toContain('[auto-meditate]');
+    expect(r.stdout).toContain('<meditate-capture>');
     expect(r.stdout).toContain('FIRST');
   });
 
@@ -89,7 +89,7 @@ describe('reflect-capture detect (UserPromptSubmit)', () => {
   it('rate-limits a second fire within the window (same session)', () => {
     enable(root);
     const first = run(root, 'detect', { session_id: 's1', prompt: "no, that's wrong" });
-    expect(first.stdout).toContain('[auto-reflect]');
+    expect(first.stdout).toContain('[auto-meditate]');
     const second = run(root, 'detect', { session_id: 's1', prompt: "no, still wrong" });
     expect(second.stdout.trim()).toBe('');
   });
@@ -101,7 +101,7 @@ describe('reflect-capture detect (UserPromptSubmit)', () => {
       { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_result', text: 'process exited with exit code 1' }] } },
     ]);
     const r = run(root, 'detect', { session_id: 's1', prompt: 'ok keep going', transcript_path: transcript });
-    expect(r.stdout).toContain('[auto-reflect]');
+    expect(r.stdout).toContain('[auto-meditate]');
     expect(r.stdout).toContain('error-then-fix');
   });
 
@@ -129,16 +129,16 @@ describe('reflect-capture detect (UserPromptSubmit)', () => {
   });
 });
 
-describe('reflect-capture scrape (Stop)', () => {
+describe('meditate-capture scrape (Stop)', () => {
   let root: string;
   beforeEach(() => { root = makeTempRoot('scrape'); });
   afterEach(() => cleanTempRoot(root));
 
-  it('appends an assistant <reflect-capture> tag to the ledger (when enabled)', () => {
+  it('appends an assistant <meditate-capture> tag to the ledger (when enabled)', () => {
     enable(root);
     const transcript = writeTranscript(root, [
       { type: 'user', message: { role: 'user', content: 'do it' } },
-      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done.\n<reflect-capture>Route learnings writes through the daemon, never a raw db write.</reflect-capture>' }] } },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done.\n<meditate-capture>Route learnings writes through the daemon, never a raw db write.</meditate-capture>' }] } },
     ]);
     const r = run(root, 'scrape', { session_id: 's1', transcript_path: transcript });
     expect(r.status).toBe(0);
@@ -152,7 +152,7 @@ describe('reflect-capture scrape (Stop)', () => {
     enable(root);
     // Simulate the directive having ridden in as user/context, with no real assistant capture.
     const transcript = writeTranscript(root, [
-      { type: 'user', message: { role: 'user', content: 'fix it\n<reflect-capture>LESSON</reflect-capture>' } },
+      { type: 'user', message: { role: 'user', content: 'fix it\n<meditate-capture>LESSON</meditate-capture>' } },
       { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Fixed it, no durable lesson here.' }] } },
     ]);
     const r = run(root, 'scrape', { session_id: 's1', transcript_path: transcript });
@@ -163,7 +163,7 @@ describe('reflect-capture scrape (Stop)', () => {
   it('is silent + writes nothing when explicitly disabled (enabled: false)', () => {
     disable(root);
     const transcript = writeTranscript(root, [
-      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '<reflect-capture>A durable lesson that should not be stored.</reflect-capture>' }] } },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '<meditate-capture>A durable lesson that should not be stored.</meditate-capture>' }] } },
     ]);
     const r = run(root, 'scrape', { session_id: 's1', transcript_path: transcript });
     expect(r.status).toBe(0);
@@ -173,7 +173,7 @@ describe('reflect-capture scrape (Stop)', () => {
   it('is silent under CLAUDE_CODE_HEADLESS even when enabled (#860 guard)', () => {
     enable(root);
     const transcript = writeTranscript(root, [
-      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '<reflect-capture>A durable lesson captured in a headless run.</reflect-capture>' }] } },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '<meditate-capture>A durable lesson captured in a headless run.</meditate-capture>' }] } },
     ]);
     const r = run(root, 'scrape', { session_id: 's1', transcript_path: transcript }, { CLAUDE_CODE_HEADLESS: 'true' });
     expect(r.status).toBe(0);

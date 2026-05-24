@@ -1,7 +1,7 @@
 /**
  * Tests for shared hook I/O primitives (#1198) — bin/lib/hook-io.mjs.
  *
- * readHookStdin is covered end-to-end by the reflect-capture and
+ * readHookStdin is covered end-to-end by the meditate-capture and
  * session-continuity subprocess tests; here we cover the pure readFileTail
  * (small file, tail slice, missing file).
  *

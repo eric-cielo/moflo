@@ -233,12 +233,12 @@ session_continuity:
   inject: true
   max_age_hours: 72            # ignore digests older than this when injecting
 
-# Auto-reflect (#1198) — the automatic counterpart to /reflect. When enabled,
+# Auto-meditate (#1198) — the automatic counterpart to /meditate. When enabled,
 # moflo recognizes durable lessons in the LIVE session (a tiny answer-first note
 # on course-corrections / errors / decisions) and distills them into long-term
 # memory at the next session-start via a cheap headless Haiku pass — deduped.
 # Ships ON; set false to opt out.
-auto_reflect:
+auto_meditate:
   enabled: true
 
 # Memory backend
@@ -351,7 +351,7 @@ export const REQUIRED_TOP_LEVEL_SECTIONS = [
   'gates',
   'auto_index',
   'session_continuity',
-  'auto_reflect',
+  'auto_meditate',
   'memory',
   'hooks',
   'mcp',

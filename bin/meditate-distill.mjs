@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Auto-reflect Stage 2 — DISTILL (#1198). Fired DETACHED by the session-start
+ * Auto-meditate Stage 2 — DISTILL (#1198). Fired DETACHED by the session-start
  * launcher (never inline — the launcher's contract is spawn-and-exit). Runs ONE
- * bounded headless Haiku `claude --print` that executes #1187's /reflect
+ * bounded headless Haiku `claude --print` that executes #1187's /meditate
  * distillation over the ledger one-liners (NOT the transcript): dedup-search
  * `learnings` (≥0.80 → update same key), store via memory_store. Because the
  * headless session calls memory_store itself, writes route through the daemon
@@ -13,7 +13,7 @@
  * pollute `learnings` with junk it invented.
  *
  * GUARDS:
- *   - off (auto_reflect.enabled: false) — exit immediately. Default is ON.
+ *   - off (auto_meditate.enabled: false) — exit immediately. Default is ON.
  *   - CLAUDE_CODE_HEADLESS — exit immediately (defensive; the launcher already
  *     won't fire us in headless, but self-guarding prevents any infinite spawn).
  *   - empty ledger — exit without spawning anything.
@@ -21,11 +21,11 @@
  * Only entries in the snapshot we hand to Haiku are marked distilled on success,
  * so captures that arrive DURING the run survive for the next pass.
  *
- * Test seam: MOFLO_REFLECT_DISTILL_NODE_STUB — when set to a path, the model
+ * Test seam: MOFLO_MEDITATE_DISTILL_NODE_STUB — when set to a path, the model
  * call is `node <stub> --print <prompt>` instead of `claude --print <prompt>`,
  * so the spawn is exercisable cross-platform without a real Claude CLI.
  *
- * Invoked by: node .claude/scripts/reflect-distill.mjs
+ * Invoked by: node .claude/scripts/meditate-distill.mjs
  *
  * Cross-platform (Rule #1): Node child_process (arg arrays, no shell) + fs/path.
  */
@@ -36,13 +36,13 @@ import { resolve, dirname } from 'path';
 import { findProjectRoot } from './lib/moflo-paths.mjs';
 import {
   HAIKU_MODEL_ID,
-  readReflectConfig,
+  readMeditateConfig,
   isHeadless,
   readLedger,
   pendingEntries,
   buildDistillPrompt,
   markLedgerDistilled,
-} from './lib/reflect.mjs';
+} from './lib/meditate.mjs';
 
 /** Cap candidates per pass — keeps the Haiku prompt small (cheap, fast). Extra
  *  pending entries roll into the next session's pass. */
@@ -52,7 +52,7 @@ const DISTILL_TIMEOUT_MS = 120_000;
 
 function log(projectRoot, line) {
   try {
-    const p = resolve(projectRoot, '.moflo', 'reflect-distill.log');
+    const p = resolve(projectRoot, '.moflo', 'meditate-distill.log');
     mkdirSync(dirname(p), { recursive: true });
     appendFileSync(p, `[${new Date().toISOString()}] ${line}\n`, 'utf-8');
   } catch { /* logging is best-effort — never throw */ }
@@ -61,7 +61,7 @@ function log(projectRoot, line) {
 /** Run the bounded headless distillation. Resolves { success, output }. */
 function runHeadless(projectRoot, prompt) {
   return new Promise((res) => {
-    const stub = process.env.MOFLO_REFLECT_DISTILL_NODE_STUB;
+    const stub = process.env.MOFLO_MEDITATE_DISTILL_NODE_STUB;
     const cmd = stub ? process.execPath : 'claude';
     const args = stub ? [stub, '--print', prompt] : ['--print', prompt];
 
@@ -97,7 +97,7 @@ function runHeadless(projectRoot, prompt) {
 async function main() {
   if (isHeadless(process.env)) return;                       // #860 self-guard
   const projectRoot = findProjectRoot();
-  if (!readReflectConfig(projectRoot).enabled) return;       // off (opt-out)
+  if (!readMeditateConfig(projectRoot).enabled) return;       // off (opt-out)
 
   const pending = pendingEntries(readLedger(projectRoot));
   if (pending.length === 0) return;                          // nothing to do — no spawn
@@ -117,5 +117,5 @@ async function main() {
 }
 
 main().catch((err) => {
-  try { process.stderr.write(`moflo: reflect-distill failed (${err && err.message ? err.message : String(err)})\n`); } catch { /* ignore */ }
+  try { process.stderr.write(`moflo: meditate-distill failed (${err && err.message ? err.message : String(err)})\n`); } catch { /* ignore */ }
 });

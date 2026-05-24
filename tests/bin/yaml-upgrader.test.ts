@@ -14,9 +14,11 @@ import { makeTempRoot, cleanTempRoot } from './_helpers.js';
 const upgraderUrl = 'file://' + resolve(__dirname, '../../bin/lib/yaml-upgrader.mjs').replace(/\\/g, '/');
 const {
   REQUIRED_SECTIONS,
+  RENAMED_SECTIONS,
   hasTopLevelSection,
   missingSections,
   ensureYamlSections,
+  renameYamlSections,
 } = await import(upgraderUrl);
 
 describe('yaml-upgrader', () => {
@@ -95,13 +97,13 @@ describe('yaml-upgrader', () => {
       expect(content).toContain('tier: auto');
     });
 
-    it('appends auto_reflect block (default-on) when missing (#1198)', () => {
+    it('appends auto_meditate block (default-on) when missing (#1198)', () => {
       writeFileSync(yamlPath, 'project:\n  name: foo\n', 'utf-8');
       const appended = ensureYamlSections(yamlPath);
 
-      expect(appended).toContain('auto_reflect');
+      expect(appended).toContain('auto_meditate');
       const content = readFileSync(yamlPath, 'utf-8');
-      expect(content).toMatch(/^auto_reflect:/m);
+      expect(content).toMatch(/^auto_meditate:/m);
       expect(content).toContain('enabled: true');
     });
 
@@ -109,7 +111,7 @@ describe('yaml-upgrader', () => {
       const existing =
         'project:\n  name: foo\n' +
         'session_continuity:\n  capture: true\n  inject: true\n' +
-        'auto_reflect:\n  enabled: false\n' +
+        'auto_meditate:\n  enabled: false\n' +
         'sandbox:\n  enabled: true\n  tier: full\n';
       writeFileSync(yamlPath, existing, 'utf-8');
 
@@ -153,6 +155,41 @@ describe('yaml-upgrader', () => {
       const appended = ensureYamlSections(yamlPath, customRegistry);
       expect(appended).toEqual(['custom_feature']);
       expect(readFileSync(yamlPath, 'utf-8')).toMatch(/^custom_feature:/m);
+    });
+  });
+
+  describe('renameYamlSections (auto_reflect → auto_meditate migration)', () => {
+    it('RENAMED_SECTIONS maps the legacy auto_reflect key to auto_meditate', () => {
+      expect(RENAMED_SECTIONS).toEqual(
+        expect.arrayContaining([{ from: 'auto_reflect', to: 'auto_meditate' }]),
+      );
+    });
+
+    it('renames a legacy auto_reflect block in place, preserving the user value', () => {
+      writeFileSync(yamlPath, 'project:\n  name: foo\nauto_reflect:\n  enabled: false\n', 'utf-8');
+      const applied = renameYamlSections(yamlPath);
+      expect(applied).toContain('auto_reflect→auto_meditate');
+      const content = readFileSync(yamlPath, 'utf-8');
+      expect(content).toMatch(/^auto_meditate:/m);
+      expect(content).not.toMatch(/^auto_reflect:/m);
+      expect(content).toContain('enabled: false'); // the user's opt-out survives the rebrand
+    });
+
+    it('ensureYamlSections migrates auto_reflect in place without appending a duplicate', () => {
+      writeFileSync(yamlPath, 'project:\n  name: foo\nauto_reflect:\n  enabled: false\n', 'utf-8');
+      ensureYamlSections(yamlPath);
+      const content = readFileSync(yamlPath, 'utf-8');
+      expect(content).toMatch(/^auto_meditate:/m);
+      expect(content).not.toMatch(/^auto_reflect:/m);
+      expect((content.match(/^auto_meditate:/gm) || []).length).toBe(1);
+      expect(content).toContain('enabled: false');
+    });
+
+    it('is a no-op when auto_meditate already exists', () => {
+      const existing = 'project:\n  name: foo\nauto_meditate:\n  enabled: true\n';
+      writeFileSync(yamlPath, existing, 'utf-8');
+      expect(renameYamlSections(yamlPath)).toEqual([]);
+      expect(readFileSync(yamlPath, 'utf-8')).toBe(existing);
     });
   });
 

@@ -153,8 +153,8 @@ export function getReferenceHookBlock(): HooksTree {
       { hooks: [helperHook('prompt-hook.mjs', '', 3000)] },
       // #931 — Defensive safety-net hook. State reset only, no emission.
       { hooks: [gateHook('prompt-state-reset', 3000)] },
-      // #1198 — auto-reflect capture (detect). Default-ON (opt-out in-script).
-      { hooks: [scriptHookSub('reflect-capture.mjs', 'reflect-detect', 3000)] },
+      // #1198 — auto-meditate capture (detect). Default-ON (opt-out in-script).
+      { hooks: [scriptHookSub('meditate-capture.mjs', 'meditate-detect', 3000)] },
     ],
     SubagentStart: [
       { hooks: [helperHook('subagent-start.cjs', '', 2000)] },
@@ -165,7 +165,7 @@ export function getReferenceHookBlock(): HooksTree {
       },
     ],
     Stop: [
-      { hooks: [handler('session-end', 5000), autoMemory('sync', 10000), scriptHookSub('session-continuity.mjs', 'capture', 5000), scriptHookSub('reflect-capture.mjs', 'reflect-scrape', 5000)] },
+      { hooks: [handler('session-end', 5000), autoMemory('sync', 10000), scriptHookSub('session-continuity.mjs', 'capture', 5000), scriptHookSub('meditate-capture.mjs', 'meditate-scrape', 5000)] },
     ],
     PreCompact: [
       { hooks: [gateCjs('compact-guidance', 3000)] },
