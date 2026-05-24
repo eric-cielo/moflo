@@ -8,7 +8,6 @@ import { output } from '../output.js';
 import { formatStatus } from '../services/cli-formatters.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
-import { storeCommand } from './transfer-store.js';
 import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
@@ -1079,9 +1078,6 @@ const metricsCommand: Command = {
   }
 };
 
-// Pattern Store command (imported from transfer-store.ts)
-// storeCommand is imported at the top
-
 // Transfer from project subcommand
 const transferFromProjectCommand: Command = {
   name: 'from-project',
@@ -1205,36 +1201,23 @@ const transferFromProjectCommand: Command = {
   }
 };
 
-// Parent transfer command combining all transfer methods
+// Parent transfer command for local pattern transfer
 const transferCommand: Command = {
   name: 'transfer',
-  description: 'Transfer patterns and plugins via IPFS-based decentralized registry',
-  subcommands: [storeCommand, transferFromProjectCommand],
+  description: 'Transfer learned patterns from another local project',
+  subcommands: [transferFromProjectCommand],
   examples: [
-    { command: 'flo hooks transfer store list', description: 'List patterns from registry' },
-    { command: 'flo hooks transfer store search -q routing', description: 'Search patterns' },
-    { command: 'flo hooks transfer store download -p seraphine-genesis', description: 'Download pattern' },
-    { command: 'flo hooks transfer store publish', description: 'Publish pattern to registry' },
-    { command: 'flo hooks transfer from-project -s ../other-project', description: 'Transfer from project' },
+    { command: 'flo hooks transfer from-project -s ../other-project', description: 'Transfer patterns from another project' },
+    { command: 'flo hooks transfer from-project -s ../prod --filter security -m 0.9', description: 'Transfer high-confidence security patterns' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
-    output.writeln(output.bold('Pattern Transfer System'));
-    output.writeln(output.dim('Decentralized pattern sharing via IPFS'));
+    output.writeln(output.bold('Pattern Transfer'));
+    output.writeln(output.dim('Copy learned patterns from another local moflo project'));
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
-      `${output.highlight('store')}        - Pattern marketplace (list, search, download, publish)`,
       `${output.highlight('from-project')} - Transfer patterns from another project`,
-    ]);
-    output.writeln();
-    output.writeln(output.bold('IPFS-Based Features:'));
-    output.printList([
-      'Decentralized registry via IPNS for discoverability',
-      'Content-addressed storage for integrity',
-      'Ed25519 signatures for verification',
-      'Anonymization levels: minimal, standard, strict, paranoid',
-      'Trust levels: unverified, community, verified, official',
     ]);
     output.writeln();
     output.writeln('Run "flo hooks transfer <subcommand> --help" for details');

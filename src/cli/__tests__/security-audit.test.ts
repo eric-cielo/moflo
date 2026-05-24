@@ -394,27 +394,6 @@ describe('Prototype Pollution Prevention', () => {
 });
 
 // ============================================================================
-// 8. GCS Command Injection Prevention
-// ============================================================================
-describe('GCS Storage Command Injection', () => {
-  it.skip('should use execFileSync instead of execSync for GCS commands (TODO: ADR-061 S-1 not yet applied to gcs.ts)', () => {
-    // src/transfer/storage/gcs.ts now uses execFileSync with array args
-    // instead of execSync with string interpolation (ADR-061 S-1 fix).
-    const gcsPath = path.join(__dirname, '..', 'transfer', 'storage', 'gcs.ts');
-    const content = fs.readFileSync(gcsPath, 'utf-8');
-
-    // Should use execFileSync (safe array form)
-    const usesExecFileSync = content.includes('execFileSync');
-    expect(usesExecFileSync).toBe(true);
-
-    // Should NOT use execSync with template literal interpolation
-    const usesExecSyncWithInterpolation = content.includes('execSync(') &&
-                                           content.includes('`gcloud');
-    expect(usesExecSyncWithInterpolation).toBe(false);
-  });
-});
-
-// ============================================================================
 // 9. Plugin Manager - NPM Install Injection
 // ============================================================================
 describe('Plugin Manager NPM Injection', () => {

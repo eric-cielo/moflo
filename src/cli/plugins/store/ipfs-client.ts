@@ -7,6 +7,9 @@
  * - Cloudflare IPFS
  * - Protocol Labs ipfs.io
  * - dweb.link (LibP2P)
+ *
+ * Relocated from the (deleted) transfer/ pattern-marketplace tree in #1210; the
+ * plugin store is the sole consumer of these primitives.
  */
 
 import * as crypto from 'crypto';
