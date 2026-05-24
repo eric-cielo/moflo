@@ -55,6 +55,34 @@ export function fileSha256(absPath) {
 }
 
 /**
+ * Compute sha256 of file content with line endings normalized to LF.
+ *
+ * moflo ships every text asset with LF endings, so `knownContentHashes` are LF
+ * hashes. But Windows consumers routinely end up with CRLF copies (git
+ * `core.autocrlf=true` on checkout, editors rewriting on save). A raw-byte hash
+ * of a CRLF file never matches the LF manifest hash, so the hash-gated prune
+ * would silently never fire on Windows — defeating the whole #948/#932 cleanup
+ * for the platform where it's needed most. Normalizing CRLF (and lone CR) to LF
+ * before hashing recovers those files. This is a Rule #1 (cross-platform)
+ * requirement, not an optimization.
+ *
+ * latin1 round-trips bytes 1:1 (no UTF-8 multibyte corruption) so the digest is
+ * byte-identical to hashing a genuinely-LF file.
+ *
+ * @param {string} absPath
+ * @returns {string|null} `sha256:<hex>` of the LF-normalized content, or null
+ */
+export function fileSha256NormalizedEol(absPath) {
+  try {
+    const buf = readFileSync(absPath);
+    const normalized = buf.toString('latin1').replace(/\r\n?/g, '\n');
+    return 'sha256:' + createHash('sha256').update(normalized, 'latin1').digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Load + validate the retired-files manifest. Returns `{ entries: [] }` for
  * any failure mode (missing file, invalid JSON, wrong shape) — the launcher
  * must never block on a corrupt manifest.
@@ -106,6 +134,15 @@ export function classifyRetiredFile(projectRoot, entry) {
   const actualHash = fileSha256(abs);
   if (!actualHash) return { action: 'unknown', actualHash: null };
   if (entry.knownContentHashes.includes(actualHash)) {
+    return { action: 'prune', actualHash };
+  }
+  // Raw bytes didn't match. Retry with LF-normalized content: a Windows
+  // consumer's CRLF copy of a known-shipped (LF) file must still be recognized
+  // as un-customized and pruned. Without this the prune never fires on Windows
+  // (Rule #1 cross-platform). `actualHash` stays the raw on-disk hash so the
+  // report reflects what's actually on disk.
+  const normalizedHash = fileSha256NormalizedEol(abs);
+  if (normalizedHash && entry.knownContentHashes.includes(normalizedHash)) {
     return { action: 'prune', actualHash };
   }
   return { action: 'preserve', actualHash };

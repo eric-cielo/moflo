@@ -18,6 +18,7 @@ import { createHash } from 'crypto';
 // Path is relative to repo root → resolve from __dirname for portability.
 import {
   fileSha256,
+  fileSha256NormalizedEol,
   loadRetiredManifest,
   classifyRetiredFile,
   applyRetiredPrune,
@@ -59,6 +60,28 @@ describe('retired-files helper (#948)', () => {
 
     it('returns null for a missing file rather than throwing', () => {
       expect(fileSha256(join(__dirname, '__definitely-not-here__'))).toBeNull();
+    });
+  });
+
+  describe('fileSha256NormalizedEol (Rule #1 — CRLF)', () => {
+    it('hashes a CRLF file identically to the same content with LF endings', () => {
+      const root = makeTempRoot('eol');
+      try {
+        const lf = '---\nname: agent\n---\nbody line\n';
+        const crlf = lf.replace(/\n/g, '\r\n');
+        writeAt(root, 'lf.md', lf);
+        writeAt(root, 'crlf.md', crlf);
+        // Raw hashes differ (CRLF has extra \r bytes)...
+        expect(fileSha256(join(root, 'crlf.md'))).not.toBe(fileSha256(join(root, 'lf.md')));
+        // ...but EOL-normalized hashes match, and equal the raw LF hash.
+        expect(fileSha256NormalizedEol(join(root, 'crlf.md'))).toBe(sha256Of(lf));
+        expect(fileSha256NormalizedEol(join(root, 'crlf.md')))
+          .toBe(fileSha256NormalizedEol(join(root, 'lf.md')));
+      } finally { cleanTempRoot(root); }
+    });
+
+    it('returns null for a missing file rather than throwing', () => {
+      expect(fileSha256NormalizedEol(join(__dirname, '__definitely-not-here__'))).toBeNull();
     });
   });
 
@@ -134,6 +157,37 @@ describe('retired-files helper (#948)', () => {
         });
         expect(r.action).toBe('preserve');
         expect(r.actualHash).toBe(sha256Of('user-customized this\n'));
+      } finally { cleanTempRoot(root); }
+    });
+
+    it('prunes a CRLF copy whose LF-normalized content matches a known (LF) hash (Rule #1)', () => {
+      // The waxstak case: moflo ships LF, the manifest records the LF hash, but
+      // the consumer file is CRLF (git autocrlf on Windows). Raw bytes differ;
+      // the EOL-normalized fallback must still recognize it as un-customized.
+      const root = makeTempRoot('classify-crlf');
+      try {
+        const lfShipped = '---\nname: perf\n---\nshipped body\n';
+        writeAt(root, '.claude/agents/v3/perf.md', lfShipped.replace(/\n/g, '\r\n'));
+        const r = classifyRetiredFile(root, {
+          path: '.claude/agents/v3/perf.md',
+          knownContentHashes: [sha256Of(lfShipped)], // LF hash only, as moflo ships
+        });
+        expect(r.action).toBe('prune');
+        // actualHash reflects the raw CRLF bytes on disk, not the normalized form.
+        expect(r.actualHash).toBe(fileSha256(join(root, '.claude/agents/v3/perf.md')));
+        expect(r.actualHash).not.toBe(sha256Of(lfShipped));
+      } finally { cleanTempRoot(root); }
+    });
+
+    it('still preserves a genuinely-customized CRLF file (normalization is not a wildcard)', () => {
+      const root = makeTempRoot('classify-crlf-custom');
+      try {
+        writeAt(root, '.claude/agents/v3/perf.md', '# I edited this\r\nmy own notes\r\n');
+        const r = classifyRetiredFile(root, {
+          path: '.claude/agents/v3/perf.md',
+          knownContentHashes: [sha256Of('---\nname: perf\n---\nshipped body\n')],
+        });
+        expect(r.action).toBe('preserve');
       } finally { cleanTempRoot(root); }
     });
   });
@@ -311,6 +365,26 @@ describe('retired-files helper (#948)', () => {
       // The pruned path must NOT appear in the persisted manifest — its
       // presence is what produces the false drift on the next launcher run.
       expect(persistedManifest.find((e) => e.path === '.claude/agents/v3/will-be-pruned.md')).toBeUndefined();
+    });
+
+    it('prunes a CRLF-converted shipped file end-to-end (Rule #1 — the waxstak case)', () => {
+      // Windows consumer: moflo shipped LF, manifest carries the LF hash, but
+      // the file on disk is CRLF (git core.autocrlf=true). Pre-fix this stayed
+      // on disk forever — Claude Code kept loading the retired subagent every
+      // prompt. The EOL-normalized fallback makes the prune fire.
+      const lfShipped = '---\nname: performance-engineer\n---\nshipped body\n';
+      writeAt(root, '.claude/agents/v3/performance-engineer.md', lfShipped.replace(/\n/g, '\r\n'));
+
+      const manifestPath = writeManifest([
+        {
+          path: '.claude/agents/v3/performance-engineer.md',
+          knownContentHashes: [sha256Of(lfShipped)], // LF hash only
+        },
+      ]);
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.pruned).toContain('.claude/agents/v3/performance-engineer.md');
+      expect(existsSync(join(root, '.claude/agents/v3/performance-engineer.md'))).toBe(false);
     });
 
     it('cross-platform: paths in the manifest use forward slashes regardless of OS', () => {
