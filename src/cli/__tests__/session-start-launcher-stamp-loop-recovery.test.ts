@@ -169,6 +169,34 @@ describe('launcher #1173 — version-stamp loop recovery', () => {
     expect(result.stdout).not.toMatch(/recovered version stamp/);
   });
 
+  // Eager-commit fix for the indefinite "updating…" re-detect loop.
+  //
+  // ROOT CAUSE: the version stamp used to be deferred to §3g at the very END of
+  // §3 ("written LAST", #730). A launcher killed by the 5s SessionStart
+  // hook-timeout during the best-effort §3 stages above §3g (hook-drift,
+  // CLAUDE.md injection drift, embeddings migration) never reached §3g, so the
+  // stamp stayed stale and every subsequent session re-detected the SAME upgrade
+  // and re-painted "updating…" — forever. On Windows the timeout is a
+  // TerminateProcess (no Node handler runs), so the in-progress notice survived
+  // too, which is the on-disk tell that distinguished a hard kill from a
+  // graceful crash (the latter clears the notice via the exit handler).
+  //
+  // FIX: commit the stamp the moment sync + manifest succeed, inside §3's sync
+  // block — not at the end. A full functional repro needs a kill mid-§3, which
+  // (like the Option D SIGTERM case below) is too platform-flaky to assert
+  // reliably, so this is a source-shape guard: the deferred mechanism is gone
+  // and both sync arms commit eagerly via the helper.
+  it('eager-commit: version stamp commits on sync success, not deferred to end of §3', () => {
+    const launcherSrc = readFileSync(LAUNCHER, 'utf-8');
+    // The deferred mechanism that stranded the stamp on a mid-§3 kill is gone.
+    expect(launcherSrc).not.toMatch(/pendingVersionStampWrite/);
+    // The eager helper exists and is gated on a write failure being surfaced.
+    expect(launcherSrc).toMatch(/function commitVersionStamp\(/);
+    // Both sync arms (dogfood skip-sync + non-dogfood manifest write) commit it.
+    const eagerCommits = launcherSrc.match(/commitVersionStamp\(versionStampPath, installedVersion\)/g) || [];
+    expect(eagerCommits.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('Option D guard: completed notice survives a clean exit (upgradeNoticeFinalized prevents cleanup)', () => {
     // If §3f sets upgradeNoticeFinalized=true correctly, the process.on('exit')
     // handler skips the unlink branch and the short-TTL 'completed' notice

@@ -99,13 +99,13 @@ describe('bin/session-start-launcher.mjs — partial-migration visibility (#854)
 
   it('manifest-write failure is surfaced to stderr (#854)', () => {
     // The inner try around `writeFileSync(manifestPath, ...)` used to be a
-    // bare `catch {}` — when it failed, `pendingVersionStampWrite` never
-    // got queued AND we had no idea why.
+    // bare `catch {}` — when it failed, the version stamp never got committed
+    // AND we had no idea why.
     expect(src).toMatch(/manifest write failed/);
   });
 
   it('version-stamp write failure is surfaced to stderr (#854)', () => {
-    // Same pattern at section 3g — a permanently-broken stamp write
+    // Same pattern in commitVersionStamp — a permanently-broken stamp write
     // (filesystem permissions, AV holds) used to fail silently and strand
     // the consumer in re-detect-on-every-session forever.
     expect(src).toMatch(/version stamp write failed/);
