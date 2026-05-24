@@ -158,7 +158,7 @@
 
 <p>MoFlo runs a lot of moving parts in the background: a daemon, a fleet of workers indexing your repo and consolidating memory, a scheduler firing off spells on cron triggers, a runner driving issues from <code>/flo</code> to PRs, and a memory database that quietly accumulates everything the team learns. Most of that machinery is invisible by design — it's supposed to <em>just work</em>. But "just works" without observability is faith, not engineering. The Luminarium gives you the receipts.</p>
 
-<p>It's a small, read-only HTTP server that ships with the daemon. Open <a href="http://localhost:3117"><code>http://localhost:3117</code></a> in your browser and you're looking at the live state of MoFlo on your machine — workers, schedules, memory, spell runs — <em>and</em> what Claude itself has been doing for this project locally. No login, no cloud, no telemetry — it binds to <code>127.0.0.1</code> only. The daemon serves it; nothing leaves the box.</p>
+<p>It's a small, read-only HTTP server that ships with the daemon. Each project gets its own port (deterministic, in the <code>33000–33999</code> range), so run <code>/luminarium</code> — or check <code>.moflo/daemon.lock</code> — to get the exact URL, then open it in your browser. You're looking at the live state of MoFlo on your machine — workers, schedules, memory, spell runs — <em>and</em> what Claude itself has been doing for this project locally. No login, no cloud, no telemetry — it binds to <code>127.0.0.1</code> only. The daemon serves it; nothing leaves the box.</p>
 
 <p>Most of the tabs answer "what is MoFlo up to?" The newest one answers "what has Claude been up to?" Both views, same dashboard, same privacy posture.</p>
 
@@ -251,7 +251,7 @@
 
 <p>You don't, really. The daemon starts with your project — and the daemon starts the Luminarium with it. As long as your daemon is up:</p>
 
-<pre><code>http://localhost:3117</code></pre>
+<pre><code>/luminarium    # prints this project's Luminarium URL</code></pre>
 
 <p>That's the whole onboarding. If the daemon is dead, <code>flo healer --fix</code> will revive it. If the port is in flight elsewhere, the daemon flags will let you change it (<code>--dashboard-port 3118</code>) or disable it (<code>--no-dashboard</code>).</p>
 

@@ -54,7 +54,6 @@ const ALLOWLIST = new Set<string>([
   'README.md',
   '.claude/guidance/internal/dogfooding.md',
   '.claude/guidance/internal/testing-performance.md',
-  'docs/linkedin-luminarium.html',
 ]);
 
 describe('no-fixed-3117 regression guard (#1145)', () => {
