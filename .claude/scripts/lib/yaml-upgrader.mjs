@@ -37,13 +37,13 @@ session_continuity:
 `,
   },
   {
-    key: 'auto_reflect',
-    block: `# Auto-reflect (#1198) — the automatic counterpart to /reflect. When enabled,
+    key: 'auto_meditate',
+    block: `# Auto-meditate (#1198) — the automatic counterpart to /meditate. When enabled,
 # moflo recognizes durable lessons in the LIVE session (a tiny answer-first note
 # on course-corrections / errors / decisions) and distills them into long-term
 # memory at the next session-start via a cheap headless Haiku pass — deduped.
 # Ships ON; set false to opt out.
-auto_reflect:
+auto_meditate:
   enabled: true
 `,
   },
@@ -61,6 +61,38 @@ sandbox:
 `,
   },
 ];
+
+/**
+ * Registry of top-level config sections RENAMED across a moflo version. On
+ * upgrade, an existing `<from>:` block in the user's moflo.yaml is renamed in
+ * place to `<to>:` — preserving the user's values (e.g. an opt-out) — so they
+ * keep their setting under the new key instead of a fresh default block being
+ * appended while the stale old one lingers.
+ */
+export const RENAMED_SECTIONS = [
+  // Auto-meditate rebrand — feature #1198 was renamed from "auto-reflect".
+  { from: 'auto_reflect', to: 'auto_meditate' },
+];
+
+/**
+ * Rename any registered top-level sections present under their OLD key to the
+ * NEW key, in place. Only the top-level key line is rewritten; the block body
+ * (the user's values) is preserved untouched. No-op when the old key is absent
+ * or the new key already exists. Returns the list of `from→to` renames applied.
+ */
+export function renameYamlSections(yamlPath, registry = RENAMED_SECTIONS) {
+  if (!existsSync(yamlPath)) return [];
+  let text = readFileSync(yamlPath, 'utf-8');
+  const applied = [];
+  for (const { from, to } of registry) {
+    if (hasTopLevelSection(text, from) && !hasTopLevelSection(text, to)) {
+      text = text.replace(new RegExp(`^${from}(\\s*:)`, 'm'), `${to}$1`);
+      applied.push(`${from}→${to}`);
+    }
+  }
+  if (applied.length > 0) writeFileSync(yamlPath, text, 'utf-8');
+  return applied;
+}
 
 /**
  * Return true if the YAML text already defines the given top-level key.
@@ -90,6 +122,11 @@ export function missingSections(yamlText, registry = REQUIRED_SECTIONS) {
  */
 export function ensureYamlSections(yamlPath, registry = REQUIRED_SECTIONS) {
   if (!existsSync(yamlPath)) return [];
+
+  // Migrate any renamed sections in place BEFORE computing what's missing, so a
+  // renamed key (e.g. auto_reflect → auto_meditate) is recognised as present and
+  // not re-appended as a fresh default block alongside the stale old one.
+  renameYamlSections(yamlPath);
 
   const original = readFileSync(yamlPath, 'utf-8');
   const toAppend = registry.filter((entry) => !hasTopLevelSection(original, entry.key));

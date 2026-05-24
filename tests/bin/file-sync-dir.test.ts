@@ -5,7 +5,7 @@
  * skills` (and `.claude/agents`) into consumer projects on each run. Skills
  * pass INTERNAL_SKILLS as `excludeTopLevel` so moflo-internal skills (`/publish`,
  * `/reset-epic`) ship in the tarball but never land in a consumer project —
- * while consumer-facing skills (e.g. /deep-research) still sync.
+ * while consumer-facing skills (e.g. /divine) still sync.
  *
  * Cross-platform: builds paths with path.join and exercises the same
  * forward-slash rel normalization the launcher relies on (rule #1).
@@ -37,8 +37,8 @@ function writeAt(root: string, rel: string, content: string) {
 
 function makeSkillsSrc(): string {
   const src = makeTempRoot('src');
-  writeAt(src, 'deep-research/SKILL.md', '# deep-research\n');
-  writeAt(src, 'brainstorm/SKILL.md', '# brainstorm\n');
+  writeAt(src, 'divine/SKILL.md', '# divine\n');
+  writeAt(src, 'commune/SKILL.md', '# commune\n');
   writeAt(src, 'publish/SKILL.md', '# publish (internal)\n');
   writeAt(src, 'reset-epic/SKILL.md', '# reset-epic (internal)\n');
   return src;
@@ -63,8 +63,8 @@ describe('syncDirRecursive (#1186)', () => {
     });
 
     // Consumer-facing skills land.
-    expect(existsSync(join(dest, '.claude/skills/deep-research/SKILL.md'))).toBe(true);
-    expect(existsSync(join(dest, '.claude/skills/brainstorm/SKILL.md'))).toBe(true);
+    expect(existsSync(join(dest, '.claude/skills/divine/SKILL.md'))).toBe(true);
+    expect(existsSync(join(dest, '.claude/skills/commune/SKILL.md'))).toBe(true);
     // moflo-internal skills are excluded.
     expect(existsSync(join(dest, '.claude/skills/publish/SKILL.md'))).toBe(false);
     expect(existsSync(join(dest, '.claude/skills/reset-epic/SKILL.md'))).toBe(false);
@@ -78,7 +78,7 @@ describe('syncDirRecursive (#1186)', () => {
     await syncDirRecursive(src, '.claude/skills', { projectRoot: dest, syncFile });
 
     expect(existsSync(join(dest, '.claude/skills/publish/SKILL.md'))).toBe(true);
-    expect(existsSync(join(dest, '.claude/skills/deep-research/SKILL.md'))).toBe(true);
+    expect(existsSync(join(dest, '.claude/skills/divine/SKILL.md'))).toBe(true);
   });
 
   it('copies only .md files and treats a missing source dir as a no-op', async () => {

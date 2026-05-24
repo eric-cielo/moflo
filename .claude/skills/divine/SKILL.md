@@ -1,5 +1,5 @@
 ---
-name: deep-research
+name: divine
 description: Structured multi-hop web research with explicit confidence gating — plan the inquiry, search (WebSearch/WebFetch), score your own confidence, and keep digging until the answer is well-supported or a hop cap is hit, then emit a cited synthesis. Learns across sessions by storing each research case to memory and reusing prior strategies. Use when a question needs more than one search — comparisons, current-best-practice questions, anything where a single lookup leaves you unsure.
 arguments: "[--hops N] [--offline] <question>"
 ---
@@ -10,7 +10,7 @@ $ARGUMENTS
 
 ---
 
-# /deep-research — Structured multi-hop research
+# /divine — Structured multi-hop research
 
 **Purpose:** Answer a question that one search can't settle. Plan the inquiry, search the web, **score your own confidence**, and keep hopping — expanding entities, deepening concepts, chasing causes — until the answer is well-supported or you hit the hop cap. Return a **cited** synthesis and remember what worked so the next research run starts smarter.
 
@@ -126,5 +126,5 @@ This is the same node:sqlite + HNSW substrate moflo's ReasoningBank draws on —
 ## See Also
 
 - `.claude/guidance/moflo-memory-protocol.md` — the `research` namespace and the store / search protocol
-- `.claude/skills/reflect/SKILL.md` — distill durable lessons from a session (the retrospective counterpart)
-- `.claude/skills/brainstorm/SKILL.md` — when the goal is still fuzzy, shape it before researching
+- `.claude/skills/meditate/SKILL.md` — distill durable lessons from a session (the retrospective counterpart)
+- `.claude/skills/commune/SKILL.md` — when the goal is still fuzzy, shape it before researching

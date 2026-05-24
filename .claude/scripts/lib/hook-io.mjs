@@ -2,7 +2,7 @@
  * Shared hook I/O primitives for moflo's bin/*.mjs hook handlers.
  *
  * Extracted (#1198) so the UserPromptSubmit/Stop capture hook
- * (reflect-capture.mjs) and the passive session-continuity Stop hook
+ * (meditate-capture.mjs) and the passive session-continuity Stop hook
  * (session-continuity.mjs) share ONE implementation of "read the hook's JSON
  * stdin" — a bug in the bounded-read logic gets fixed once, not per copy.
  *

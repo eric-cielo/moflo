@@ -182,6 +182,7 @@ findings; if AI-driven security scanning returns it should be an opt-in
 
 ## See Also
 
+- `.claude/guidance/moflo-skills-reference.md` — The slash-command surface (skills) that complements these CLI commands, plus moflo's automatic features
 - `.claude/guidance/moflo-core-guidance.md` — Hub: getting started, MCP setup, troubleshooting, comparison table
 - `.claude/guidance/moflo-yaml-reference.md` — `moflo.yaml` schema and runtime env-var overrides for the surfaces listed here
 - `.claude/guidance/moflo-claude-swarm-cohesion.md` — How TaskCreate + swarm coordinators cooperate (uses the agent codes above)

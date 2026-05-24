@@ -49,10 +49,10 @@ session_continuity:
   inject: true
   max_age_hours: 72
 
-# Auto-reflect (#1198) — automatic counterpart to /reflect; recognizes durable
+# Auto-meditate (#1198) — automatic counterpart to /meditate; recognizes durable
 # lessons in the live session and distills them into long-term memory. Ships ON;
 # set false to opt out.
-auto_reflect:
+auto_meditate:
   enabled: true
 
 # Memory backend

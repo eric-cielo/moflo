@@ -1,9 +1,9 @@
 /**
- * End-to-end tests for the auto-reflect distill orchestrator (#1198) —
- * bin/reflect-distill.mjs.
+ * End-to-end tests for the auto-meditate distill orchestrator (#1198) —
+ * bin/meditate-distill.mjs.
  *
  * The headless Haiku call is replaced by a node stub via the
- * MOFLO_REFLECT_DISTILL_NODE_STUB seam, so we can assert the full pipeline
+ * MOFLO_MEDITATE_DISTILL_NODE_STUB seam, so we can assert the full pipeline
  * (gates → snapshot → spawn → mark-distilled) cross-platform without a real
  * Claude CLI.
  *
@@ -15,9 +15,9 @@ import { spawnSync } from 'child_process';
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { resolve, join } from 'path';
 
-import { appendLedgerEntries, readLedger, pendingEntries } from '../../bin/lib/reflect.mjs';
+import { appendLedgerEntries, readLedger, pendingEntries } from '../../bin/lib/meditate.mjs';
 
-const DISTILL_SCRIPT = resolve(__dirname, '../../bin/reflect-distill.mjs');
+const DISTILL_SCRIPT = resolve(__dirname, '../../bin/meditate-distill.mjs');
 
 // A node stub standing in for `claude --print <prompt>`: records the prompt to a
 // marker file, then exits with STUB_EXIT (default 0).
@@ -30,7 +30,7 @@ process.exit(process.env.STUB_EXIT ? Number(process.env.STUB_EXIT) : 0);
 function makeTempRoot(label: string): { root: string; stub: string; marker: string } {
   const root = resolve(
     __dirname,
-    '../../.testoutput/.test-reflectdist-' + label + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    '../../.testoutput/.test-meditatedist-' + label + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   );
   mkdirSync(join(root, '.moflo'), { recursive: true });
   const stub = resolve(root, 'stub-claude.mjs');
@@ -41,10 +41,10 @@ function cleanTempRoot(root: string) {
   try { rmSync(root, { recursive: true, force: true }); } catch { /* Windows handle hold */ }
 }
 function enable(root: string) {
-  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: true\n', 'utf-8');
+  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_meditate:\n  enabled: true\n', 'utf-8');
 }
 function disable(root: string) {
-  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_reflect:\n  enabled: false\n', 'utf-8');
+  writeFileSync(resolve(root, 'moflo.yaml'), 'auto_meditate:\n  enabled: false\n', 'utf-8');
 }
 function runDistill(root: string, stub: string, marker: string, extraEnv: Record<string, string> = {}) {
   return spawnSync('node', [DISTILL_SCRIPT], {
@@ -54,14 +54,14 @@ function runDistill(root: string, stub: string, marker: string, extraEnv: Record
     env: {
       ...process.env,
       CLAUDE_PROJECT_DIR: root,
-      MOFLO_REFLECT_DISTILL_NODE_STUB: stub,
+      MOFLO_MEDITATE_DISTILL_NODE_STUB: stub,
       STUB_MARKER: marker,
       ...extraEnv,
     },
   });
 }
 
-describe('reflect-distill', () => {
+describe('meditate-distill', () => {
   let root: string;
   let stub: string;
   let marker: string;

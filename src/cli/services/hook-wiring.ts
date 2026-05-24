@@ -55,14 +55,14 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   // just fresh `flo init`. Capture is default-on (silent); injection is
   // relevance-gated at session-start.
   { event: 'Stop', pattern: 'session-continuity.mjs' },
-  // #1198 — auto-reflect capture (default-ON; opt out via
-  // auto_reflect.enabled: false). `reflect-detect` (UserPromptSubmit) injects the
-  // answer-first directive on a strong signal; `reflect-scrape` (Stop) harvests
-  // <reflect-capture> tags into the ledger. Both share reflect-capture.mjs, so
+  // #1198 — auto-meditate capture (default-ON; opt out via
+  // auto_meditate.enabled: false). `meditate-detect` (UserPromptSubmit) injects the
+  // answer-first directive on a strong signal; `meditate-scrape` (Stop) harvests
+  // <meditate-capture> tags into the ledger. Both share meditate-capture.mjs, so
   // the unique subcommand token (not the shared filename) is the presence
   // discriminator — same convention as gate-hook subcommands like record-test-run.
-  { event: 'UserPromptSubmit', pattern: 'reflect-detect' },
-  { event: 'Stop', pattern: 'reflect-scrape' },
+  { event: 'UserPromptSubmit', pattern: 'meditate-detect' },
+  { event: 'Stop', pattern: 'meditate-scrape' },
 ];
 
 /**
@@ -109,11 +109,11 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // matcher), like the UserPromptSubmit entries; Claude Code fires every Stop
   // block, so a separate block alongside session-end/sync is fine.
   'session-continuity.mjs':   { event: 'Stop',             matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/session-continuity.mjs" capture', timeout: 5000 } },
-  // #1198 — auto-reflect capture. Default-ON (the script no-ops only when
-  // auto_reflect.enabled is false). Bare blocks (no matcher), like the other
+  // #1198 — auto-meditate capture. Default-ON (the script no-ops only when
+  // auto_meditate.enabled is false). Bare blocks (no matcher), like the other
   // UserPromptSubmit/Stop entries.
-  'reflect-detect':           { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs" reflect-detect', timeout: 3000 } },
-  'reflect-scrape':           { event: 'Stop',             matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs" reflect-scrape', timeout: 5000 } },
+  'meditate-detect':          { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/meditate-capture.mjs" meditate-detect', timeout: 3000 } },
+  'meditate-scrape':          { event: 'Stop',             matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/meditate-capture.mjs" meditate-scrape', timeout: 5000 } },
 };
 
 export interface RepairResult {
@@ -228,6 +228,22 @@ export const HOOK_REWRITE_RULES: ReadonlyArray<HookRewriteRule> = [
     name: '#931: route check-before-agent → gate-hook.mjs (forwards HOOK_SESSION_ID)',
     from: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-before-agent',
     to:   'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-agent',
+  },
+  // Auto-meditate rebrand — the auto-reflect capture script + subcommands were
+  // renamed (reflect-capture.mjs → meditate-capture.mjs; reflect-detect/scrape →
+  // meditate-detect/scrape). Existing consumers self-heal here: the stale hook
+  // command is rewritten in place on session-start, so no dead hook is left
+  // pointing at the pruned reflect-capture.mjs. Idempotent (a command already at
+  // `to` won't match `from`).
+  {
+    name: 'auto-meditate rebrand: reflect-capture detect → meditate-capture detect',
+    from: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs" reflect-detect',
+    to:   'node "$CLAUDE_PROJECT_DIR/.claude/scripts/meditate-capture.mjs" meditate-detect',
+  },
+  {
+    name: 'auto-meditate rebrand: reflect-capture scrape → meditate-capture scrape',
+    from: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-capture.mjs" reflect-scrape',
+    to:   'node "$CLAUDE_PROJECT_DIR/.claude/scripts/meditate-capture.mjs" meditate-scrape',
   },
 ];
 

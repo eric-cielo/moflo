@@ -1,38 +1,38 @@
 /**
- * Auto-reflect (#1198) — pure logic shared by the capture hook
- * (`bin/reflect-capture.mjs`, wired to UserPromptSubmit + Stop) and the distill
- * orchestrator (`bin/reflect-distill.mjs`, fired detached by the session-start
+ * Auto-meditate (#1198) — pure logic shared by the capture hook
+ * (`bin/meditate-capture.mjs`, wired to UserPromptSubmit + Stop) and the distill
+ * orchestrator (`bin/meditate-distill.mjs`, fired detached by the session-start
  * launcher).
  *
  * DESIGN (owner-signed-off, #1198): two-stage Recognize → Distill.
  *   - RECOGNIZE happens in the LIVE session. A UserPromptSubmit hook detects a
  *     strong signal (user correction / error→fix / explicit decision) and, on a
  *     hit, injects an answer-first directive asking the model — which has full
- *     context at the moment of insight — to append ONE <reflect-capture> line IF
+ *     context at the moment of insight — to append ONE <meditate-capture> line IF
  *     a durable lesson emerged. A Stop hook scrapes that tag into a JSON ledger.
  *     No moflo.db write, no dedup yet — the ledger is raw, high-quality material.
  *   - DISTILL happens at the NEXT session-start. The launcher fire-and-forgets a
  *     detached process that runs ONE bounded headless Haiku `claude --print`
- *     executing #1187's /reflect distillation over the ledger one-liners —
+ *     executing #1187's /meditate distillation over the ledger one-liners —
  *     dedup-search `learnings` (≥0.80 → update same key), store via memory_store
  *     (routes through the daemon = writer-safe). Haiku is a FORMATTER, not a
  *     judge: the durability gate already passed upstream in the live model, so
  *     unattended runs cannot pollute `learnings` with junk.
  *
- * Default-ON (opt out via moflo.yaml `auto_reflect.enabled: false`). Shipped
+ * Default-ON (opt out via moflo.yaml `auto_meditate.enabled: false`). Shipped
  * default-on from #1198; the `rc` dist-tag gated the initial rollout. Every
  * entry point still early-returns cheaply when the flag is off OR
  * `CLAUDE_CODE_HEADLESS` is set — the distill's own headless session must never
  * re-enter capture or re-spawn distill (the #860 / infinite-spawn guard).
  *
- * STORAGE: `.moflo/reflect-ledger.json` (single file) + `.moflo/reflect-state.json`
+ * STORAGE: `.moflo/meditate-ledger.json` (single file) + `.moflo/meditate-state.json`
  * (rate-limit). Deliberately NOT under `.moflo/continuity/` — that directory is
  * rotation-managed by #1185 (`rotateDigests` would delete a stray file there).
  *
  * Cross-platform (Rule #1): Node fs/path primitives only; no shell.
  */
 
-import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'fs';
 import { resolve, join, dirname } from 'path';
 import { randomBytes } from 'crypto';
 
@@ -53,27 +53,61 @@ export const MAX_LESSON_CHARS = 320;
 /** Bytes of transcript tail the capture hook scans for signals / tags. */
 export const TRANSCRIPT_TAIL_BYTES = 32_768;
 
-const LEDGER_FILE = 'reflect-ledger.json';
-const STATE_FILE = 'reflect-state.json';
+const LEDGER_FILE = 'meditate-ledger.json';
+const STATE_FILE = 'meditate-state.json';
+
+// Pre-rebrand filenames. Before auto-reflect → auto-meditate, the capture
+// pipeline wrote `.moflo/reflect-ledger.json` (pending lessons) and
+// `.moflo/reflect-state.json` (rate-limit). The new code writes meditate-*.json,
+// so on upgrade the old pair is orphaned — never read, never updated. We purge
+// rather than migrate: the state file is throwaway rate-limit data, and the
+// ledger is drained by the distill pass every session, so the residual is at
+// most a handful of undistilled one-liners. Leaving them beside the new files
+// just confuses users (#auto-meditate rebrand).
+export const LEGACY_STATE_FILES = ['reflect-ledger.json', 'reflect-state.json'];
+
+/**
+ * Delete orphaned pre-rebrand reflect-*.json files from `.moflo/`. Idempotent
+ * (no-op once they're gone) and tolerant of a concurrent unlink. Returns the
+ * names actually removed, so the launcher can log a one-time crumb.
+ */
+export function purgeLegacyFiles(projectRoot) {
+  const removed = [];
+  for (const name of LEGACY_STATE_FILES) {
+    const p = resolve(projectRoot, '.moflo', name);
+    if (!existsSync(p)) continue;
+    try {
+      unlinkSync(p);
+      removed.push(name);
+    } catch {
+      /* deleted between stat and unlink, or held open — non-fatal */
+    }
+  }
+  return removed;
+}
 
 // ── moflo.yaml config (regex read, matching the launcher's no-js-yaml style) ─
 
 /**
- * Read the `auto_reflect` block from moflo.yaml without a YAML parser. Defaults
- * ON — opt out with `auto_reflect.enabled: false`. (#1198 ships default-on; the
+ * Read the `auto_meditate` block from moflo.yaml without a YAML parser. Defaults
+ * ON — opt out with `auto_meditate.enabled: false`. (#1198 ships default-on; the
  * `rc` dist-tag gated the initial rollout.) Stays ON on a mid-write/malformed
  * file, consistent with the on default.
+ *
+ * Back-compat: also honours the legacy `auto_reflect:` key (pre-rebrand) so a
+ * consumer's opt-out survives the window between upgrade and the yaml-upgrader
+ * renaming the key to `auto_meditate:`.
  *
  * @param {string} projectRoot
  * @returns {{enabled: boolean}}
  */
-export function readReflectConfig(projectRoot) {
+export function readMeditateConfig(projectRoot) {
   const cfg = { enabled: true };
   try {
     const yamlPath = resolve(projectRoot, 'moflo.yaml');
     if (!existsSync(yamlPath)) return cfg;
     const text = readFileSync(yamlPath, 'utf-8');
-    const enabled = text.match(/auto_reflect:\s*\n(?:\s+\w+:.*\n)*?\s+enabled:\s*(true|false)/);
+    const enabled = text.match(/auto_(?:meditate|reflect):\s*\n(?:\s+\w+:.*\n)*?\s+enabled:\s*(true|false)/);
     if (enabled) cfg.enabled = enabled[1] === 'true';
   } catch {
     // Default ON keeps the feature live if the file is mid-write / malformed.
@@ -177,11 +211,11 @@ export function recentTranscriptTurn(tailText) {
   return (lastUserIdx >= 0 ? lines.slice(lastUserIdx + 1) : lines).join('\n');
 }
 
-// ── Stage 1: the injected directive (DRY with #1187 /reflect) ───────────────
+// ── Stage 1: the injected directive (DRY with #1187 /meditate) ───────────────
 
 /** The durability bar — single canonical wording shared by the capture
- *  directive AND the distill prompt, mirroring `.claude/skills/reflect/SKILL.md`
- *  Step 2 so the automatic path applies the exact same standard as `/reflect`. */
+ *  directive AND the distill prompt, mirroring `.claude/skills/meditate/SKILL.md`
+ *  Step 2 so the automatic path applies the exact same standard as `/meditate`. */
 export const DURABILITY_BAR =
   'A durable lesson would help a FUTURE session on a DIFFERENT task: a reusable ' +
   'pattern ("for X do Y because Z"), a recurring gotcha/trap, or a decision plus ' +
@@ -205,10 +239,10 @@ const KIND_LABEL = {
 export function buildCaptureDirective(kind) {
   const label = KIND_LABEL[kind] || 'notable moment';
   return [
-    `[auto-reflect] A ${label} just occurred this session.`,
+    `[auto-meditate] A ${label} just occurred this session.`,
     `FIRST: fully address the user's request as you normally would — do NOT let this note change your answer.`,
     `THEN, only if a durable, reusable lesson emerged, append exactly ONE final line of the form:`,
-    `<reflect-capture>LESSON</reflect-capture>`,
+    `<meditate-capture>LESSON</meditate-capture>`,
     `where LESSON is a single concise sentence (a pattern, gotcha, or decision+rationale).`,
     DURABILITY_BAR,
     `If nothing clears that bar, append nothing — silence is the correct, common outcome. Never emit more than one such line.`,
@@ -241,7 +275,7 @@ export function injectionAllowed(state, sessionId, now) {
 }
 
 /** Read rate-limit state (never throws). */
-export function readReflectState(projectRoot) {
+export function readMeditateState(projectRoot) {
   try {
     return JSON.parse(readFileSync(stateFilePath(projectRoot), 'utf-8'));
   } catch {
@@ -257,9 +291,9 @@ export function recordInjection(projectRoot, sessionId, now, prevState = null) {
   atomicWriteJson(stateFilePath(projectRoot), { sessionId: sessionId ?? null, lastInjectMs: now, count });
 }
 
-// ── Stage 1: <reflect-capture> tag extraction (pure) ────────────────────────
+// ── Stage 1: <meditate-capture> tag extraction (pure) ────────────────────────
 
-const CAPTURE_TAG_RE = /<reflect-capture>([\s\S]*?)<\/reflect-capture>/gi;
+const CAPTURE_TAG_RE = /<meditate-capture>([\s\S]*?)<\/meditate-capture>/gi;
 // Drop the directive's own placeholder + non-lessons.
 const PLACEHOLDER_RE = /^(lesson|none|n\/?a|nothing)$/i;
 
@@ -307,7 +341,7 @@ export function extractCapturesFromTranscript(tailText) {
   return out;
 }
 
-// ── Ledger (.moflo/reflect-ledger.json) ─────────────────────────────────────
+// ── Ledger (.moflo/meditate-ledger.json) ─────────────────────────────────────
 
 function ledgerFilePath(projectRoot) {
   return resolve(projectRoot, '.moflo', LEDGER_FILE);
@@ -430,11 +464,11 @@ export function markLedgerDistilled(projectRoot, ids) {
   return marked;
 }
 
-// ── Stage 2: distill prompt (DRY with #1187 /reflect) ───────────────────────
+// ── Stage 2: distill prompt (DRY with #1187 /meditate) ───────────────────────
 
 /**
  * Build the bounded headless-Haiku distillation prompt over the pending ledger
- * entries. Reuses the `/reflect` protocol (search → dedup ≥0.80 → store) rather
+ * entries. Reuses the `/meditate` protocol (search → dedup ≥0.80 → store) rather
  * than forking it, and instructs writes through the MCP memory tools so they
  * route via the daemon single-writer chokepoint (#981) — writer-safe.
  *
@@ -445,12 +479,12 @@ export function buildDistillPrompt(entries) {
   const list = (Array.isArray(entries) ? entries : []).filter((e) => e && e.lesson);
   const numbered = list.map((e, i) => `${i + 1}. ${e.lesson}`).join('\n');
   return [
-    `You are running moflo's automatic /reflect distillation (#1198) headlessly. Below are raw candidate lessons captured during a recent session — one per line. Persist the durable keepers to long-term memory, deduped. Be terse; do not write files.`,
+    `You are running moflo's automatic /meditate distillation (#1198) headlessly. Below are raw candidate lessons captured during a recent session — one per line. Persist the durable keepers to long-term memory, deduped. Be terse; do not write files.`,
     ``,
     `Candidates:`,
     numbered,
     ``,
-    `Procedure — reuse the /reflect protocol, do not invent a new one:`,
+    `Procedure — reuse the /meditate protocol, do not invent a new one:`,
     `1. For EACH candidate, call mcp__moflo__memory_search { namespace: "learnings", query: <bare keywords>, threshold: 0.6, limit: 5 }.`,
     `2. If the top hit is the SAME fact at similarity >= 0.80, call mcp__moflo__memory_store with that SAME key (upsert), merging any new nuance — do NOT create a near-duplicate.`,
     `3. Otherwise call mcp__moflo__memory_store { namespace: "learnings", key: <stable descriptive slug>, value: "<lesson> — Why: <why it matters>. How to apply: <what to do next time>.", tags: [<topic>, <area>] }.`,

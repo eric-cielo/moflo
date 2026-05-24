@@ -44,15 +44,15 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 // skills that ship in the tarball but are deliberately NOT installed.
 export const SKILLS_MAP: Record<string, string[]> = {
   core: [
-    'brainstorm',
+    'commune',
     'eldar',
     'guidance',
     'healer',
     'flo-simplify',
     'luminarium',
     'reasoningbank-intelligence',
-    'reflect',
-    'deep-research',
+    'meditate',
+    'divine',
   ],
   memory: [
     'memory-patterns',
