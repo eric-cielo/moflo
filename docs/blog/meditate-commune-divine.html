@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Go Deep with Claude — or Just Let MoFlo Learn on Its Own</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fg: #1f2328;
+      --fg-muted: #57606a;
+      --bg: #faf9f6;
+      --accent: #b91c1c;
+      --accent-hover: #7f1d1d;
+      --code-bg: #f1ece4;
+      --code-fg: #1f2328;
+      --rule: #e3dfd8;
+      --shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--fg);
+      max-width: 740px;
+      margin: 3rem auto;
+      padding: 0 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.018em;
+      line-height: 1.22;
+      color: var(--fg);
+    }
+    h1 {
+      font-size: 2.25rem;
+      margin: 1.25rem 0 1rem;
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 0.25rem;
+    }
+    p {
+      margin: 0.95rem 0;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(185, 28, 28, 0.35);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      border-bottom-color: var(--accent-hover);
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: inset 0 0 0 1px rgba(31, 35, 40, 0.04);
+      margin: 1.25rem 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+    li::marker {
+      color: var(--fg-muted);
+    }
+    em {
+      font-style: italic;
+      color: var(--fg);
+    }
+    strong {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2rem 0;
+    }
+    blockquote {
+      margin: 1.25rem 0;
+      padding: 0.5rem 1.25rem;
+      border-left: 3px solid var(--accent);
+      color: var(--fg-muted);
+      font-style: italic;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.8rem;
+      border: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    th {
+      background: var(--code-bg);
+      font-weight: 600;
+    }
+    h1 + p em {
+      color: var(--fg-muted);
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; margin: 1.5rem auto; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.25rem; }
+      table { font-size: 0.88rem; }
+      th, td { padding: 0.4rem 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_meditate.png" alt="MoFlo — a wizard in meditation, communing, divining, and reflecting" /></p>
+
+<h1>Go Deep with Claude — or Just Let MoFlo Learn on Its Own</h1>
+
+<p><em>A look at three of <a href="https://github.com/eric-cielo/moflo">MoFlo</a>'s "thinking" skills — <code>/commune</code>, <code>/divine</code>, and <code>/meditate</code> —
+  that bookend the actual coding: shape a fuzzy idea into a spec <em>before</em> you build, research the world when one search isn't enough <em>during</em>, and distill durable lessons <em>after</em>.
+  Plus auto-meditate, the always-on version of that last step that captures what you learned without you asking.</em></p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+<hr />
+
+<h2>The premise: most of the work isn't writing code</h2>
+
+<p>Spend a day pairing with Claude on a real project and you'll notice the actual typing of code is the easy part. The hard parts sit on either side of it.
+  <em>Before</em> the work: figuring out what you actually want, when "I think I need an undo feature" is really "users keep losing drafts."
+  <em>During</em> the work: needing a fact the codebase can't tell you — which library won, what the current best practice is, whether that API still works the way the old StackOverflow answer claims.
+  <em>After</em> the work: noticing the lesson worth keeping, the gotcha that cost you two hours, the decision you'll regret re-litigating next month.</p>
+
+<p>Claude is excellent at the middle. The edges are where sessions go sideways — you build the wrong thing because the spec was fuzzy, you ship on a stale assumption because you didn't dig,
+  or you solve the same problem for the third time because nobody wrote down the answer.</p>
+
+<p>MoFlo now ships three skills aimed squarely at those edges. They're deliberately <em>not</em> code-writing skills. Each one produces thinking — a spec, a cited answer, a durable lesson — and then hands the result somewhere useful.</p>
+
+<hr />
+
+<h2>A note on the names</h2>
+
+<p>If you've used MoFlo for a while, you knew these as <code>/brainstorm</code>, <code>/deep-research</code>, and <code>/reflect</code>. They're now <code>/commune</code>, <code>/divine</code>, and <code>/meditate</code>.
+  Same skills, sharper purpose, and names that finally fit the rest of the vocabulary — MoFlo already has spells you <em>cast</em>, the Eldar you <em>consult</em>, a Healer that mends your setup, and the Luminarium dashboard.
+  The old names were generic verbs that could mean anything; the new ones say what the skill is <em>for</em>. You commune with the project to surface what it already knows. You divine an answer from the wider world.
+  You meditate on a finished session to keep what mattered.</p>
+
+<p>The rename is also a hint about how they relate. They're three modes of the same underlying thing — disciplined thinking — applied at three different moments.</p>
+
+<hr />
+
+<h2><code>/commune</code> — shape the idea before you build</h2>
+
+<p>Most "build me X" sessions fail at the first sentence, because the first sentence is a solution dressed up as a requirement. <code>/commune</code> is the pre-execution skill: it converges a fuzzy
+  "I'm not sure exactly what I want yet" prompt into a concrete spec you can actually act on — through a short Socratic dialogue, not a form.</p>
+
+<pre><code>/commune a way for users to recover work they lost</code></pre>
+
+<p>Here's the flow:</p>
+
+<ol>
+  <li><strong>Memory first.</strong> Before anything, it searches your <code>patterns</code> and <code>learnings</code> namespaces for the idea's keywords. The worst outcome in a brainstorm is
+    specifying something that's already half-built — so if prior art exists, it surfaces that immediately. This might be "extend X," not "build X from scratch."</li>
+  <li><strong>Reframe as a problem.</strong> It restates your idea back as a <em>goal</em>, not a solution: "You want users to recover a deleted draft" — not "you want an undo button." You confirm before any questions start.</li>
+  <li><strong>Elicit, Socratically.</strong> It runs a handful of targeted rounds — problem and motivation, users and scenarios, scope and MVP, constraints, success criteria, risks — using interactive
+    multiple-choice questions where there's a real branch, and open questions only where the answer is genuinely free-form. The rule it holds itself to: <em>every question must change the spec.</em>
+    Three sharp questions beat ten that don't move anything.</li>
+  <li><strong>Synthesize.</strong> Out comes a single markdown spec — problem, goal and non-goals, the chosen approach with rejected alternatives, scope, constraints, risks, and observable success criteria.
+    You sign off (or do one round of edits) before it goes anywhere.</li>
+  <li><strong>Hand off.</strong> This is the part that matters. <code>/commune</code> doesn't start a parallel track — it feeds MoFlo's existing surfaces. The spec's success criteria become a <code>/flo</code> ticket's
+    acceptance criteria; an automatable pipeline becomes a spell; a decision-to-remember goes to memory; or you just keep the file.</li>
+</ol>
+
+<p>Three speeds: <code>-q</code> for a small, well-bounded idea (1–2 rounds), the default for most ideas (3–5 rounds), and <code>--deep</code> for a risky architectural call, which adds a dedicated round comparing
+  2–3 candidate approaches side by side.</p>
+
+<p>The point is to stop the most expensive failure mode in AI-assisted development: building the wrong thing, fast, because the prompt was a guess. It is far cheaper to fix the spec than the PR it becomes.</p>
+
+<hr />
+
+<h2><code>/divine</code> — research the world when one search isn't enough</h2>
+
+<p>Some questions a single <code>WebSearch</code> settles. "What's the latest stable Node version?" — done. But "which Rust async runtime should I use in 2026, and why?" isn't one lookup; it's a chain —
+  find the contenders, read each one's tradeoffs, check what's current, weigh the disagreements. Do that ad hoc and you get a confident answer built on the first three blue links. <code>/divine</code> is the disciplined version of that loop.</p>
+
+<pre><code>/divine which embedding model gives the best quality-to-size ratio for local RAG</code></pre>
+
+<p>What makes it different from "just search a few times" is a <strong>confidence gate</strong>. After each hop, the skill scores its own confidence from 0.0 to 1.0 — honestly, weighing source quality,
+  agreement across <em>independent</em> sources, and recency. Thin or single-source evidence scores low even when the snippet sounds definitive.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Confidence after a hop</th>
+      <th>What it does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>≥ 0.8</code> (target)</td>
+      <td>Stop — the answer is well-supported. Synthesize.</td>
+    </tr>
+    <tr>
+      <td><code>0.6 – 0.8</code></td>
+      <td>One more focused hop if budget remains; otherwise synthesize and flag the uncertainty.</td>
+    </tr>
+    <tr>
+      <td><code>&lt; 0.6</code></td>
+      <td>Keep going — pick an expansion move and hop again.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>When it continues, it doesn't just search the same thing harder — it targets the <em>weakest</em> part of the current answer with a deliberate move: expand a named entity that needs its own lookup,
+  deepen a claim from "what" to "how/why," check whether a time-sensitive answer has newer state, or follow a causal chain. It stops at the hop cap (default 5, override with <code>--hops N</code>) no matter what,
+  and tells you the confidence it actually reached.</p>
+
+<p>The output is a <strong>cited synthesis</strong> — the direct answer first, every material claim tied to its source URL, disagreements surfaced rather than smoothed over, and a closing confidence line like
+  <code>Confidence 0.82 after 4 hops; weakest point: pricing may be stale (no 2026 source found)</code>. No factual claim without a source; the skill's own reasoning is marked as such.</p>
+
+<p>And it learns. Every run stores a <em>case</em> to the <code>research</code> memory namespace — which sub-questions and expansion moves paid off, the confidence reached, the best sources.
+  The next time you research a similar question, <code>/divine</code> retrieves that case first and starts from a strategy that already worked instead of from scratch.
+  (<code>--offline</code> skips the web entirely and answers from memory and prior cases, clearly flagged and capped at low confidence.)</p>
+
+<hr />
+
+<h2><code>/meditate</code> — keep what the session taught you</h2>
+
+<p>You just spent three hours discovering that a daemon port resolves differently in local-dev versus CI, and that the fix has to live in the launcher because a long-lived process clobbers any file-level repair.
+  That's a real lesson. Next week, on a different task, it would save you the three hours again — <em>if</em> it's written down somewhere Claude will find it. It usually isn't. The session ends, the insight evaporates, and you rediscover it the hard way.</p>
+
+<p><code>/meditate</code> is the deliberate retrospective that closes that loop. Run it at the end of a meaningful chunk of work:</p>
+
+<pre><code>/meditate the daemon port work</code></pre>
+
+<p>It reviews the session — what was attempted, what worked, what surprised you, what was decided and why — and then distills lessons against a single <strong>durability bar</strong>:</p>
+
+<blockquote>Would this help a future session working on a <strong>different</strong> task?</blockquote>
+
+<table>
+  <thead>
+    <tr>
+      <th>Keep (durable)</th>
+      <th>Skip (not durable)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>A reusable pattern: "for X, do Y because Z"</td>
+      <td>"Fixed bug X in file Y" — that's git history</td>
+    </tr>
+    <tr>
+      <td>A recurring gotcha: "W silently fails when V"</td>
+      <td>"Added a test for Z" — the test records itself</td>
+    </tr>
+    <tr>
+      <td>A decision + the rationale future work must respect</td>
+      <td>Session state ("on branch …, 3 files dirty")</td>
+    </tr>
+    <tr>
+      <td>A cross-platform or blast-radius constraint discovered</td>
+      <td>Restating a rule that's already written down</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>It aims for a <em>handful</em> of high-signal items, not an exhaustive log — three lessons that change future behavior beat ten that restate the obvious. Crucially, it dedups before every write:
+  it searches what's already in your <code>learnings</code> namespace and <em>updates</em> a near-match rather than spawning a duplicate, because a split, contradictory memory is worse than no memory at all.
+  Then it reports a compact ledger of what was stored, updated, or skipped. (<code>--preview</code> runs the whole retrospective but writes nothing, so you can review before committing to memory.)</p>
+
+<hr />
+
+<h2>…or just let it learn on its own</h2>
+
+<p>Here's the part that makes all of this actually stick: you don't have to remember to run <code>/meditate</code>.</p>
+
+<p><strong>Auto-meditate</strong> is the always-on counterpart, and it ships on by default. A hook watches the live session for the <em>moment a durable lesson emerges</em> — a correction you made,
+  an error followed by its fix, a decision with a rationale. It queues those, and at the next session start a brief background pass distills them into the same <code>learnings</code> namespace,
+  applying the same durability bar and the same dedup-then-store discipline as the manual skill.</p>
+
+<p>The two are complementary by design:</p>
+
+<ul>
+  <li><strong>Auto-meditate is the safety net.</strong> It runs without being asked and catches the lessons you'd otherwise forget to capture. No slash command, no prompting, no token cost in your active session.</li>
+  <li><strong><code>/meditate</code> is the deliberate, curated pass.</strong> When you <em>know</em> a session was significant and want to shape exactly what's kept, you run it yourself.</li>
+</ul>
+
+<p>Both dedup against existing <code>learnings</code>, so neither pollutes the other, and every lesson either of them stores gets embedded and surfaces in future memory searches.
+  That's the whole bet: the project gets smarter about itself over time, whether or not you ever think about it.</p>
+
+<p>Opt out with <code>auto_meditate.enabled: false</code> in <code>moflo.yaml</code> if you'd rather keep capture fully manual. Most people leave it on.</p>
+
+<hr />
+
+<h2>How they fit together</h2>
+
+<p>These three aren't a random grab-bag. They map onto the lifecycle of a piece of work:</p>
+
+<pre><code>/commune   → shape a fuzzy idea into a spec        (before)
+   ↓ hands off to /flo, a spell, or memory
+[ build ]  → the actual work
+   ↓
+/meditate  → distill the durable lessons           (after)
+   ↑ auto-meditate does this passively, always-on
+
+/divine    → research the wider world when you're stuck   (any time)</code></pre>
+
+<p><code>/commune</code> opens a unit of work; <code>/meditate</code> closes one. <code>/divine</code> sits orthogonal — reach for it any time the answer lives out on the web rather than in your repo or your head.
+  And the same MoFlo memory substrate underneath all of them — node:sqlite plus HNSW vector search — is what lets <code>/divine</code> reuse winning research strategies and lets both flavors of meditate accumulate lessons that actually compound.</p>
+
+<p>Each one also knows its lane. None of them write code. <code>/commune</code> produces a spec and hands it to <code>/flo</code> or a spell to <em>build</em>. <code>/divine</code> produces a cited answer, not an edit.
+  <code>/meditate</code> writes memory, never source. That discipline is deliberate — these are the thinking steps, and keeping them separate from execution is what makes their output trustworthy.</p>
+
+<hr />
+
+<h2>Why this matters</h2>
+
+<p>The pitch for MoFlo has always been that an AI assistant which remembers and learns beats one that starts cold every session. These three skills are that pitch applied to the <em>human</em> parts of the loop —
+  the deciding, the researching, the reflecting that normally happens in your head and then vanishes.</p>
+
+<p><code>/commune</code> makes sure you build the right thing. <code>/divine</code> makes sure you build it on facts, not the first plausible search result. <code>/meditate</code> makes sure you only learn each lesson once.
+  And auto-meditate makes sure that last part happens even on the days you're moving too fast to stop and reflect.</p>
+
+<p><strong>Go deep when the work calls for it. Let it learn on its own the rest of the time.</strong></p>
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+</body>
+</html>
