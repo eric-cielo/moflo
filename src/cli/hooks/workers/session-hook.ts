@@ -5,7 +5,6 @@
  */
 
 import { WorkerManager, createWorkerManager } from './index.js';
-import * as path from 'path';
 import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // ============================================================================
@@ -140,48 +139,6 @@ export function formatSessionStartOutput(result: SessionHookResult): string {
   }
 
   return lines.join('\n');
-}
-
-// ============================================================================
-// Shell Script Generator
-// ============================================================================
-
-/**
- * Generate a shell hook script for integration with .claude/settings.json
- */
-export function generateShellHook(projectRoot: string): string {
-  const hookPath = path.join(projectRoot, 'v3', '@claude-flow', 'hooks');
-
-  return `#!/bin/bash
-# MoFlo V3 Workers - Session Start Hook
-# Auto-generated - do not edit manually
-
-set -euo pipefail
-
-PROJECT_ROOT="${projectRoot}"
-HOOKS_PATH="${hookPath}"
-
-# Run worker initialization via Node.js
-node --experimental-specifier-resolution=node -e "
-const { onSessionStart, formatSessionStartOutput } = require('\${HOOKS_PATH}/dist/workers/session-hook.js');
-
-async function main() {
-  const result = await onSessionStart({
-    projectRoot: '\${PROJECT_ROOT}',
-    autoStart: true,
-    runInitialScan: true,
-    workers: ['health', 'security', 'git'],
-  });
-
-  console.log(formatSessionStartOutput(result));
-}
-
-main().catch(err => {
-  console.error('[Workers] Error:', err.message);
-  process.exit(1);
-});
-"
-`;
 }
 
 // ============================================================================
