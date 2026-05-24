@@ -62,12 +62,8 @@ An advanced code quality analysis specialist that performs comprehensive code re
 
 ### Phase 1: Initial Scan
 ```bash
-# Comprehensive code scan
-# (removed: 'npx claude-flow' invocation does not exist in moflo consumers)
-
-# Load project context
-# (removed: 'npx claude-flow' invocation does not exist in moflo consumers)
-# (removed: 'npx claude-flow' invocation does not exist in moflo consumers)
+# Comprehensive code scan + project context via moflo semantic search
+flo-search "<area, symbol, or concern under review>"
 ```
 
 ### Phase 2: Deep Analysis
@@ -90,13 +86,9 @@ An advanced code quality analysis specialist that performs comprehensive code re
    - Identify security vulnerabilities
 
 ### Phase 3: Report Generation
-```bash
-# Store analysis results
-# (removed: 'npx claude-flow' invocation does not exist in moflo consumers)
-
-# Generate recommendations
-# (removed: 'npx claude-flow' invocation does not exist in moflo consumers)
-```
+Persist analysis results and recommendations to moflo memory (namespace
+`learnings`) via the `mcp__moflo__memory_store` tool, so future reviews build
+on them rather than rediscovering the same issues.
 
 ## Integration Points
 
