@@ -96,4 +96,52 @@ describe('storeEntry: learnings source provenance', () => {
     const tags = (bridgeCalls[0].tags as string[]) || [];
     expect(tags).not.toContain('source:manual');
   });
+
+  // #1203 follow-up — MOFLO_LEARNINGS_SOURCE makes provenance deterministic for a
+  // known writer context (the auto-meditate distill) instead of relying on a
+  // headless model to remember the tag.
+  it('uses MOFLO_LEARNINGS_SOURCE as the default source when set and no source tag', async () => {
+    const prev = process.env.MOFLO_LEARNINGS_SOURCE;
+    process.env.MOFLO_LEARNINGS_SOURCE = 'auto-meditate';
+    try {
+      const { storeEntry } = await import('../../memory/memory-initializer.js');
+      await storeEntry({ key: 'l:env', value: 'a distilled lesson', namespace: 'learnings', tags: ['topic'] });
+      const tags = bridgeCalls[0].tags as string[];
+      expect(tags).toEqual(expect.arrayContaining(['topic', 'source:auto-meditate']));
+      expect(tags).not.toContain('source:manual');
+    } finally {
+      if (prev === undefined) delete process.env.MOFLO_LEARNINGS_SOURCE;
+      else process.env.MOFLO_LEARNINGS_SOURCE = prev;
+    }
+  });
+
+  it('an explicit source tag still wins over MOFLO_LEARNINGS_SOURCE', async () => {
+    const prev = process.env.MOFLO_LEARNINGS_SOURCE;
+    process.env.MOFLO_LEARNINGS_SOURCE = 'auto-meditate';
+    try {
+      const { storeEntry } = await import('../../memory/memory-initializer.js');
+      await storeEntry({ key: 'l:env2', value: 'x', namespace: 'learnings', tags: ['source:meditate-manual'] });
+      const tags = bridgeCalls[0].tags as string[];
+      expect(tags).toContain('source:meditate-manual');
+      expect(tags).not.toContain('source:auto-meditate');
+    } finally {
+      if (prev === undefined) delete process.env.MOFLO_LEARNINGS_SOURCE;
+      else process.env.MOFLO_LEARNINGS_SOURCE = prev;
+    }
+  });
+
+  it('falls back to source:manual when MOFLO_LEARNINGS_SOURCE is not a bare slug', async () => {
+    const prev = process.env.MOFLO_LEARNINGS_SOURCE;
+    process.env.MOFLO_LEARNINGS_SOURCE = 'bad value;rm';
+    try {
+      const { storeEntry } = await import('../../memory/memory-initializer.js');
+      await storeEntry({ key: 'l:env3', value: 'x', namespace: 'learnings' });
+      const tags = bridgeCalls[0].tags as string[];
+      expect(tags).toContain('source:manual');
+      expect(tags.some((t) => t.startsWith('source:bad'))).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.MOFLO_LEARNINGS_SOURCE;
+      else process.env.MOFLO_LEARNINGS_SOURCE = prev;
+    }
+  });
 });

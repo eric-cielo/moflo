@@ -70,7 +70,17 @@ export async function storeEntry(options: {
   if (options.namespace === 'learnings') {
     const tags = options.tags ?? [];
     if (!tags.some((t) => typeof t === 'string' && t.startsWith('source:'))) {
-      options = { ...options, tags: [...tags, 'source:manual'] };
+      // Default provenance is `source:manual`, but a writer running in a known
+      // context can declare its own origin deterministically via the
+      // MOFLO_LEARNINGS_SOURCE env (the auto-meditate distill sets it to
+      // `auto-meditate`) so attribution never depends on a headless model
+      // remembering to pass the tag. Validated to a bare slug so a stray env
+      // value can't inject arbitrary tag text. (#1203 follow-up)
+      const envSource = process.env.MOFLO_LEARNINGS_SOURCE;
+      const source = envSource && /^[a-z0-9][a-z0-9-]*$/i.test(envSource)
+        ? `source:${envSource}`
+        : 'source:manual';
+      options = { ...options, tags: [...tags, source] };
     }
   }
 
