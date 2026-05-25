@@ -65,11 +65,16 @@ async function startFakeDaemon(opts?: { defaultStatus?: number; defaultBody?: un
     });
   });
 
-  const port = 30000 + Math.floor(Math.random() * 10000);
+  // Bind to port 0 so the OS assigns a guaranteed-free ephemeral port. A
+  // hardcoded random port (e.g. 30000 + rand) collides under the parallel
+  // suite — two fakes can draw the same number → `EADDRINUSE`, a flake that
+  // surfaces under the failing test's name. Let the kernel pick instead.
   await new Promise<void>((resolve, reject) => {
     server.on('error', reject);
-    server.listen(port, '127.0.0.1', () => resolve());
+    server.listen(0, '127.0.0.1', () => resolve());
   });
+  const addr = server.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
 
   return {
     port,

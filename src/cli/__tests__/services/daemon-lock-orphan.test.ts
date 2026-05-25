@@ -53,6 +53,17 @@ async function waitForDead(pid: number, ms = 5000): Promise<boolean> {
   return false;
 }
 
+/**
+ * Remove a temp dir even when a just-killed child still briefly holds its cwd
+ * handle. Node's rmSync does NOT retry EPERM/EBUSY by default, so a
+ * kill-then-rmdir race throws under Windows fork contention (the OS releases
+ * the cwd handle a beat after the process dies). maxRetries/retryDelay polls
+ * the release (up to ~1s) instead of failing the first attempt.
+ */
+function rmDirRetry(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 describe('daemon-lock orphan detection (#1150)', () => {
   let tempDir: string;
   let fakeDaemons: ChildProcess[] = [];
@@ -72,10 +83,11 @@ describe('daemon-lock orphan detection (#1150)', () => {
     for (const child of fakeDaemons) {
       try { child.kill('SIGKILL'); } catch { /* ok */ }
     }
-    // Give children a beat to actually die before rmSync clobbers their cwd.
+    // Give children a beat to actually die before rmSync clobbers their cwd;
+    // rmDirRetry then absorbs any residual handle-release lag (Windows EPERM).
     await new Promise(r => setTimeout(r, 100));
     fakeDaemons = [];
-    rmSync(tempDir, { recursive: true, force: true });
+    rmDirRetry(tempDir);
 
     if (priorSkipEnv !== undefined) {
       process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = priorSkipEnv;
@@ -141,10 +153,12 @@ describe('daemon-lock orphan detection (#1150)', () => {
   // workers" class #1086 fixed for `isDaemonProcess` via
   // `MOFLO_TEST_TRUST_DAEMON_PID`. Injection makes these matcher tests
   // deterministic, instant, and immune to PID reuse / sibling-test
-  // contamination. The real scan + real SIGTERM path stays covered
-  // end-to-end by the `reapSameProjectOrphans` / `acquireDaemonLock` tests
-  // below, which spawn and reap real processes (so `listMofloDaemons*` is
-  // still exercised transitively).
+  // contamination. The reap tests below also inject `pidsHint` so they cover
+  // the real SIGTERM/process-death path without re-paying the flaky scan; the
+  // real `listMofloDaemons*` scan stays covered end-to-end by the single
+  // `does not reap a foreign-project daemon` case, which is robust to scan
+  // slowness because it asserts the foreign daemon SURVIVES (an empty/slow
+  // scan can never produce a wrong kill there).
   describe('findProjectDaemonPids', () => {
     function hintFor(root: string, pid: number): Array<{ pid: number; cmdline: string }> {
       // Build the cmdline from the realpath'd cli.js so it matches the
@@ -180,7 +194,7 @@ describe('daemon-lock orphan detection (#1150)', () => {
       try {
         expect(findProjectDaemonPids(otherDir, { pidsHint: hint })).not.toContain(4242);
       } finally {
-        rmSync(otherDir, { recursive: true, force: true });
+        rmDirRetry(otherDir);
       }
     });
   });
@@ -188,10 +202,20 @@ describe('daemon-lock orphan detection (#1150)', () => {
   // ---------------------------------------------------------------------
   // reapSameProjectOrphans
   // ---------------------------------------------------------------------
+  //
+  // These reap tests pass `pidsHint=[pid]` so the reap operates on the real
+  // spawned daemon WITHOUT the OS process scan. The scan (cold-shell
+  // `Get-CimInstance` on Windows) is the contention-sensitive part — under
+  // full-suite fork load it returns late/empty and races the just-spawned
+  // child, which used to surface as a `waitForDead` timeout masquerading as an
+  // assertion failure. Injecting the PID keeps the REAL SIGTERM/taskkill +
+  // real process-death coverage while making the scan deterministic; the scan
+  // + matcher itself is covered by the `findProjectDaemonPids` block above and
+  // by the `does not reap a foreign-project daemon` end-to-end case below.
   describe('reapSameProjectOrphans', () => {
     it('terminates a foreign-PID same-project daemon', async () => {
       const pid = await spawnFakeDaemon();
-      const { reaped, survived } = reapSameProjectOrphans(tempDir, process.pid);
+      const { reaped, survived } = reapSameProjectOrphans(tempDir, process.pid, undefined, [pid]);
       expect(survived).toEqual([]);
       expect(reaped).toContain(pid);
       expect(await waitForDead(pid)).toBe(true);
@@ -200,7 +224,7 @@ describe('daemon-lock orphan detection (#1150)', () => {
     it('skips the lock-holder PID', async () => {
       const pid = await spawnFakeDaemon();
       // Pretend the lock points at the fake daemon; reap must not touch it.
-      const result = reapSameProjectOrphans(tempDir, process.pid, pid);
+      const result = reapSameProjectOrphans(tempDir, process.pid, pid, [pid]);
       expect(result.reaped).not.toContain(pid);
       expect(isAlive(pid)).toBe(true);
     }, 15000);
@@ -210,7 +234,7 @@ describe('daemon-lock orphan detection (#1150)', () => {
       // (no `daemon start` + `moflo` in its cmdline), but the explicit
       // `ownPid` filter is a defense-in-depth guard the contract relies on.
       const pid = await spawnFakeDaemon();
-      const result = reapSameProjectOrphans(tempDir, pid /* pretend it's us */);
+      const result = reapSameProjectOrphans(tempDir, pid /* pretend it's us */, undefined, [pid]);
       expect(result.reaped).not.toContain(pid);
     }, 15000);
   });
@@ -225,7 +249,9 @@ describe('daemon-lock orphan detection (#1150)', () => {
       const lock = lockPath(tempDir);
       if (existsSync(lock)) rmSync(lock);
 
-      const result = acquireDaemonLock(tempDir);
+      // Inject the orphan PID so the pre-acquire reap skips the OS scan — keeps
+      // the real acquire→reap→SIGTERM path while removing the scan flake.
+      const result = acquireDaemonLock(tempDir, process.pid, { pidsHint: [pid] });
       expect(result.acquired).toBe(true);
       expect(await waitForDead(pid)).toBe(true);
     }, 15000);
@@ -242,7 +268,7 @@ describe('daemon-lock orphan detection (#1150)', () => {
         expect(result.acquired).toBe(true);
         expect(isAlive(pid)).toBe(true);
       } finally {
-        rmSync(otherDir, { recursive: true, force: true });
+        rmDirRetry(otherDir);
       }
     }, 15000);
   });
