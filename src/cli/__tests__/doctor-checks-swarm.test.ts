@@ -12,8 +12,10 @@ import { describe, expect, it } from 'vitest';
 import {
   checkSwarmFunctional,
   checkHiveMindFunctional,
+  _probeHiveMemoryGetForTest,
   type FunctionalHealthCheck,
 } from '../commands/doctor-checks-swarm.js';
+import type { FunctionalCheckDetail, ToolHandler } from '../commands/doctor-checks-functional-shared.js';
 
 function expectFunctionalShape(result: FunctionalHealthCheck) {
   expect(result.name).toBeTruthy();
@@ -108,6 +110,136 @@ describe('doctor-checks-swarm', () => {
       // No subcheck should have failed.
       const failures = details.filter(d => d.status === 'fail');
       expect(failures, `subcheck failures: ${JSON.stringify(failures, null, 2)}`).toHaveLength(0);
+    });
+  });
+
+  // #1206: the hive-mind_memory set→get subcheck flaked on a stressed CI
+  // runner — an immediate get returning exists=false right after a successful
+  // set was reported as a hard write-through failure when it was actually async
+  // propagation lag. The fix mirrors the #1111/#1120 pattern on Memory Access:
+  // bounded-retry the get; demote to warn when the value lands late; keep a
+  // hard fail when it never lands (protected-surface guarantee, epic #798).
+  //
+  // Driven through the `_probeHiveMemoryGetForTest` seam with a synthetic
+  // hive-mind_memory tool and an injected no-op sleep so the classification is
+  // exercised without real backoff delays — same approach as the
+  // buildEmptyHnswTools / buildStaleNeighborTools harnesses in
+  // doctor-checks-memory-access.test.ts.
+  describe('checkHiveMindFunctional — #1206 write-through propagation race', () => {
+    // A hive-mind_memory whose `get` reports exists=false for the first
+    // `missesBeforeHit` reads, then returns the stored sentinel — models the
+    // write-through propagation lag the issue describes. `everLands:false`
+    // never returns the value (a genuine write-through break).
+    function buildLaggyHiveMemory(opts: {
+      missesBeforeHit: number;
+      sentinel: string;
+      everLands?: boolean;
+    }): ToolHandler[] {
+      let getCalls = 0;
+      return [
+        {
+          name: 'hive-mind_memory',
+          handler: async (input) => {
+            if (input.action === 'get') {
+              getCalls++;
+              const landed = (opts.everLands ?? true) && getCalls > opts.missesBeforeHit;
+              return landed
+                ? { exists: true, value: { sentinel: opts.sentinel } }
+                : { exists: false, value: null };
+            }
+            return { success: true };
+          },
+        },
+      ];
+    }
+
+    const noSleep = async () => { /* skip real backoff in tests */ };
+
+    it('passes when the first get already sees the value (happy path, no added latency)', async () => {
+      const details: FunctionalCheckDetail[] = [];
+      await _probeHiveMemoryGetForTest(
+        buildLaggyHiveMemory({ missesBeforeHit: 0, sentinel: 's1' }),
+        'k', 's1', details, { sleep: noSleep },
+      );
+      const d = details.find(x => x.id === 'hive-mind_memory.get');
+      expect(d, 'hive-mind_memory.get subcheck must be recorded').toBeDefined();
+      expect(d!.status, `expected pass, got ${d!.status}: ${d!.message}`).toBe('pass');
+      expect((d!.observed as { attempts?: number }).attempts).toBe(1);
+      expect(details.filter(x => x.status === 'fail')).toHaveLength(0);
+    });
+
+    it('demotes to warn when get is exists=false at first but lands on a bounded retry', async () => {
+      const details: FunctionalCheckDetail[] = [];
+      await _probeHiveMemoryGetForTest(
+        buildLaggyHiveMemory({ missesBeforeHit: 2, sentinel: 's2' }),
+        'k', 's2', details, { sleep: noSleep },
+      );
+      const d = details.find(x => x.id === 'hive-mind_memory.get');
+      expect(d, 'hive-mind_memory.get subcheck must be recorded').toBeDefined();
+      expect(d!.status, `expected warn, got ${d!.status}: ${d!.message}`).toBe('warn');
+      expect(d!.message).toMatch(/write-through propagation race/i);
+      // The whole point of the fix: a propagation lag is never a fail.
+      expect(details.filter(x => x.status === 'fail')).toHaveLength(0);
+    });
+
+    it('keeps a hard fail when the value never lands within the retry budget', async () => {
+      const details: FunctionalCheckDetail[] = [];
+      await _probeHiveMemoryGetForTest(
+        buildLaggyHiveMemory({ missesBeforeHit: 99, sentinel: 's3', everLands: false }),
+        'k', 's3', details, { sleep: noSleep },
+      );
+      const d = details.find(x => x.id === 'hive-mind_memory.get');
+      expect(d, 'hive-mind_memory.get subcheck must be recorded').toBeDefined();
+      expect(d!.status, `expected fail, got ${d!.status}`).toBe('fail');
+      expect(d!.message).toMatch(/write-through to Memory DB is broken/i);
+      // Exhausted the full budget: 1 immediate read + 3 bounded retries.
+      expect((d!.observed as { attempts?: number }).attempts).toBe(4);
+    });
+
+    it('keeps a hard fail when every get throws (transient error never clears)', async () => {
+      const details: FunctionalCheckDetail[] = [];
+      const tools: ToolHandler[] = [{
+        name: 'hive-mind_memory',
+        handler: async (input) => {
+          if (input.action === 'get') throw new Error('memory backend offline');
+          return { success: true };
+        },
+      }];
+      await _probeHiveMemoryGetForTest(tools, 'k', 's', details, { sleep: noSleep });
+      const d = details.find(x => x.id === 'hive-mind_memory.get');
+      expect(d, 'hive-mind_memory.get subcheck must be recorded').toBeDefined();
+      expect(d!.status, `expected fail, got ${d!.status}`).toBe('fail');
+      expect(d!.message).toMatch(/threw on every attempt/i);
+      // Same budget as the never-lands case: 1 immediate + 3 bounded retries.
+      expect((d!.observed as { attempts?: number; threw?: boolean }).attempts).toBe(4);
+      expect((d!.observed as { threw?: boolean }).threw).toBe(true);
+    });
+
+    it('fails immediately on a value mismatch — a clobber is a real bug, not a race', async () => {
+      const details: FunctionalCheckDetail[] = [];
+      const tools: ToolHandler[] = [{
+        name: 'hive-mind_memory',
+        handler: async (input) =>
+          input.action === 'get'
+            ? { exists: true, value: { sentinel: 'WRONG' } }
+            : { success: true },
+      }];
+      await _probeHiveMemoryGetForTest(tools, 'k', 'EXPECTED', details, { sleep: noSleep });
+      const d = details.find(x => x.id === 'hive-mind_memory.get');
+      expect(d, 'hive-mind_memory.get subcheck must be recorded').toBeDefined();
+      expect(d!.status).toBe('fail');
+      expect(d!.message).toMatch(/value mismatch/i);
+      // No retries burned on a clobber — failed on the first read.
+      expect((d!.observed as { attempts?: number }).attempts).toBe(1);
+    });
+
+    it('fails when the hive-mind_memory tool is not registered', async () => {
+      const details: FunctionalCheckDetail[] = [];
+      await _probeHiveMemoryGetForTest([], 'k', 's', details, { sleep: noSleep });
+      const d = details.find(x => x.id === 'hive-mind_memory.get');
+      expect(d, 'hive-mind_memory.get subcheck must be recorded').toBeDefined();
+      expect(d!.status).toBe('fail');
+      expect(d!.message).toMatch(/not registered/i);
     });
   });
 
