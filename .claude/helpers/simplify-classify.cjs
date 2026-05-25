@@ -232,6 +232,7 @@ function parseDiff(diff) {
     // for other code. Aggregate net → relocation/churn cancels to ~0.
     tsjsLOC: tsjsAdded + tsjsDeleted,
     tsjsNetDecls: tsjsDeclAdded - tsjsDeclRemoved,
+    tsjsDeclAdded,
     otherNetAdded: otherAdded - otherDeleted,
     otherLOC: otherAdded + otherDeleted,
     files: [...files.keys()],
@@ -293,12 +294,16 @@ function decide(stats) {
   //                       prompt, not an auto-switch.
   const tsjsLOC = stats.tsjsLOC || 0;
   const tsjsNetDecls = stats.tsjsNetDecls || 0;
+  const tsjsDeclAdded = stats.tsjsDeclAdded || 0;
   const otherNetAdded = stats.otherNetAdded || 0;
 
+  // The new-subsystem triggers count TS/JS declarations only (tsjs-scoped, not
+  // global) so a docs/data file with a fenced `export function` code sample
+  // can't leak into the opus gate — consistent with the net-new-logic contract.
   const handoffTriggers = [];
   if (tsjsLOC > 4000 && tsjsNetDecls >= 25) handoffTriggers.push(`${tsjsLOC} LOC of TS/JS with ${tsjsNetDecls} net-new declarations`);
   if (otherNetAdded > 3000) handoffTriggers.push(`${otherNetAdded} net-new lines of non-TS/JS source`);
-  if (stats.newFiles >= 10 && stats.declAdded >= 30 && stats.netDecls >= 20) handoffTriggers.push(`${stats.newFiles} new files with ${stats.declAdded} new declarations`);
+  if (stats.newFiles >= 10 && tsjsDeclAdded >= 30 && tsjsNetDecls >= 20) handoffTriggers.push(`${stats.newFiles} new files with ${tsjsDeclAdded} new TS/JS declarations`);
 
   if (handoffTriggers.length > 0) {
     return {
@@ -311,7 +316,7 @@ function decide(stats) {
   const deepTriggers = [];
   if (tsjsLOC > 1500 && tsjsNetDecls >= 10) deepTriggers.push(`${tsjsLOC} LOC of TS/JS with ${tsjsNetDecls} net-new declarations`);
   if (otherNetAdded > 1200) deepTriggers.push(`${otherNetAdded} net-new lines of non-TS/JS source`);
-  if (stats.newFiles >= 5 && stats.declAdded >= 15 && stats.netDecls >= 10) deepTriggers.push(`${stats.newFiles} new files with ${stats.declAdded} new declarations`);
+  if (stats.newFiles >= 5 && tsjsDeclAdded >= 15 && tsjsNetDecls >= 10) deepTriggers.push(`${stats.newFiles} new files with ${tsjsDeclAdded} new TS/JS declarations`);
   if (stats.securityHit && stats.netDecls >= 8) deepTriggers.push(`security-sensitive path with ${stats.netDecls} net-new declarations`);
 
   if (deepTriggers.length > 0) {

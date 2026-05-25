@@ -296,6 +296,24 @@ index 0000000..abc
   return diff;
 }
 
+/** A new TS subsystem spread across 5 new files (≥15 new declarations, ≥10
+ *  net) but well under the 1500-LOC bar — isolates the "new subsystem" DEEP
+ *  trigger from the volume trigger. Declarations are TS/JS-scoped. */
+function deepNewSubsystemDiff(): string {
+  let diff = '';
+  for (let f = 0; f < 5; f++) {
+    diff += `diff --git a/src/engine/mod${f}.ts b/src/engine/mod${f}.ts
+new file mode 100644
+index 0000000..abc
+--- /dev/null
++++ b/src/engine/mod${f}.ts
+@@ -0,0 +1,18 @@
+`;
+    for (let i = 0; i < 3; i++) diff += `+export function mod${f}fn${i}(x: number): number {\n+  return x + ${i};\n+}\n`;
+  }
+  return diff;
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('simplify-classify: pure logic via require()', () => {
@@ -471,11 +489,23 @@ describe('simplify-classify: opus escalation (DEEP + handoff)', () => {
     expect(d.stats.tsjsNetDecls).toBe(0);
   });
 
-  it('a 1,300-line non-TS/JS relocation nets to ~0 and never reaches opus', () => {
+  it('a 1,300-line non-TS/JS relocation nets to exactly 0 and never reaches opus', () => {
     const d = classifyDiff(otherLangRelocationDiff());
     expect(d.tier).not.toBe('DEEP');
     expect(d.model).not.toBe('opus');
-    expect(d.stats.otherNetAdded).toBeLessThanOrEqual(0);
+    expect(d.stats.otherNetAdded).toBe(0);
+  });
+
+  it('a new TS subsystem (5 new files, ≥15 net decls, <1500 LOC) → DEEP via the new-subsystem trigger', () => {
+    const d = classifyDiff(deepNewSubsystemDiff());
+    expect(d.tier).toBe('DEEP');
+    expect(d.model).toBe('opus');
+    expect(d.escalate.suggested).toBe(false);
+    // The volume trigger did NOT fire — this isolates the new-files/decls path.
+    expect(d.stats.tsjsLOC).toBeLessThanOrEqual(1500);
+    expect(d.stats.newFiles).toBeGreaterThanOrEqual(5);
+    expect(d.stats.tsjsDeclAdded).toBeGreaterThanOrEqual(15);
+    expect(d.reasoning.join(' ')).toMatch(/new files/i);
   });
 
   it('a 3,000-line markdown doc never reaches opus (docs excluded from the bar)', () => {
