@@ -55,6 +55,7 @@ refactor one function (140 LOC, 2 files)   -> SMALL    sonnet  agents:1  | small
 decomposition: 6 files, 5 fns moved        -> SMALL    haiku   agents:1  | mostly relocation: 5 added, 5 removed, net +0
 big new subsystem (620 LOC)                -> NORMAL   sonnet  agents:3  | >500 LOC changed
 security path + new logic                  -> NORMAL   sonnet  agents:3  | security-sensitive path with new logic
+architectural subsystem (1.8k LOC, +12)    -> DEEP     opus    agents:3  | net-new logic clears the architectural bar
 ```
 
 That single difference cascades into several concrete advantages.
@@ -67,9 +68,11 @@ Most real diffs are small — a tweaked function, an extracted constant, an adde
 
 When the classifier proves a change is below the threshold where review adds any value — a trimmed comment, a renamed private helper, a reformatted block — distill stamps the gate and exits in seconds with **no agent at all**. The built-in still fans out its three agents to conclude there's nothing to fix. Distill spends nothing to reach the same answer.
 
-### 3. The heavy fan-out is reserved for changes that earn it
+### 3. The heavy fan-out is reserved for changes that earn it — and steps up further for the ones that really do
 
 Distill escalates to the full three-agent pass only when the diff is genuinely cross-cutting — 500+ lines of real volume, a broad new subsystem, security-sensitive code with new logic. At that point three agents *cover orthogonal ground* instead of overlapping, and the cost is justified. The built-in runs that same heavy pass for the cross-cutting change and the one-liner alike.
+
+Calibration runs in *both* directions. For the rare **architectural** diff — a genuinely new subsystem, thousands of lines of net-new logic — distill steps *up* a rung to **DEEP**: the same three-agent fan-out, but on **Opus**, because judging whether a large refactor picked the right abstractions is depth-bound reasoning, not breadth-bound surveying. That runs automatically, with a one-line notice so the heavier cost is never silent. For the most extreme diffs, distill finishes its Opus pass and then *suggests* you hand off to Claude Code's built-in `/simplify` for an even deeper look — a prompt, never an automatic switch. Crucially, this upward escalation is gated on **net-new-logic evidence, never raw volume**: net-new declarations in TS/JS, net-new lines in other languages, measured net of churn with lockfiles, snapshots, generated files, and docs stripped out. A 2,000-line lockfile bump, a reformatting sweep, or a big rename never trips it — there's no new logic to reason about, so there's nothing for Opus to earn.
 
 ### 4. It tells a move apart from a rewrite
 
@@ -77,7 +80,7 @@ Look at the third row of the table. A 330-LOC decomposition across six files *lo
 
 ### 5. It routes the model to the work
 
-The built-in uses Claude Code's standard sub-agent model defaults. Distill picks the model from the diff shape: **Haiku** for mechanical relocations (~5× cheaper, and pattern-matching is all a move needs), **Sonnet** for real logic changes, and **never Opus** — code review is breadth-bound, not depth-bound, so the three-Sonnet fan-out *is* the high-effort tier and Opus buys nothing. Cheap model on cheap diffs, capable model on hard ones, decided automatically.
+The built-in uses Claude Code's standard sub-agent model defaults. Distill picks the model from the diff shape: **Haiku** for mechanical relocations (~5× cheaper, and pattern-matching is all a move needs), **Sonnet** for ordinary logic changes, and **Opus** for the rare architectural diff where depth of reasoning earns its cost (see #3 — ordinary review is breadth-bound, so three Sonnet agents are the right tool; architectural review is depth-bound). Cheap model on cheap diffs, capable model on hard ones, the depth model only when the change is genuinely architectural — decided automatically.
 
 ### 6. A re-run doesn't re-pay
 
@@ -99,7 +102,8 @@ Distill is part of MoFlo's pre-PR gate, and the gate uses the *same* classifier 
 | **Tiny/trivial diffs** | Still fans out three agents | Zero agents — gate stamp and exit |
 | **Typical small diffs** | Three agents | One focused agent, all three axes |
 | **Move vs. rewrite** | No distinction — full pass either way | Detects relocation, drops to one cheap agent |
-| **Model** | Standard sub-agent defaults | Routed per diff (haiku ↔ sonnet; never opus) |
+| **Architectural diffs** | Three agents, same as any diff | Steps up to three Opus agents; suggests built-in `/simplify` on extreme outliers |
+| **Model** | Standard sub-agent defaults | Routed per diff: haiku → sonnet → opus (opus only for architectural diffs) |
 | **Re-run after fixes** | Fans out again | Validation pass — self-review, no re-fan-out |
 | **Workflow integration** | Standalone command | Wired into the PR gate; auto-skips trivial diffs |
 | **Scope decision** | Prompt-driven, constant | Deterministic, unit-tested classifier |

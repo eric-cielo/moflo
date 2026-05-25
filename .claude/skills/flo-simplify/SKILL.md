@@ -28,11 +28,12 @@ The classifier auto-detects the repo's default branch (origin/HEAD, then `init.d
 Output:
 ```json
 {
-  "tier": "TRIVIAL" | "SMALL" | "NORMAL",
-  "model": "sonnet",
+  "tier": "TRIVIAL" | "SMALL" | "NORMAL" | "DEEP",
+  "model": "sonnet" | "haiku" | "opus",
   "agentCount": 0 | 1 | 3,
+  "escalate": { "suggested": false, "target": null, "reason": null },
   "reasoning": ["..."],
-  "stats": { "added": ..., "deleted": ..., "declAdded": ..., "declRemoved": ..., "netDecls": ..., "fileCount": ..., "securityHit": ... }
+  "stats": { "added": ..., "deleted": ..., "declAdded": ..., "declRemoved": ..., "netDecls": ..., "fileCount": ..., "securityHit": ..., "tsjsLOC": ..., "tsjsNetDecls": ..., "otherNetAdded": ... }
 }
 ```
 
@@ -69,6 +70,17 @@ Reserved for **genuinely cross-cutting** changes that single-agent review can't 
 
 Three agents exist to cover orthogonal axes (Reuse / Quality / Efficiency) when the change is broad enough that one agent's tool-call budget can't survey it all. For single-file edits, one focused agent always covers all three axes — three is duplication, not coverage.
 
+### DEEP — three parallel Opus agents (architectural, rare)
+The top rung, for genuinely **architectural** change where *depth* of reasoning — not just breadth — earns Opus's cost (judging whether a large refactor picked the right abstractions is reasoning, not surveying). The classifier escalates to DEEP only on real new-logic evidence, **never raw volume** — any of:
+- `>1500 LOC of TS/JS AND ≥10 net-new declarations`
+- `>1200 net-new lines of non-TS/JS source` (other languages are gated on net lines because the declaration parser is TS/JS-shaped)
+- `5+ new files AND ≥15 new declarations AND ≥10 net` (a real new subsystem)
+- `security-sensitive path AND ≥8 net-new declarations`
+
+DEEP runs **automatically — no prompt.** Noise (lockfiles, snapshots, generated/vendored) and docs/data are stripped before measuring, and the signal is *net of churn* (TS/JS by net-new declarations, other code by net-new lines), so a lockfile bump, a reformatting sweep, or a large rename/relocation can never reach Opus — they cancel to ~0 and stay SMALL/NORMAL.
+
+For the most **extreme** diffs (`>4000 LOC TS/JS + ≥25 net decls`, `>3000 net-new non-TS/JS lines`, or `10+ new files + ≥30 decls + ≥20 net`), the classifier also sets `escalate.suggested = true` with `target: "builtin-simplify"`. The Opus pass still runs as the floor; you then **offer** the user a handoff to Claude Code's built-in `/simplify` (Phase 3) — a suggestion, not an auto-switch.
+
 ## Phase 2.5: Validation pass (re-run after fixes)
 
 If `/flo-simplify` already ran on this branch in this session AND the only edits since are fixes driven by the prior pass's findings, default to **self-review tier** regardless of LOC count. The fan-out already happened; the fix is small relative to the diff that was already reviewed.
@@ -79,7 +91,7 @@ Escalate one tier (self-review → SMALL agent) only if the fix introduced any o
 - A new dependency or import from a previously-untouched module
 - A change to control flow not covered in the original findings
 
-Do **not** escalate to NORMAL on a validation pass. If the fix is so structural that NORMAL is warranted, treat it as a fresh diff and start over from Phase 1.
+Do **not** escalate to NORMAL or DEEP on a validation pass. If the fix is so structural that NORMAL/DEEP is warranted, treat it as a fresh diff and start over from Phase 1.
 
 ## Phase 2.7: Model selection
 
@@ -87,7 +99,7 @@ Do **not** escalate to NORMAL on a validation pass. If the fix is so structural 
 
 - `sonnet` (default) — real logic changes, single agent or three-agent fan-out.
 - `haiku` — mostly-relocation diffs (mechanical moves where pattern-matching beats deep reasoning, ~5x cheaper).
-- `opus` — never. Code review is breadth-bound, not depth-bound; the three-agent fan-out at sonnet is the high-effort tier.
+- `opus` — the **DEEP** tier only. Architectural review is depth-bound (judging whether a large refactor picked the right abstractions is reasoning, not surveying), so the classifier returns opus when — and only when — the diff clears the DEEP bar. Never pick opus yourself for SMALL/NORMAL; ordinary review is breadth-bound and three sonnet agents are the right tool.
 
 If you fell back to prose rules in Phase 2 (no classifier available), use `sonnet` unconditionally. Pass the classifier's `model` field verbatim to Agent's `model` parameter.
 
@@ -122,6 +134,15 @@ Launch three agents in a single message — Reuse, Quality, Efficiency — passi
 **Quality**: redundant state, parameter sprawl, copy-paste with variation, leaky abstractions, stringly-typed code, nested conditionals 3+ levels, unnecessary comments (WHAT-explanations, task references).
 
 **Efficiency**: unnecessary work, missed concurrency, hot-path bloat, recurring no-op updates, TOCTOU existence checks, unbounded structures, over-broad reads.
+
+### DEEP: three parallel Opus agents (architectural) — and maybe a handoff
+Same three-agent fan-out as NORMAL (Reuse / Quality / Efficiency in one message), but pass `model: "opus"` to each — the classifier already decided depth is warranted. **Print one line first** so the heavier cost is never silent, e.g. `distill: DEEP — 1,800 LOC of new logic, ran opus depth pass`.
+
+If the classifier set `escalate.suggested = true`, then **after** the Opus pass finishes, surface a handoff suggestion to the user — never switch automatically:
+
+> This change is large enough (`<escalate.reason>`) that Claude Code's built-in `/simplify` — a deeper, heavier multi-agent pass — may add value beyond this review. Want to run it? It costs more tokens, so it's your call.
+
+Then stop and let the user decide. Do **not** invoke the built-in `/simplify` yourself — the handoff is the user's choice, and the Opus pass you just ran already covers the diff.
 
 ## Phase 4: Fix or skip
 

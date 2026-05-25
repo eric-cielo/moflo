@@ -10,7 +10,8 @@
  *   - small logic edit          → SMALL / 1 agent
  *   - large diff with new logic → NORMAL / 3 agents
  *   - security-path + new logic → NORMAL / 3 agents
- *   - never returns opus        → ALL cases
+ *   - architectural new logic   → DEEP / 3 opus agents (auto; extreme → handoff suggested)
+ *   - volume without new logic   → never opus (lockfile / reformat / rename / docs)
  *   - default-branch detection  → consumer's actual default branch, not hardcoded 'main'
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -190,6 +191,129 @@ index abc..def 100644
 `;
 }
 
+/** A genuinely architectural TS diff: a new ~1,600-LOC module with 12 new
+ *  exported functions. tsjsLOC > 1500 AND netDecls ≥ 10 → DEEP / opus. */
+function deepTsjsSubsystemDiff(): string {
+  let diff = `diff --git a/src/engine/planner.ts b/src/engine/planner.ts
+new file mode 100644
+index 0000000..abc
+--- /dev/null
++++ b/src/engine/planner.ts
+@@ -0,0 +1,1592 @@
+`;
+  for (let i = 0; i < 12; i++) diff += `+export function plannerStep${i}(input: string): string {\n`;
+  for (let j = 0; j < 1580; j++) diff += `+  const step${j} = ${j};\n`;
+  return diff;
+}
+
+/** A genuinely architectural non-TS/JS diff: a new ~1,300-LOC Go service.
+ *  otherNetAdded > 1200 → DEEP / opus (other languages gate on net lines, since
+ *  the declaration parser is TS/JS-shaped). */
+function deepOtherLangDiff(): string {
+  let diff = `diff --git a/server/scheduler.go b/server/scheduler.go
+new file mode 100644
+index 0000000..abc
+--- /dev/null
++++ b/server/scheduler.go
+@@ -0,0 +1,1300 @@
+`;
+  for (let j = 0; j < 1300; j++) diff += `+\tx${j} := ${j}\n`;
+  return diff;
+}
+
+/** An extreme architectural diff: a new ~4,230-LOC TS module with 30 new
+ *  functions. Trips the handoff bar → DEEP / opus / escalate.suggested. */
+function handoffDiff(): string {
+  let diff = `diff --git a/src/engine/megamodule.ts b/src/engine/megamodule.ts
+new file mode 100644
+index 0000000..abc
+--- /dev/null
++++ b/src/engine/megamodule.ts
+@@ -0,0 +1,4230 @@
+`;
+  for (let i = 0; i < 30; i++) diff += `+export function mega${i}(input: string): string {\n`;
+  for (let j = 0; j < 4200; j++) diff += `+  const v${j} = ${j};\n`;
+  return diff;
+}
+
+/** A 2,500-line lockfile bump — large but pure noise. Must NEVER reach opus. */
+function lockfileBumpDiff(): string {
+  let diff = `diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index abc..def 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -1,5 +1,2505 @@
+`;
+  for (let j = 0; j < 2500; j++) diff += `+  pkg${j}: 1.0.0\n`;
+  return diff;
+}
+
+/** An 1,800-line reformat of one TS file: added ≈ deleted, zero net new
+ *  declarations. Volume is high but there is no new logic — must NOT reach opus. */
+function reformatSweepDiff(): string {
+  let diff = `diff --git a/src/big.ts b/src/big.ts
+index abc..def 100644
+--- a/src/big.ts
++++ b/src/big.ts
+@@ -1,900 +1,900 @@
+`;
+  for (let j = 0; j < 900; j++) diff += `-const a${j}=${j};\n`;
+  for (let j = 0; j < 900; j++) diff += `+const a${j} = ${j};\n`;
+  return diff;
+}
+
+/** A 1,300-line non-TS/JS relocation: code moved from one Go file to another.
+ *  Net-new lines cancel to ~0 → must NOT reach opus. */
+function otherLangRelocationDiff(): string {
+  let diff = `diff --git a/server/a.go b/server/a.go
+index abc..def 100644
+--- a/server/a.go
++++ b/server/a.go
+@@ -1,1300 +1,0 @@
+`;
+  for (let j = 0; j < 1300; j++) diff += `-\tx${j} := ${j}\n`;
+  diff += `diff --git a/server/b.go b/server/b.go
+new file mode 100644
+index 0000000..abc
+--- /dev/null
++++ b/server/b.go
+@@ -0,0 +1,1300 @@
+`;
+  for (let j = 0; j < 1300; j++) diff += `+\tx${j} := ${j}\n`;
+  return diff;
+}
+
+/** A 3,000-line new markdown doc. Docs never count toward the opus bar. */
+function bigMarkdownDiff(): string {
+  let diff = `diff --git a/docs/guide.md b/docs/guide.md
+new file mode 100644
+index 0000000..abc
+--- /dev/null
++++ b/docs/guide.md
+@@ -0,0 +1,3000 @@
+`;
+  for (let j = 0; j < 3000; j++) diff += `+line ${j}\n`;
+  return diff;
+}
+
+/** A new TS subsystem spread across 5 new files (≥15 new declarations, ≥10
+ *  net) but well under the 1500-LOC bar — isolates the "new subsystem" DEEP
+ *  trigger from the volume trigger. Declarations are TS/JS-scoped. */
+function deepNewSubsystemDiff(): string {
+  let diff = '';
+  for (let f = 0; f < 5; f++) {
+    diff += `diff --git a/src/engine/mod${f}.ts b/src/engine/mod${f}.ts
+new file mode 100644
+index 0000000..abc
+--- /dev/null
++++ b/src/engine/mod${f}.ts
+@@ -0,0 +1,18 @@
+`;
+    for (let i = 0; i < 3; i++) diff += `+export function mod${f}fn${i}(x: number): number {\n+  return x + ${i};\n+}\n`;
+  }
+  return diff;
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('simplify-classify: pure logic via require()', () => {
@@ -239,9 +363,10 @@ describe('simplify-classify: pure logic via require()', () => {
     expect(decision.agentCount).toBe(0);
   });
 
-  it('never returns opus, regardless of input', () => {
-    // Code review is breadth-bound, not depth-bound — opus is never the right
-    // model. Sonnet (default) and haiku (mechanical relocations) are valid.
+  it('does not return opus for sub-architectural diffs', () => {
+    // Opus is reserved for the DEEP (architectural) tier. Ordinary diffs —
+    // relocations, typos, small/medium logic edits, even a 600-LOC change or a
+    // security touch — stay sonnet/haiku. DEEP/opus is covered in its own block.
     for (const fixture of [
       mechanicalDecompositionDiff(),
       trivialTypoDiff(),
@@ -309,6 +434,93 @@ describe('simplify-classify: decide() boundary cases', () => {
     });
     // Security hit alone does not escalate — only security + new declarations
     expect(decision.agentCount).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('simplify-classify: opus escalation (DEEP + handoff)', () => {
+  // The opus rungs are gated on genuine NEW-LOGIC evidence — net-new
+  // declarations for TS/JS, net-new lines for other code — never raw volume.
+  // The positive cases trip the bar; the negative guards prove that high
+  // volume WITHOUT new logic (lockfile bump, reformat, rename, docs) stays off
+  // opus. This block is the tuning contract for "only escalate when warranted".
+
+  it('architectural TS subsystem (>1500 LOC, ≥10 net decls) → DEEP / 3 opus agents, no handoff', () => {
+    const d = classifyDiff(deepTsjsSubsystemDiff());
+    expect(d.tier).toBe('DEEP');
+    expect(d.model).toBe('opus');
+    expect(d.agentCount).toBe(3);
+    expect(d.escalate.suggested).toBe(false);
+    expect(d.stats.tsjsLOC).toBeGreaterThan(1500);
+    expect(d.stats.tsjsNetDecls).toBeGreaterThanOrEqual(10);
+  });
+
+  it('architectural non-TS/JS diff (>1200 net-new lines) → DEEP / opus via the net-line gate', () => {
+    const d = classifyDiff(deepOtherLangDiff());
+    expect(d.tier).toBe('DEEP');
+    expect(d.model).toBe('opus');
+    expect(d.escalate.suggested).toBe(false);
+    expect(d.stats.otherNetAdded).toBeGreaterThan(1200);
+    // No TS/JS in this diff — the escalation came purely from net-new lines.
+    expect(d.stats.tsjsLOC).toBe(0);
+  });
+
+  it('extreme diff → DEEP / opus AND suggests the built-in /simplify handoff', () => {
+    const d = classifyDiff(handoffDiff());
+    expect(d.tier).toBe('DEEP');
+    expect(d.model).toBe('opus');
+    expect(d.escalate.suggested).toBe(true);
+    expect(d.escalate.target).toBe('builtin-simplify');
+    expect(typeof d.escalate.reason).toBe('string');
+  });
+
+  // ── Negative guards — high volume WITHOUT new logic must never reach opus ──
+  it('a 2,500-line lockfile bump never reaches opus (noise stripped)', () => {
+    const d = classifyDiff(lockfileBumpDiff());
+    expect(d.tier).not.toBe('DEEP');
+    expect(d.model).not.toBe('opus');
+    expect(d.stats.tsjsLOC).toBe(0);
+    expect(d.stats.otherNetAdded).toBe(0);
+  });
+
+  it('an 1,800-line reformat with zero net-new declarations never reaches opus', () => {
+    const d = classifyDiff(reformatSweepDiff());
+    expect(d.tier).not.toBe('DEEP');
+    expect(d.model).not.toBe('opus');
+    expect(d.stats.tsjsNetDecls).toBe(0);
+  });
+
+  it('a 1,300-line non-TS/JS relocation nets to exactly 0 and never reaches opus', () => {
+    const d = classifyDiff(otherLangRelocationDiff());
+    expect(d.tier).not.toBe('DEEP');
+    expect(d.model).not.toBe('opus');
+    expect(d.stats.otherNetAdded).toBe(0);
+  });
+
+  it('a new TS subsystem (5 new files, ≥15 net decls, <1500 LOC) → DEEP via the new-subsystem trigger', () => {
+    const d = classifyDiff(deepNewSubsystemDiff());
+    expect(d.tier).toBe('DEEP');
+    expect(d.model).toBe('opus');
+    expect(d.escalate.suggested).toBe(false);
+    // The volume trigger did NOT fire — this isolates the new-files/decls path.
+    expect(d.stats.tsjsLOC).toBeLessThanOrEqual(1500);
+    expect(d.stats.newFiles).toBeGreaterThanOrEqual(5);
+    expect(d.stats.tsjsDeclAdded).toBeGreaterThanOrEqual(15);
+    expect(d.reasoning.join(' ')).toMatch(/new files/i);
+  });
+
+  it('a 3,000-line markdown doc never reaches opus (docs excluded from the bar)', () => {
+    const d = classifyDiff(bigMarkdownDiff());
+    expect(d.tier).not.toBe('DEEP');
+    expect(d.model).not.toBe('opus');
+    expect(d.stats.tsjsLOC).toBe(0);
+    expect(d.stats.otherNetAdded).toBe(0);
+  });
+
+  it('every non-DEEP decision carries a stable escalate=false shape', () => {
+    for (const fixture of [trivialTypoDiff(), smallLogicEditDiff(), largeNewLogicDiff(), mechanicalDecompositionDiff()]) {
+      const d = classifyDiff(fixture);
+      expect(d.escalate).toEqual({ suggested: false, target: null, reason: null });
+    }
   });
 });
 
