@@ -92,8 +92,14 @@ jobs:
       # runners (issue #1021). No restore-keys — partial prefix matches could
       # restore the wrong model's binary blobs on a future model swap.
       # See ADR-EMB-001 / epic #527.
+      # continue-on-error: a cache restore is a pure speed optimization. A
+      # transient cache-service error on restore must never fail this gate —
+      # the job falls through to a cold fastembed download instead. Mirrors the
+      # continue-on-error already on the Save steps (release-smoke run
+      # 26378035867 lost a Windows leg to an unguarded restore).
       - name: Restore fastembed model
         id: cache-fastembed
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/fastembed
@@ -121,6 +127,7 @@ jobs:
       # of the job. A transient cache-upload failure must never fail this gate.
       - name: Restore consumer-install node_modules
         id: cache-consumer-warm
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: .work/consumer-warm

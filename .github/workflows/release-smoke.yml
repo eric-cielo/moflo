@@ -82,11 +82,16 @@ jobs:
 
       # Same caching scheme as consumer-install-smoke.yml — see that file
       # for the per-key rationale (ADR-EMB-001, issues #1021/#1153). Restore
-      # and save are SPLIT (not the combined actions/cache@v5) so the upload
-      # post-step can carry continue-on-error — see the Save steps at the end
-      # of the job for why a cache-upload hiccup must never fail the gate.
+      # and save are SPLIT (not the combined actions/cache@v5) so BOTH carry
+      # continue-on-error — a cache is a pure speed optimization, so neither a
+      # restore hiccup nor an upload hiccup may ever fail this gate. A transient
+      # cache-service error on RESTORE once killed an otherwise-green Windows
+      # leg in 16s (run 26378035867) before any product code ran; with
+      # continue-on-error the job falls through to a cold install + cold
+      # fastembed download (slower, fully valid coverage) instead of failing.
       - name: Restore fastembed model
         id: cache-fastembed
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/fastembed
@@ -94,6 +99,7 @@ jobs:
 
       - name: Restore consumer-install node_modules
         id: cache-consumer-warm
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: .work/consumer-warm

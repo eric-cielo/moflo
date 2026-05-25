@@ -84,7 +84,13 @@ jobs:
       # binary blobs on a future model swap. A full miss is one ~90 MB
       # download, exactly what the cache exists to amortize.
       # See ADR-EMB-001 and epic #527.
+      # continue-on-error: a cache is a pure speed optimization, so neither the
+      # restore phase nor the post-step save may fail CI. A transient
+      # cache-service error on restore must fall through to a cold ~90 MB
+      # download, not turn a green run red (cf. release-smoke run 26378035867,
+      # where an unguarded restore killed a Windows leg before any code ran).
       - name: Cache fastembed model
+        continue-on-error: true
         uses: actions/cache@v5
         with:
           path: ~/.cache/fastembed
