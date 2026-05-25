@@ -28,9 +28,34 @@
   },
   "writers": [
     {
-      "file": "src/cli/memory/memory-initializer.ts",
+      "file": "src/cli/memory/entries-write.ts",
       "classification": "in-daemon",
-      "notes": "Chokepoint (storeEntry/deleteEntry/storeEntries) — #981/#985"
+      "notes": "Chokepoint (storeEntry/deleteEntry/storeEntries) — #981/#985; decomposed from memory-initializer.ts (#1203). memory-initializer.ts is now a barrel re-export and no longer mutates."
+    },
+    {
+      "file": "src/cli/memory/entries-read.ts",
+      "classification": "in-daemon",
+      "notes": "Read-side SELECTs via db.exec (searchEntries/listEntries/getEntry/getNamespaceCounts) — classified for completeness; decomposed from memory-initializer.ts (#1203)"
+    },
+    {
+      "file": "src/cli/memory/schema.ts",
+      "classification": "in-daemon",
+      "notes": "Schema DDL + ensureSchemaColumns ALTER-TABLE migration + getInitialMetadata INSERT OR REPLACE; decomposed from memory-initializer.ts (#1203)"
+    },
+    {
+      "file": "src/cli/memory/init.ts",
+      "classification": "in-daemon",
+      "notes": "initializeMemoryDatabase / checkAndMigrateLegacy / applyTemporalDecay; decomposed from memory-initializer.ts (#1203)"
+    },
+    {
+      "file": "src/cli/memory/verify.ts",
+      "classification": "in-daemon",
+      "notes": "verifyMemoryInit self-test writes+deletes a probe row; decomposed from memory-initializer.ts (#1203)"
+    },
+    {
+      "file": "src/cli/memory/learnings-overview.ts",
+      "classification": "in-daemon",
+      "notes": "Read-only SELECTs over the learnings namespace for the Luminarium panel (#1203) — classified for completeness"
     },
     {
       "file": "src/cli/memory/sqlite-backend.ts",

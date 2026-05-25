@@ -87,11 +87,11 @@ mcp__moflo__memory_store {
   namespace: "learnings",
   key: "<stable descriptive slug, e.g. pattern:daemon-port-resolver or gotcha:windows-spell-path>",
   value: "<the lesson> — Why: <why it matters>. How to apply: <what to do next time>.",
-  tags: ["<topic>", "<area>"]
+  tags: ["<topic>", "<area>", "source:meditate-manual"]
 }
 ```
 
-Keep keys stable and descriptive so the next `/meditate` updates rather than re-adds. In `--preview` mode, **stop here** — print the candidates and their would-be keys/dedup verdicts, write nothing.
+Always include the `source:meditate-manual` tag — it lets the Luminarium "Learnings" panel attribute each lesson to `/meditate` vs the automatic auto-meditate distill. Keep keys stable and descriptive so the next `/meditate` updates rather than re-adds. In `--preview` mode, **stop here** — print the candidates and their would-be keys/dedup verdicts, write nothing.
 
 ## Step 4 — Report
 
