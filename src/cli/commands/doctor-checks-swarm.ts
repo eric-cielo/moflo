@@ -12,6 +12,7 @@
  * the dev tree and in `node_modules/moflo/...` consumer installs.
  */
 
+import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   type FunctionalCheckDetail,
   type FunctionalHealthCheck,
@@ -213,6 +214,151 @@ export async function checkSwarmFunctional(): Promise<FunctionalHealthCheck> {
 }
 
 // ============================================================================
+// Hive-Mind write-through propagation race (#1206)
+// ============================================================================
+
+/**
+ * Standard bounded backoff (ms) for the `hive-mind_memory` set→get
+ * write-through propagation retry. Same budget as the project-wide transient
+ * retry pattern (see `feedback_transient_retry_circuit_breaker.md`).
+ */
+const HIVE_MEMORY_GET_RETRY_DELAYS_MS = [50, 200, 800];
+
+const backoffSleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+interface HiveMemoryGetOut {
+  exists?: boolean;
+  value?: { sentinel?: string };
+}
+
+const HIVE_MEMORY_GET_META = {
+  id: 'hive-mind_memory.get',
+  mcpTool: 'hive-mind_memory',
+  expected: 'memory get returns previously-set value (proves shared store, not in-memory only)',
+};
+
+/**
+ * #1206: probe `hive-mind_memory` get after a successful set, tolerating async
+ * write-through propagation lag. Mirrors the #1111/#1120 fix on the
+ * `Memory Access Functional` check: an immediate `exists=false` right after a
+ * successful set is most often a propagation race (slow disk / fork contention
+ * / 429-throttled cold start on a stressed CI runner), not a genuine
+ * write-through break.
+ *
+ * Classification:
+ *   - `exists=true` + matching sentinel on the first read → **pass**.
+ *   - `exists=false` (or a transient throw) → **retry** with bounded backoff
+ *     (50/200/800ms). A late landing → **warn** (write-through works, just
+ *     lagged). Budget exhausted with no landing → **fail** (a real
+ *     write-through break is a protected-surface regression and MUST stay a
+ *     hard fail — ⛔ swarm/hive-mind rule; never hide a real disconnect).
+ *   - `exists=true` + wrong sentinel → **fail** immediately, no retries: a
+ *     value clobber is a real bug, not a propagation race.
+ *
+ * `opts` injects the backoff schedule + sleep so the regression test exercises
+ * the classification without real delays.
+ */
+async function probeHiveMemoryGet(
+  hiveMindTools: ToolHandler[],
+  probeKey: string,
+  sentinel: string,
+  details: FunctionalCheckDetail[],
+  opts?: { delaysMs?: number[]; sleep?: (ms: number) => Promise<void> },
+): Promise<void> {
+  const tool = getTool(hiveMindTools, 'hive-mind_memory');
+  if (!tool?.handler) {
+    details.push({
+      ...HIVE_MEMORY_GET_META, status: 'fail',
+      observed: { reason: 'tool-not-registered' },
+      message: 'MCP tool "hive-mind_memory" not registered in the loaded tool array',
+    });
+    return;
+  }
+  const handler = tool.handler;
+  const delays = opts?.delaysMs ?? HIVE_MEMORY_GET_RETRY_DELAYS_MS;
+  const sleep = opts?.sleep ?? backoffSleep;
+
+  type GetResult =
+    | { kind: 'landed' }
+    | { kind: 'mismatch'; message: string }
+    | { kind: 'missing' }
+    | { kind: 'threw'; message: string };
+
+  const getOnce = async (): Promise<GetResult> => {
+    try {
+      const raw = (await handler({ action: 'get', key: probeKey })) as HiveMemoryGetOut;
+      if (!raw?.exists) return { kind: 'missing' };
+      if (raw.value?.sentinel !== sentinel) {
+        return { kind: 'mismatch', message: `value mismatch: expected sentinel="${sentinel}", got ${JSON.stringify(raw.value)}` };
+      }
+      return { kind: 'landed' };
+    } catch (err) {
+      return { kind: 'threw', message: errorDetail(err, { firstLineOnly: true }) };
+    }
+  };
+
+  let attempts = 1;
+  let result = await getOnce();
+  if (result.kind === 'landed') {
+    details.push({ ...HIVE_MEMORY_GET_META, status: 'pass', observed: { exists: true, attempts } });
+    return;
+  }
+  if (result.kind === 'mismatch') {
+    details.push({ ...HIVE_MEMORY_GET_META, status: 'fail', observed: { exists: true, attempts }, message: result.message });
+    return;
+  }
+
+  // exists=false (or a transient throw) — retry with bounded backoff to absorb
+  // async write-through propagation lag.
+  for (const delay of delays) {
+    await sleep(delay);
+    result = await getOnce();
+    attempts++;
+    if (result.kind === 'landed') {
+      const retries = attempts - 1;
+      details.push({
+        ...HIVE_MEMORY_GET_META, status: 'warn',
+        observed: { exists: true, attempts, retriedAfterMs: delays.slice(0, retries) },
+        message: `hive-mind write-through propagation race — get returned exists=false immediately after a successful set, but the value landed after ${retries} bounded retr${retries === 1 ? 'y' : 'ies'} (write-through works, propagation just lagged; expected under slow disk / fork contention / throttled cold start on a stressed runner)`,
+      });
+      return;
+    }
+    if (result.kind === 'mismatch') {
+      details.push({ ...HIVE_MEMORY_GET_META, status: 'fail', observed: { exists: true, attempts }, message: result.message });
+      return;
+    }
+  }
+
+  // Budget exhausted and the value never landed — a genuine write-through break
+  // is a protected-surface regression and must stay a hard fail. The threw case
+  // never observed an `exists` value, so don't report a misleading exists=false.
+  const message = result.kind === 'threw'
+    ? `get threw on every attempt over ${attempts} tries (last: ${result.message})`
+    : `get returned exists=false after a successful set and ${attempts} bounded attempts — write-through to Memory DB is broken`;
+  const observed = result.kind === 'threw'
+    ? { threw: true, attempts }
+    : { exists: false, attempts };
+  details.push({ ...HIVE_MEMORY_GET_META, status: 'fail', observed, message });
+}
+
+/**
+ * #1206 regression-test seam. Drives {@link probeHiveMemoryGet} with a
+ * synthetic `hiveMindTools` array and an injectable sleep so the test
+ * exercises the bounded-retry → warn/fail/pass classification without real
+ * backoff delays. Not part of the public doctor surface — real callers use
+ * {@link checkHiveMindFunctional}.
+ */
+export async function _probeHiveMemoryGetForTest(
+  hiveMindTools: ToolHandler[],
+  probeKey: string,
+  sentinel: string,
+  details: FunctionalCheckDetail[],
+  opts?: { delaysMs?: number[]; sleep?: (ms: number) => Promise<void> },
+): Promise<void> {
+  return probeHiveMemoryGet(hiveMindTools, probeKey, sentinel, details, opts);
+}
+
+// ============================================================================
 // Hive-Mind Functional Check
 // ============================================================================
 
@@ -348,17 +494,13 @@ export async function checkHiveMindFunctional(): Promise<FunctionalHealthCheck> 
   });
 
   if ((setOut as { success?: boolean } | undefined)?.success === true) {
-    await safeInvoke(hiveMindTools, 'hive-mind_memory', { action: 'get', key: probeKey }, details, {
-      id: 'hive-mind_memory.get',
-      mcpTool: 'hive-mind_memory',
-      expected: 'memory get returns previously-set value (proves shared store, not in-memory only)',
-      assert: (raw) => {
-        const out = raw as { exists?: boolean; value?: { sentinel?: string } };
-        if (!out?.exists) return 'get returned exists=false after a successful set — write-through to Memory DB is broken';
-        if (out.value?.sentinel !== sentinel) return `value mismatch: expected sentinel="${sentinel}", got ${JSON.stringify(out.value)}`;
-        return null;
-      },
-    });
+    // #1206: a get returning exists=false immediately after a successful set is
+    // most often async write-through propagation lag, not a genuine
+    // write-through break (mirrors the #1111/#1120 fix on Memory Access).
+    // Retry with bounded backoff: a late landing demotes to warn; never
+    // landing stays a hard fail (⛔ a real write-through break is a
+    // protected-surface regression and must not be hidden).
+    await probeHiveMemoryGet(hiveMindTools, probeKey, sentinel, details);
   }
 
   // 7. Cleanup — graceful shutdown (best-effort; failures here aren't a regression signal).
