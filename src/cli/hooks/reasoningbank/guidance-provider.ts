@@ -77,7 +77,7 @@ export class GuidanceProvider {
     const lines = [
       '## V3 Development Context',
       '',
-      '**Architecture**: Domain-Driven Design with 15 @claude-flow modules',
+      '**Architecture**: Domain-Driven Design across moflo modules',
       '**Priority**: Security-first (CVE-1, CVE-2, CVE-3 remediation)',
       '',
       '**Performance Targets**:',

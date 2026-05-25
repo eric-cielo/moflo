@@ -1,7 +1,7 @@
 /**
  * Official Plugins - ADR-004 Implementation
  *
- * Exports all official @claude-flow plugins.
+ * Exports all official moflo plugins.
  *
  * @module v3/shared/plugins/official
  */

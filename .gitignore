@@ -1,17 +1,13 @@
 
 !/memory/agents/README.md
 !/memory/sessions/README.md
-!bin/claude-flow
-!v3/@claude-flow/
 # Binaries
 # Build outputs
 
-# Claude-Flow specific
 # Dependencies
 # Development
 # Dot folders to ignore (except .claude, .claude-plugin, .git, .github, .githooks)
 # Environment
-# Exclude @claude-flow module directories from ignore patterns
 # IDE
 # Logs
 # MCP/Swarm
