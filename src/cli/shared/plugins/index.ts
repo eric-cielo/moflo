@@ -6,6 +6,9 @@
  * @module v3/shared/plugins
  */
 
+/** Stable identity string for the plugins module. */
+export const MODULE_ID = '@moflo/plugins';
+
 // Types
 export type {
   PluginConfig,
