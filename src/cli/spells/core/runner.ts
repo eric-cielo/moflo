@@ -51,6 +51,9 @@ import {
 import { checkAcceptance, recordAcceptance } from './permission-acceptance.js';
 import { analyzeSpellPermissions, formatSpellPermissionReport } from './permission-disclosure.js';
 
+/** Version of the spell runner engine. */
+export const ENGINE_VERSION = '1.0.0';
+
 export class SpellCaster {
   private readonly connectorAccessor?: ConnectorAccessorImpl;
 
