@@ -154,6 +154,52 @@ describe('detectSignal', () => {
     expect(detectSignal('neutral prompt', 'we decided to batch the writes').kind).toBe('decision');
   });
 
+  it('flags additional selection / preference / finalization phrasing', () => {
+    for (const p of [
+      'go with option B',
+      "i'd rather extract a helper",
+      "let's keep the existing schema",
+      'the approach is to cache the result',
+      'final decision: ship the daemon fix',
+    ]) {
+      expect(detectSignal(p).kind).toBe('decision');
+    }
+  });
+
+  it('flags approval ATTACHED to a concrete action/decision', () => {
+    for (const p of [
+      'go ahead and ship the daemon fix',
+      'ok, use the daemon approach',
+      'yes, build the parser',
+      'proceed with option B',
+      'sounds good, go with the cache',
+    ]) {
+      expect(detectSignal(p).kind).toBe('decision');
+    }
+  });
+
+  it('flags bare approval that confirms a proposal in the prior assistant turn', () => {
+    const prior = 'I recommend we use the daemon for the write path. Should I proceed?';
+    for (const p of ['yes', 'ok', 'go ahead', 'sounds good', 'sure, do it']) {
+      expect(detectSignal(p, prior).kind).toBe('decision');
+    }
+  });
+
+  it('bare approval does NOT fire when the prior turn proposed nothing', () => {
+    const prior = 'Done — the tests pass and I committed the change.';
+    for (const p of ['ok', 'yes', 'thanks', 'great']) {
+      expect(detectSignal(p, prior).hit).toBe(false);
+    }
+  });
+
+  it('bare approval with no prior proposal in context stays non-firing', () => {
+    // With an empty tail there is no proposal to confirm, so bare assent does
+    // not fire — only approval coupled to an action (prior turn or same message).
+    for (const p of ['ok', 'yes', 'sure', 'go ahead', 'sounds good', 'great, ship it']) {
+      expect(detectSignal(p).hit).toBe(false);
+    }
+  });
+
   it('flags error→fix from structured failure markers in the tail', () => {
     expect(detectSignal('ok continue', '{"is_error":true}').kind).toBe('error_fix');
     expect(detectSignal('ok', 'process exited with exit code 1').kind).toBe('error_fix');
@@ -210,11 +256,12 @@ describe('recentTranscriptTurn', () => {
 // ── Directive ────────────────────────────────────────────────────────────────
 
 describe('buildCaptureDirective', () => {
-  it('is answer-first and embeds the shared durability bar + the tag format', () => {
+  it('is answer-first, leans toward capture, and embeds the durability bar + tag format', () => {
     const d = buildCaptureDirective('correction');
     expect(d).toContain('FIRST');
     expect(d).toContain('<meditate-capture>LESSON</meditate-capture>');
     expect(d).toContain(DURABILITY_BAR);
+    expect(d).toContain('When in doubt, capture it');
     expect(d).toContain('append nothing');
     expect(d).toContain('course-correction');
   });

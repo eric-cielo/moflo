@@ -69,6 +69,10 @@ function runHeadless(projectRoot, prompt) {
       ...process.env,
       CLAUDE_CODE_HEADLESS: 'true',     // mark the child so its own hooks no-op (#860)
       ANTHROPIC_MODEL: HAIKU_MODEL_ID,  // cheap formatter model
+      // Deterministic provenance: the write path stamps source:auto-meditate on
+      // these learnings writes even if Haiku omits the tag it's asked to add
+      // (#1203 follow-up). Honoured by storeEntry in memory/entries-write.ts.
+      MOFLO_LEARNINGS_SOURCE: 'auto-meditate',
     };
 
     let child;

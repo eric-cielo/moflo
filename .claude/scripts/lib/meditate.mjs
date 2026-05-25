@@ -39,11 +39,12 @@ import { randomBytes } from 'crypto';
 // ── Tunables (exported for tests) ───────────────────────────────────────────
 /** Model used for the bounded distillation pass (cheap; Haiku is a formatter). */
 export const HAIKU_MODEL_ID = 'claude-haiku-4-5-20251001';
-/** Min gap between in-session capture directives, so a chatty correction streak
- *  can't spam the model. */
-export const INJECT_WINDOW_MS = 8 * 60_000;
+/** Min gap between in-session capture directives — a debounce so a burst of
+ *  signals in quick succession injects the directive at most once per window.
+ *  Shorter window = more capture opportunities (and more injected context). */
+export const INJECT_WINDOW_MS = 5 * 60_000;
 /** Hard cap on directives per session (belt-and-braces over the time window). */
-export const INJECT_MAX_PER_SESSION = 6;
+export const INJECT_MAX_PER_SESSION = 10;
 /** Ledger size cap — distilled entries are pruned first, then oldest. */
 export const MAX_LEDGER_ENTRIES = 200;
 /** Keep this many already-distilled entries for idempotency/debug before pruning. */
@@ -148,8 +149,23 @@ const DECISION_PATTERNS = [
   /\b(decided|decision)\b/i,
   /\bgoing with\b/i,
   /\bthe plan is\b/i,
+  /\bthe approach is\b/i,
   /\bwe should (use|go with|do)\b/i,
   /\bi'?ll go with\b/i,
+  // Selection / preference / finalization phrasing.
+  /\bgo with (option|approach|the|that|a)\b/i,
+  /\bi'?d rather\b/i,
+  /\b(we'?ll|let'?s) keep\b/i,
+  /\bfinal (decision|answer|call)\b/i,
+  // Approval ATTACHED to a concrete action/decision — "go ahead and ship the
+  // fix", "ok, use the daemon", "proceed with option B". Bare approval alone
+  // ("ok"/"yes"/"go ahead"/"sounds good") deliberately does NOT fire: it must
+  // carry an action to count as a decision moment, else it would trip on nearly
+  // every agreeing turn and burn the per-session injection budget. The live
+  // model's "append nothing" remains the final precision filter.
+  /\bgo ahead (and|with)\b/i,
+  /\bproceed with\b/i,
+  /\b(yes|yeah|yep|sure|ok|okay|sounds good|lgtm)[\s,!.]+(go with|use|ship|build|implement|add|proceed)\b/i,
 ];
 
 // Tight, low-false-positive markers only — tool output mentions "error" benignly
@@ -160,6 +176,32 @@ const ERROR_PATTERNS = [
   /\bexit code [1-9]\d*/i,
   /Traceback \(most recent call last\)/,
   /\b[1-9]\d* (failed|failing)\b/i,
+];
+
+// Bare approval that, on its own, looks like mere assent ("yes", "ok", "go
+// ahead") — but confirms a real decision when the PRIOR assistant turn proposed
+// one. Anchored at the start of the user's message so it matches a reply that
+// LEADS with approval. Paired with PROPOSAL_PATTERNS below as the precision gate.
+const APPROVAL_PATTERNS = [
+  /^\s*(y(es|ep|eah|up)?|sure|ok(ay)?|kk?|roger|agreed?|perfect|great|nice|sounds good|lgtm|do it|go ahead|proceed|approved?|let'?s do it|make it so|ship it)\b/i,
+];
+
+// Proposal / recommendation / options language the assistant uses when it asks
+// the user to choose or approve. Scanned against the recent transcript tail; a
+// match here means a bare approval in the prompt is confirming a real decision,
+// so "yes" after "I recommend we use the daemon" fires, but "ok thanks" after a
+// plain status report does not. Recall-biased — the live model still filters.
+const PROPOSAL_PATTERNS = [
+  /\bi (propose|recommend|suggest|advise)\b/i,
+  /\bi'?(d|ll) (recommend|suggest|propose|go with|use|implement|add|build|refactor)\b/i,
+  /\bwe (could|should|can|might) (use|go with|implement|refactor|add|switch|split)\b/i,
+  /\b(option|approach|plan|choice) (a|b|c|1|2|3|one|two)\b/i,
+  /\b(two|three|several|a few) (options|approaches|choices|ways)\b/i,
+  /\bshould i (proceed|go ahead|use|implement|start|continue|create|add)\b/i,
+  /\b(would|do) you (like|want) me to\b/i,
+  /\bhere'?s (the|my|a) (plan|approach|proposal|recommendation)\b/i,
+  /\brecommendation\b/i,
+  /\bpropos(e|ed|al)\b/i,
 ];
 
 function anyMatch(patterns, text) {
@@ -182,6 +224,12 @@ export function detectSignal(prompt, transcriptTail = '') {
   const t = typeof transcriptTail === 'string' ? transcriptTail : '';
   if (anyMatch(CORRECTION_PATTERNS, p)) return { hit: true, kind: 'correction' };
   if (anyMatch(DECISION_PATTERNS, p) || anyMatch(DECISION_PATTERNS, t)) return { hit: true, kind: 'decision' };
+  // Bare approval in the prompt that confirms a proposal/recommendation the
+  // assistant made in the immediately prior turn — "yes"/"go ahead" answering
+  // "I recommend we use the daemon". The prior-turn proposal (in transcriptTail)
+  // is the precision gate: a contextless "ok thanks" with nothing proposed above
+  // it does NOT fire.
+  if (anyMatch(APPROVAL_PATTERNS, p) && anyMatch(PROPOSAL_PATTERNS, t)) return { hit: true, kind: 'decision' };
   if (anyMatch(ERROR_PATTERNS, t)) return { hit: true, kind: 'error_fix' };
   return { hit: false, kind: null };
 }
@@ -241,11 +289,11 @@ export function buildCaptureDirective(kind) {
   return [
     `[auto-meditate] A ${label} just occurred this session.`,
     `FIRST: fully address the user's request as you normally would — do NOT let this note change your answer.`,
-    `THEN, only if a durable, reusable lesson emerged, append exactly ONE final line of the form:`,
+    `THEN, if a reusable lesson emerged, append exactly ONE final line of the form:`,
     `<meditate-capture>LESSON</meditate-capture>`,
     `where LESSON is a single concise sentence (a pattern, gotcha, or decision+rationale).`,
     DURABILITY_BAR,
-    `If nothing clears that bar, append nothing — silence is the correct, common outcome. Never emit more than one such line.`,
+    `When in doubt, capture it — a borderline lesson is cheap and the distill dedups; append nothing only for pure session state or git history. Never emit more than one such line.`,
   ].join('\n');
 }
 
