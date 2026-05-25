@@ -488,6 +488,7 @@ export function buildDistillPrompt(entries) {
     `1. For EACH candidate, call mcp__moflo__memory_search { namespace: "learnings", query: <bare keywords>, threshold: 0.6, limit: 5 }.`,
     `2. If the top hit is the SAME fact at similarity >= 0.80, call mcp__moflo__memory_store with that SAME key (upsert), merging any new nuance — do NOT create a near-duplicate.`,
     `3. Otherwise call mcp__moflo__memory_store { namespace: "learnings", key: <stable descriptive slug>, value: "<lesson> — Why: <why it matters>. How to apply: <what to do next time>.", tags: [<topic>, <area>] }.`,
+    `   PROVENANCE (#1203): every memory_store you make — both the step-2 upsert and the step-3 new write — MUST include the tag "source:auto-meditate" in its tags array, so the Luminarium "Learnings" panel can attribute these to the automatic distill pass.`,
     `4. Skip any candidate that does not clear the durability bar below, or that merely restates an existing entry.`,
     ``,
     DURABILITY_BAR,

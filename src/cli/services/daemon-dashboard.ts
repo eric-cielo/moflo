@@ -340,6 +340,24 @@ async function handleMemoryStats(): Promise<object> {
 }
 
 /**
+ * Build the `/api/learnings` response (#1203).
+ *
+ * Surfaces the `learnings` namespace for the Luminarium "Learnings" panel:
+ * recent lessons (key + first line + capped body), a per-day growth series,
+ * and a provenance tally from the write-time `source:<origin>` tag. The
+ * `total` is an authoritative COUNT (not the capped recent-list length), so
+ * the panel never under-reports — the #1149 "memory_stats lies" guard.
+ *
+ * Errors propagate to the request handler's 500 path (matching
+ * `handleMemoryStats`) rather than degrading to a fake-empty panel.
+ */
+async function handleLearnings(): Promise<object> {
+  const { getLearningsOverview } = await import('../memory/learnings-overview.js');
+  const overview = await getLearningsOverview();
+  return { ok: true, available: overview.total > 0, ...overview };
+}
+
+/**
  * Build the `/api/claude-stats` response (#1044).
  *
  * Reads `~/.claude/projects/<encoded-cwd>/*.jsonl` for the daemon's CWD
@@ -545,6 +563,8 @@ async function handleRequest(
       sendJson(res, 200, await handleSpells(opts.memory));
     } else if (url === '/api/memory/stats') {
       sendJson(res, 200, await handleMemoryStats());
+    } else if (url === '/api/learnings') {
+      sendJson(res, 200, await handleLearnings());
     } else if (url === '/api/claude-stats') {
       sendJson(res, 200, await handleClaudeStats());
     } else {
@@ -860,6 +880,20 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
     .stat-card .label { color: #8b949e; font-size: 0.75rem; }
     .stat-card .value { font-size: 1.25rem; font-weight: 700; color: #58a6ff; }
+    /* Learnings panel (#1203) */
+    .lrn-bars { display: flex; align-items: flex-end; gap: 3px; height: 70px; padding: 8px 0; margin-bottom: 16px; }
+    .lrn-bar { flex: 1; background: #58a6ff; border-radius: 2px 2px 0 0; min-height: 2px; opacity: 0.85; }
+    .lrn-bar:hover { opacity: 1; }
+    .lrn-prov { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .lrn-item { background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 8px; }
+    .lrn-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; }
+    .lrn-head:hover { background: #1c2128; }
+    .lrn-key { color: #58a6ff; font-weight: 600; font-size: 0.85rem; }
+    .lrn-first { color: #c9d1d9; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .lrn-body { padding: 0 12px 12px; color: #c9d1d9; font-size: 0.83rem; white-space: pre-wrap; line-height: 1.55; border-top: 1px solid #21262d; margin-top: 2px; padding-top: 10px; }
+    .lrn-item.collapsed .lrn-body { display: none; }
+    .lrn-item.collapsed .lrn-chevron { transform: rotate(-90deg); }
+    .lrn-chevron { transition: transform 0.15s; display: inline-block; color: #484f58; font-size: 0.75rem; }
     .poll-indicator { position: fixed; top: 8px; right: 12px; font-size: 0.7rem; color: #484f58; }
     .api-links { margin-top: 12px; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; }
     .api-links a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; margin-right: 16px; }
@@ -895,12 +929,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <div id="panel-schedules" class="panel" style="display:none"><div id="schedules-active"></div><div id="schedules-events"></div></div>
   <div id="panel-executions" class="panel" style="display:none"></div>
   <div id="panel-memory" class="panel" style="display:none"></div>
+  <div id="panel-learnings" class="panel" style="display:none"><div class="loading-block" role="status" aria-label="Loading learnings"><div class="spinner"></div><div class="msg">Reading learnings…</div></div></div>
   <div id="panel-claude-stats" class="panel" style="display:none"><div class="loading-block" role="status" aria-label="Loading Claude Code transcripts"><div class="spinner"></div><div class="msg">Reading Claude Code transcripts…</div><div class="hint">First load can take 10–15 seconds — moflo walks every session file in this project's transcript directory. Subsequent loads in this tab are much faster.</div></div></div>
   <div id="poll-indicator" class="poll-indicator"></div>
   <script>
     // Tab navigation — plain DOM, no framework
-    const tabIds = ['workers', 'schedules', 'executions', 'memory', 'claude-stats'];
-    const tabLabels = ['Workers', 'Schedules', 'Flo Runs', 'Memory', 'Claude Stats'];
+    const tabIds = ['workers', 'schedules', 'executions', 'memory', 'learnings', 'claude-stats'];
+    const tabLabels = ['Workers', 'Schedules', 'Flo Runs', 'Memory', 'Learnings', 'Claude Stats'];
     let activeTab = 'workers';
 
     function switchTab(id) {
@@ -912,10 +947,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       document.querySelectorAll('.nav-tab').forEach(el => {
         el.classList.toggle('active', el.dataset.tab === id);
       });
-      // Tabs whose data is fetched lazily (currently only Claude Stats)
-      // need an immediate poll on entry — otherwise the user waits up to
-      // the 5s polling interval for first paint.
-      if (id === 'claude-stats' && prev !== id && typeof poll === 'function') {
+      // Tabs whose data is fetched lazily (Claude Stats + Learnings) need an
+      // immediate poll on entry — otherwise the user waits up to the 5s
+      // polling interval for first paint.
+      if ((id === 'claude-stats' || id === 'learnings') && prev !== id && typeof poll === 'function') {
         poll();
       }
     }
@@ -1213,6 +1248,67 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         '<table><thead><tr><th>Namespace</th><th>Entries</th></tr></thead><tbody>' + rows + '</tbody></table>';
     }
 
+    // Friendly labels + badge colors for the write-time source:<origin> tag (#1203).
+    const PROV_LABELS = { 'auto-meditate': 'Auto-meditate', 'meditate-manual': '/meditate', 'manual': 'Manual', 'user': 'User (locked)', 'unknown': 'Legacy / unknown' };
+    const PROV_COLORS = { 'auto-meditate': 'green', 'meditate-manual': 'yellow', 'manual': 'gray', 'user': 'gray', 'unknown': 'gray' };
+    const provLabel = (s) => PROV_LABELS[s] || s;
+    const provColor = (s) => PROV_COLORS[s] || 'gray';
+
+    function renderLearnings(l) {
+      const el = document.getElementById('panel-learnings');
+      // Null on first paint AND on fetch error (.catch(() => null)) — show the
+      // spinner block on both so the tab never looks frozen.
+      if (!l) {
+        el.innerHTML = '<div class="loading-block" role="status" aria-label="Loading learnings"><div class="spinner"></div><div class="msg">Reading learnings…</div></div>';
+        return;
+      }
+      if (!l.available) {
+        el.innerHTML = '<h2>Learnings</h2><div class="empty">No learnings captured yet — run <code>/meditate</code>, or let auto-meditate distill a session.</div>';
+        return;
+      }
+
+      const cards = '<div class="grid">' +
+        '<div class="stat-card"><div class="label">Total Learnings</div><div class="value">' + l.total + '</div></div>' +
+        '<div class="stat-card"><div class="label">Added (7d)</div><div class="value">' + l.addedLast7d + '</div></div>' +
+        '<div class="stat-card"><div class="label">Added (30d)</div><div class="value">' + l.addedLast30d + '</div></div>' +
+        '</div>';
+
+      const provEntries = Object.entries(l.provenance || {}).sort((a, b) => b[1] - a[1]);
+      // esc() the source label — for unknown sources provLabel returns the raw
+      // DB tag value, so it must be escaped before going into badge() (which
+      // does not escape its text). Guards stored-XSS from a crafted source tag.
+      const provHtml = provEntries.length
+        ? '<div class="lrn-prov">' + provEntries.map(e => badge(esc(provLabel(e[0])) + ': ' + e[1], provColor(e[0]))).join('') + '</div>'
+        : '<div class="empty">No provenance recorded</div>';
+
+      let growthHtml = '';
+      if (l.growth && l.growth.length) {
+        const maxG = Math.max(1, ...l.growth.map(g => g.count));
+        const bars = l.growth.map(g =>
+          '<div class="lrn-bar" style="height:' + Math.max(2, Math.round(g.count / maxG * 60)) + 'px" title="' + esc(g.date) + ': ' + g.count + ' new"></div>'
+        ).join('');
+        growthHtml = '<h2>Growth (new learnings per day)</h2><div class="lrn-bars">' + bars + '</div>';
+      }
+
+      const recentHtml = (l.recent || []).map(r => {
+        const srcBadge = r.source ? ' ' + badge(esc(provLabel(r.source)), provColor(r.source)) : '';
+        const trunc = r.truncated ? '<span class="dim"> … (truncated)</span>' : '';
+        return '<div class="lrn-item collapsed">' +
+          '<div class="lrn-head" onclick="this.parentElement.classList.toggle(\\'collapsed\\')">' +
+            '<span class="lrn-chevron">&#9660;</span>' +
+            '<span class="lrn-key">' + esc(r.key) + '</span>' + srcBadge +
+            '<span class="lrn-first">' + esc(r.firstLine) + '</span>' +
+            '<span class="dim" style="margin-left:auto">' + fmtTimeAgo(r.updatedAt) + '</span>' +
+          '</div>' +
+          '<div class="lrn-body">' + esc(r.body) + trunc + '</div>' +
+        '</div>';
+      }).join('');
+      const recentSection = '<h2>Recent Learnings (' + (l.recent ? l.recent.length : 0) + ' of ' + l.total + ')</h2>' +
+        (recentHtml || '<div class="empty">None</div>');
+
+      el.innerHTML = cards + '<h2>Provenance</h2>' + provHtml + growthHtml + recentSection;
+    }
+
     // Format: 1234567 → "1.23M", 5432 → "5.43K"
     const fmtCount = (n) => {
       if (n == null) return '-';
@@ -1326,6 +1422,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         // four lightweight endpoints. Switching to the tab triggers an
         // immediate poll so the user doesn't wait up to 5s for first paint.
         const wantClaudeStats = activeTab === 'claude-stats';
+        const wantLearnings = activeTab === 'learnings';
         const fetches = [
           fetch('/api/status').then(r => r.json()),
           fetch('/api/schedules').then(r => r.json()),
@@ -1334,14 +1431,18 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
           wantClaudeStats
             ? fetch('/api/claude-stats').then(r => r.json()).catch(() => null)
             : Promise.resolve(null),
+          wantLearnings
+            ? fetch('/api/learnings').then(r => r.json()).catch(() => null)
+            : Promise.resolve(null),
         ];
-        const [s, sc, w, m, cs] = await Promise.all(fetches);
+        const [s, sc, w, m, cs, lr] = await Promise.all(fetches);
         renderStatus(s);
         renderWorkers(s);
         renderSchedules(sc);
         renderExecutions(w);
         renderMemory(m);
         if (wantClaudeStats) renderClaudeStats(cs);
+        if (wantLearnings) renderLearnings(lr);
         document.getElementById('poll-indicator').textContent = 'Last poll: ' + new Date().toLocaleTimeString();
       } catch (e) {
         console.error('Poll failed:', e);

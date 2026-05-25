@@ -365,6 +365,11 @@ describe('buildDistillPrompt', () => {
     expect(p).toContain('>= 0.80');
     expect(p).toContain(DURABILITY_BAR);
   });
+
+  it('instructs the formatter to tag stored learnings with source:auto-meditate (#1203)', () => {
+    const p = buildDistillPrompt([{ lesson: 'Alpha lesson.' }]);
+    expect(p).toContain('source:auto-meditate');
+  });
 });
 
 describe('exported constants', () => {
