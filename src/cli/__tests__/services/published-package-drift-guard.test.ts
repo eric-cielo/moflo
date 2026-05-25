@@ -563,6 +563,58 @@ describe('published-package drift guard (issue #585)', () => {
     ).toEqual([]);
   });
 
+  it('no `@claude-flow` package scope re-enters shipped source (#1214)', () => {
+    // #1214 removed every stale `@claude-flow/...` reference (the pre-#586 npm
+    // workspace scope) from shipped source: dead bin/script daemon-lock paths,
+    // the v3-progress scan, prose, the .gitignore, and a broken init migration.
+    // This guard locks that in.
+    //
+    // The legacy CLI scope legitimately survives only as a *matcher* inside the
+    // init migration regex (`@(?:claude-flow|moflo)/cli` in init/executor.ts):
+    // that contains the lowercase `claude-flow` token but NOT the `@claude-flow`
+    // form this guard bans. `.claude-flow` (dir) and `claude-flow <subcommand>`
+    // are governed by the guards above; `@moflo/*` is the current scope.
+    //
+    // If a verbatim `@claude-flow` reference is genuinely required, add a
+    // `LEGACY-BRAND` marker on the same line.
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'helpers'),
+      join(REPO_ROOT, '.claude', 'skills'),
+    ];
+    const SCOPE_RE = /@claude-flow/;
+    const ALLOWED_MARKERS = /LEGACY-BRAND/;
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (/[/\\]__tests__[/\\]/.test(file)) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!SCOPE_RE.test(text)) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (!SCOPE_RE.test(line)) continue;
+          if (ALLOWED_MARKERS.test(line)) continue;
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Stale "@claude-flow/*" package scope — the package is "moflo" (#1214):\n` +
+        `replace with "moflo" (or "@moflo/*" for a real subpackage).\n` +
+        `If a verbatim historical reference is intentional, add a "LEGACY-BRAND" marker.\n` +
+        `Offenders:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
   it('no production code *writes* CLAUDE_FLOW_* env vars or the claudeFlow.* settings tree (#1209)', () => {
     // Issue #1209: the claude-flow → moflo rebrand migrated every WRITER to
     // emit `MOFLO_*` env vars and the `moflo.*` settings tree. READS still

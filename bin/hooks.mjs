@@ -510,7 +510,7 @@ function runBackgroundTraining() {
 // Falls back to a naive kill(0) check if the import fails (e.g. dist not built).
 let _getDaemonLockHolder = null;
 try {
-  const daemonLockPath = resolve(__dirname, '..', 'src', '@claude-flow', 'cli', 'dist', 'src', 'services', 'daemon-lock.js');
+  const daemonLockPath = resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/daemon-lock.js');
   if (existsSync(daemonLockPath)) {
     const mod = await import(pathToFileURL(daemonLockPath).href);
     _getDaemonLockHolder = mod.getDaemonLockHolder;

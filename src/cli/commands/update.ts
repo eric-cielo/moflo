@@ -1,6 +1,6 @@
 /**
  * V3 CLI Update Command
- * Auto-update system for @claude-flow packages (ADR-025)
+ * Auto-update system for moflo packages (ADR-025)
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -53,7 +53,7 @@ function formatPriority(priority: string): string {
 // Subcommand: check
 const checkCommand: Command = {
   name: 'check',
-  description: 'Check for available @claude-flow package updates',
+  description: 'Check for available moflo package updates',
   options: [
     { name: 'force', description: 'Force check (ignore rate limit)', type: 'boolean' },
     { name: 'json', description: 'Output as JSON', type: 'boolean' },
@@ -80,7 +80,7 @@ const checkCommand: Command = {
       }
 
       if (results.length === 0) {
-        output.printSuccess('All @claude-flow packages are up to date!');
+        output.printSuccess('All moflo packages are up to date!');
         return { success: true };
       }
 
@@ -133,7 +133,7 @@ const checkCommand: Command = {
 // Subcommand: all
 const allCommand: Command = {
   name: 'all',
-  description: 'Update all @claude-flow packages',
+  description: 'Update all moflo packages',
   options: [
     { name: 'dry-run', description: 'Show what would be updated', type: 'boolean' },
     { name: 'include-major', description: 'Include major version updates', type: 'boolean' },
@@ -307,14 +307,14 @@ const clearCacheCommand: Command = {
 // Main update command
 const updateCommand: Command = {
   name: 'update',
-  description: 'Manage @claude-flow package updates (ADR-025)',
+  description: 'Manage moflo package updates (ADR-025)',
   subcommands: [checkCommand, allCommand, historyCommand, rollbackCommand, clearCacheCommand],
   async action(): Promise<CommandResult> {
     // Show help if no subcommand
     output.writeln();
     output.writeln(output.highlight('═══ Update Command ═══'));
     output.writeln();
-    output.writeln('Manage @claude-flow package updates with auto-update support.');
+    output.writeln('Manage moflo package updates with auto-update support.');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([

@@ -129,7 +129,7 @@ describe('findGitRoot', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
   it('should find git root for a directory inside a repo', () => {
-    const root = findGitRoot(path.join(repoRoot, 'src', '@claude-flow', 'memory'));
+    const root = findGitRoot(path.join(repoRoot, 'src', 'cli', 'memory'));
     expect(root).toBe(repoRoot);
   });
 

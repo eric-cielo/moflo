@@ -158,7 +158,6 @@ export {
   onSessionStart,
   onSessionEnd,
   formatSessionStartOutput,
-  generateShellHook,
   getGlobalManager,
   setGlobalManager,
   initializeGlobalManager,

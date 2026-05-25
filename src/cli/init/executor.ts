@@ -645,15 +645,18 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
       result.preserved.push('.moflo/security/audit-status.json');
     }
 
-    // 3. Fix .mcp.json — replace stale @moflo/cli references with moflo
+    // 3. Fix .mcp.json — migrate any legacy CLI package spec to moflo.
+    // Consumers may carry an older scoped CLI package — the pre-#586 `claude-flow/cli`
+    // or the transient post-#586 `@moflo/cli`; both collapse to the `moflo` package.
+    // (Prior code checked one scope but replaced the other, so it never fired.)
     const mcpPath = path.join(targetDir, '.mcp.json');
     if (fs.existsSync(mcpPath)) {
       try {
         const mcpRaw = fs.readFileSync(mcpPath, 'utf-8');
-        if (mcpRaw.includes('@moflo/cli')) {
-          const mcpFixed = mcpRaw.replace(/@claude-flow\/cli(@latest)?/g, 'moflo');
+        const mcpFixed = mcpRaw.replace(/@(?:claude-flow|moflo)\/cli(@latest)?/g, 'moflo');
+        if (mcpFixed !== mcpRaw) {
           fs.writeFileSync(mcpPath, mcpFixed, 'utf-8');
-          result.updated.push('.mcp.json (replaced @moflo/cli with moflo)');
+          result.updated.push('.mcp.json (migrated legacy CLI package spec to moflo)');
         }
       } catch {
         // Non-fatal — .mcp.json may be malformed

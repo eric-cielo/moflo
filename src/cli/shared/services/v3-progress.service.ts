@@ -102,7 +102,6 @@ const WEIGHTS = {
 
 export class V3ProgressService extends EventEmitter {
   private projectRoot: string;
-  private v3Path: string;
   private cliPath: string;
   private metricsPath: string;
   private lastMetrics: V3ProgressMetrics | null = null;
@@ -111,8 +110,7 @@ export class V3ProgressService extends EventEmitter {
   constructor(options: V3ProgressOptions = {}) {
     super();
     this.projectRoot = options.projectRoot || process.cwd();
-    this.v3Path = join(this.projectRoot, 'v3');
-    this.cliPath = join(this.v3Path, '@claude-flow', 'cli', 'src');
+    this.cliPath = join(this.projectRoot, 'src', 'cli');
     this.metricsPath = options.outputPath || join(this.projectRoot, '.moflo', 'metrics', 'v3-progress.json');
   }
 
@@ -372,7 +370,7 @@ export class V3ProgressService extends EventEmitter {
     packages: { total: number; withDDD: number; target: number; list: string[] };
     ddd: { explicit: number; utility: number };
   }> {
-    const packagesPath = join(this.v3Path, '@claude-flow');
+    const packagesPath = this.cliPath;
     const list: string[] = [];
     let explicit = 0;
     let utility = 0;
@@ -421,7 +419,7 @@ export class V3ProgressService extends EventEmitter {
   }
 
   private async countCodebase(): Promise<{ totalFiles: number; totalLines: number }> {
-    const v3ClaudeFlow = join(this.v3Path, '@claude-flow');
+    const sourceRoot = this.cliPath;
     let totalFiles = 0;
     let totalLines = 0;
 
@@ -445,7 +443,7 @@ export class V3ProgressService extends EventEmitter {
       } catch {}
     };
 
-    await countDir(v3ClaudeFlow);
+    await countDir(sourceRoot);
 
     return {
       totalFiles: totalFiles || 419,

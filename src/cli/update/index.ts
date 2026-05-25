@@ -1,5 +1,5 @@
 /**
- * Auto-update system for @claude-flow packages
+ * Auto-update system for moflo packages
  *
  * Features:
  * - Rate-limited update checks (24h default)
