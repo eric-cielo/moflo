@@ -73,10 +73,10 @@ export interface ProgressChangeEvent {
 // Constants
 // ============================================================================
 
-// Utility/service packages follow DDD differently - their services ARE the application layer
-const UTILITY_PACKAGES = new Set([
-  'cli', 'hooks', 'mcp', 'shared', 'testing', 'agents', 'integration',
-  'embeddings', 'deployment', 'performance', 'plugins', 'providers'
+// Directories under src/cli that are NOT source modules — tests, generated/non-TS
+// assets, build tooling, and type-only declarations — excluded from module/DDD counts.
+const NON_MODULE_DIRS = new Set([
+  '__tests__', 'node_modules', 'agents', 'data', 'types', 'scripts',
 ]);
 
 // Target metrics for 100% completion
@@ -370,42 +370,59 @@ export class V3ProgressService extends EventEmitter {
     packages: { total: number; withDDD: number; target: number; list: string[] };
     ddd: { explicit: number; utility: number };
   }> {
-    const packagesPath = this.cliPath;
+    // Post-collapse (#586) the codebase is one package whose modules are flat
+    // directories under src/cli — there is no nested `<pkg>/src/domain` layer to
+    // probe. "DDD structure" here = whether a source module exposes a clean public
+    // API boundary (an `index.ts` barrel): modules that further decompose into
+    // sub-domains (nested dirs) are `explicit`; cohesive single-layer modules whose
+    // service IS the application layer are `utility`. Source dirs with no barrel are
+    // counted in `total` but not `withDDD`, so the ratio is real boundary adoption.
+    const modulesRoot = this.cliPath;
     const list: string[] = [];
     let explicit = 0;
     let utility = 0;
 
     try {
-      const dirs = await fs.readdir(packagesPath, { withFileTypes: true });
+      const dirs = await fs.readdir(modulesRoot, { withFileTypes: true });
 
       for (const dir of dirs) {
-        // Skip hidden directories
-        if (!dir.isDirectory() || dir.name.startsWith('.')) continue;
+        if (!dir.isDirectory() || dir.name.startsWith('.') || NON_MODULE_DIRS.has(dir.name)) {
+          continue;
+        }
 
+        let entries;
+        try {
+          entries = await fs.readdir(join(modulesRoot, dir.name), { withFileTypes: true });
+        } catch {
+          continue;
+        }
+
+        // Only count real source modules (skip asset-only / empty dirs).
+        const hasSource = entries.some(
+          e => e.isFile() && /\.m?ts$/.test(e.name) && !e.name.endsWith('.d.ts')
+        );
+        if (!hasSource) continue;
         list.push(dir.name);
 
-        // Check for DDD structure
-        try {
-          const srcPath = join(packagesPath, dir.name, 'src');
-          const srcDirs = await fs.readdir(srcPath, { withFileTypes: true });
-          const hasDomain = srcDirs.some(d => d.isDirectory() && d.name === 'domain');
-          const hasApp = srcDirs.some(d => d.isDirectory() && d.name === 'application');
+        // A public API barrel is the post-collapse "has DDD structure" signal.
+        if (!entries.some(e => e.isFile() && e.name === 'index.ts')) continue;
 
-          if (hasDomain || hasApp) {
-            explicit++;
-          } else if (UTILITY_PACKAGES.has(dir.name)) {
-            utility++;
-          }
-        } catch {
-          // Check if it's a utility package without src
-          if (UTILITY_PACKAGES.has(dir.name)) {
-            utility++;
-          }
-        }
+        // Decomposed into internal sub-domains (nested dirs) = explicit DDD;
+        // otherwise a cohesive single-layer module = utility.
+        const hasSubDomains = entries.some(
+          e => e.isDirectory() && !e.name.startsWith('.') &&
+            e.name !== '__tests__' && e.name !== 'node_modules'
+        );
+        if (hasSubDomains) explicit++;
+        else utility++;
       }
     } catch {
       // Return defaults
     }
+
+    // Sort for deterministic output across platforms — fs.readdir order is
+    // filesystem-dependent (NTFS sorts, ext4 does not, APFS varies).
+    list.sort();
 
     return {
       packages: {
