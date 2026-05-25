@@ -53,6 +53,17 @@ async function waitForDead(pid: number, ms = 5000): Promise<boolean> {
   return false;
 }
 
+/**
+ * Remove a temp dir even when a just-killed child still briefly holds its cwd
+ * handle. Node's rmSync does NOT retry EPERM/EBUSY by default, so a
+ * kill-then-rmdir race throws under Windows fork contention (the OS releases
+ * the cwd handle a beat after the process dies). maxRetries/retryDelay polls
+ * the release (up to ~1s) instead of failing the first attempt.
+ */
+function rmDirRetry(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 describe('daemon-lock orphan detection (#1150)', () => {
   let tempDir: string;
   let fakeDaemons: ChildProcess[] = [];
@@ -72,10 +83,11 @@ describe('daemon-lock orphan detection (#1150)', () => {
     for (const child of fakeDaemons) {
       try { child.kill('SIGKILL'); } catch { /* ok */ }
     }
-    // Give children a beat to actually die before rmSync clobbers their cwd.
+    // Give children a beat to actually die before rmSync clobbers their cwd;
+    // rmDirRetry then absorbs any residual handle-release lag (Windows EPERM).
     await new Promise(r => setTimeout(r, 100));
     fakeDaemons = [];
-    rmSync(tempDir, { recursive: true, force: true });
+    rmDirRetry(tempDir);
 
     if (priorSkipEnv !== undefined) {
       process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = priorSkipEnv;
@@ -182,7 +194,7 @@ describe('daemon-lock orphan detection (#1150)', () => {
       try {
         expect(findProjectDaemonPids(otherDir, { pidsHint: hint })).not.toContain(4242);
       } finally {
-        rmSync(otherDir, { recursive: true, force: true });
+        rmDirRetry(otherDir);
       }
     });
   });
@@ -256,7 +268,7 @@ describe('daemon-lock orphan detection (#1150)', () => {
         expect(result.acquired).toBe(true);
         expect(isAlive(pid)).toBe(true);
       } finally {
-        rmSync(otherDir, { recursive: true, force: true });
+        rmDirRetry(otherDir);
       }
     }, 15000);
   });
