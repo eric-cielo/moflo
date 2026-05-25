@@ -92,6 +92,15 @@ export function readOwnMofloVersion(): string | undefined {
 export function acquireDaemonLock(
   projectRoot: string,
   pid: number = process.pid,
+  /**
+   * Pre-computed project-daemon PIDs for the pre-acquire reap. When supplied,
+   * the reap skips the OS process scan (`findProjectDaemonPids`) and operates
+   * on exactly these PIDs. A caller that already enumerated project daemons
+   * passes them here to avoid a redundant scan; tests use it to make the reap
+   * deterministic instead of depending on the contention-sensitive cold-shell
+   * scan (mirrors the `pidsHint` seam on `reapSameProjectOrphans`).
+   */
+  opts: { pidsHint?: number[] } = {},
 ): { acquired: true } | { acquired: false; holder: number } {
   const lock = lockPath(projectRoot);
   const stateDir = join(projectRoot, '.moflo');
@@ -108,7 +117,7 @@ export function acquireDaemonLock(
   //     the failure mode that produced two-daemons-per-project in #1145's
   //     waxstack audit.
   const lockHolderPid = readLockPayload(lock)?.pid;
-  reapSameProjectOrphans(projectRoot, pid, lockHolderPid);
+  reapSameProjectOrphans(projectRoot, pid, lockHolderPid, opts.pidsHint);
 
   const payload: DaemonLockPayload = {
     pid,
@@ -692,10 +701,20 @@ function terminateOrphan(pid: number): boolean {
 
   if (!isProcessAlive(pid)) return true;
 
-  // Escalate to SIGKILL on POSIX (Windows already used /F)
-  if (process.platform !== 'win32') {
-    try { process.kill(pid, 'SIGKILL'); } catch { /* already dead */ }
-  }
+  // Escalate. The first kill can fail to land when spawning the OS helper is
+  // starved under heavy fork contention — a cold `taskkill.exe` load on Windows
+  // exceeding its exec timeout leaves the process alive with no second attempt.
+  // Escalate with an IN-PROCESS kill that spawns nothing and is therefore immune
+  // to that contention:
+  //   - POSIX:   SIGKILL.
+  //   - Windows: process.kill maps to TerminateProcess (libuv) for any same-user
+  //     PID — no subprocess, unlike taskkill. The earlier taskkill /T already
+  //     best-effort-killed the process tree; this guarantees the main PID dies.
+  // (Production value: a transiently-failed reap is the exact #1150 failure mode
+  // — a surviving orphan a fresh daemon then spawns alongside.)
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch { /* already dead */ }
 
   const killDeadline = Date.now() + 1000;
   while (Date.now() < killDeadline && isProcessAlive(pid)) {
