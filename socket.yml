@@ -1,0 +1,23 @@
+# Socket Security configuration (https://docs.socket.dev/docs/socket-yml)
+# Read by the Socket GitHub App on pull requests. Not published to npm
+# (not in package.json "files"), so this only affects moflo's own repo scans.
+version: 2
+
+issueRules:
+  # ── usesEval: suppressed (confirmed false positive) ──────────────────────
+  # MoFlo NEVER calls eval() or new Function(). The only occurrences of the
+  # text "eval(" in the codebase are part of moflo's OWN anti-eval security
+  # tooling — non-executable string literals and regexes:
+  #
+  #   src/cli/commands/security.ts:139  — /eval\s*\(/g regex used by the
+  #       `flo security` scanner to DETECT eval in the user's scanned code.
+  #   src/cli/commands/neural.ts:1461   — 'eval(' in a blocklist that REJECTS
+  #       neural patterns containing dangerous tokens.
+  #   src/cli/guidance/analyzer.ts:2655 — { must-not-contain: 'eval(' } guidance
+  #       assertion that FORBIDS generated code from using eval.
+  #
+  # These are the defensive side of the ledger; removing/obfuscating them would
+  # weaken moflo's posture, not improve it. moflo's own gates (the scanner +
+  # the must-not-contain assertion) plus code review remain the active guard
+  # against a real eval being introduced.
+  usesEval: false
