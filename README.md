@@ -120,6 +120,14 @@ To force a clean re-initialization over an existing setup:
 flo init --force
 ```
 
+#### First-run heads-up: brief CPU spike during initial indexing
+
+The **very first time** MoFlo runs in your project — typically right after `flo init` and the next session start — it builds the initial guidance, code map, and test indexes from scratch and generates 384-dim embeddings for every chunk. On a medium-sized project this takes **one to a few minutes** and you may see elevated CPU during that window. It runs in the background, so you can start working immediately; you just might hear your fans for a bit.
+
+After that first pass, indexing is **incremental and lazy** — every subsequent session start only re-processes files that actually changed since the last run, which typically finishes in under a second with no perceptible CPU activity. The big one-time cost is a deliberate trade: pay it once, then every future session opens with your project already searchable by meaning.
+
+> **Tip:** Let that initial indexing finish before running **`/healer`** (or `flo healer`). Healer's embeddings and semantic-quality checks expect the indexes to exist — if you run it mid-build it may flag warnings that resolve themselves the moment indexing completes.
+
 ### 2. Review your guidance and code settings
 
 Open `moflo.yaml` to see what init detected. The two key sections:
