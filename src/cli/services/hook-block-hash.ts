@@ -60,7 +60,12 @@ export interface RegenerationResult {
   settings: Record<string, unknown>;
   /** Number of missing hook entries that were added back. */
   added: number;
-  /** Number of extra hook entries that were removed (additive: always 0). */
+  /**
+   * Number of extra hook entries that were removed.
+   * - `applyAdditiveRegeneration`: always 0 (extras are never touched).
+   * - `applyWholesaleRegeneration`: `report.extra.length - customisations.length`
+   *   (moflo-owned legacy entries get dropped; user-owned ones are preserved).
+   */
   removed: number;
 }
 
