@@ -275,7 +275,18 @@ function interpolateCommandString(
 
 /**
  * Run a shell command and capture output.
- * Uses platform-aware shell selection.
+ *
+ * On POSIX we deliberately use `/bin/sh` (NOT `process.env.SHELL`). The
+ * interpolation pipeline uses POSIX single-quote escaping (`shellEscapeValue`),
+ * which is safe under sh/bash but breaks under zsh: zsh's stricter globbing
+ * treats unmatched `[...]` patterns as a hard error ("zsh:1: no matches found"),
+ * whereas POSIX sh and bash leave unmatched globs literal. Honouring the user's
+ * interactive `$SHELL` made CI (Ubuntu, /bin/bash) pass while macOS/Linux dev
+ * machines on zsh silently failed every composite step containing bracket
+ * characters in interpolated values.
+ *
+ * On Windows we use ComSpec (cmd.exe) — POSIX shell quoting is meaningless
+ * there; the rest of the pipeline already special-cases Windows shell-out.
  */
 function runShellCommand(
   command: string,
@@ -284,7 +295,7 @@ function runShellCommand(
   const timeout = 30000;
   const shell = process.platform === 'win32'
     ? (process.env.ComSpec || 'cmd.exe')
-    : (process.env.SHELL || 'bash');
+    : '/bin/sh';
 
   return new Promise((resolve) => {
     const child = exec(command, { timeout, shell }, (error, stdout, stderr) => {
