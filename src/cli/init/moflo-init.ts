@@ -26,6 +26,13 @@ import { generateClaudeMd as generateMofloSection } from './claudemd-generator.j
 import { applyInjectionReplacement } from '../services/claudemd-injection.js';
 import { loadShippedScripts } from './shipped-scripts.js';
 import { DEFAULT_INIT_OPTIONS } from './types.js';
+import { generateSettings } from './settings-generator.js';
+import {
+  applyWholesaleRegeneration,
+  computeHookBlockDrift,
+  isHookBlockLocked,
+} from '../services/hook-block-hash.js';
+import { rewriteIncorrectHookWiring } from '../services/hook-wiring.js';
 
 export { discoverTestDirs };
 
@@ -250,7 +257,28 @@ function generateConfig(root: string, force?: boolean, answers?: MofloInitAnswer
 // Step 2: .claude/settings.json hooks
 // ============================================================================
 
-function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers): MofloInitResult['steps'][0] {
+// #1227 — `flo init` was the surgical patcher that silently nuked user-owned
+// hooks (project-analysis-gate.cjs, e2e-gate.cjs) AND moflo entries in legacy
+// slots (swarm_init/hive-mind_init in PreToolUse, auto-memory-hook in SessionEnd).
+// The old generateHooks had three structural defects:
+//   (1) Its "already configured" guard scanned for the literal substring
+//       `'flo gate'` / `'moflo gate'` — modern moflo commands are
+//       `node ".../helpers/gate.cjs ..."` so the substring NEVER matched and
+//       the guard always fell through to the wipe path.
+//   (2) `existing.hooks = hooks` was a wholesale overwrite — the comment claimed
+//       "preserve existing non-MoFlo hooks" but the code did the opposite.
+//   (3) Its inlined canonical block had drifted from settings-generator.ts /
+//       hook-block-hash.ts (no swarm_init, no hive-mind_init, no Stop
+//       auto-memory-hook, SessionStart launcher timeout 3000 not 5000).
+//
+// New shape: one canonical source. For missing settings.json, write
+// generateSettings(DEFAULT_INIT_OPTIONS). For existing, run the same wholesale
+// regen the session-start launcher uses — applyWholesaleRegeneration preserves
+// user-owned entries via the #1180 basename guard AND relocates moflo entries
+// from legacy slots (SessionEnd → Stop, PreToolUse swarm_init → PostToolUse,
+// etc.). rewriteIncorrectHookWiring runs first so command-string rewrites
+// (#879 / #931) are healed before the structural pass hashes the block.
+function generateHooks(root: string, force?: boolean, _answers?: MofloInitAnswers): MofloInitResult['steps'][0] {
   const settingsPath = path.join(root, '.claude', 'settings.json');
   const settingsDir = path.dirname(settingsPath);
 
@@ -258,174 +286,82 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
     fs.mkdirSync(settingsDir, { recursive: true });
   }
 
-  let existing: any = {};
-  if (fs.existsSync(settingsPath)) {
-    try {
-      existing = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-    } catch { /* start fresh */ }
+  // No settings.json yet — write the canonical default and return.
+  if (!fs.existsSync(settingsPath)) {
+    const fresh = generateSettings({ ...DEFAULT_INIT_OPTIONS, targetDir: root, force: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(fresh, null, 2), 'utf-8');
+    return { name: '.claude/settings.json', status: 'created', detail: 'canonical hooks block written' };
+  }
 
-    // Check if MoFlo hooks already set up
-    const settingsStr = JSON.stringify(existing);
-    const hasGateHooks = settingsStr.includes('flo gate') || settingsStr.includes('moflo gate');
-    if (hasGateHooks && !force) {
-      return { name: '.claude/settings.json', status: 'skipped', detail: 'MoFlo hooks already configured' };
+  let existing: Record<string, unknown>;
+  try {
+    existing = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  } catch {
+    // Corrupt — rewrite from canonical (force-overwrites; user can revert).
+    const fresh = generateSettings({ ...DEFAULT_INIT_OPTIONS, targetDir: root, force: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(fresh, null, 2), 'utf-8');
+    return { name: '.claude/settings.json', status: 'updated', detail: 'rewrote unparseable settings.json from canonical' };
+  }
+
+  // Respect the explicit opt-out — same sentinel the launcher honours.
+  if (isHookBlockLocked(existing) && !force) {
+    return { name: '.claude/settings.json', status: 'skipped', detail: 'moflo.hooks.locked=true (explicit opt-out)' };
+  }
+
+  // Pass 1: in-place command + matcher rewrites (#879, #929, #931, #1171,
+  // auto-meditate rebrand). These never delete anything; they fix commands
+  // that exist but point at the wrong helper/subcommand.
+  const { rewrites } = rewriteIncorrectHookWiring(existing);
+  const rewroteCommands = rewrites.reduce((n, r) => n + r.count, 0);
+
+  // Pass 2: structural wholesale regen. Preserves user-owned entries via the
+  // #1180 basename guard (any command not pointing at a moflo-shipped helper
+  // is grafted back in); relocates moflo entries from legacy event/matcher
+  // slots to the current canonical shape.
+  const report = computeHookBlockDrift((existing.hooks ?? {}) as Record<string, unknown>);
+  let added = 0;
+  let removed = 0;
+  let preserved = 0;
+  if (report.drifted) {
+    const extraCount = report.extra.length;
+    const result = applyWholesaleRegeneration(existing, report);
+    added = result.added;
+    removed = result.removed;
+    // applyWholesaleRegeneration computes `removed = extra - customisations`,
+    // so `preserved` is the complement — the number of user-owned entries
+    // grafted back into the fresh tree.
+    preserved = extraCount - removed;
+  }
+
+  // Ensure statusLine + permissions/env/attribution scaffold is present —
+  // mirrors the existing moflo-init.ts UX but no longer overwrites user
+  // values that are already set.
+  const canonical = generateSettings({ ...DEFAULT_INIT_OPTIONS, targetDir: root, force: true }) as Record<string, unknown>;
+  const scaffoldKeys = ['statusLine', 'permissions', 'env', 'attribution'] as const;
+  const scaffoldAdded: string[] = [];
+  for (const key of scaffoldKeys) {
+    if (existing[key] == null && canonical[key] != null) {
+      existing[key] = canonical[key];
+      scaffoldAdded.push(key);
     }
   }
 
-  // Build hooks config — all on by default (opinionated pit-of-success)
-  // Uses direct node invocation via helper scripts (gate.cjs, gate-hook.mjs,
-  // hook-handler.cjs) instead of `npx flo` to avoid 2-5s cold-start per hook.
-  const gateHook = (sub: string) => `node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" ${sub}`;
-  const gate = (sub: string) => `node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" ${sub}`;
-  const handler = (sub: string) => `node "$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs" ${sub}`;
-  const hooks: Record<string, any[]> = {
-    "PreToolUse": [
-      {
-        "matcher": "^(Write|Edit|MultiEdit)$",
-        "hooks": [{ "type": "command", "command": handler('post-edit'), "timeout": 5000 }]
-      },
-      {
-        "matcher": "^(Glob|Grep)$",
-        "hooks": [{ "type": "command", "command": gateHook('check-before-scan'), "timeout": 3000 }]
-      },
-      {
-        "matcher": "^Read$",
-        "hooks": [{ "type": "command", "command": gateHook('check-before-read'), "timeout": 3000 }]
-      },
-      {
-        // #1171 — widened to cover the dedicated `PowerShell` tool.
-        "matcher": "^(Bash|PowerShell)$",
-        "hooks": [
-          { "type": "command", "command": gateHook('check-dangerous-command'), "timeout": 2000 },
-          { "type": "command", "command": gateHook('check-before-pr'), "timeout": 2000 }
-        ]
-      },
-      {
-        // #931 — Advisory only; never blocks. TaskCreate REMINDER and the
-        // namespace hint moved here from UserPromptSubmit so they emit only
-        // when Claude is about to spawn an Agent — saves ~90 tokens × every
-        // prompt × every consumer. Routed via gate-hook.mjs so Claude Code's
-        // session_id is forwarded as HOOK_SESSION_ID, enabling per-actor
-        // single-shot emission (mirror of #879's record-memory-searched fix).
-        "matcher": "^Agent$",
-        "hooks": [{ "type": "command", "command": gateHook('check-before-agent'), "timeout": 2000 }]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "^(Write|Edit|MultiEdit)$",
-        "hooks": [
-          { "type": "command", "command": handler('post-edit'), "timeout": 5000 },
-          { "type": "command", "command": gateHook('reset-edit-gates'), "timeout": 2000 }
-        ]
-      },
-      {
-        "matcher": "^Agent$",
-        "hooks": [{ "type": "command", "command": handler('post-task'), "timeout": 5000 }]
-      },
-      {
-        "matcher": "^TaskCreate$",
-        "hooks": [{ "type": "command", "command": gate('record-task-created'), "timeout": 2000 }]
-      },
-      {
-        // #1171 — widened to cover the dedicated `PowerShell` tool.
-        "matcher": "^(Bash|PowerShell)$",
-        "hooks": [
-          { "type": "command", "command": gateHook('check-bash-memory'), "timeout": 2000 },
-          { "type": "command", "command": gateHook('record-test-run'), "timeout": 2000 }
-        ]
-      },
-      {
-        "matcher": "^Skill$",
-        "hooks": [{ "type": "command", "command": gateHook('record-skill-run'), "timeout": 2000 }]
-      },
-      {
-        // Anchored alternation — Claude Code anchors hook matchers (`^…$` semantics),
-        // so a bare `mcp__moflo__memory_` never matches any real MCP tool name and the
-        // hook silently no-ops (#929 regression). The explicit suffix list keeps the
-        // matcher narrow while catching every memory_* tool we ship.
-        // Use gateHook (not gate) so the wrapper forwards Claude Code's session_id as
-        // HOOK_SESSION_ID — record-memory-searched needs this to mark the per-actor map
-        // (memorySearchedBy[sid]) that check-before-read consults under #838's per-actor gating.
-        // Without it, the legacy boolean is set but the per-actor map stays empty, and the gate
-        // blocks every Read forever within the turn (issue #879).
-        "matcher": "^mcp__moflo__memory_(search|retrieve|list|stats|store)$",
-        "hooks": [{ "type": "command", "command": gateHook('record-memory-searched'), "timeout": 3000 }]
-      },
-      {
-        "matcher": "^mcp__moflo__memory_store$",
-        "hooks": [{ "type": "command", "command": gate('record-learnings-stored'), "timeout": 2000 }]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          { "type": "command", "command": `node "$CLAUDE_PROJECT_DIR/.claude/helpers/prompt-hook.mjs"`, "timeout": 3000 }
-        ]
-      },
-      {
-        // prompt-state-reset is REQUIRED to reset memorySearched/memorySearchedBy on
-        // each new prompt and reclassify memoryRequired. Without it, gate state leaks
-        // across prompts. Separate hook entry so a prompt-hook.mjs exception doesn't
-        // skip the reset. Idempotent state reset only — no emission, no
-        // interactionCount increment (#931 dedupe).
-        "hooks": [
-          { "type": "command", "command": gateHook('prompt-state-reset'), "timeout": 3000 }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [{
-          "type": "command",
-          "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/subagent-start.cjs\"",
-          "timeout": 2000
-        }]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/scripts/session-start-launcher.mjs\"",
-            "timeout": 3000
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [{ "type": "command", "command": handler('session-end'), "timeout": 5000 }]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [{ "type": "command", "command": gate('compact-guidance'), "timeout": 3000 }]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [{ "type": "command", "command": handler('notification'), "timeout": 3000 }]
-      }
-    ]
-  };
-
-  // Merge: preserve existing non-MoFlo hooks, add MoFlo hooks
-  existing.hooks = hooks;
-
-  // Ensure statusLine is always present (required for dashboard display).
-  // The executor.ts / settings-generator.ts code path adds this, but
-  // moflo-init.ts uses its own generateHooks() which was missing it.
-  if (!existing.statusLine) {
-    existing.statusLine = {
-      type: 'command',
-      command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs"',
-    };
+  const dirty = rewroteCommands > 0 || added > 0 || removed > 0 || scaffoldAdded.length > 0;
+  if (!dirty) {
+    return { name: '.claude/settings.json', status: 'skipped', detail: 'already at canonical reference' };
   }
 
   fs.writeFileSync(settingsPath, JSON.stringify(existing, null, 2), 'utf-8');
-  return { name: '.claude/settings.json', status: existing.hooks ? 'updated' : 'created', detail: '14 hooks configured (gates, lifecycle, routing, session)' };
+
+  // Surface deletions, preserved customisations, and rewrites so nothing is
+  // silent — direct response to #1227's "no notice was printed" complaint.
+  const parts: string[] = [];
+  if (added > 0) parts.push(`+${added} canonical`);
+  if (removed > 0) parts.push(`-${removed} stale moflo`);
+  if (preserved > 0) parts.push(`✓${preserved} preserved`);
+  if (rewroteCommands > 0) parts.push(`↻${rewroteCommands} rewrites`);
+  if (scaffoldAdded.length > 0) parts.push(`+scaffold (${scaffoldAdded.join(',')})`);
+  return { name: '.claude/settings.json', status: 'updated', detail: parts.join(', ') };
 }
 
 // ============================================================================

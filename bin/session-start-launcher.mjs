@@ -812,7 +812,18 @@ let autoUpdateConfig = {
   enabled: true,
   scripts: true,
   helpers: true,
-  hookBlockDrift: 'warn',
+  // #1227 — default flipped from 'warn' → 'regenerate'. After #1180 added the
+  // basename guard in applyWholesaleRegeneration, the wholesale path stopped
+  // clobbering user-owned entries (commands not pointing at moflo helpers are
+  // grafted back into the fresh tree). The only thing left to "lose" is stale
+  // moflo entries from prior versions — exactly what consumers WANT migrated.
+  // The 'warn' default was a holdover from the pre-#1180 era when the wipe
+  // wasn't safe; that rationale no longer applies, and the launcher silently
+  // leaving legacy shapes in place was the root of #1227's surprise deletions
+  // (`flo init`'s wholesale-wipe path tripped where the launcher's safe wipe
+  // hadn't run because of the warn default). Consumers who explicitly want
+  // warn-only can still set `auto_update.hook_block_drift: warn` in moflo.yaml.
+  hookBlockDrift: 'regenerate',
   // #1142 — CLAUDE.md injection drift refresh mode (warn | regenerate | off,
   // default regenerate). Defaults to regenerate because the consumer cannot
   // refresh CLAUDE.md on their own — there is no other auto-refresh path.
@@ -826,7 +837,10 @@ try {
     const enabledMatch = yamlContent.match(/auto_update:\s*\n\s+enabled:\s*(true|false)/);
     const scriptsMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+scripts:\s*(true|false)/);
     const helpersMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+helpers:\s*(true|false)/);
-    // #881: hook-block drift detector (warn | regenerate | off; default warn)
+    // #881: hook-block drift detector (warn | regenerate | off; default
+    // regenerate post-#1227 — the basename guard from #1180 made wholesale
+    // regen safe for user-owned hooks, so the prior 'warn' default just left
+    // legacy shapes in place for `flo init` to wipe non-safely.)
     const driftMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+hook_block_drift:\s*(warn|regenerate|off)/);
     // #1142: CLAUDE.md injection drift detector (warn | regenerate | off; default regenerate)
     const claudemdMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+claudemd_injection_drift:\s*(warn|regenerate|off)/);

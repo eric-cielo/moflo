@@ -54,11 +54,14 @@ describe.each([
   it('still respects the locked sentinel before any regeneration', () => {
     // Defence-in-depth: the locked: true opt-out is the user's documented
     // way to suppress drift surfacing. Wholesale regeneration must not run
-    // before the locked check.
-    const idxLocked = src.indexOf('isHookBlockLocked');
-    const idxRegen = src.indexOf('applyWholesaleRegeneration');
-    expect(idxLocked).toBeGreaterThan(0);
-    expect(idxLocked, 'lock check must run before regeneration').toBeLessThan(idxRegen);
+    // before the locked check. Match the actual call sites (`mod.X(`) rather
+    // than the bareword so a docstring mentioning the function name earlier
+    // in the file (e.g. the #1227 default-mode comment) can't false-positive.
+    const idxLockedCall = src.indexOf('mod.isHookBlockLocked(');
+    const idxRegenCall = src.indexOf('mod.applyWholesaleRegeneration(');
+    expect(idxLockedCall, 'mod.isHookBlockLocked( must be invoked').toBeGreaterThan(0);
+    expect(idxRegenCall, 'mod.applyWholesaleRegeneration( must be invoked').toBeGreaterThan(0);
+    expect(idxLockedCall, 'lock check must run before regeneration').toBeLessThan(idxRegenCall);
   });
 
   it('emits a mutation message naming both added and removed counts', () => {

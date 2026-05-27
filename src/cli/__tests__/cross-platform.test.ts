@@ -369,52 +369,41 @@ describe('generateHooks alignment with settings-generator', () => {
     }
   });
 
-  it('should use direct node invocation via helper scripts', () => {
+  // #1227 — moflo-init.ts:generateHooks() no longer inlines a canonical hooks
+  // block; it delegates to settings-generator.ts (via generateSettings + a
+  // rewrite/regen pass). Three former assertions about the inlined block —
+  // direct helper-script invocation, $CLAUDE_PROJECT_DIR usage, and hook-event
+  // parity — are now structurally impossible to express against moflo-init.ts
+  // and are covered against the canonical source by the settings-generator.ts
+  // assertions below + end-to-end by src/cli/__tests__/init-moflo-init-1227.test.ts.
+
+  it('settings-generator.ts canonical helpers use $CLAUDE_PROJECT_DIR + helper scripts', () => {
     const src = readFileSync(
-      join(__dirname, '..', 'init', 'moflo-init.ts'),
+      join(__dirname, '..', 'init', 'settings-generator.ts'),
       'utf-8'
     );
-
-    const funcStart = src.indexOf('function generateHooks(');
-    const funcEnd = src.indexOf('\n// =====', funcStart + 1);
-    const funcBody = src.slice(funcStart, funcEnd);
-
-    // Should reference helper scripts directly
-    expect(funcBody).toContain('gate-hook.mjs');
-    expect(funcBody).toContain('gate.cjs');
-    expect(funcBody).toContain('hook-handler.cjs');
-    expect(funcBody).toContain('prompt-hook.mjs');
+    // The canonical hook-command helpers must reference the shipped helper
+    // scripts directly via $CLAUDE_PROJECT_DIR — no npx, no PATH lookup.
+    expect(src).toContain('gate-hook.mjs');
+    expect(src).toContain('gate.cjs');
+    expect(src).toContain('hook-handler.cjs');
+    expect(src).toContain('prompt-hook.mjs');
+    // Every helper script reference must be rooted at $CLAUDE_PROJECT_DIR so
+    // that the command resolves identically on Linux/macOS/Windows without
+    // relying on cwd or PATH. Five matches is a conservative floor — at the
+    // time of writing settings-generator.ts has 10+.
+    const projectDirRefs = src.match(/"\$CLAUDE_PROJECT_DIR\/\.claude\//g) || [];
+    expect(projectDirRefs.length).toBeGreaterThanOrEqual(5);
   });
 
-  it('should use $CLAUDE_PROJECT_DIR for all helper script paths', () => {
-    const src = readFileSync(
-      join(__dirname, '..', 'init', 'moflo-init.ts'),
-      'utf-8'
-    );
-
-    const funcStart = src.indexOf('function generateHooks(');
-    const funcEnd = src.indexOf('\n// =====', funcStart + 1);
-    const funcBody = src.slice(funcStart, funcEnd);
-
-    // Every node command should use $CLAUDE_PROJECT_DIR
-    const nodeCommands = funcBody.match(/node "\$CLAUDE_PROJECT_DIR/g) || [];
-    expect(nodeCommands.length).toBeGreaterThanOrEqual(5);
-  });
-
-  it('should have same hook events as settings-generator', () => {
-    const initSrc = readFileSync(
-      join(__dirname, '..', 'init', 'moflo-init.ts'),
-      'utf-8'
-    );
+  it('settings-generator.ts defines every required hook event', () => {
     const settingsSrc = readFileSync(
       join(__dirname, '..', 'init', 'settings-generator.ts'),
       'utf-8'
     );
-
-    // Both should define the same hook event categories
     const hookEvents = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'SubagentStart', 'SessionStart', 'Stop'];
     for (const event of hookEvents) {
-      expect(initSrc).toContain(`"${event}"`);
+      expect(settingsSrc).toContain(event);
     }
   });
 
@@ -436,13 +425,11 @@ describe('generateHooks alignment with settings-generator', () => {
 
     function extractGenerateHooks(filename: string): string {
       const src = readFileSync(join(__dirname, '..', 'init', filename), 'utf-8');
+      // Matches `function generateHooks` AND `function generateHooksConfig`
+      // (the settings-generator.ts name post-#1227); next top-level function
+      // declaration acts as the end sentinel.
       const funcStart = src.indexOf('function generateHooks');
-      // settings-generator.ts has helper functions after generateHooks, so we use
-      // a sentinel comment / next function declaration as the end. The
-      // alignment test above uses `\n// =====`; settings-generator uses
-      // `function generateSettingsJson` instead.
       const candidates = [
-        src.indexOf('\n// =====', funcStart + 1),
         src.indexOf('\nexport function generateSettingsJson', funcStart + 1),
         src.indexOf('\nfunction generateStatusLineConfig', funcStart + 1),
       ].filter(i => i > funcStart);
@@ -450,23 +437,15 @@ describe('generateHooks alignment with settings-generator', () => {
       return src.slice(funcStart, funcEnd);
     }
 
+    // #1227 — moflo-init.ts no longer inlines the canonical hooks block; it
+    // delegates to settings-generator.ts. The paired moflo-init.ts assertions
+    // have been removed (the delegate is covered end-to-end by
+    // src/cli/__tests__/init-moflo-init-1227.test.ts), so only the canonical
+    // settings-generator.ts side remains.
     for (const cmd of SESSION_ID_DEPENDENT) {
-      it(`moflo-init.ts wires ${cmd} via gate-hook.mjs`, () => {
-        const body = extractGenerateHooks('moflo-init.ts');
-        // Must mention the command...
-        expect(body).toContain(cmd);
-        // ...AND the call site must use gateHook(...) (not gate(...) directly).
-        // moflo-init.ts uses local helpers `gate` and `gateHook`.
-        const directGateCall = new RegExp(`\\bgate\\(['"]${cmd}['"]\\)`);
-        const gateHookCall = new RegExp(`\\bgateHook\\(['"]${cmd}['"]\\)`);
-        expect(body).not.toMatch(directGateCall);
-        expect(body).toMatch(gateHookCall);
-      });
-
       it(`settings-generator.ts wires ${cmd} via gate-hook.mjs`, () => {
         const body = extractGenerateHooks('settings-generator.ts');
         expect(body).toContain(cmd);
-        // settings-generator.ts uses `gateCmd` and `gateHookCmd`.
         const directGateCall = new RegExp(`\\bgateCmd\\(['"]${cmd}['"]\\)`);
         const gateHookCall = new RegExp(`\\bgateHookCmd\\(['"]${cmd}['"]\\)`);
         expect(body).not.toMatch(directGateCall);
@@ -478,12 +457,6 @@ describe('generateHooks alignment with settings-generator', () => {
     // prompt-hook.mjs (which calls gate.cjs `prompt-reminder` internally). The
     // second hook is the defensive safety-net `prompt-state-reset` — state
     // reset only, no emission, no interactionCount increment.
-    it('moflo-init.ts wires prompt-state-reset in UserPromptSubmit (#931)', () => {
-      const body = extractGenerateHooks('moflo-init.ts');
-      expect(body).toMatch(/gateHook\(['"]prompt-state-reset['"]\)/);
-      expect(body).not.toMatch(/gateHook\(['"]prompt-reminder['"]\)/);
-    });
-
     it('settings-generator.ts wires prompt-state-reset in UserPromptSubmit (#931)', () => {
       const body = extractGenerateHooks('settings-generator.ts');
       expect(body).toMatch(/gateHookCmd\(['"]prompt-state-reset['"]\)/);
@@ -494,11 +467,6 @@ describe('generateHooks alignment with settings-generator', () => {
     // Code's session_id is forwarded as HOOK_SESSION_ID. Without the wrapper,
     // the per-actor namespace-hint emission falls back to a single global
     // bucket and a subagent spawning its own agent silently misses the hint.
-    it('moflo-init.ts wires check-before-agent through gate-hook.mjs (#931)', () => {
-      const body = extractGenerateHooks('moflo-init.ts');
-      expect(body).toMatch(/gateHook\(['"]check-before-agent['"]\)/);
-    });
-
     it('settings-generator.ts wires check-before-agent through gateHookCmd (#931)', () => {
       const body = extractGenerateHooks('settings-generator.ts');
       expect(body).toMatch(/gateHookCmd\(['"]check-before-agent['"]\)/);
