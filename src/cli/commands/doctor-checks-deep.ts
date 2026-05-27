@@ -745,7 +745,7 @@ export async function checkHookBlockDrift(): Promise<HealthCheck> {
     name: 'Hook Block Drift',
     status: 'warn',
     message: parts.join(', '),
-    fix: 'set auto_update.hook_block_drift: regenerate in moflo.yaml, or moflo.hooks.locked: true to suppress',
+    fix: 'session-start auto-regenerates by default (#1227); next Claude Code start should heal this. If it persists, ensure `auto_update.hook_block_drift` is not set to `warn`/`off` in moflo.yaml, or set `moflo.hooks.locked: true` to suppress.',
   };
 }
 

@@ -117,7 +117,7 @@ auto_update:
   enabled: true                          # Master toggle for version-change auto-sync
   scripts: true                          # Sync .claude/scripts/ from moflo bin/
   helpers: true                          # Sync .claude/helpers/ from moflo source
-  hook_block_drift: warn                 # warn | regenerate | off
+  hook_block_drift: regenerate           # warn | regenerate | off (default: regenerate since #1227)
   claudemd_injection_drift: regenerate   # warn | regenerate | off
 ```
 
@@ -150,7 +150,8 @@ If your `moflo.yaml` predates the `sandbox:` or `auto_update:` blocks, they are 
 | `sandbox.tier: full` | Require OS sandbox; throw at runtime if the platform tool is unavailable |
 | `sandbox.tier: denylist-only` | Keep Layer 1 denylist only; skip OS isolation even when enabled |
 | `auto_update.enabled: false` | Disable all on-session auto-sync (scripts, helpers, drift checks) |
-| `auto_update.hook_block_drift: regenerate` | Auto-repair drift in `.claude/settings.json` hook block on session start (#881) |
+| `auto_update.hook_block_drift: regenerate` | Auto-repair drift in `.claude/settings.json` hook block on session start (#881, default since #1227 — basename guard from #1180 keeps user-owned hooks safe). |
+| `auto_update.hook_block_drift: warn` | Print drift notice but leave settings.json unchanged. Opt-out from auto-regen. |
 | `auto_update.hook_block_drift: off` | Skip hook-block drift detection entirely |
 | `auto_update.claudemd_injection_drift: regenerate` | Auto-refresh the MoFlo block in `CLAUDE.md` when it drifts from the current generator (#1142, default) |
 | `auto_update.claudemd_injection_drift: warn` | Print a drift notice on session start but leave `CLAUDE.md` unchanged |
