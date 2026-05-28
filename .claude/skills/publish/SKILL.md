@@ -229,9 +229,15 @@ Confirm the published version matches what we just built.
 
 ```bash
 npm install moflo@<new-version> --save-dev
+npm install --package-lock-only --force
+npm ci --dry-run --legacy-peer-deps
 ```
 
-This updates `package.json` and `package-lock.json` to use the newly published version as a devDependency.
+The first command updates `package.json` and `package-lock.json` to use the newly published version as a devDependency.
+
+The second command (`--package-lock-only --force`) backfills cross-platform optional-dependency entries that npm omits from the lockfile when `npm install` runs on a single host platform. Without it, transitive optional deps like the nested `@rolldown/binding-wasm32-wasi/node_modules/@emnapi/*` entries get dropped when publishing from Windows, and the resulting lockfile fails `npm ci` on Ubuntu/macOS CI legs. This produced the green-`release-smoke` → red-`ci.yml` divergence in run `26487580745` (moflo@4.10.27 install commit).
+
+The final `npm ci --dry-run --legacy-peer-deps` proves the resulting lockfile is in sync with `package.json` before we commit it. If this exits non-zero, stop and investigate — do not commit a broken lockfile.
 
 ### Step 13: Final Commit
 

@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude created a monster? MoFlo will simmer it down.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fg: #1f2328;
+      --fg-muted: #57606a;
+      --bg: #faf9f6;
+      --accent: #b91c1c;
+      --accent-hover: #7f1d1d;
+      --code-bg: #f1ece4;
+      --code-fg: #1f2328;
+      --rule: #e3dfd8;
+      --shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--fg);
+      max-width: 740px;
+      margin: 3rem auto;
+      padding: 0 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.018em;
+      line-height: 1.22;
+      color: var(--fg);
+    }
+    h1 {
+      font-size: 2.25rem;
+      margin: 1.25rem 0 1rem;
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 0.25rem;
+    }
+    h3 {
+      font-size: 1.15rem;
+      margin: 1.75rem 0 0.5rem;
+    }
+    p {
+      margin: 0.95rem 0;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(185, 28, 28, 0.35);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      border-bottom-color: var(--accent-hover);
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: inset 0 0 0 1px rgba(31, 35, 40, 0.04);
+      margin: 1.25rem 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+    li::marker {
+      color: var(--fg-muted);
+    }
+    em {
+      font-style: italic;
+      color: var(--fg);
+    }
+    strong {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2rem 0;
+    }
+    blockquote {
+      margin: 1.25rem 0;
+      padding: 0.5rem 1.25rem;
+      border-left: 3px solid var(--accent);
+      color: var(--fg-muted);
+      font-style: italic;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.8rem;
+      border: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    th {
+      background: var(--code-bg);
+      font-weight: 600;
+    }
+    h1 + p em {
+      color: var(--fg-muted);
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; margin: 1.5rem auto; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.25rem; }
+      table { font-size: 0.88rem; }
+      th, td { padding: 0.4rem 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_distill.png" alt="MoFlo — distilling a diff down to the review it deserves" /></p>
+
+<h1>Claude created a monster? MoFlo will simmer it down.</h1>
+
+<p><em>How <a href="https://github.com/eric-cielo/moflo">MoFlo</a>'s <code>/distill</code> (aka <code>/flo-simplify</code>) compares to Claude Code's built-in <code>/simplify</code> skill. Both can clean up code before a PR; the difference is that <code>/simplify</code> runs the same fixed multi-agent pipeline on every diff, while distill measures the diff first and runs only as much review as the change warrants.</em></p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+<hr />
+
+<h2>Distill: a <code>/simplify</code> for every sized change</h2>
+
+<p>Claude Code ships a built-in <code>/simplify</code> skill. It's good. Point it at your working tree and it runs a parallel multi-agent review of your recently changed code, then cleans up what it finds — duplicated logic, missed abstractions, the O(n²) loop that should be a hash lookup. The natural place for it is right after you've got something working, before you open a PR.</p>
+
+<p>So what's different about <code>/distill</code>? It reviews the same kinds of things, fixes the same kinds of problems, and lives in the same pre-PR slot in your workflow. The difference is that distill is designed to run on every PR, no matter the size. It adapts to the complexity of the work that was performed.</p>
+
+<p>For me, this came about because in MoFlo's <code>/flo</code> skill we always end with a code review — and then if a test fails, perhaps a change and another review. I realized I was spending thousands upon thousands of tokens using <code>/simplify</code> as my reviewer. It always spawned the same heavy pipeline, no matter how trivial the change, and the heaviest agents in it ran on Opus.</p>
+
+<p>I needed something that scaled the review to the size and complexity of the work performed — something I could run on every commit, every PR, every time, that gave valuable feedback and sized its effort and model appropriately. Distill is that.</p>
+
+<hr />
+
+<h2>What <code>/simplify</code> actually runs</h2>
+
+<p><code>/simplify</code> is a well-designed skill, and distill shares its DNA. It's worth being precise about what <code>/simplify</code> actually does today, because the skill has evolved fast.</p>
+
+<p>Originally, <code>/simplify</code> was a three-axis cleanup pass — reuse, quality, efficiency — with three parallel agents. In Claude Code v2.1.147 the command was renamed to <code>/code-review</code> and re-pointed at correctness-bug review. Then in v2.1.152 <code>/simplify</code> was reintroduced as a thin alias: today it invokes <code>/code-review --fix</code> under the hood. The <code>--fix</code> flag is the part that applies findings to your working tree and surfaces "reuse, simplification, and efficiency suggestions" alongside the bug findings.</p>
+
+<p>So what you actually get when you run <code>/simplify</code> is this pipeline (verbatim from the <a href="https://github.com/anthropics/claude-code/blob/main/plugins/code-review/commands/code-review.md">code-review plugin source</a>):</p>
+
+<ol>
+  <li>A <strong>Haiku</strong> agent screens whether the diff is worth reviewing (closed PR, draft, trivial, already-reviewed).</li>
+  <li>A <strong>Haiku</strong> agent discovers the relevant <code>CLAUDE.md</code> files.</li>
+  <li>A <strong>Sonnet</strong> agent summarizes the changes.</li>
+  <li><strong>Four agents run in parallel</strong>: two <strong>Sonnet</strong> agents audit <code>CLAUDE.md</code> compliance, two <strong>Opus</strong> agents hunt for bugs and logic errors.</li>
+  <li>A validation pass of parallel subagents re-checks each flagged issue (<strong>Opus</strong> for bugs, <strong>Sonnet</strong> for compliance).</li>
+  <li>With <code>--fix</code>, findings are applied to your working tree, including reuse/simplification/efficiency suggestions.</li>
+</ol>
+
+<p>It's careful — it won't strip code that looks redundant but is actually defensive, it preserves external behavior, and the validation step is there specifically to filter false positives. The signals it surfaces are good.</p>
+
+<p>The problem isn't quality. Notice the shape of step 1: the built-in's only triage is a <strong>binary</strong> go/no-go — either the Haiku screener decides to skip the diff entirely (closed PR, draft, already reviewed, or judged "obviously correct"), or the full pipeline runs. There's no medium gear. Once the screener says "proceed," you pay the same Haiku + Sonnet + Opus orchestration whether you changed twelve lines or twelve hundred.</p>
+
+<hr />
+
+<h2>Where distill is identical (no point pretending otherwise)</h2>
+
+<p>Being straight about the overlap makes the real difference legible:</p>
+
+<ul>
+  <li><strong>Same focus on reuse, quality, and efficiency cleanup.</strong> Distill targets exactly the axes <code>/simplify --fix</code> surfaces in its post-review suggestions. (The new <code>/simplify</code> adds bug-detection and <code>CLAUDE.md</code> compliance on top — distill doesn't try to compete on those; MoFlo has its own <code>/code-review</code> for that.)</li>
+  <li><strong>Same fix-don't-just-flag behavior.</strong> Distill aggregates findings, fixes each one directly, and notes-and-skips false positives without arguing. (Our skill's wording and the built-in's are nearly word-for-word — this is shared design philosophy, not coincidence.)</li>
+  <li><strong>Same workflow slot.</strong> Both are the "clean it up before humans review it" step, scoped to the diff.</li>
+  <li><strong>Same safety instinct.</strong> Distill re-runs your tests after fixing and reverts any fix that breaks them.</li>
+</ul>
+
+<p>If the review quality were the whole story, you wouldn't need distill — the built-in is fine. The story is what each tool does <em>before</em> it decides how hard to look.</p>
+
+<hr />
+
+<h2>Where distill differs: it sizes the review to the diff</h2>
+
+<p>The built-in <code>/simplify</code> has two settings: <strong>skip the diff</strong> (when its Haiku screener decides the PR isn't worth reviewing) or <strong>run the full pipeline</strong> (everything else). Once it decides to proceed, the same staging stages and the same four parallel review agents fire, regardless of whether you changed six lines or six hundred. There's no scope classifier deciding how much review the change deserves — once you're past the binary screen, the orchestration is constant.</p>
+
+<p>Distill's one structural difference is that it <strong>measures the diff first</strong>, with a small, deterministic, unit-tested classifier, and then runs only as much review as the change warrants. The classifier parses the unified diff, counts added/removed declarations, detects structural moves, flags security-sensitive paths, and returns a tier, a model, and an agent count. Here's the real classifier deciding six representative diffs:</p>
+
+<pre><code>typo in 1 file (8 LOC)                     -&gt; TRIVIAL  sonnet  agents:0  | &le;10 LOC, 1 file, no declaration changes
+refactor one function (140 LOC, 2 files)   -&gt; SMALL    sonnet  agents:1  | small/medium diff
+decomposition: 2 files, 5 fns moved        -&gt; SMALL    haiku   agents:1  | mostly relocation: 5 added, 5 removed, net +0
+big new subsystem (620 LOC)                -&gt; NORMAL   sonnet  agents:3  | &gt;500 LOC changed
+security path + new logic                  -&gt; NORMAL   sonnet  agents:3  | security-sensitive path with new logic
+architectural subsystem (1.8k LOC, +12)    -&gt; DEEP     opus    agents:3  | net-new logic clears the architectural bar</code></pre>
+
+<p>That single difference cascades into several concrete advantages.</p>
+
+<h3>1. Triage is graded, not binary</h3>
+
+<p>The built-in <em>does</em> have a pre-flight gate — the Haiku screener in step 1. But its decision is binary: skip the diff, or run the full pipeline. There's no "small review" gear. Three of the screener's four stop conditions are about PR state (closed, draft, already reviewed by Claude); the fourth is a subjective Haiku judgment that the change "does not need code review." If that judgment doesn't fire, the full four-agent fan-out runs.</p>
+
+<p>Distill replaces the binary with a graded choice: <strong>zero / one / three agents</strong>, on Haiku / Sonnet / Opus, decided by measurable diff metrics (LOC, declarations, balance of additions vs. removals, file count, security-sensitive paths). Same diff always lands on the same tier — it's deterministic and unit-tested — and the tier the change actually lands on usually has a smaller gear than "the full pipeline."</p>
+
+<h3>2. A typo gets zero agents</h3>
+
+<p>When the classifier proves a change is below the threshold where review adds any value — a trimmed comment, a renamed private helper, a reformatted block — distill stamps the gate and exits in seconds with <strong>no agent at all</strong>. The built-in's Haiku screener can also short-circuit on trivial changes (its "obviously correct" example covers this), but that's a Haiku judgment call rather than a measured rule, so the cut-off isn't deterministic. Distill's "trivial" detection runs against the diff metrics themselves, so the same trivial diff lands in the zero-agent gate every time.</p>
+
+<h3>3. The heavy fan-out is reserved for changes that earn it — and steps up further for the ones that really do</h3>
+
+<p>Distill escalates to a full three-agent pass only when the diff is genuinely cross-cutting — 500+ lines of real volume, a broad new subsystem, security-sensitive code with new logic. At that point three agents <em>cover orthogonal ground</em> instead of overlapping, and the cost is justified. The built-in runs that same heavy pipeline for the cross-cutting change and the one-liner alike.</p>
+
+<p>Calibration runs in <em>both</em> directions. For the rare <strong>architectural</strong> diff — a genuinely new subsystem, thousands of lines of net-new logic — distill steps <em>up</em> a rung to <strong>DEEP</strong>: the same three-agent fan-out, but on <strong>Opus</strong>, because judging whether a large refactor picked the right abstractions is depth-bound reasoning, not breadth-bound surveying. That runs automatically, with a one-line notice so the heavier cost is never silent. For the most extreme diffs, distill finishes its Opus pass and then <em>suggests</em> you hand off to Claude Code's built-in <code>/simplify</code> for an even deeper look — a prompt, never an automatic switch. Crucially, this upward escalation is gated on <strong>net-new-logic evidence, never raw volume</strong>: net-new declarations in TS/JS, net-new lines in other languages, measured net of churn with lockfiles, snapshots, generated files, and docs stripped out. A 2,000-line lockfile bump, a reformatting sweep, or a big rename never trips it — there's no new logic to reason about, so there's nothing for Opus to earn.</p>
+
+<h3>4. It tells a move apart from a rewrite</h3>
+
+<p>Look at the third row of the table. A decomposition across two files with five functions moved <em>looks</em> bigger than a six-line tweak by line count, but it's a pure relocation — code that already worked, just moved. Distill judges by declaration <em>balance</em> (roughly equal additions and removals), recognizes the move, and drops to a single cheap Haiku agent checking for copy-paste divergence and dead-after-move code. The built-in's fixed pipeline has no concept of this — it runs the full review on code that didn't change behavior. (Distill learned this the hard way: we shipped the over-eager version first and watched it burn tokens on decompositions.)</p>
+
+<h3>5. It routes the model to the work</h3>
+
+<p>The built-in uses a <strong>fixed model mix per agent role</strong>: Haiku for screening/discovery, Sonnet for the change summary and CLAUDE.md compliance, Opus for bug detection and bug validation. Same mix, every diff. Distill picks the model from the <em>diff</em> itself: <strong>Haiku</strong> for mechanical relocations (~5× cheaper than Sonnet, and pattern-matching is all a move needs), <strong>Sonnet</strong> for ordinary logic changes, and <strong>Opus</strong> only for the rare architectural diff where depth of reasoning earns its cost (see #3 — ordinary review is breadth-bound, so Sonnet is the right tool; architectural review is depth-bound). Cheap model on cheap diffs, capable model on hard ones, the depth model only when the change is genuinely architectural — decided automatically.</p>
+
+<h3>6. A re-run doesn't re-pay</h3>
+
+<p>Run distill, let it fix a few things, run it again to confirm. Distill recognizes a <strong>validation pass</strong>: if the only changes since the last run are the fixes it drove, it self-reviews in one pass instead of re-fanning-out — the expensive survey already happened. The built-in has no memory of a prior run; every invocation starts cold and runs the full pipeline again.</p>
+
+<h3>7. It's wired into the PR gate</h3>
+
+<p>Distill is part of MoFlo's pre-PR gate, and the gate uses the <em>same</em> classifier to get out of your way: a trivial diff, or a tiny review-fix tweak on an already-reviewed branch, auto-passes the "has this been reviewed?" check without even invoking the skill. The built-in <code>/simplify</code> is a standalone command — running it, and tracking whether it ran, is on you.</p>
+
+<hr />
+
+<h2>Side by side</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Built-in <code>/simplify</code> (= <code>/code-review --fix</code>)</th>
+      <th>MoFlo <code>/distill</code> (<code>/flo-simplify</code>)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Primary focus</strong></td>
+      <td>Correctness bugs + <code>CLAUDE.md</code> compliance, with reuse/simplification/efficiency suggestions layered via <code>--fix</code></td>
+      <td>Reuse + quality + efficiency cleanup</td>
+    </tr>
+    <tr>
+      <td><strong>Action</strong></td>
+      <td>Aggregates findings, applies fixes via <code>--fix</code></td>
+      <td>Same — plus re-runs tests and reverts a fix that breaks them</td>
+    </tr>
+    <tr>
+      <td><strong>Effort model</strong></td>
+      <td>Fixed pipeline: Haiku staging → Sonnet summary → 4 parallel review agents → validation subagents</td>
+      <td>Classifier sizes it: 0 / 1 / 3 agents by tier</td>
+    </tr>
+    <tr>
+      <td><strong>Tiny/trivial diffs</strong></td>
+      <td>Binary: either Haiku screener skips entirely, or the full pipeline runs</td>
+      <td>Zero agents — gate stamp and exit</td>
+    </tr>
+    <tr>
+      <td><strong>Typical small diffs</strong></td>
+      <td>Full pipeline</td>
+      <td>One focused Sonnet agent, all three cleanup axes</td>
+    </tr>
+    <tr>
+      <td><strong>Move vs. rewrite</strong></td>
+      <td>No distinction — full pipeline either way</td>
+      <td>Detects relocation, drops to one cheap Haiku agent</td>
+    </tr>
+    <tr>
+      <td><strong>Architectural diffs</strong></td>
+      <td>Same pipeline as any diff</td>
+      <td>Steps up to three Opus agents; suggests built-in <code>/simplify</code> on extreme outliers</td>
+    </tr>
+    <tr>
+      <td><strong>Model mix</strong></td>
+      <td>Fixed: Haiku staging + Sonnet compliance + Opus bug-hunt</td>
+      <td>Routed per diff: Haiku → Sonnet → Opus (Opus only for architectural diffs)</td>
+    </tr>
+    <tr>
+      <td><strong>Re-run after fixes</strong></td>
+      <td>Runs the pipeline again</td>
+      <td>Validation pass — self-review, no re-fan-out</td>
+    </tr>
+    <tr>
+      <td><strong>Workflow integration</strong></td>
+      <td>Standalone command</td>
+      <td>Wired into the PR gate; auto-skips trivial diffs</td>
+    </tr>
+    <tr>
+      <td><strong>Scope decision</strong></td>
+      <td>Prompt-driven, constant</td>
+      <td>Deterministic, unit-tested classifier</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+
+<h2>The irony, and why it matters</h2>
+
+<p>There's a small irony in a skill named <code>/simplify</code> whose only two settings are "skip" and "maximal" — a full multi-agent pipeline on Haiku + Sonnet + Opus the moment it decides a diff is worth looking at, including the diffs that don't need that much looking. Distill's whole premise is to apply the simplify ethos to the <em>review itself</em>: don't over-engineer the review of a six-line diff.</p>
+
+<p>The expensive part of code review was never the reading. It's the <em>calibration</em> — knowing how hard to look. Review a trivial change with full machinery and you've burned tokens and time for no signal. The built-in pushes a good review through one fixed gear. Distill keeps the same review and adds a transmission: a deterministic classifier that reads the same diff you would, applies rules that are written down and tested, and engages exactly as many agents — on exactly as expensive a model — as the change calls for.</p>
+
+<p>For occasional use, it's a wash. But run a cleanup pass before every PR (as you should with Claude), every day, across a team, and "the same review at a fraction of the cost on the common case, zero cost on the trivial case" compounds into real money and real latency.</p>
+
+<hr />
+
+<h2>So which do you use?</h2>
+
+<p>If you have Claude Code and not MoFlo, <code>/simplify</code> is a genuinely good tool — use it. If you're already running MoFlo, <code>/distill</code> gives you the same cleanup review with the cost calibrated to each diff and folded into the issue-to-PR workflow (the <code>/flo</code> skill runs distill as a step automatically). They're not rivals so much as the same idea with one of them tuned for running constantly.</p>
+
+<p>Write the code. Let distill keep it lean — without charging you the full pipeline to discover a typo was just a typo.</p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+</body>
+</html>
