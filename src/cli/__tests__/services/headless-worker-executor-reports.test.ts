@@ -109,6 +109,47 @@ describe('HeadlessWorkerExecutor — report persistence', () => {
     expect(prompt).toMatch(/Save the full report to/);
   });
 
+  it('spawns the worker read-only — allowlists Read/Glob/Grep, never Write/Edit (gate integrity, #1229)', async () => {
+    const child = makeStubChild(SAMPLE_OUTPUT);
+    (spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
+
+    await executor.execute('optimize');
+
+    const spawnCalls = (spawn as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string[], SpawnOptions]>;
+    const printCall = spawnCalls.find(([cmd, args]) => cmd === 'claude' && args[0] === '--print');
+    expect(printCall, 'expected a claude --print spawn').toBeTruthy();
+    const args = printCall![1];
+
+    // --print first, prompt second (callers depend on this ordering).
+    expect(args[0]).toBe('--print');
+    expect(typeof args[1]).toBe('string');
+
+    // The read-only allowlist must be present and must NOT grant any
+    // file-mutating tool — otherwise a "performance optimization" worker can
+    // edit moflo.yaml to disable the memory_first gate (#1229).
+    const allowIdx = args.indexOf('--allowedTools');
+    expect(allowIdx, 'expected --allowedTools on the spawn').toBeGreaterThan(-1);
+    const allowed = args[allowIdx + 1];
+    expect(allowed).toBe('Read,Glob,Grep');
+    for (const writeTool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash']) {
+      expect(allowed.split(','), `${writeTool} must not be allow-listed`).not.toContain(writeTool);
+    }
+  });
+
+  it('prompt forbids editing moflo.yaml / disabling gates (defense in depth, #1229)', async () => {
+    const child = makeStubChild(SAMPLE_OUTPUT);
+    (spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
+
+    await executor.execute('optimize');
+
+    const spawnCalls = (spawn as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string[], SpawnOptions]>;
+    const printCall = spawnCalls.find(([cmd, args]) => cmd === 'claude' && args[0] === '--print');
+    const prompt = printCall![1][1];
+    expect(prompt).toMatch(/never edit `moflo\.yaml`/);
+    expect(prompt).toMatch(/never disable it/);
+    expect(prompt).not.toMatch(/using the Write tool/);
+  });
+
   it('uses the configured outputFormat to pick the file extension', async () => {
     // ultralearn declares outputFormat: 'json' — the report path must reflect it.
     const child = makeStubChild('{"insights":[]}');

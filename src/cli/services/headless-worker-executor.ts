@@ -278,6 +278,29 @@ const MODEL_IDS: Record<ModelType, string> = {
 };
 
 /**
+ * Tool allowlist for every headless worker. These workers are READ-ONLY by
+ * design: they analyse the codebase and produce a report. Moflo persists their
+ * stdout to `.moflo/reports/<type>.<ext>` itself (see `executeInternal`), so
+ * they never need write capability to deliver their output.
+ *
+ * Restricting tools here is a GATE-INTEGRITY guarantee, not a tidy-up. The
+ * spawn previously ran `claude --print <prompt>` with no tool restriction, so
+ * a daemon-spawned worker inherited the consumer's permissions and could edit
+ * any file in their tree. The `optimize` ("Performance optimization") worker
+ * is `enabled: true` by default and runs unattended; given write access and a
+ * "analyze this codebase for performance optimizations" prompt, it reasons its
+ * way into editing `moflo.yaml` to `memory_first: false`
+ * (`# Temporarily disabled for performance analysis`) to unblock its own
+ * non-memory-first tool calls against the gate — silently disabling the
+ * memory-first protocol repo-wide and dirtying the working tree every run.
+ * Worse, the gate it disables is what surfaces the "never disable memory_first"
+ * learning, so the loop self-conceals. A read-only allowlist makes that edit
+ * physically impossible while leaving full analysis capability (Read/Glob/Grep)
+ * intact. See issue #1229.
+ */
+const HEADLESS_WORKER_ALLOWED_TOOLS = 'Read,Glob,Grep';
+
+/**
  * Default headless worker configurations based on ADR-020 (the
  * `audit`/`document`/`predict` entries from the original ADR were dropped
  * in #970 — see worker-daemon.ts header for rationale).
@@ -1126,7 +1149,7 @@ export class HeadlessWorkerExecutor extends EventEmitter {
   private buildPrompt(template: string, context: string, reportPath: string): string {
     const ioInstructions = `## Output
 
-Save the full report to \`${reportPath}\` using the Write tool. Overwrite any prior content at that path. DO NOT create any other files anywhere in the project; if you need to suggest test skeletons or code samples, include them inline in the report as fenced code blocks. Moflo persists the same output to that path after you finish, so the location is authoritative.`;
+Save the full report to \`${reportPath}\` by emitting it as your response — moflo writes your output to that path after you finish, so that location is authoritative. You are a READ-ONLY analysis worker and have no write tools: do not attempt to create or modify any file in the project, and in particular never edit \`moflo.yaml\`, anything under \`.claude/\`, or any gate/config (the memory-first gate stays on — comply with it, never disable it). Include any test skeletons or code samples inline in the report as fenced code blocks.`;
 
     if (!context) {
       return `${template}
@@ -1175,13 +1198,20 @@ ${ioInstructions}`;
       // Set model
       env.ANTHROPIC_MODEL = MODEL_IDS[options.model];
 
-      // Spawn claude CLI process
-      const child = spawn('claude', ['--print', prompt], {
-        cwd: this.projectRoot,
-        env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true, // Prevent phantom console windows on Windows
-      });
+      // Spawn claude CLI process. Keep `--print` first and the prompt second
+      // (callers/tests rely on argv[0]/argv[1]); the read-only allowlist is
+      // appended so these analysis workers cannot mutate the consumer's tree
+      // (e.g. disable a gate in moflo.yaml). See HEADLESS_WORKER_ALLOWED_TOOLS.
+      const child = spawn(
+        'claude',
+        ['--print', prompt, '--allowedTools', HEADLESS_WORKER_ALLOWED_TOOLS],
+        {
+          cwd: this.projectRoot,
+          env,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true, // Prevent phantom console windows on Windows
+        }
+      );
 
       // Setup timeout
       const timeoutHandle = setTimeout(() => {

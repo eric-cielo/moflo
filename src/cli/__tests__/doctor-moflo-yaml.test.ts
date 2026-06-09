@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { checkMofloYamlCompliance } from '../commands/doctor.js';
+import { checkMemoryFirstGate } from '../commands/doctor-checks-config.js';
 import { ensureMofloYamlExists } from '../init/moflo-yaml-template.js';
 
 function makeTempRoot(label: string): string {
@@ -69,5 +70,55 @@ describe('checkMofloYamlCompliance', () => {
     const result = await checkMofloYamlCompliance();
     expect(result.name).toBe('moflo.yaml');
     expect(['pass', 'warn', 'fail']).toContain(result.status);
+  });
+});
+
+describe('checkMemoryFirstGate (#1229 tripwire)', () => {
+  let root: string;
+
+  beforeEach(() => { root = makeTempRoot('gate'); });
+  afterEach(() => { try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* ok */ } });
+
+  it('passes (default) when moflo.yaml does not exist', async () => {
+    const result = await checkMemoryFirstGate(root);
+    expect(result.name).toBe('Memory-First Gate');
+    expect(result.status).toBe('pass');
+    expect(result.message).toMatch(/default/);
+  });
+
+  it('passes when memory_first is true', async () => {
+    fs.writeFileSync(path.join(root, 'moflo.yaml'), 'gates:\n  memory_first: true\n', 'utf-8');
+    const result = await checkMemoryFirstGate(root);
+    expect(result.status).toBe('pass');
+    expect(result.message).toBe('Enabled');
+  });
+
+  it('WARNS when memory_first is disabled — the exact bug from #1229', async () => {
+    fs.writeFileSync(
+      path.join(root, 'moflo.yaml'),
+      'gates:\n  memory_first: false  # Temporarily disabled for performance analysis\n',
+      'utf-8',
+    );
+    const result = await checkMemoryFirstGate(root);
+    expect(result.status).toBe('warn');
+    expect(result.message).toMatch(/DISABLED/);
+    expect(result.fix).toMatch(/git checkout|memory_first: true/);
+  });
+
+  it('ignores a commented-out memory_first: false line', async () => {
+    fs.writeFileSync(
+      path.join(root, 'moflo.yaml'),
+      'gates:\n  memory_first: true\n  # memory_first: false  (old note)\n',
+      'utf-8',
+    );
+    const result = await checkMemoryFirstGate(root);
+    expect(result.status).toBe('pass');
+  });
+
+  it('detects the disabled gate regardless of CRLF vs LF line endings (Rule #1)', async () => {
+    // Windows checkouts may carry CRLF; the detector must behave identically.
+    fs.writeFileSync(path.join(root, 'moflo.yaml'), 'gates:\r\n  memory_first: false\r\n', 'utf-8');
+    const result = await checkMemoryFirstGate(root);
+    expect(result.status).toBe('warn');
   });
 });
