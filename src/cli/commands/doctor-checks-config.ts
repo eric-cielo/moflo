@@ -749,6 +749,63 @@ export async function checkMofloYamlCompliance(cwd: string = process.cwd()): Pro
 }
 
 /**
+ * #1229 — standing tripwire for a silently-disabled memory_first gate.
+ *
+ * `gates.memory_first` is the only enforcement of the memory-search-first
+ * protocol. When it is `false` in moflo.yaml the protocol is off repo-wide
+ * with no per-prompt signal — and because the disabled gate is itself what
+ * surfaces the stored "never disable memory_first" learning, the situation
+ * self-conceals. Historically a daemon-spawned headless analysis worker could
+ * write this value unprompted to unblock itself (the `optimize` worker editing
+ * `moflo.yaml` to `memory_first: false  # Temporarily disabled for performance
+ * analysis`); that root cause is fixed by making those workers read-only, but
+ * this check is the loud, standing detector so the state never goes unnoticed
+ * again — whatever writes it (worker, agent, or a deliberate consumer edit).
+ *
+ * Warn rather than fail: disabling the gate is a legitimate (if rare) choice;
+ * the point is that it can never be silent. Matches only an *active* (un-
+ * commented) `memory_first: false` line and is EOL-agnostic so it behaves
+ * identically on CRLF (Windows) and LF (POSIX) checkouts.
+ *
+ * Exported with a cwd param so tests can target a temp root without touching
+ * process.cwd().
+ */
+export async function checkMemoryFirstGate(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const yamlPath = join(cwd, 'moflo.yaml');
+
+  // Absence is covered by checkMofloYamlCompliance; with no file the gate
+  // defaults to enabled, so there is nothing to warn about here.
+  if (!existsSync(yamlPath)) {
+    return { name: 'Memory-First Gate', status: 'pass', message: 'Enabled (default — no moflo.yaml override)' };
+  }
+
+  let content: string;
+  try {
+    content = readFileSync(yamlPath, 'utf-8');
+  } catch (e) {
+    return { name: 'Memory-First Gate', status: 'warn', message: `Unable to read moflo.yaml: ${errorDetail(e)}` };
+  }
+
+  // Active value only: a line whose first non-whitespace token is
+  // `memory_first: false`. A commented `# memory_first: false` is ignored
+  // because the leading `#` defeats the `^\s*memory_first` anchor.
+  const disabled = content
+    .split(/\r?\n/)
+    .some((line) => /^\s*memory_first:\s*false\b/i.test(line));
+
+  if (disabled) {
+    return {
+      name: 'Memory-First Gate',
+      status: 'warn',
+      message: 'DISABLED in moflo.yaml — memory-search-first protocol is off repo-wide and silent per-prompt',
+      fix: 'Restore `gates.memory_first: true` (e.g. `git checkout -- moflo.yaml`) unless you disabled it deliberately',
+    };
+  }
+
+  return { name: 'Memory-First Gate', status: 'pass', message: 'Enabled' };
+}
+
+/**
  * #981 / #987 — surfaces the single-writer-architecture safety net.
  *
  * When `daemon.auto_start: false` is set in moflo.yaml AND the consumer has

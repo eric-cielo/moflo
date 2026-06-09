@@ -801,16 +801,31 @@ describe('ControllerRegistry', () => {
     it('should have low overhead for controller access', async () => {
       await registry.initialize({ backend: mockBackend });
 
-      const start = performance.now();
-      for (let i = 0; i < 1000; i++) {
-        registry.get('learningBridge');
-        registry.get('tieredCache');
-        registry.isEnabled('skills');
-      }
-      const duration = performance.now() - start;
+      // Wall-clock microbenchmark: 3000 in-memory lookups. The cost itself is
+      // sub-millisecond, but a single GC pause or scheduler preemption on a
+      // loaded CI runner can spike one sample well past a tight budget (this
+      // test previously flaked at ~12ms against a 10ms ceiling in the
+      // isolation batch). Take the BEST of several samples — the minimum
+      // reflects the true cost when the run wasn't preempted, so it only fails
+      // if EVERY sample is slow (i.e. a genuine regression), not on one spike.
+      const measureOnce = (): number => {
+        const start = performance.now();
+        for (let i = 0; i < 1000; i++) {
+          registry.get('learningBridge');
+          registry.get('tieredCache');
+          registry.isEnabled('skills');
+        }
+        return performance.now() - start;
+      };
 
-      // 3000 lookups should complete in under 10ms
-      expect(duration).toBeLessThan(10);
+      measureOnce(); // warm up (JIT) — discard
+      let best = Infinity;
+      for (let sample = 0; sample < 5; sample++) {
+        best = Math.min(best, measureOnce());
+      }
+
+      // 3000 lookups should comfortably complete in under 10ms when not preempted.
+      expect(best).toBeLessThan(10);
     });
   });
 });
