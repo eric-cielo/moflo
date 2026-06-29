@@ -16,7 +16,7 @@ moflo's `.moflo/moflo.db` holds three classes of data. Only one is worth sharing
 
 **Never *live-share* the entire `moflo.db` between two running daemons.** node:sqlite + WAL stops concurrent writers from losing rows, but each daemon builds its own in-memory HNSW index — a write in install A never updates install B's index, so search silently returns stale results, and structural namespaces churn across branches. For ongoing sync, share ONLY the durable slice.
 
-> **Not the same thing:** restoring a one-time whole-DB *snapshot* to seed a fresh/empty workspace is safe and fast — each workspace then owns its own copy (no second concurrent daemon, so no index divergence), and the incremental reindex reconciles branch drift. That avoids the cold-start full parse + re-embed and is the right tool when speed-to-ready matters. See [#1244](https://github.com/eric-cielo/moflo/issues/1244). The rule above is specifically about *live concurrent* sharing.
+> **Not the same thing:** restoring a one-time whole-DB *snapshot* to seed a fresh/empty workspace is safe and fast — each workspace then owns its own copy (no second concurrent daemon, so no index divergence), and the incremental reindex reconciles branch drift. That avoids the cold-start full parse + re-embed and is the right tool when speed-to-ready matters. Use `flo memory backup`/`restore` for it — see "Hydrate a Fresh Workspace from a Snapshot" below. The rule above is specifically about *live concurrent* sharing.
 
 ---
 
@@ -29,8 +29,9 @@ Choose by who needs the learnings, not by what is easiest to wire.
 | Same machine, many worktrees / Conductor workspaces | `memory.durable_path` | Point every checkout at one durable-only store; session-start seeds + writes through automatically |
 | One person, many machines | `flo memory sync` | `--to <file>` then `--from <file>` via a synced folder (Dropbox/iCloud) or a hand-copied file |
 | A team sharing one repo | Git-tracked team artifact | `flo memory team-export` writes `.moflo/shared/learnings.jsonl`; teammates' session-start import-merges it after `git pull` |
+| A fresh/empty workspace that must be ready FAST | Whole-DB snapshot (`memory.hydrate_from`) | `flo memory backup --to <snap>` once; a new workspace restores the entire DB so search works on session one — no cold reindex |
 
-All three move the SAME durable slice and dedupe on `UNIQUE(namespace, key)`, so combining them is conflict-free.
+The first three move the SAME durable slice and dedupe on `UNIQUE(namespace, key)`, so combining them is conflict-free. The snapshot is a different tool — a one-time whole-DB seed that composes with the durable-slice modes (see the next section but one).
 
 ---
 
@@ -70,6 +71,33 @@ git add .moflo/shared/learnings.jsonl && git commit -m "share learnings"
 ```
 
 Teammates' session-start import-merges the file after `git pull` (first-write-wins on conflicts; author/host provenance is retained). JSONL keeps git diffs reviewable; embeddings are regenerated on import. Enable it with `memory.team_artifact: .moflo/shared/learnings.jsonl`.
+
+---
+
+## Hydrate a Fresh Workspace from a Snapshot
+
+Use a whole-DB snapshot when a new workspace must be searchable on its FIRST session. An empty `.moflo/moflo.db` forces a full cold reindex — parse every file for `code-map`/`patterns`/`tests`, chunk all `guidance`, AND run ONNX embedding generation over all of it (minutes on a large repo). A snapshot restore skips both the parse and the embed.
+
+```bash
+flo memory backup  --to   ~/moflo-snapshots/myproject.db   # snapshot a warm workspace (VACUUM INTO — consistent even under an active WAL)
+flo memory restore --from ~/moflo-snapshots/myproject.db   # seed a fresh workspace (no-op if the local DB already has content; --force to override)
+```
+
+Auto-hydrate on session-start by setting `memory.hydrate_from` (env `MOFLO_HYDRATE_FROM` overrides):
+
+```yaml
+memory:
+  hydrate_from: /abs/path/to/moflo-snapshot.db   # restored only when the local DB is empty, before the daemon starts
+```
+
+| Behavior | Rule |
+|----------|------|
+| When it restores | Only when the local DB is absent/empty (never clobbers an active workspace unless `--force`) |
+| Ephemeral leak | Source `tasklist`/`hive-mind`/epic-state are purged from the restored copy |
+| Branch drift | Self-heals on the next incremental reindex |
+| Order vs. durable-slice | Hydrate runs BEFORE the durable-slice sync at session-start — snapshot is the fast one-time seed, durable-slice keeps `learnings` converged afterward |
+
+This is NOT whole-DB *live* sharing: each restored workspace owns its own copy, so there is no second concurrent daemon and no HNSW index divergence.
 
 ---
 

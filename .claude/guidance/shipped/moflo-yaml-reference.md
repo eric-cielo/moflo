@@ -62,6 +62,7 @@ memory:
   namespace: default              # Default namespace for memory operations
   # durable_path: ~/.moflo-shared/team-learnings.db   # opt-in (#1232): share durable namespaces (learnings, knowledge) across worktrees / Conductor workspaces. Point at a DEDICATED store, never a full moflo.db. Env override: MOFLO_DURABLE_PATH.
   # team_artifact: .moflo/shared/learnings.jsonl       # opt-in (#1234): git-tracked JSONL the team commits; session-start import-merges it. Env override: MOFLO_TEAM_ARTIFACT. See moflo-cross-install-memory-sharing.md.
+  # hydrate_from: /abs/path/to/moflo-snapshot.db       # opt-in (#1244): whole-DB snapshot to seed a fresh/empty workspace on session-start (skips the cold reindex). No-op once the local DB has content. Take one with "flo memory backup --to <path>". Env override: MOFLO_HYDRATE_FROM.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:
