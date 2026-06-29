@@ -237,4 +237,15 @@ describe('writeThroughDurable (#1232)', () => {
       writeThroughDurable('learnings', { projectRoot: root, config: configWithDurable(root, undefined) }),
     ).resolves.toBeUndefined();
   });
+
+  it('swallows a config/path-resolution throw — never fails the caller write', async () => {
+    const root = await makeRoot('moflo-wt-');
+    // A malformed config (no `.memory`) makes resolveDurablePath throw. Since the
+    // caller's local write has ALREADY persisted, write-through must swallow it
+    // rather than propagate (the throw used to escape the try/catch — regression
+    // guard for the epic-review fix).
+    await expect(
+      writeThroughDurable('learnings', { projectRoot: root, config: {} as unknown as MofloConfig }),
+    ).resolves.toBeUndefined();
+  });
 });

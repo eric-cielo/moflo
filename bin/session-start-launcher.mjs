@@ -2112,13 +2112,25 @@ try {
 // learnings back into the local DB. Runs BEFORE the daemon spawns so the
 // freshly-seeded rows are present when the daemon builds its in-memory HNSW
 // index — that's what makes the cross-worktree repro (#1231) pass. No-op when
-// the feature is off, so consumers without a durable_path pay only a config
-// parse. Best-effort: a sync failure must never block session start.
+// the feature is off. Best-effort: a sync failure must never block session start.
 try {
-  const durablePaths = [
-    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/durable-sync.js'),
-    resolve(projectRoot, 'dist/src/cli/services/durable-sync.js'),
-  ];
+  // Cheap pre-gate so solo users (the overwhelming majority) pay nothing here —
+  // no module load, no moflo.yaml parse. The feature is only live when the env
+  // override is set or moflo.yaml has an UNcommented `durable_path:` line (the
+  // generated config ships a commented example, which this regex ignores).
+  const durableYamlPath = resolve(projectRoot, 'moflo.yaml');
+  let durableEnabled = Boolean(process.env.MOFLO_DURABLE_PATH);
+  if (!durableEnabled && existsSync(durableYamlPath)) {
+    try {
+      durableEnabled = /^[ \t]*durable_path[ \t]*:/m.test(readFileSync(durableYamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const durablePaths = durableEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/durable-sync.js'),
+        resolve(projectRoot, 'dist/src/cli/services/durable-sync.js'),
+      ]
+    : [];
   const durablePath = durablePaths.find((p) => existsSync(p));
   if (durablePath) {
     const { syncDurableAtSessionStart } = await import(pathToFileURL(durablePath).href);

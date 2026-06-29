@@ -180,13 +180,16 @@ export async function writeThroughDurable(
   opts: { projectRoot?: string; config?: MofloConfig } = {},
 ): Promise<void> {
   if (!isDurableNamespace(namespace)) return;
-  const projectRoot = opts.projectRoot ?? findProjectRoot();
-  const { path: durablePath } = resolveDurablePath(projectRoot, opts.config);
-  if (!durablePath) return;
   try {
+    // Everything after the cheap namespace check is inside the guard: a throw
+    // from findProjectRoot / loadMofloConfig (inside resolveDurablePath) / the
+    // flush must NEVER fail the caller's write, which has already persisted.
+    // Write-through is advisory — the next session-start flush reconciles.
+    const projectRoot = opts.projectRoot ?? findProjectRoot();
+    const { path: durablePath } = resolveDurablePath(projectRoot, opts.config);
+    if (!durablePath) return;
     await flushDurableToShared(projectRoot, durablePath);
   } catch {
-    // Write-through is advisory; the local write already succeeded. The next
-    // session-start flush will reconcile. Never surface this to the caller.
+    // Swallow entirely — see the rationale above.
   }
 }
