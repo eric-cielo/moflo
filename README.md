@@ -67,6 +67,7 @@ MoFlo makes deliberate choices so you don't have to:
 |---------|-------------|
 | **Semantic Memory** | 384-dim domain-aware embeddings. Store knowledge, search it instantly. |
 | **Reflection** | Distills durable lessons from your sessions into searchable memory — automatically (auto-meditate), or on demand with `/meditate`. |
+| **Cross-Install Sharing** | Share durable `learnings` across git worktrees, your own machines, or a whole team — via `memory.durable_path`, `flo memory sync`, or a git-tracked artifact. Structural namespaces stay local. [Full documentation →](.claude/guidance/shipped/moflo-cross-install-memory-sharing.md) |
 | **Code Navigation** | Indexes your codebase structure so Claude can answer "where does X live?" without Glob/Grep. |
 | **Guidance Indexing** | Chunks your project docs (`.claude/guidance/`, `docs/`) and makes them searchable. |
 | **Gates** | Enforces memory-first and task-creation patterns via Claude Code hooks. Prevents Claude from skipping steps. |
@@ -261,6 +262,20 @@ auto_meditate:
 ```
 
 The two are complementary: auto-meditate is the always-on safety net, `/meditate` is the deliberate, curated pass. Both write to the same `learnings` namespace and both deduplicate, so neither pollutes the other — and anything they store is available to semantic search from then on.
+
+### Sharing learnings across installations
+
+The `learnings` (and `knowledge`) namespaces are the **durable** slice of memory — user-authored and worth carrying across checkouts. The rest of the DB (code-map, guidance chunks, run state) is structural or ephemeral and rebuilds cheaply, so it stays local. MoFlo shares only the durable slice — **never the whole `moflo.db`**, which would make each daemon's in-memory search index diverge.
+
+Pick the mechanism by topology:
+
+| You want to share across… | Use | How |
+|---------------------------|-----|-----|
+| Git worktrees / Conductor workspaces (same machine) | `memory.durable_path` in `moflo.yaml` | Point every checkout at one durable-only store; session-start seeds + writes through automatically |
+| Your own laptop + desktop + CI | `flo memory sync --to/--from <file>` | Export to a synced folder (Dropbox/iCloud) or a copied file, import on the other machine |
+| A whole team on one repo | `flo memory team-export` → commit `.moflo/shared/learnings.jsonl` | Teammates' session-start import-merges it after `git pull` (first-write-wins; author provenance retained) |
+
+Verify your setup with `flo doctor -c shared-db` (it warns if you've accidentally pointed at a full `moflo.db`). Full guide: [`moflo-cross-install-memory-sharing.md`](.claude/guidance/shipped/moflo-cross-install-memory-sharing.md).
 
 ## The Gate System
 

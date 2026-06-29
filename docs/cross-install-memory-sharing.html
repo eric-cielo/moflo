@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoFlo Epic #1231 — Cross-Installation Memory Sharing</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --ink:#e6e9ef; --mut:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    --code:#0b0d12; --pill:#243042;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  header.hero{padding:46px 0 30px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#141821,#0f1115)}
+  .hero h1{margin:0 0 6px;font-size:30px;letter-spacing:-.4px}
+  .hero .sub{color:var(--mut);font-size:16px;max-width:760px}
+  .badges{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{background:var(--pill);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12.5px;color:#cfd6e2}
+  .badge.good{border-color:#1f6f33;color:#7ee787}
+  .layout{display:grid;grid-template-columns:230px 1fr;gap:34px;padding:30px 0 80px}
+  nav.toc{position:sticky;top:18px;align-self:start;font-size:13.5px;max-height:92vh;overflow:auto}
+  nav.toc h4{color:var(--mut);text-transform:uppercase;letter-spacing:.08em;font-size:11px;margin:18px 0 8px}
+  nav.toc a{display:block;color:#c4ccd8;padding:3px 0}
+  nav.toc a:hover{color:var(--accent)}
+  main{min-width:0}
+  section{margin:0 0 40px;scroll-margin-top:16px}
+  h2{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
+  h2 .num{color:var(--accent);font-weight:600;margin-right:8px}
+  .lede{color:var(--mut);margin:2px 0 18px}
+  h3{font-size:16.5px;margin:22px 0 8px}
+  p{margin:10px 0}
+  code{background:var(--code);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font:13px/1.5 "SF Mono",ui-monospace,Menlo,Consolas,monospace;color:#e9d7a6}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:9px;padding:14px 16px;overflow:auto;margin:12px 0}
+  pre code{background:none;border:none;padding:0;color:#d6dde9}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.8px}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:#cfd6e2;font-weight:600}
+  td code{white-space:nowrap}
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+  .tag{font-size:12px;padding:2px 8px;border-radius:6px;background:var(--pill);border:1px solid var(--line);color:#cdd5e1}
+  .ok{color:var(--good)} .wn{color:var(--warn)} .bd{color:var(--bad)}
+  details{background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
+  details>summary{cursor:pointer;padding:12px 16px;font-weight:600;list-style:none;background:#1b2029;color:#dbe2ee;display:flex;align-items:center;gap:10px}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";color:var(--accent);font-size:13px;transition:transform .15s}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>summary:hover{background:#212734}
+  .det-body{padding:6px 18px 18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:14px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card h4{margin:0 0 4px;font-size:15px}
+  .card .topo{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+  .kv{color:var(--mut);font-size:13px}
+  .note{border-left:3px solid var(--accent);background:#141a25;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;color:#cfd6e2}
+  .note.warn{border-color:var(--warn);background:#1f1a10}
+  .note.good{border-color:var(--good);background:#101a12}
+  .mono-sm{font:12px ui-monospace,Menlo,monospace;color:var(--mut)}
+  hr{border:none;border-top:1px solid var(--line);margin:26px 0}
+  .legend{font-size:12.5px;color:var(--mut);margin-top:6px}
+  footer{border-top:1px solid var(--line);padding:24px 0;color:var(--mut);font-size:13px}
+  @media(max-width:880px){.layout{grid-template-columns:1fr}nav.toc{position:static;max-height:none}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <h1>Cross-Installation Memory Sharing</h1>
+    <div class="sub">Epic <strong>#1231</strong> — share moflo's durable <code>learnings</code> across git worktrees, machines, and teams, without corrupting search. This document reads top-to-bottom as a high-level overview; expand any <em>“Detailed design”</em> panel to drill into implementation, decisions, and tests.</div>
+    <div class="badges">
+      <span class="badge good">7 PRs merged to main</span>
+      <span class="badge">4 stories + 3 supporting fixes</span>
+      <span class="badge">durable-slice-only design</span>
+      <span class="badge">cross-platform (Rule #1) verified</span>
+      <span class="badge">3-agent architectural review</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc">
+    <h4>High level</h4>
+    <a href="#summary">Executive summary</a>
+    <a href="#problem">The problem</a>
+    <a href="#model">The core model</a>
+    <a href="#solutions">The three mechanisms</a>
+    <h4>Detail</h4>
+    <a href="#s1232">#1232 — durable_path</a>
+    <a href="#s1233">#1233 — memory sync</a>
+    <a href="#s1234">#1234 — team artifact</a>
+    <a href="#s1235">#1235 — docs + doctor</a>
+    <a href="#fixes">Supporting fixes</a>
+    <a href="#review">Quality &amp; review</a>
+    <a href="#xplat">Cross-platform</a>
+    <h4>Reference</h4>
+    <a href="#ac">Acceptance criteria</a>
+    <a href="#ship">Shipped surface</a>
+    <a href="#landing">Landing process</a>
+  </nav>
+
+  <main>
+    <!-- ===================== EXECUTIVE SUMMARY ===================== -->
+    <section id="summary">
+      <h2><span class="num">§1</span>Executive summary</h2>
+      <p class="lede">What we built and why, in one screen.</p>
+      <div class="panel">
+        <p>moflo stores everything it learns about a project in a local SQLite database (<code>.moflo/moflo.db</code>), which is <strong>gitignored</strong>. That means every fresh git worktree, every Conductor workspace, every new machine, and every teammate starts with an <strong>empty <code>learnings</code> namespace</strong> — accumulated knowledge is silently lost.</p>
+        <p>The fix is built on one key insight: <strong>only a thin slice of the DB is worth sharing</strong> — the user-authored <code>learnings</code> and <code>knowledge</code> namespaces. Everything else (code maps, guidance chunks, run state) is derived or ephemeral and rebuilds cheaply, so it stays local. Sharing the <em>whole</em> DB would make each daemon's in-memory search index diverge.</p>
+        <p>We shipped <strong>three sharing mechanisms</strong> (chosen by topology), plus documentation and a safety check:</p>
+        <div class="grid">
+          <div class="card"><div class="topo">Same machine</div><h4>Shared durable store</h4><div class="kv"><code>memory.durable_path</code> — worktrees / Conductor workspaces seed + write-through to one durable-only DB.</div></div>
+          <div class="card"><div class="topo">One user, many machines</div><h4>Portable artifact</h4><div class="kv"><code>flo memory sync --to/--from</code> — carry a durable SQLite file via a synced folder.</div></div>
+          <div class="card"><div class="topo">A team</div><h4>Git-tracked JSONL</h4><div class="kv"><code>flo memory team-export</code> → commit <code>.moflo/shared/learnings.jsonl</code>; teammates import-merge on pull.</div></div>
+          <div class="card"><div class="topo">Safety &amp; docs</div><h4>Doctor + guidance</h4><div class="kv"><code>flo doctor -c shared-db</code> warns against whole-DB sharing; a shipped guidance doc explains it all.</div></div>
+        </div>
+        <p class="note good"><strong>Status:</strong> all four stories and three supporting fixes are merged to <code>main</code> and verified (build + integration suites green). One acceptance criterion — the live two-worktree end-to-end — is proven at the service-test layer and pending a real-environment run.</p>
+      </div>
+    </section>
+
+    <!-- ===================== PROBLEM ===================== -->
+    <section id="problem">
+      <h2><span class="num">§2</span>The problem</h2>
+      <p class="lede">Why durable knowledge evaporates across installations.</p>
+      <ul>
+        <li><strong>Origin:</strong> a Conductor support request — <code>.moflo/</code> is gitignored, so Conductor workspaces (and git worktrees) lose the <code>learnings</code> namespace on every rotation.</li>
+        <li><strong>Generalized:</strong> the same gap hits any topology where moflo runs from more than one checkout/machine — solo multi-machine, and teams on a shared repo.</li>
+        <li><strong>The trap to avoid:</strong> <em>live-sharing</em> one <code>moflo.db</code> between two running daemons. node:sqlite + WAL prevents row loss, but <strong>each daemon builds its own in-memory HNSW index</strong> — a write from install A never updates install B's index, so search silently returns stale results, and structural namespaces churn across branches.</li>
+      </ul>
+      <p class="note warn"><strong>A distinct, safe operation (planned — <a href="https://github.com/eric-cielo/moflo/issues/1244">#1244</a>):</strong> restoring a one-time whole-DB <em>snapshot</em> to seed a fresh/empty workspace is <em>not</em> the trap above. Each workspace then owns its own copy (no second concurrent daemon → no index divergence), and the incremental reindex reconciles branch drift. It's the right tool for fast cold-start: an empty DB forces a full parse + ONNX re-embed of all code/patterns/tests/guidance on the first session — minutes on a large repo — which a snapshot skips. "Never share the whole DB" is specifically about <em>live concurrent</em> sharing; snapshot-restore composes with the durable-slice sync (which keeps <code>learnings</code> converged afterward).</p>
+    </section>
+
+    <!-- ===================== MODEL ===================== -->
+    <section id="model">
+      <h2><span class="num">§3</span>The core model: three data classes</h2>
+      <p class="lede">The decision that makes everything else safe — share only the durable slice.</p>
+      <table>
+        <tr><th>Class</th><th>Namespaces</th><th>Shared?</th><th>Why</th></tr>
+        <tr><td><strong>Durable</strong></td><td><code>learnings</code>, <code>knowledge</code></td><td class="ok">Yes</td><td>User-authored, slow to recreate, identical across checkouts</td></tr>
+        <tr><td><strong>Structural</strong></td><td><code>code-map</code>, guidance chunks, tests, patterns</td><td class="bd">No</td><td>Branch-specific; rebuilds cheaply from the indexers</td></tr>
+        <tr><td><strong>Ephemeral</strong></td><td><code>tasklist</code>, <code>hive-mind</code>, epic state</td><td class="bd">No</td><td>Per-run scratch; meaningless in another install</td></tr>
+      </table>
+      <p>All three mechanisms move the <em>same</em> durable slice and dedupe on the existing <code>UNIQUE(namespace, key)</code> constraint via <code>INSERT OR IGNORE</code>, so combining them is conflict-free and idempotent.</p>
+    </section>
+
+    <!-- ===================== SOLUTIONS OVERVIEW ===================== -->
+    <section id="solutions">
+      <h2><span class="num">§4</span>The three mechanisms at a glance</h2>
+      <p class="lede">Pick by who needs the learnings — not by what's easiest to wire.</p>
+      <table>
+        <tr><th>Topology</th><th>Mechanism</th><th>Format</th><th>Embeddings</th><th>Story</th></tr>
+        <tr><td>Same machine, many worktrees / Conductor</td><td><code>memory.durable_path</code></td><td>SQLite (live shared store)</td><td>Carried verbatim</td><td><a href="#s1232">#1232</a></td></tr>
+        <tr><td>One user, many machines</td><td><code>flo memory sync</code></td><td>SQLite (portable artifact)</td><td>Carried verbatim</td><td><a href="#s1233">#1233</a></td></tr>
+        <tr><td>A team on one repo</td><td>git-tracked artifact</td><td>JSONL (diffable)</td><td>Regenerated on import</td><td><a href="#s1234">#1234</a></td></tr>
+      </table>
+      <p class="legend">Why JSONL for teams but SQLite elsewhere: a committed team file must be <strong>diff-reviewable and merge-friendly</strong>; embeddings (384 floats/row) would make every diff unreadable, so they're dropped and regenerated. For the SQLite modes, carrying embeddings verbatim avoids a lossy/expensive re-embed.</p>
+    </section>
+
+    <hr>
+
+    <!-- ===================== STORY 1232 ===================== -->
+    <section id="s1232">
+      <h2><span class="num">#1232</span>Durable-only shared store — <code>memory.durable_path</code></h2>
+      <p class="lede">Same-machine worktrees &amp; Conductor workspaces share one learnings DB. PR <a href="https://github.com/eric-cielo/moflo/pull/1236">#1236</a> · commit <span class="mono-sm">c39568a35</span></p>
+      <p><strong>High level:</strong> set <code>memory.durable_path</code> to a dedicated store. On session-start each checkout <em>seeds</em> from it (pulls siblings' learnings) and <em>flushes</em> to it; every durable write also writes through. Structural namespaces stay in the local <code>.moflo/moflo.db</code>.</p>
+      <div class="pillrow">
+        <span class="tag">src/cli/services/durable-sync.ts (new)</span>
+        <span class="tag">memory/entries-write.ts (write-through)</span>
+        <span class="tag">config: memory.durable_path</span>
+        <span class="tag">launcher block 3e-1232</span>
+      </div>
+      <details><summary>Detailed design &amp; implementation</summary>
+      <div class="det-body">
+        <h3>Mechanism</h3>
+        <ul>
+          <li><code>resolveDurablePath()</code> — env <code>MOFLO_DURABLE_PATH</code> &gt; <code>memory.durable_path</code>; relative → project root; a self-reference guard disables it if it would alias the local DB.</li>
+          <li><code>seedDurableFromShared()</code> / <code>flushDurableToShared()</code> — both are a single call to the existing <code>cherryPickLearningsFromLegacy()</code> primitive with source/target swapped (<code>INSERT OR IGNORE</code>, embeddings carried, no new SQL).</li>
+          <li><code>syncDurableAtSessionStart()</code> — flush then seed → the union of durable rows on both sides. Runs <em>before</em> the daemon spawns so freshly-seeded rows are present when it builds its HNSW index.</li>
+          <li><code>writeThroughDurable()</code> — after a durable write lands locally, propagate to the shared store. Best-effort and fully guarded.</li>
+        </ul>
+        <h3>Key cross-platform detail</h3>
+        <p>Path identity reuses <code>normalizeProjectRoot</code> (realpath symlinks + Windows case-fold, ref #1145) so both sides of any comparison fold identically — including a <code>stableAbsolute</code> helper for not-yet-created targets.</p>
+        <h3>Review fixes folded in</h3>
+        <ul>
+          <li><span class="wn">Correctness:</span> <code>writeThroughDurable</code>'s <code>resolveDurablePath</code>/<code>loadMofloConfig</code> call was moved <em>inside</em> the try/catch — a config-load throw could otherwise fail a write that had already persisted.</li>
+          <li><span class="wn">Hot path:</span> the launcher block got a cheap pre-gate (env or an uncommented <code>durable_path:</code> in <code>moflo.yaml</code>) so solo users load no module and parse no yaml each session.</li>
+        </ul>
+        <h3>Default-off guarantee</h3>
+        <p><code>durable_path</code> defaults <code>undefined</code>; with it unset, behavior is byte-identical to before (feature-off tests + the pre-gate prove it).</p>
+      </div>
+      </details>
+    </section>
+
+    <!-- ===================== STORY 1233 ===================== -->
+    <section id="s1233">
+      <h2><span class="num">#1233</span>Portable artifact — <code>flo memory sync</code></h2>
+      <p class="lede">One user carries learnings between their own machines. PR <a href="https://github.com/eric-cielo/moflo/pull/1237">#1237</a> · commit <span class="mono-sm">4a5028816</span></p>
+      <p><strong>High level:</strong> <code>flo memory sync --to &lt;file&gt;</code> exports the durable slice to a portable SQLite artifact (keep it in Dropbox/iCloud or copy by hand); <code>--from &lt;file&gt;</code> merges it back. Idempotent; embeddings ride along.</p>
+      <div class="pillrow">
+        <span class="tag">src/cli/commands/memory.ts (sync subcommand)</span>
+        <span class="tag">reuses cherryPickLearningsFromLegacy</span>
+        <span class="tag">+ expandHome (~ expansion)</span>
+      </div>
+      <details><summary>Detailed design &amp; implementation</summary>
+      <div class="det-body">
+        <h3>Why a SQLite artifact (not JSONL)</h3>
+        <p>It carries embeddings <strong>verbatim</strong> (no lossy re-embed), is conflict-free/idempotent (<code>INSERT OR IGNORE</code>), and adds <strong>zero new serialization format</strong> — it reuses the same DB→DB primitive as <code>restore-learnings</code>. The diffable/JSONL artifact was deliberately deferred to the team story (#1234), where text-diffability is actually load-bearing.</p>
+        <h3>Notable discovery</h3>
+        <p>The pre-existing <code>flo memory export/import</code> commands call <code>memory_export</code>/<code>memory_import</code> MCP tools that <strong>don't exist</strong> — those commands are effectively dead. <code>sync</code> deliberately uses the working cherry-pick primitive instead. (Flagged for a separate cleanup.)</p>
+        <h3>Review fixes folded in</h3>
+        <ul>
+          <li><strong>Tilde expansion:</strong> <code>path.resolve('~/x')</code> doesn't expand <code>~</code>; added <code>expandHome</code> handling <code>~/</code>, <code>~\</code>, and bare <code>~</code> (Rule #1).</li>
+          <li><strong>Honest reporting:</strong> self-reference (artifact aliases the local DB) and a TOCTOU 0/0 result now warn instead of falsely reporting "merged N".</li>
+          <li><code>--from</code> prints a restart / <code>rebuild-index</code> nudge so merged rows become searchable.</li>
+        </ul>
+      </div>
+      </details>
+    </section>
+
+    <!-- ===================== STORY 1234 ===================== -->
+    <section id="s1234">
+      <h2><span class="num">#1234</span>Git-tracked team artifact (JSONL)</h2>
+      <p class="lede">A whole team accumulates each other's learnings about a repo. PR <a href="https://github.com/eric-cielo/moflo/pull/1238">#1238</a> · commit <span class="mono-sm">bc9f5ed82</span></p>
+      <p><strong>High level:</strong> <code>flo memory team-export</code> writes <code>.moflo/shared/learnings.jsonl</code> (and makes it git-trackable); a teammate commits it; everyone else's session-start import-merges it after <code>git pull</code>. Diffable, reviewable, merge-friendly.</p>
+      <div class="pillrow">
+        <span class="tag">src/cli/services/team-artifact-sync.ts (new)</span>
+        <span class="tag">commands: team-export / team-import</span>
+        <span class="tag">config: memory.team_artifact</span>
+        <span class="tag">launcher block 3e-1234</span>
+      </div>
+      <details><summary>Detailed design &amp; implementation</summary>
+      <div class="det-body">
+        <h3>Format &amp; semantics</h3>
+        <ul>
+          <li><strong>JSONL</strong> — one entry per line, sorted by <code>(namespace, key)</code> → line-local git diffs, conflict-free merges for distinct keys. Embeddings omitted (regenerated on import).</li>
+          <li><strong>First-write-wins</strong> both ways via <code>UNIQUE(namespace, key)</code>: re-export never rewrites a teammate's line; import is <code>INSERT OR IGNORE</code>.</li>
+          <li><strong>Provenance</strong> — each entry is stamped with git author + hostname, retained in the imported row's metadata.</li>
+        </ul>
+        <h3>The .gitignore re-include problem</h3>
+        <p>Git can't re-include a file if a parent dir is excluded, so <code>.moflo/</code> + <code>!.moflo/shared/...</code> does <em>not</em> work. <code>ensureSharedArtifactTracked()</code> rewrites the ignore to <code>.moflo/*</code> + <code>!/.moflo/shared/</code> (gitignore globs always use <code>/</code>, even on Windows).</p>
+        <h3>Review fixes folded in (a 3-agent Opus review)</h3>
+        <ul>
+          <li><span class="wn">Reuse:</span> extracted a shared <code>DURABLE_INSERT_OR_IGNORE_SQL</code> + <code>hasMemoryEntriesTable()</code> into <code>cherry-pick-learnings.ts</code> so the two durable-row writers can't drift columns.</li>
+          <li><span class="wn">Silent-drop:</span> <code>INSERT OR IGNORE</code> swallows <em>any</em> constraint violation — out-of-CHECK-set <code>type</code> is now coerced to <code>semantic</code>, non-durable namespaces are skipped before the insert, and timestamps never bind null.</li>
+          <li><span class="wn">gitignore:</span> strips a bare <code>.moflo/</code> even when <code>.moflo/*</code> co-exists; never injects a spurious rule for a custom artifact outside <code>.moflo/</code>.</li>
+          <li><span class="wn">Hot path:</span> launcher pre-gate + a single transaction around the import (one fsync, not per-row).</li>
+          <li><span class="bd">Rule #1:</span> a stray <strong>NUL byte</strong> in the source (made git treat the file as binary) was caught and replaced with a runtime <code>String.fromCharCode(0)</code>.</li>
+        </ul>
+      </div>
+      </details>
+    </section>
+
+    <!-- ===================== STORY 1235 ===================== -->
+    <section id="s1235">
+      <h2><span class="num">#1235</span>Docs + <code>flo doctor -c shared-db</code></h2>
+      <p class="lede">Make the setup safe and discoverable. PR <a href="https://github.com/eric-cielo/moflo/pull/1241">#1241</a> · commit <span class="mono-sm">ba949b147</span></p>
+      <p><strong>High level:</strong> a new doctor check warns when you're configured toward a shared <em>full</em> <code>moflo.db</code> (and blesses a dedicated durable-only store); the stale "sql.js clobber" Writers-Audit message was reworded for the node:sqlite+WAL reality; a shipped guidance doc explains the whole model.</p>
+      <div class="pillrow">
+        <span class="tag">src/cli/commands/doctor-checks-shared-db.ts (new)</span>
+        <span class="tag">doctor-registry.ts</span>
+        <span class="tag">guidance: moflo-cross-install-memory-sharing.md</span>
+      </div>
+      <details><summary>Detailed design &amp; implementation</summary>
+      <div class="det-body">
+        <h3>The doctor check</h3>
+        <table>
+          <tr><th>Result</th><th>Trigger</th></tr>
+          <tr><td class="ok">pass</td><td><code>durable_path</code> points at a dedicated file — safe</td></tr>
+          <tr><td class="wn">warn</td><td><code>durable_path</code> aliases or is named like a full <code>moflo.db</code> (case-insensitive — Windows/macOS)</td></tr>
+          <tr><td class="wn">warn</td><td>the local <code>moflo.db</code> is a symlink into a shared location</td></tr>
+        </table>
+        <p>Pure <code>fs</code> (realpath + lstat) — no shelling (Rule #1). Reads <code>durable_path</code> defensively so it compiled ahead of #1232 landing.</p>
+        <h3>Review fixes folded in</h3>
+        <ul>
+          <li>Case-insensitive basename match (Windows <code>MOFLO.DB</code> is still a full DB).</li>
+          <li>Removed a dead <code>endsWith('/.moflo/moflo.db')</code> clause subsumed by the basename check.</li>
+        </ul>
+        <h3>Guidance</h3>
+        <p><code>moflo-cross-install-memory-sharing.md</code> follows the guidance authoring rules (Purpose line, imperative voice, decision tables, specific headings, &lt;500 lines, mirror-path cross-refs) and is linked from the memory-strategy, core-guidance, and cli-reference hubs. README also gained a Features row + a dedicated section (PR <a href="https://github.com/eric-cielo/moflo/pull/1243">#1243</a>).</p>
+      </div>
+      </details>
+    </section>
+
+    <hr>
+
+    <!-- ===================== FIXES ===================== -->
+    <section id="fixes">
+      <h2><span class="num">§5</span>Supporting fixes (surfaced during review)</h2>
+      <p class="lede">Pre-existing issues that had to be cleared to land the epic on green CI.</p>
+      <div class="grid">
+        <div class="card"><h4>#1242 — hono override</h4><div class="kv">Raised the transitive <code>hono</code> override past a high-severity advisory (<code>&gt;=4.12.25</code>) so the required <em>Lint &amp; Security</em> <code>npm audit</code> gate passes repo-wide. Zero source impact.</div></div>
+        <div class="card"><h4>#1239 — daemon-rpc flake</h4><div class="kv">A test pinned a random port (<code>30000+rand</code>) that collided under parallel CI. Fixed by binding <code>port: 0</code> (OS-assigned) and reading the real port back — a small, behavior-identical change to <code>daemon-dashboard.ts</code>.</div></div>
+        <div class="card"><h4>#1240 — graph-analyzer flake</h4><div class="kv">A test derived its temp dir from <code>Date.now()</code>, colliding in the same millisecond so files leaked between cases. Fixed with <code>mkdtemp</code> (OS-guaranteed unique dir). Verified 10× green.</div></div>
+      </div>
+      <p class="note">Common thread: for test isolation, let the OS allocate the unique resource (<code>mkdtemp</code> for dirs, <code>listen(0)</code> for ports) rather than constructing a "probably-unique" name.</p>
+    </section>
+
+    <!-- ===================== REVIEW ===================== -->
+    <section id="review">
+      <h2><span class="num">§6</span>Quality &amp; review process</h2>
+      <p class="lede">How confidence was built before landing.</p>
+      <ul>
+        <li><strong>Per-story:</strong> each PR ran <code>/flo-simplify</code> (a tiered reviewer; #1234 hit the DEEP tier → 3 parallel Opus reviewers for reuse / quality / efficiency).</li>
+        <li><strong>Epic-wide:</strong> three parallel deep reviewers across all branches — <em>architecture &amp; cohesion</em>, <em>Rule #1 cross-platform</em>, and <em>regression &amp; consumer blast-radius</em> — plus a full test-suite run on each branch.</li>
+        <li><strong>Regression caught by the full suite:</strong> <code>team-artifact-sync.ts</code> was missing from the <code>moflo.db</code> writer-audit whitelist (a #1054/#1055 governance lint); added with a <code>daemon-offline</code> classification.</li>
+      </ul>
+      <details><summary>Architectural-review verdict (summary)</summary>
+      <div class="det-body">
+        <p>Mechanically sound — inter-PR conflicts were trivial keep-both (config fields, command-array appends), resolved during the merge. No semantic landmines. The one standing design note (non-blocking): three transfer surfaces over one cherry-pick core — worth converging on a single <code>flo memory sync</code> verb + a shared durable-transfer module eventually. The protected swarm/hive-mind/MCP surface was untouched.</p>
+      </div>
+      </details>
+    </section>
+
+    <!-- ===================== XPLAT ===================== -->
+    <section id="xplat">
+      <h2><span class="num">§7</span>Cross-platform (Rule #1)</h2>
+      <p class="lede">Audited clean on all branches (Linux / macOS / Windows).</p>
+      <table>
+        <tr><th>Concern</th><th>How it's handled</th></tr>
+        <tr><td>Paths</td><td><code>path.join</code>/<code>resolve</code>/<code>sep</code> only; no hardcoded separators or <code>/tmp</code></td></tr>
+        <tr><td>Symlinks / identity</td><td><code>realpathSync</code> / <code>normalizeProjectRoot</code> on both sides of comparisons (macOS <code>/var</code>→<code>/private/var</code>, Windows case-fold)</td></tr>
+        <tr><td>gitignore globs</td><td>always <code>/</code> regardless of OS (POSIX-normalized, never <code>path.sep</code>)</td></tr>
+        <tr><td>git provenance</td><td><code>spawnSync('git', […])</code> no-shell (resolves <code>git.exe</code>, not the npm <code>.cmd</code> trap)</td></tr>
+        <tr><td>Encoding</td><td>binary-free UTF-8 source (a stray NUL was caught); JSONL is LF, binary SQLite has no EOL surface</td></tr>
+        <tr><td>Tests</td><td><code>mkdtemp</code> / <code>listen(0)</code> for isolation; <code>HOME</code>+<code>USERPROFILE</code> for tilde; <code>rm</code> with retries for Windows file-locks</td></tr>
+      </table>
+    </section>
+
+    <!-- ===================== AC ===================== -->
+    <section id="ac">
+      <h2><span class="num">§8</span>Acceptance criteria</h2>
+      <table>
+        <tr><th>Criterion</th><th>Status</th></tr>
+        <tr><td>Worktree A learning found in worktree B</td><td class="wn">⚠ proven at service-test layer; real live-daemon E2E is a manual follow-up</td></tr>
+        <tr><td>Structural namespaces never shared</td><td class="ok">✓ asserted in all 3 services (code-map never travels)</td></tr>
+        <tr><td>No <code>hnsw.index</code> sidecar corruption under any sharing mode</td><td class="ok">✓ by construction — only <code>memory_entries</code> rows shared; doctor guards whole-DB</td></tr>
+        <tr><td>Absent any config → byte-identical behavior</td><td class="ok">✓ feature-off tests + launcher pre-gates</td></tr>
+        <tr><td>All paths cross-platform</td><td class="ok">✓ 3-branch Rule #1 audit clean</td></tr>
+      </table>
+    </section>
+
+    <!-- ===================== SHIPPED SURFACE ===================== -->
+    <section id="ship">
+      <h2><span class="num">§9</span>Shipped surface (reference)</h2>
+      <h3>Config (<code>moflo.yaml</code> · all opt-in, default off)</h3>
+      <pre><code>memory:
+  # durable_path: ~/.moflo-shared/team-learnings.db   # share durable namespaces across worktrees/Conductor (env: MOFLO_DURABLE_PATH)
+  # team_artifact: .moflo/shared/learnings.jsonl       # git-tracked team JSONL; session-start import-merges (env: MOFLO_TEAM_ARTIFACT)</code></pre>
+      <h3>Commands</h3>
+      <pre><code>flo memory sync --to   &lt;file&gt;     # export durable slice → portable artifact
+flo memory sync --from &lt;file&gt;     # merge a portable artifact → local
+flo memory team-export            # write .moflo/shared/learnings.jsonl + make it git-trackable
+flo memory team-import            # merge the team artifact (also runs at session-start)
+flo doctor -c shared-db           # warn if configured toward a shared full moflo.db</code></pre>
+      <h3>Merged to <code>main</code></h3>
+      <table>
+        <tr><th>Commit</th><th>PR</th><th>What</th></tr>
+        <tr><td class="mono-sm">41fa10ae1</td><td>#1242</td><td>hono override (security gate)</td></tr>
+        <tr><td class="mono-sm">ea75df369</td><td>#1239</td><td>flaky fix — daemon-rpc port</td></tr>
+        <tr><td class="mono-sm">f3c34aee6</td><td>#1240</td><td>flaky fix — graph-analyzer mkdtemp</td></tr>
+        <tr><td class="mono-sm">c39568a35</td><td>#1236</td><td>#1232 durable store</td></tr>
+        <tr><td class="mono-sm">4a5028816</td><td>#1237</td><td>#1233 memory sync</td></tr>
+        <tr><td class="mono-sm">bc9f5ed82</td><td>#1238</td><td>#1234 team artifact</td></tr>
+        <tr><td class="mono-sm">ba949b147</td><td>#1241</td><td>#1235 docs + doctor</td></tr>
+      </table>
+      <p class="legend">Plus PR #1243 (README + hub-guidance cross-links) — open at time of writing.</p>
+    </section>
+
+    <!-- ===================== LANDING ===================== -->
+    <section id="landing">
+      <h2><span class="num">§10</span>How it landed</h2>
+      <p class="lede">Stabilize-then-merge, past branch protection.</p>
+      <details><summary>The landing sequence &amp; rationale</summary>
+      <div class="det-body">
+        <p><code>main</code> requires 1 review + 5 green CI checks. With no second reviewer available and the epic author being the sole committer, merges used an <strong>admin override for the review gate only</strong> — never to bypass red checks. CI was made <em>genuinely</em> green first:</p>
+        <ol>
+          <li><strong>Stabilize:</strong> land the hono bump (clears the repo-wide <code>npm audit</code> gate) and both flaky-test fixes <em>before</em> the epic, so the required Tests/Security checks pass on the epic PRs.</li>
+          <li><strong>Merge in order:</strong> #1236 → #1237 → #1238 → #1241, rebasing each branch onto the updated <code>main</code> before merging.</li>
+          <li><strong>#1238 conflicts</strong> (<code>moflo-config.ts</code>, <code>memory.ts</code>) resolved keep-both; #1234's local <code>isDurableNamespace</code> collapsed onto #1232's exported one. That merge passed the <em>full</em> Tests suite in CI.</li>
+        </ol>
+        <p>Integrated <code>main</code> verified: build clean + integration suites green (sync/team/durable coexist, writer-audit whitelist intact, doctor check live). All four story issues auto-closed by their PRs.</p>
+      </div>
+      </details>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">Generated for review · MoFlo epic #1231 — Cross-Installation Memory Sharing · all code merged to <code>main</code>.</div>
+</footer>
+</body>
+</html>

@@ -222,6 +222,7 @@ See `.claude/guidance/moflo-memory-strategy.md` for memory-specific troubleshoot
 - `.claude/guidance/moflo-claude-swarm-cohesion.md` — Task & swarm coordination with TaskCreate/TaskUpdate
 - `.claude/guidance/moflo-memory-strategy.md` — Database schema, namespaces, search commands, RAG linking
 - `.claude/guidance/moflo-memorydb-maintenance.md` — Reindexing, namespace purging, recovery
+- `.claude/guidance/moflo-cross-install-memory-sharing.md` — Sharing durable `learnings` across worktrees / machines / teams (`memory.durable_path`, `flo memory sync`, the team artifact) and the `flo doctor -c shared-db` check
 - `.claude/guidance/moflo-settings-injection.md` — What moflo writes into `.claude/` and how surgical self-heal works
 - `.claude/guidance/moflo-cross-platform.md` — Windows/macOS/Linux portability rules for any code change
 - `.claude/guidance/moflo-verbose-command-filtering.md` — Filter long verbose commands at the source; never tee-then-grep

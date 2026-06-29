@@ -60,6 +60,8 @@ memory:
   backend: node-sqlite            # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider (#1144).
   embedding_model: Xenova/all-MiniLM-L6-v2   # 384-dim neural embeddings
   namespace: default              # Default namespace for memory operations
+  # durable_path: ~/.moflo-shared/team-learnings.db   # opt-in (#1232): share durable namespaces (learnings, knowledge) across worktrees / Conductor workspaces. Point at a DEDICATED store, never a full moflo.db. Env override: MOFLO_DURABLE_PATH.
+  # team_artifact: .moflo/shared/learnings.jsonl       # opt-in (#1234): git-tracked JSONL the team commits; session-start import-merges it. Env override: MOFLO_TEAM_ARTIFACT. See moflo-cross-install-memory-sharing.md.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:
