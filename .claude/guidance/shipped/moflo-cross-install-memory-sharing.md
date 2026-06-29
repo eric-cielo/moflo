@@ -14,7 +14,9 @@ moflo's `.moflo/moflo.db` holds three classes of data. Only one is worth sharing
 | **Structural** | `code-map`, guidance chunks | No | Branch-specific; rebuilds cheaply from the indexers |
 | **Ephemeral** | `tasklist`, `hive-mind`, epic state | No | Per-run scratch; meaningless in another install |
 
-**Never share the entire `moflo.db` between two installs.** node:sqlite + WAL stops concurrent writers from losing rows, but each daemon builds its own in-memory HNSW index — a write in install A never updates install B's index, so search silently returns stale results, and structural namespaces churn across branches. Share ONLY the durable slice.
+**Never *live-share* the entire `moflo.db` between two running daemons.** node:sqlite + WAL stops concurrent writers from losing rows, but each daemon builds its own in-memory HNSW index — a write in install A never updates install B's index, so search silently returns stale results, and structural namespaces churn across branches. For ongoing sync, share ONLY the durable slice.
+
+> **Not the same thing:** restoring a one-time whole-DB *snapshot* to seed a fresh/empty workspace is safe and fast — each workspace then owns its own copy (no second concurrent daemon, so no index divergence), and the incremental reindex reconciles branch drift. That avoids the cold-start full parse + re-embed and is the right tool when speed-to-ready matters. See [#1244](https://github.com/eric-cielo/moflo/issues/1244). The rule above is specifically about *live concurrent* sharing.
 
 ---
 

@@ -129,8 +129,9 @@
       <ul>
         <li><strong>Origin:</strong> a Conductor support request — <code>.moflo/</code> is gitignored, so Conductor workspaces (and git worktrees) lose the <code>learnings</code> namespace on every rotation.</li>
         <li><strong>Generalized:</strong> the same gap hits any topology where moflo runs from more than one checkout/machine — solo multi-machine, and teams on a shared repo.</li>
-        <li><strong>The trap to avoid:</strong> "just share the whole <code>moflo.db</code>." node:sqlite + WAL prevents row loss under concurrent writers, but <strong>each daemon builds its own in-memory HNSW index</strong> — a write from install A never updates install B's index, so search silently returns stale results, and structural namespaces churn across branches.</li>
+        <li><strong>The trap to avoid:</strong> <em>live-sharing</em> one <code>moflo.db</code> between two running daemons. node:sqlite + WAL prevents row loss, but <strong>each daemon builds its own in-memory HNSW index</strong> — a write from install A never updates install B's index, so search silently returns stale results, and structural namespaces churn across branches.</li>
       </ul>
+      <p class="note warn"><strong>A distinct, safe operation (planned — <a href="https://github.com/eric-cielo/moflo/issues/1244">#1244</a>):</strong> restoring a one-time whole-DB <em>snapshot</em> to seed a fresh/empty workspace is <em>not</em> the trap above. Each workspace then owns its own copy (no second concurrent daemon → no index divergence), and the incremental reindex reconciles branch drift. It's the right tool for fast cold-start: an empty DB forces a full parse + ONNX re-embed of all code/patterns/tests/guidance on the first session — minutes on a large repo — which a snapshot skips. "Never share the whole DB" is specifically about <em>live concurrent</em> sharing; snapshot-restore composes with the durable-slice sync (which keeps <code>learnings</code> converged afterward).</p>
     </section>
 
     <!-- ===================== MODEL ===================== -->
