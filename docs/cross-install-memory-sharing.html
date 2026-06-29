@@ -73,9 +73,9 @@
     <h1>Cross-Installation Memory Sharing</h1>
     <div class="sub">Epic <strong>#1231</strong> — share moflo's durable <code>learnings</code> across git worktrees, machines, and teams, without corrupting search. This document reads top-to-bottom as a high-level overview; expand any <em>“Detailed design”</em> panel to drill into implementation, decisions, and tests.</div>
     <div class="badges">
-      <span class="badge good">7 PRs merged to main</span>
-      <span class="badge">4 stories + 3 supporting fixes</span>
-      <span class="badge">durable-slice-only design</span>
+      <span class="badge good">8 PRs merged to main</span>
+      <span class="badge">5 stories + 3 supporting fixes</span>
+      <span class="badge">durable-slice sharing + whole-DB hydration</span>
       <span class="badge">cross-platform (Rule #1) verified</span>
       <span class="badge">3-agent architectural review</span>
     </div>
@@ -94,6 +94,7 @@
     <a href="#s1233">#1233 — memory sync</a>
     <a href="#s1234">#1234 — team artifact</a>
     <a href="#s1235">#1235 — docs + doctor</a>
+    <a href="#s1244">#1244 — snapshot hydration</a>
     <a href="#fixes">Supporting fixes</a>
     <a href="#review">Quality &amp; review</a>
     <a href="#xplat">Cross-platform</a>
@@ -110,15 +111,17 @@
       <p class="lede">What we built and why, in one screen.</p>
       <div class="panel">
         <p>moflo stores everything it learns about a project in a local SQLite database (<code>.moflo/moflo.db</code>), which is <strong>gitignored</strong>. That means every fresh git worktree, every Conductor workspace, every new machine, and every teammate starts with an <strong>empty <code>learnings</code> namespace</strong> — accumulated knowledge is silently lost.</p>
-        <p>The fix is built on one key insight: <strong>only a thin slice of the DB is worth sharing</strong> — the user-authored <code>learnings</code> and <code>knowledge</code> namespaces. Everything else (code maps, guidance chunks, run state) is derived or ephemeral and rebuilds cheaply, so it stays local. Sharing the <em>whole</em> DB would make each daemon's in-memory search index diverge.</p>
-        <p>We shipped <strong>three sharing mechanisms</strong> (chosen by topology), plus documentation and a safety check:</p>
+        <p>The fix is built on one key insight: for <em>continuous</em> sharing, <strong>only a thin slice of the DB is worth sharing</strong> — the user-authored <code>learnings</code> and <code>knowledge</code> namespaces. Everything else (code maps, guidance chunks, run state) is derived or ephemeral and rebuilds cheaply, so it stays local. <em>Live</em>-sharing the whole DB between two running daemons would make each daemon's in-memory search index diverge.</p>
+        <p>We shipped <strong>three durable-slice sharing mechanisms</strong> (chosen by topology), <strong>plus a whole-DB snapshot hydration</strong> for fast cold-start, plus documentation and a safety check:</p>
         <div class="grid">
           <div class="card"><div class="topo">Same machine</div><h4>Shared durable store</h4><div class="kv"><code>memory.durable_path</code> — worktrees / Conductor workspaces seed + write-through to one durable-only DB.</div></div>
           <div class="card"><div class="topo">One user, many machines</div><h4>Portable artifact</h4><div class="kv"><code>flo memory sync --to/--from</code> — carry a durable SQLite file via a synced folder.</div></div>
           <div class="card"><div class="topo">A team</div><h4>Git-tracked JSONL</h4><div class="kv"><code>flo memory team-export</code> → commit <code>.moflo/shared/learnings.jsonl</code>; teammates import-merge on pull.</div></div>
-          <div class="card"><div class="topo">Safety &amp; docs</div><h4>Doctor + guidance</h4><div class="kv"><code>flo doctor -c shared-db</code> warns against whole-DB sharing; a shipped guidance doc explains it all.</div></div>
+          <div class="card"><div class="topo">Fast cold-start</div><h4>Whole-DB snapshot</h4><div class="kv"><code>flo memory backup/restore</code> + <code>memory.hydrate_from</code> — seed a fresh workspace with the entire DB so it's searchable on its first session, no cold reindex.</div></div>
+          <div class="card"><div class="topo">Safety &amp; docs</div><h4>Doctor + guidance</h4><div class="kv"><code>flo doctor -c shared-db</code> warns against <em>live</em> whole-DB sharing; a shipped guidance doc explains it all.</div></div>
         </div>
-        <p class="note good"><strong>Status:</strong> all four stories and three supporting fixes are merged to <code>main</code> and verified (build + integration suites green). One acceptance criterion — the live two-worktree end-to-end — is proven at the service-test layer and pending a real-environment run.</p>
+        <p class="note good"><strong>How they compose:</strong> snapshot hydration (<a href="#s1244">#1244</a>) is a <em>one-time</em> seed that gets a new workspace running instantly; the three durable-slice mechanisms then keep <code>learnings</code> continuously converged afterward. At session-start, hydration runs <em>before</em> the durable-slice sync — fast seed first, continuous convergence after.</p>
+        <p class="note good"><strong>Status:</strong> all five stories and three supporting fixes are merged to <code>main</code> and verified (build + integration suites green). One acceptance criterion — the live two-worktree end-to-end — is proven at the service-test layer and pending a real-environment run.</p>
       </div>
     </section>
 
@@ -131,7 +134,7 @@
         <li><strong>Generalized:</strong> the same gap hits any topology where moflo runs from more than one checkout/machine — solo multi-machine, and teams on a shared repo.</li>
         <li><strong>The trap to avoid:</strong> <em>live-sharing</em> one <code>moflo.db</code> between two running daemons. node:sqlite + WAL prevents row loss, but <strong>each daemon builds its own in-memory HNSW index</strong> — a write from install A never updates install B's index, so search silently returns stale results, and structural namespaces churn across branches.</li>
       </ul>
-      <p class="note warn"><strong>A distinct, safe operation (planned — <a href="https://github.com/eric-cielo/moflo/issues/1244">#1244</a>):</strong> restoring a one-time whole-DB <em>snapshot</em> to seed a fresh/empty workspace is <em>not</em> the trap above. Each workspace then owns its own copy (no second concurrent daemon → no index divergence), and the incremental reindex reconciles branch drift. It's the right tool for fast cold-start: an empty DB forces a full parse + ONNX re-embed of all code/patterns/tests/guidance on the first session — minutes on a large repo — which a snapshot skips. "Never share the whole DB" is specifically about <em>live concurrent</em> sharing; snapshot-restore composes with the durable-slice sync (which keeps <code>learnings</code> converged afterward).</p>
+      <p class="note good"><strong>A distinct, safe operation (shipped — <a href="#s1244">#1244</a>):</strong> restoring a one-time whole-DB <em>snapshot</em> to seed a fresh/empty workspace is <em>not</em> the trap above. Each workspace then owns its own copy (no second concurrent daemon → no index divergence), and the incremental reindex reconciles branch drift. It's the right tool for fast cold-start: an empty DB forces a full parse + ONNX re-embed of all code/patterns/tests/guidance on the first session — minutes on a large repo — which a snapshot skips. "Never share the whole DB" is specifically about <em>live concurrent</em> sharing; snapshot-restore composes with the durable-slice sync (which keeps <code>learnings</code> converged afterward).</p>
     </section>
 
     <!-- ===================== MODEL ===================== -->
@@ -144,7 +147,8 @@
         <tr><td><strong>Structural</strong></td><td><code>code-map</code>, guidance chunks, tests, patterns</td><td class="bd">No</td><td>Branch-specific; rebuilds cheaply from the indexers</td></tr>
         <tr><td><strong>Ephemeral</strong></td><td><code>tasklist</code>, <code>hive-mind</code>, epic state</td><td class="bd">No</td><td>Per-run scratch; meaningless in another install</td></tr>
       </table>
-      <p>All three mechanisms move the <em>same</em> durable slice and dedupe on the existing <code>UNIQUE(namespace, key)</code> constraint via <code>INSERT OR IGNORE</code>, so combining them is conflict-free and idempotent.</p>
+      <p>All three durable-slice mechanisms move the <em>same</em> durable slice and dedupe on the existing <code>UNIQUE(namespace, key)</code> constraint via <code>INSERT OR IGNORE</code>, so combining them is conflict-free and idempotent.</p>
+      <p class="note"><strong>The one safe exception:</strong> a whole-DB <em>snapshot</em> (<a href="#s1244">#1244</a>) deliberately carries <em>all three</em> classes at once — that's the point, it skips the cold reindex. It's safe precisely because it's a <em>one-time restore into an empty workspace that then owns its own copy</em>, not a live shared DB. Structural drift self-heals on the next incremental reindex; ephemeral rows are purged on restore so the source workspace's run-state never leaks in.</p>
     </section>
 
     <!-- ===================== SOLUTIONS OVERVIEW ===================== -->
@@ -158,6 +162,7 @@
         <tr><td>A team on one repo</td><td>git-tracked artifact</td><td>JSONL (diffable)</td><td>Regenerated on import</td><td><a href="#s1234">#1234</a></td></tr>
       </table>
       <p class="legend">Why JSONL for teams but SQLite elsewhere: a committed team file must be <strong>diff-reviewable and merge-friendly</strong>; embeddings (384 floats/row) would make every diff unreadable, so they're dropped and regenerated. For the SQLite modes, carrying embeddings verbatim avoids a lossy/expensive re-embed.</p>
+      <p class="note"><strong>A fourth, complementary mechanism — whole-DB hydration (<a href="#s1244">#1244</a>):</strong> the three rows above share the durable <em>slice</em> continuously. Snapshot hydration is different in kind — it copies the <em>entire</em> DB once to make a brand-new workspace searchable instantly (no cold parse + re-embed). Use it to bootstrap; use the durable-slice modes to stay converged. See the <a href="#s1244">#1244 detail</a>.</p>
     </section>
 
     <hr>
@@ -285,6 +290,47 @@
       </details>
     </section>
 
+    <!-- ===================== STORY 1244 ===================== -->
+    <section id="s1244">
+      <h2><span class="num">#1244</span>Whole-DB snapshot hydration — <code>flo memory backup/restore</code></h2>
+      <p class="lede">Seed a fresh workspace with the entire DB so it's searchable on session one — no cold reindex. PR <a href="https://github.com/eric-cielo/moflo/pull/1245">#1245</a></p>
+      <p><strong>High level:</strong> <code>flo memory backup --to &lt;snap&gt;</code> takes a consistent whole-DB snapshot; <code>flo memory restore --from &lt;snap&gt;</code> (or <code>memory.hydrate_from</code> at session-start) restores it into an <em>empty</em> workspace. The restored DB already holds the structural namespaces <em>and</em> their embeddings, so the expensive first-pass parse + ONNX re-embed is skipped entirely.</p>
+      <div class="pillrow">
+        <span class="tag">src/cli/services/snapshot-restore.ts (new)</span>
+        <span class="tag">src/cli/services/configured-path.ts (new, shared)</span>
+        <span class="tag">commands: backup / restore</span>
+        <span class="tag">config: memory.hydrate_from</span>
+        <span class="tag">launcher block 3e-1244</span>
+      </div>
+      <p class="note good"><strong>Why this is safe (not the "never share the whole DB" trap):</strong> the forbidden case is two live daemons writing one DB — their in-memory HNSW indexes diverge. A snapshot restore is a <em>one-time copy into an empty workspace that then owns its own DB</em>. There's no second concurrent daemon, so no index divergence; branch drift self-heals via the existing incremental reindex.</p>
+      <details><summary>Detailed design &amp; implementation</summary>
+      <div class="det-body">
+        <h3>Coordination with durable-slice sharing</h3>
+        <p>The two layers are complementary and run in a deliberate order at session-start (all before the daemon spawns):</p>
+        <pre><code>3e-1244 hydrate  (whole-DB snapshot restore, only if local DB empty)
+   → ephemeral purge → 3e-1232 durable-slice sync → team-import → daemon</code></pre>
+        <p>A new workspace first restores the snapshot (instant search), <em>then</em> the durable-slice sync flushes/seeds <code>learnings</code> against the shared store. Snapshot = fast bootstrap; durable-slice = continuous convergence. They never fight: both are additive (<code>INSERT OR IGNORE</code> on <code>UNIQUE(namespace, key)</code>).</p>
+        <h3>Mechanism</h3>
+        <ul>
+          <li><code>backupSnapshot()</code> — <code>VACUUM INTO</code> a process-unique temp file, then atomic rename onto the target. The result is a self-contained single file (no <code>-wal</code>/<code>-shm</code> dependency).</li>
+          <li><code>restoreSnapshot()</code> — no-clobber unless <code>--force</code>: a no-op when the local DB already has rows. Validates the snapshot read-only, atomic-swaps its bytes onto the local DB, strips stale sidecars, then purges ephemeral namespaces from the restored copy.</li>
+          <li><code>hydrateAtSessionStart()</code> — reads <code>memory.hydrate_from</code> (env <code>MOFLO_HYDRATE_FROM</code>); restores only into an empty workspace, before the daemon builds its HNSW index.</li>
+        </ul>
+        <h3>Correctness fixes folded in (a 3-agent Opus review)</h3>
+        <ul>
+          <li><span class="bd">HIGH:</span> backup uses <code>VACUUM INTO</code>, <em>not</em> <code>wal_checkpoint(TRUNCATE)</code> + <code>readFileSync</code> — the checkpoint can return <code>busy</code> (data stranded in <code>-wal</code>) and a concurrent daemon can rewrite the main file mid-read (torn copy). <code>VACUUM INTO</code> writes a consistent standalone copy regardless of WAL state.</li>
+          <li><span class="bd">HIGH:</span> the snapshot is validated with a <strong>read-only</strong> handle — <code>openDaemonDatabase</code> forces <code>journal_mode=WAL</code>, which would write the source's header and litter <code>-wal</code>/<code>-shm</code> next to a file we only want to inspect (and throw on read-only media).</li>
+          <li><span class="wn">MEDIUM:</span> sidecars are stripped <em>after</em> the atomic swap, not before — removing them first would drop the original DB's uncheckpointed WAL frames on a mid-restore crash under <code>--force</code>.</li>
+          <li><span class="wn">MEDIUM:</span> self-reference guards are symlink-aware (<code>stableAbsolute</code> / <code>realpathSync</code>, ref #1145), not <code>path.resolve</code> equality.</li>
+          <li><span class="wn">Reuse:</span> the <code>env &gt; config &gt; resolve</code> + symlink-stable-identity logic (a near-clone of #1232's) was extracted to <code>configured-path.ts</code> and is now shared by both <code>durable-sync.ts</code> and <code>snapshot-restore.ts</code>.</li>
+          <li><span class="wn">Governance:</span> <code>snapshot-restore.ts</code> was added to the <code>moflo.db</code> writer-audit whitelist (<code>daemon-offline</code>) — caught by the full <code>tests/system</code> suite, not the services-only local run.</li>
+        </ul>
+        <h3>Default-off guarantee</h3>
+        <p><code>hydrate_from</code> defaults <code>undefined</code>; the launcher block 3e-1244 has the same cheap pre-gate as #1232 (env or an uncommented <code>hydrate_from:</code> line), so solo users load no module and parse no yaml each session.</p>
+      </div>
+      </details>
+    </section>
+
     <hr>
 
     <!-- ===================== FIXES ===================== -->
@@ -306,7 +352,7 @@
       <ul>
         <li><strong>Per-story:</strong> each PR ran <code>/flo-simplify</code> (a tiered reviewer; #1234 hit the DEEP tier → 3 parallel Opus reviewers for reuse / quality / efficiency).</li>
         <li><strong>Epic-wide:</strong> three parallel deep reviewers across all branches — <em>architecture &amp; cohesion</em>, <em>Rule #1 cross-platform</em>, and <em>regression &amp; consumer blast-radius</em> — plus a full test-suite run on each branch.</li>
-        <li><strong>Regression caught by the full suite:</strong> <code>team-artifact-sync.ts</code> was missing from the <code>moflo.db</code> writer-audit whitelist (a #1054/#1055 governance lint); added with a <code>daemon-offline</code> classification.</li>
+        <li><strong>Regression caught by the full suite:</strong> <code>team-artifact-sync.ts</code> (#1234) and later <code>snapshot-restore.ts</code> (#1244) were each missing from the <code>moflo.db</code> writer-audit whitelist (a #1054/#1055 governance lint) — both added with a <code>daemon-offline</code> classification. The services-only local run doesn't exercise <code>tests/system</code>, so CI is the backstop.</li>
       </ul>
       <details><summary>Architectural-review verdict (summary)</summary>
       <div class="det-body">
@@ -340,6 +386,7 @@
         <tr><td>No <code>hnsw.index</code> sidecar corruption under any sharing mode</td><td class="ok">✓ by construction — only <code>memory_entries</code> rows shared; doctor guards whole-DB</td></tr>
         <tr><td>Absent any config → byte-identical behavior</td><td class="ok">✓ feature-off tests + launcher pre-gates</td></tr>
         <tr><td>All paths cross-platform</td><td class="ok">✓ 3-branch Rule #1 audit clean</td></tr>
+        <tr><td>Snapshot restore is searchable without a cold reindex; no-clobbers a populated DB; backup consistent under an active WAL (<a href="#s1244">#1244</a>)</td><td class="ok">✓ snapshot-restore unit tests (incl. active-WAL consistency, no-clobber, ephemeral purge)</td></tr>
       </table>
     </section>
 
@@ -349,12 +396,15 @@
       <h3>Config (<code>moflo.yaml</code> · all opt-in, default off)</h3>
       <pre><code>memory:
   # durable_path: ~/.moflo-shared/team-learnings.db   # share durable namespaces across worktrees/Conductor (env: MOFLO_DURABLE_PATH)
-  # team_artifact: .moflo/shared/learnings.jsonl       # git-tracked team JSONL; session-start import-merges (env: MOFLO_TEAM_ARTIFACT)</code></pre>
+  # team_artifact: .moflo/shared/learnings.jsonl       # git-tracked team JSONL; session-start import-merges (env: MOFLO_TEAM_ARTIFACT)
+  # hydrate_from: /abs/path/to/moflo-snapshot.db       # seed a fresh/empty workspace from a whole-DB snapshot (env: MOFLO_HYDRATE_FROM)</code></pre>
       <h3>Commands</h3>
       <pre><code>flo memory sync --to   &lt;file&gt;     # export durable slice → portable artifact
 flo memory sync --from &lt;file&gt;     # merge a portable artifact → local
 flo memory team-export            # write .moflo/shared/learnings.jsonl + make it git-trackable
 flo memory team-import            # merge the team artifact (also runs at session-start)
+flo memory backup  --to   &lt;snap&gt;  # whole-DB snapshot (VACUUM INTO + atomic rename)
+flo memory restore --from &lt;snap&gt;  # hydrate an empty workspace from a snapshot (--force to overwrite)
 flo doctor -c shared-db           # warn if configured toward a shared full moflo.db</code></pre>
       <h3>Merged to <code>main</code></h3>
       <table>
@@ -366,8 +416,10 @@ flo doctor -c shared-db           # warn if configured toward a shared full mofl
         <tr><td class="mono-sm">4a5028816</td><td>#1237</td><td>#1233 memory sync</td></tr>
         <tr><td class="mono-sm">bc9f5ed82</td><td>#1238</td><td>#1234 team artifact</td></tr>
         <tr><td class="mono-sm">ba949b147</td><td>#1241</td><td>#1235 docs + doctor</td></tr>
+        <tr><td class="mono-sm">747ad3c86</td><td>#1243</td><td>README + hub-guidance cross-links</td></tr>
+        <tr><td class="mono-sm">—</td><td>#1245</td><td>#1244 snapshot backup/restore + hydrate</td></tr>
       </table>
-      <p class="legend">Plus PR #1243 (README + hub-guidance cross-links) — open at time of writing.</p>
+      <p class="legend">#1244 (snapshot hydration) was added as a follow-up after the original four stories — it makes the durable-slice sharing practical on large repos by eliminating the cold-start reindex.</p>
     </section>
 
     <!-- ===================== LANDING ===================== -->

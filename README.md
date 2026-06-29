@@ -265,7 +265,7 @@ The two are complementary: auto-meditate is the always-on safety net, `/meditate
 
 ### Sharing learnings across installations
 
-The `learnings` (and `knowledge`) namespaces are the **durable** slice of memory — user-authored and worth carrying across checkouts. The rest of the DB (code-map, guidance chunks, run state) is structural or ephemeral and rebuilds cheaply, so it stays local. MoFlo shares only the durable slice — **never the whole `moflo.db`**, which would make each daemon's in-memory search index diverge.
+The `learnings` (and `knowledge`) namespaces are the **durable** slice of memory — user-authored and worth carrying across checkouts. The rest of the DB (code-map, guidance chunks, run state) is structural or ephemeral and rebuilds cheaply, so it stays local. For ongoing sync MoFlo shares only the durable slice — **never *live-shares* the whole `moflo.db`** between two daemons, which would make each daemon's in-memory search index diverge.
 
 Pick the mechanism by topology:
 
@@ -274,8 +274,9 @@ Pick the mechanism by topology:
 | Git worktrees / Conductor workspaces (same machine) | `memory.durable_path` in `moflo.yaml` | Point every checkout at one durable-only store; session-start seeds + writes through automatically |
 | Your own laptop + desktop + CI | `flo memory sync --to/--from <file>` | Export to a synced folder (Dropbox/iCloud) or a copied file, import on the other machine |
 | A whole team on one repo | `flo memory team-export` → commit `.moflo/shared/learnings.jsonl` | Teammates' session-start import-merges it after `git pull` (first-write-wins; author provenance retained) |
+| A fresh workspace that must be ready fast | `flo memory backup/restore` or `memory.hydrate_from` | Seed a new workspace from a **whole-DB snapshot** so it's searchable on session one — no cold reindex. Safe because each workspace owns its own copy (a one-time restore, not live sharing) |
 
-Verify your setup with `flo doctor -c shared-db` (it warns if you've accidentally pointed at a full `moflo.db`). Full guide: [`moflo-cross-install-memory-sharing.md`](.claude/guidance/shipped/moflo-cross-install-memory-sharing.md).
+Verify your setup with `flo doctor -c shared-db` (it warns if you've accidentally pointed at a full `moflo.db` for *live* sharing). Full guide: [`moflo-cross-install-memory-sharing.md`](.claude/guidance/shipped/moflo-cross-install-memory-sharing.md).
 
 ## The Gate System
 
