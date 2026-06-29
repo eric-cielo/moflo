@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Daemon orphan-reap cross-kill across shared installs (#1249)
+
+When a project root's `node_modules/moflo` was a symlink sharing another
+root's physical install — a git-worktree / Conductor workspace linking
+`node_modules` back to the main checkout, or `npm link moflo` across projects
+— starting a daemon in one root reaped (killed) the other root's running
+daemon as a bogus "same-project orphan". `acquireDaemonLock`'s pre-acquire
+reap SIGTERM/SIGKILL'd it. Normal `npm install` consumers (separate physical
+copies) were unaffected.
+
+- `projectCliCandidates` (`src/cli/services/daemon-lock.ts`) realpathed the
+  full cli.js candidate path, resolving the `node_modules/moflo` symlink and
+  collapsing distinct roots onto one path. Fix: realpath the project-ROOT
+  PREFIX only (keeps #1145's macOS `/var`→`/private/var` matching), then
+  append the relative CLI path literally — a daemon's identity is its project
+  root, not the shareable binary it executes.
+- Same-root orphan reaping (#1150) preserved; regression tests added in
+  `daemon-lock-orphan.test.ts`.
+
+### Fixed — Session-start mutation pluralization
+
+The launcher's `plural()` helper appended a bare `s`, rendering "durable
+entrys" instead of "entries" in #1232 durable-sync session-start mutations.
+
 ### Fixed — Daemon port collision (#1145, CRITICAL)
 
 Pre-#1145, moflo's daemon HTTP server defaulted to a fixed port (3117). The server retried 3117→3126 on `EADDRINUSE`; the client always POSTed to 3117. When two moflo-using projects ran daemons concurrently on the same machine, the second project's clients routed to the first project's daemon — silently. `flo memory stats`, `flo memory list`, `memory_search`, MCP `memory_store`, `flo memory store/delete`, swarm persistence, aidefence, and write-through-adapter all crossed projects.
