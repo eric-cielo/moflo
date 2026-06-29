@@ -20,6 +20,7 @@ import { checkEmbeddingHygiene } from './doctor-embedding-hygiene.js';
 import { checkDaemonVersionSkew } from './doctor-checks-version-skew.js';
 import { checkEmbeddingCoverageTruth } from './doctor-checks-coverage-truth.js';
 import { checkWritersAudit } from './doctor-checks-writers-audit.js';
+import { checkSharedFullDb } from './doctor-checks-shared-db.js';
 import {
   checkSwarmFunctional,
   checkHiveMindFunctional,
@@ -87,6 +88,9 @@ export const allChecks: CheckFn[] = [
   checkDaemonOrphan,
   checkDaemonWriteRouting,
   checkWritersAudit,
+  // #1235 — warn when configured toward a shared *full* moflo.db (symlinked DB
+  // or durable_path aliasing a full DB); blesses a durable-only shared store.
+  checkSharedFullDb,
   checkMemoryDatabase,
   // Surfaces nested `.moflo/moflo.db` directories — every nested instance is
   // a daemon island in a monorepo (#1174). Runs cheap (depth-bounded BFS,
@@ -164,6 +168,9 @@ export const componentMap: Record<string, CheckFn> = {
   'orphans': checkDaemonOrphan,
   'writers-audit': checkWritersAudit,
   'writers': checkWritersAudit,
+  'shared-db': checkSharedFullDb,
+  'shared-full-db': checkSharedFullDb,
+  'sharing': checkSharedFullDb,
   'memory': checkMemoryDatabase,
   'nested-moflo': checkNestedMofloIslands,
   'nested': checkNestedMofloIslands,
