@@ -24,7 +24,7 @@ import {
   type CircularDependency,
   type GraphAnalysisResult,
 } from '../../movector/graph-analyzer.js';
-import { mkdir, writeFile, rm } from 'fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -34,8 +34,11 @@ describe('Graph Analyzer', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `graph-test-${Date.now()}`);
-    await mkdir(testDir, { recursive: true });
+    // mkdtemp guarantees a UNIQUE directory per test. The previous
+    // `graph-test-${Date.now()}` collided when tests ran in the same
+    // millisecond, so files from one case (e.g. a circular b.ts) leaked into
+    // the next and flipped its cycle count — a non-deterministic flake.
+    testDir = await mkdtemp(join(tmpdir(), 'graph-test-'));
   });
 
   afterEach(async () => {
