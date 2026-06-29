@@ -3230,11 +3230,105 @@ const teamImportCommand: Command = {
   },
 };
 
+// Snapshot backup/restore (#1244, epic #1231) — whole-DB hydration for fast
+// cold-start. Unlike `sync`/`team-*` (which move only the durable slice), these
+// move the ENTIRE DB (structural + durable + embeddings) so a fresh workspace
+// is searchable on its first session without a full reindex. Safe because each
+// restored workspace owns its own copy — this is snapshot-restore, NOT the
+// forbidden live whole-DB sharing (see `flo doctor -c shared-db`).
+const backupCommand: Command = {
+  name: 'backup',
+  description: 'Write a whole-DB snapshot (structural + durable + embeddings) for fast workspace hydration',
+  options: [
+    { name: 'to', description: 'Snapshot destination path', type: 'string' },
+  ],
+  examples: [
+    { command: 'flo memory backup --to ~/moflo-snapshots/myproject.db', description: 'Snapshot the local memory DB for seeding fresh workspaces' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const to = ctx.flags.to as string | undefined;
+    if (!to) {
+      output.printError('Specify a destination: --to <snapshot path>.');
+      return { success: false, exitCode: 1 };
+    }
+    const projectRoot = findProjectRoot();
+    try {
+      const { backupSnapshot } = await import('../services/snapshot-restore.js');
+      const result = backupSnapshot({ projectRoot, toPath: pathModule.resolve(expandHome(to)) });
+      const mb = (result.bytes / (1024 * 1024)).toFixed(1);
+      output.printSuccess(`Snapshot written → ${result.target} (${mb} MB)`);
+      output.printInfo('Hydrate a fresh workspace with `flo memory restore --from <path>` or `memory.hydrate_from` in moflo.yaml.');
+      return { success: true, data: result };
+    } catch (error) {
+      output.printError(`memory backup failed: ${error instanceof Error ? error.message : String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
+const restoreCommand: Command = {
+  name: 'restore',
+  description: 'Hydrate the local memory DB from a whole-DB snapshot (no-op unless the local DB is empty)',
+  options: [
+    { name: 'from', description: 'Snapshot source path', type: 'string' },
+    { name: 'force', description: 'Overwrite even when the local DB already has content', type: 'boolean' },
+  ],
+  examples: [
+    { command: 'flo memory restore --from ~/moflo-snapshots/myproject.db', description: 'Seed an empty workspace from a snapshot' },
+    { command: 'flo memory restore --from snap.db --force', description: 'Replace the local DB even if it has content' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const from = ctx.flags.from as string | undefined;
+    if (!from) {
+      output.printError('Specify a source: --from <snapshot path>.');
+      return { success: false, exitCode: 1 };
+    }
+    const projectRoot = findProjectRoot();
+    try {
+      const { restoreSnapshot, RESTORE_SKIP_REASONS } = await import('../services/snapshot-restore.js');
+      const result = await restoreSnapshot({
+        projectRoot,
+        fromPath: pathModule.resolve(expandHome(from)),
+        force: Boolean(ctx.flags.force),
+      });
+      if (result.restored) {
+        const mb = ((result.bytes ?? 0) / (1024 * 1024)).toFixed(1);
+        output.printSuccess(`Restored local memory DB from snapshot (${mb} MB) → ${result.target}`);
+        if ((result.purged ?? 0) > 0) {
+          output.printInfo(`${result.purged} ephemeral row${result.purged === 1 ? '' : 's'} purged from the restored copy.`);
+        }
+        output.printInfo('Restart your Claude Code session so the daemon indexes the restored DB.');
+        return { success: true, data: result };
+      }
+      switch (result.reason) {
+        case RESTORE_SKIP_REASONS.LOCAL_NOT_EMPTY:
+          output.printWarning('Local memory DB already has content — not clobbering it. Use --force to override.');
+          break;
+        case RESTORE_SKIP_REASONS.SNAPSHOT_MISSING:
+          output.printError(`Snapshot not found: ${pathModule.resolve(expandHome(from))}`);
+          return { success: false, exitCode: 1, data: result };
+        case RESTORE_SKIP_REASONS.INVALID_SNAPSHOT:
+          output.printError('Source is not a moflo snapshot (no memory_entries table).');
+          return { success: false, exitCode: 1, data: result };
+        case RESTORE_SKIP_REASONS.SELF_REFERENCE:
+          output.printWarning('--from path is the local memory DB itself — nothing to restore.');
+          break;
+        default:
+          output.printWarning('Restore was a no-op.');
+      }
+      return { success: true, data: result };
+    } catch (error) {
+      output.printError(`memory restore failed: ${error instanceof Error ? error.message : String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
 // Main memory command
 export const memoryCommand: Command = {
   name: 'memory',
   description: 'Memory management commands',
-  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand, teamExportCommand, teamImportCommand],
+  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand, teamExportCommand, teamImportCommand, backupCommand, restoreCommand],
   options: [],
   examples: [
     { command: 'flo memory store -k "key" -v "value"', description: 'Store data' },

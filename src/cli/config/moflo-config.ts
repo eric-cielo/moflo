@@ -116,6 +116,18 @@ export interface MofloConfig {
      * (solo default). `MOFLO_TEAM_ARTIFACT` overrides. Relative → project root.
      */
     team_artifact?: string;
+    /**
+     * Optional path to a **whole-DB snapshot** to hydrate a fresh/empty
+     * workspace from on session-start (#1244, epic #1231). When set and the
+     * local `.moflo/moflo.db` is absent/empty, it is restored from this
+     * snapshot BEFORE the daemon spawns — seeding structural + durable +
+     * embedding data so the first session is searchable without a cold
+     * reindex. No-op once the local DB has content (never clobbers an active
+     * workspace). Undefined = off. `MOFLO_HYDRATE_FROM` overrides. Relative →
+     * project root. Take a snapshot with `flo memory backup --to <path>`. See
+     * `src/cli/services/snapshot-restore.ts`.
+     */
+    hydrate_from?: string;
   };
 
   hooks: {
@@ -425,6 +437,12 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
         const v = raw.memory?.team_artifact ?? raw.memory?.teamArtifact;
         return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
       })(),
+      // #1244 — optional whole-DB snapshot to hydrate a fresh workspace from.
+      // Resolution to an absolute path happens lazily in snapshot-restore.ts.
+      hydrate_from: (() => {
+        const v = raw.memory?.hydrate_from ?? raw.memory?.hydrateFrom;
+        return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+      })(),
     },
     hooks: {
       pre_edit: raw.hooks?.pre_edit ?? raw.hooks?.preEdit ?? DEFAULT_CONFIG.hooks.pre_edit,
@@ -639,6 +657,12 @@ memory:
   #   Structural namespaces (code-map, guidance, tests) stay local per checkout.
   #   Absolute path recommended; overridable per-process via MOFLO_DURABLE_PATH.
   # team_artifact: .moflo/shared/learnings.jsonl  # opt-in (#1234): git-track this JSONL to share learnings across a team. Session-start import-merges it; "flo memory team-export" writes it. Leave unset for solo use.
+  # hydrate_from: /abs/path/to/moflo-snapshot.db
+  #   Optional whole-DB snapshot (#1244) to seed a fresh/empty workspace from on
+  #   session-start, skipping the cold full reindex (structural + durable +
+  #   embeddings restored at once). No-op once the local DB has content — never
+  #   clobbers an active workspace. Take one with "flo memory backup --to <path>".
+  #   Overridable per-process via MOFLO_HYDRATE_FROM.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:

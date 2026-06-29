@@ -2037,6 +2037,52 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
+// ── 3e-1244. Hydrate a fresh workspace from a whole-DB snapshot BEFORE daemon ─
+// When `memory.hydrate_from` (or MOFLO_HYDRATE_FROM) points at a snapshot AND
+// the local .moflo/moflo.db is absent/empty, restore the whole DB (structural +
+// durable + embeddings) so the first session is searchable without a cold full
+// reindex (#1244, epic #1231). Runs BEFORE the daemon spawns so the restored
+// rows are present when the daemon builds its HNSW index, and BEFORE the purge/
+// sync blocks below so they operate on the hydrated DB. No-clobber: a no-op once
+// the local DB has content. Best-effort: a failure must never block session start.
+try {
+  // Cheap pre-gate so the overwhelming majority (no hydrate configured) pay
+  // nothing — no module load, no moflo.yaml parse. Live only when the env
+  // override is set or moflo.yaml has an UNcommented `hydrate_from:` line (the
+  // generated config ships a commented example, which this regex ignores).
+  const hydrateYamlPath = resolve(projectRoot, 'moflo.yaml');
+  let hydrateEnabled = Boolean(process.env.MOFLO_HYDRATE_FROM);
+  if (!hydrateEnabled && existsSync(hydrateYamlPath)) {
+    try {
+      hydrateEnabled = /^[ \t]*hydrate_from[ \t]*:/m.test(readFileSync(hydrateYamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const hydratePaths = hydrateEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/snapshot-restore.js'),
+        resolve(projectRoot, 'dist/src/cli/services/snapshot-restore.js'),
+      ]
+    : [];
+  const hydratePath = hydratePaths.find((p) => existsSync(p));
+  if (hydratePath) {
+    const { hydrateAtSessionStart } = await import(pathToFileURL(hydratePath).href);
+    const result = await hydrateAtSessionStart({ projectRoot });
+    if (result?.restored) {
+      const mb = ((result.bytes ?? 0) / (1024 * 1024)).toFixed(1);
+      emitMutation(
+        'hydrated workspace from snapshot',
+        `restored ${mb} MB whole-DB snapshot — search ready without a cold reindex`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — without a snapshot the workspace just cold-indexes as before.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`snapshot hydration skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
 // ── 3e-728. Hard-delete leftover soft-delete tombstones (#728) ─────────────
 // Soft-delete was retired in story #728 — `status='deleted'` rows are now
 // unrecoverable bloat from prior moflo versions. Purge any stragglers and

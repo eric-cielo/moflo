@@ -34,10 +34,9 @@
  * @module cli/services/durable-sync
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import { findProjectRoot } from './project-root.js';
-import { normalizeProjectRoot } from './daemon-port.js';
+import { stableAbsolute, pickConfiguredPath } from './configured-path.js';
 import { memoryDbPath } from './moflo-paths.js';
 import { loadMofloConfig, type MofloConfig } from '../config/moflo-config.js';
 import {
@@ -62,39 +61,26 @@ export interface DurableSyncReport {
 }
 
 /**
- * Resolve a path that may not exist yet to a stable absolute form for identity
- * comparison. Reuses {@link normalizeProjectRoot} (the #1145 reference impl) so
- * both sides of any comparison fold identically: it realpath's symlinks (macOS
- * `/var/folders` → `/private/var/folders`) and lowercases on Windows (NTFS is
- * case-insensitive). When the target doesn't exist yet — the common first-flush
- * case — we realpath the nearest existing parent and rejoin the tail so a
- * symlinked parent dir still normalises identically (Rule #1).
- */
-function stableAbsolute(p: string): string {
-  const abs = path.resolve(p);
-  if (fs.existsSync(abs)) return normalizeProjectRoot(abs);
-  return normalizeProjectRoot(path.join(normalizeProjectRoot(path.dirname(abs)), path.basename(abs)));
-}
-
-/**
  * Resolve the configured durable-store path to an absolute path, or `null`
  * when the feature is off (no env, no `memory.durable_path`) or misconfigured
  * (points at this project's own local DB — syncing a DB with itself is a
  * no-op, so we disable rather than thrash).
  *
  * Precedence: `MOFLO_DURABLE_PATH` env > `memory.durable_path` (moflo.yaml).
- * Relative values resolve against the project root.
+ * Relative values resolve against the project root. Path-pick + symlink-stable
+ * identity live in {@link pickConfiguredPath}/{@link stableAbsolute}.
  */
 export function resolveDurablePath(
   projectRoot: string = findProjectRoot(),
   config?: MofloConfig,
 ): { path: string | null; skipped?: DurableSyncReport['skipped'] } {
-  const envRaw = process.env.MOFLO_DURABLE_PATH?.trim();
-  const cfgRaw = (config ?? loadMofloConfig(projectRoot)).memory.durable_path?.trim();
-  const raw = envRaw && envRaw.length > 0 ? envRaw : cfgRaw;
-  if (!raw) return { path: null, skipped: 'not-configured' };
+  const abs = pickConfiguredPath(
+    process.env.MOFLO_DURABLE_PATH,
+    (config ?? loadMofloConfig(projectRoot)).memory.durable_path,
+    projectRoot,
+  );
+  if (!abs) return { path: null, skipped: 'not-configured' };
 
-  const abs = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(projectRoot, raw);
   // Self-reference guard — never let the shared store alias the local DB.
   if (stableAbsolute(abs) === stableAbsolute(memoryDbPath(projectRoot))) {
     return { path: null, skipped: 'same-as-local' };
