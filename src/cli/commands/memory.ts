@@ -3132,11 +3132,109 @@ const syncCommand: Command = {
   },
 };
 
+// Team-share commands (#1234, epic #1231) — a git-tracked JSONL artifact the
+// team commits. `team-export` writes the local durable slice into it (merge,
+// first-write-wins, provenance-stamped) and makes it git-trackable; session-
+// start (and `team-import`) merge it back into the local DB. Diffable JSONL is
+// what makes this reviewable + merge-friendly, unlike the SQLite artifacts of
+// stories #1232/#1233.
+function resolveTeamArtifact(projectRoot: string, explicit: unknown): Promise<string> {
+  return import('../services/team-artifact-sync.js').then(({ resolveTeamArtifactPath, DEFAULT_TEAM_ARTIFACT_REL }) => {
+    if (typeof explicit === 'string' && explicit.trim().length > 0) {
+      return pathModule.resolve(explicit.trim());
+    }
+    return resolveTeamArtifactPath(projectRoot) ?? pathModule.resolve(projectRoot, DEFAULT_TEAM_ARTIFACT_REL);
+  });
+}
+
+const teamExportCommand: Command = {
+  name: 'team-export',
+  description: 'Write durable learnings into the git-tracked team artifact (JSONL) for sharing',
+  options: [
+    {
+      name: 'to',
+      description: 'Artifact path (default: memory.team_artifact or .moflo/shared/learnings.jsonl)',
+      type: 'string',
+    },
+  ],
+  examples: [
+    { command: 'flo memory team-export', description: 'Merge local learnings into the team artifact, then git add + commit it' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const projectRoot = findProjectRoot();
+    const artifactPath = await resolveTeamArtifact(projectRoot, ctx.flags.to);
+    try {
+      const { exportTeamArtifact, ensureSharedArtifactTracked } = await import('../services/team-artifact-sync.js');
+      const report = exportTeamArtifact({ projectRoot, artifactPath, sharedAt: new Date().toISOString() });
+      const gitignore = ensureSharedArtifactTracked(projectRoot, artifactPath);
+
+      const rel = pathModule.relative(projectRoot, artifactPath) || artifactPath;
+      output.printSuccess(`Shared ${report.added} new durable entr${report.added === 1 ? 'y' : 'ies'} → ${rel}`);
+      output.printInfo(`Artifact now holds ${report.total} entr${report.total === 1 ? 'y' : 'ies'}.`);
+      if (gitignore !== 'unchanged') {
+        output.printInfo(`.gitignore ${gitignore} so the shared artifact is tracked while the rest of .moflo/ stays ignored.`);
+      }
+      output.printInfo(`Commit it to share: git add ${rel} && git commit -m "share learnings"`);
+      return { success: true, data: report };
+    } catch (error) {
+      output.printError(`team-export failed: ${error instanceof Error ? error.message : String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
+const teamImportCommand: Command = {
+  name: 'team-import',
+  description: 'Merge the git-tracked team artifact (JSONL) into the local learnings',
+  options: [
+    {
+      name: 'from',
+      description: 'Artifact path (default: memory.team_artifact or .moflo/shared/learnings.jsonl)',
+      type: 'string',
+    },
+  ],
+  examples: [
+    { command: 'flo memory team-import', description: 'Merge teammates shared learnings after a git pull' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const projectRoot = findProjectRoot();
+    const artifactPath = await resolveTeamArtifact(projectRoot, ctx.flags.from);
+    if (!fs.existsSync(artifactPath)) {
+      output.printError(`Team artifact not found: ${artifactPath}`);
+      output.printInfo('A teammate runs `flo memory team-export` + commits it first.');
+      return { success: false, exitCode: 1 };
+    }
+    try {
+      const { importTeamArtifact } = await import('../services/team-artifact-sync.js');
+      const report = importTeamArtifact({ projectRoot, artifactPath });
+      output.printSuccess(`Merged ${report.imported} durable entr${report.imported === 1 ? 'y' : 'ies'} from the team artifact`);
+      if (report.considered > report.imported) {
+        output.printInfo(`${report.considered - report.imported} already present (skipped, conflict-free).`);
+      }
+      if (report.skippedMalformed > 0) {
+        output.printWarning(`${report.skippedMalformed} malformed line${report.skippedMalformed === 1 ? '' : 's'} skipped.`);
+      }
+      if (report.skippedNonDurable > 0) {
+        output.printWarning(`${report.skippedNonDurable} non-durable entr${report.skippedNonDurable === 1 ? 'y' : 'ies'} skipped (only learnings/knowledge are shared).`);
+      }
+      if (report.imported > 0) {
+        output.printInfo(
+          'Restart your Claude Code session (or run `flo memory rebuild-index`) so the merged learnings are embedded + searchable.',
+        );
+      }
+      return { success: true, data: report };
+    } catch (error) {
+      output.printError(`team-import failed: ${error instanceof Error ? error.message : String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
 // Main memory command
 export const memoryCommand: Command = {
   name: 'memory',
   description: 'Memory management commands',
-  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand],
+  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand, teamExportCommand, teamImportCommand],
   options: [],
   examples: [
     { command: 'flo memory store -k "key" -v "value"', description: 'Store data' },
@@ -3168,7 +3266,9 @@ export const memoryCommand: Command = {
       `${output.highlight('code-map')}        - Generate structural code map`,
       `${output.highlight('refresh')}         - Reindex all content, rebuild embeddings, cleanup, and vacuum`,
       `${output.highlight('restore-learnings')} - Cherry-pick learnings/knowledge from a legacy DB`,
-      `${output.highlight('sync')}             - Export/import durable learnings to a portable artifact (multi-machine)`
+      `${output.highlight('sync')}             - Export/import durable learnings to a portable artifact (multi-machine)`,
+      `${output.highlight('team-export')}      - Write durable learnings to the git-tracked team artifact (JSONL)`,
+      `${output.highlight('team-import')}      - Merge the team artifact into local learnings`
     ]);
 
     return { success: true };
