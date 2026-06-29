@@ -247,7 +247,17 @@ function readInstallManifest(manifestPath) {
   return { entries, isLegacy };
 }
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n, word) => {
+  if (n === 1) return `${n} ${word}`;
+  // Pluralize the final word: consonant+y → -ies (entry → entries), sibilant
+  // endings → -es (box → boxes), otherwise → -s. Naive +s mangled every
+  // 'entry'-style word into 'entrys'.
+  let suffixed;
+  if (/[^aeiou]y$/i.test(word)) suffixed = `${word.slice(0, -1)}ies`;
+  else if (/(?:s|x|z|ch|sh)$/i.test(word)) suffixed = `${word}es`;
+  else suffixed = `${word}s`;
+  return `${n} ${suffixed}`;
+};
 
 // Captured inside the upgrade/drift branch so the post-spawn notice writer
 // can persist `.moflo/upgrade-notice.json` for the statusline (#636).
