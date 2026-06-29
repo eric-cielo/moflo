@@ -28,7 +28,7 @@ vi.mock('../../memory/memory-initializer.js', () => ({
   checkMemoryInitialization: vi.fn(),
 }));
 
-import { startDashboard, type DashboardHandle } from '../../services/daemon-dashboard.js';
+import { startDashboard, type DashboardHandle, type DashboardOptions } from '../../services/daemon-dashboard.js';
 
 // ============================================================================
 // Helpers
@@ -101,8 +101,18 @@ describe('daemon-memory-rpc', () => {
   let dashboard: DashboardHandle | null = null;
   let testPort: number;
 
+  // Start the dashboard on an OS-assigned ephemeral port (port: 0) and record
+  // the real bound port from the handle. The OS guarantees a free port per bind,
+  // eliminating the random-port (30000-39999) collisions that flaked this suite
+  // under parallel load — two workers could pick the same port, and an explicit
+  // pinned port gets no EADDRINUSE fallback.
+  async function startDash(opts: Partial<DashboardOptions> = {}): Promise<DashboardHandle> {
+    const handle = await startDashboard(makeMockDaemon(), { ...opts, port: 0 });
+    testPort = handle.port;
+    return handle;
+  }
+
   beforeEach(() => {
-    testPort = 30000 + Math.floor(Math.random() * 10000);
     mockStoreEntry.mockReset();
     mockDeleteEntry.mockReset();
     mockGetEntry.mockReset();
@@ -126,7 +136,7 @@ describe('daemon-memory-rpc', () => {
   // ── store ─────────────────────────────────────────────────────────────
 
   it('POST /api/memory/store with valid body persists and returns 200', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', {
       namespace: 'tasklist',
       key: 'flo-run-981',
@@ -148,7 +158,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store passes string value through unchanged', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     await postJson(testPort, '/api/memory/store', {
       namespace: 'learnings',
       key: 'k1',
@@ -158,7 +168,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store passes tags + ttl through', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     await postJson(testPort, '/api/memory/store', {
       namespace: 'tasklist',
       key: 'k1',
@@ -174,7 +184,7 @@ describe('daemon-memory-rpc', () => {
   // ── metadata (#1064) ──────────────────────────────────────────────────
 
   it('POST /api/memory/store forwards a plain-object metadata payload to storeEntry (pre-serialised)', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const meta = {
       type: 'chunk',
       parentDoc: 'doc-1064',
@@ -195,7 +205,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store forwards a stringified metadata blob unchanged', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const raw = JSON.stringify({ type: 'chunk', parentDoc: 'd' });
     const res = await postJson(testPort, '/api/memory/store', {
       namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: raw,
@@ -205,13 +215,13 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store leaves metadata undefined when omitted', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     await postJson(testPort, '/api/memory/store', { namespace: 'rpc-meta', key: 'k1', value: 'v' });
     expect(mockStoreEntry.mock.calls[0][0].metadata).toBeUndefined();
   });
 
   it('POST /api/memory/store rejects non-object metadata with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', {
       namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: 42,
     });
@@ -221,7 +231,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store rejects an unparseable metadata string with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', {
       namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: '{not json',
     });
@@ -230,7 +240,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store rejects oversized metadata with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     // 64 KB cap — pad a string field past it.
     const fat = { type: 'chunk', pad: 'a'.repeat(70 * 1024) };
     const res = await postJson(testPort, '/api/memory/store', {
@@ -241,7 +251,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store rejects invalid namespace with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', {
       namespace: 'bad ns/with spaces',
       key: 'k',
@@ -253,27 +263,27 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store rejects empty key with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: '', value: 'v' });
     expect(res.status).toBe(400);
     expect(mockStoreEntry).not.toHaveBeenCalled();
   });
 
   it('POST /api/memory/store rejects missing value with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k' });
     expect(res.status).toBe(400);
     expect(mockStoreEntry).not.toHaveBeenCalled();
   });
 
   it('POST /api/memory/store rejects invalid ttl with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k', value: 'v', ttl: -1 });
     expect(res.status).toBe(400);
   });
 
   it('POST /api/memory/store rejects non-string-array tags with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', {
       namespace: 'ns', key: 'k', value: 'v', tags: ['ok', 42],
     });
@@ -281,14 +291,14 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/store rejects malformed JSON with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', '{not valid json');
     expect(res.status).toBe(400);
     expect(JSON.parse(res.body).error).toMatch(/invalid|oversized/i);
   });
 
   it('POST /api/memory/store returns 503 when memory accessor not attached', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    dashboard = await startDash();
     const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k', value: 'v' });
     expect(res.status).toBe(503);
     expect(JSON.parse(res.body).error).toMatch(/not attached/i);
@@ -304,7 +314,7 @@ describe('daemon-memory-rpc', () => {
       id: 'entry_with_emb',
       embedding: { dimensions: 384, model: 'fastembed-bge-small-en-v1.5' },
     });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k', value: 'v' });
     expect(res.status).toBe(200);
     const data = JSON.parse(res.body);
@@ -315,7 +325,7 @@ describe('daemon-memory-rpc', () => {
 
   it('POST /api/memory/store omits embedding when storeEntry did not produce one (opt-out path)', async () => {
     mockStoreEntry.mockResolvedValueOnce({ success: true, id: 'entry_no_emb' });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k', value: 'v' });
     expect(res.status).toBe(200);
     const data = JSON.parse(res.body);
@@ -325,7 +335,7 @@ describe('daemon-memory-rpc', () => {
 
   it('POST /api/memory/store surfaces storeEntry failure as 500', async () => {
     mockStoreEntry.mockResolvedValueOnce({ success: false, id: '', error: 'disk full' });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k', value: 'v' });
     expect(res.status).toBe(500);
     expect(JSON.parse(res.body).message).toContain('disk full');
@@ -334,7 +344,7 @@ describe('daemon-memory-rpc', () => {
   // ── delete ────────────────────────────────────────────────────────────
 
   it('POST /api/memory/delete with valid body removes and returns 200', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/delete', { namespace: 'tasklist', key: 'flo-run-981' });
     expect(res.status).toBe(200);
     const data = JSON.parse(res.body);
@@ -345,21 +355,21 @@ describe('daemon-memory-rpc', () => {
 
   it('POST /api/memory/delete returns 200 even when key was absent (deleted: false)', async () => {
     mockDeleteEntry.mockResolvedValueOnce({ success: true, deleted: false, key: '', namespace: '', remainingEntries: 0 });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/delete', { namespace: 'ns', key: 'absent' });
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body).deleted).toBe(false);
   });
 
   it('POST /api/memory/delete rejects invalid input with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/delete', { namespace: '', key: 'k' });
     expect(res.status).toBe(400);
     expect(mockDeleteEntry).not.toHaveBeenCalled();
   });
 
   it('POST /api/memory/delete returns 503 without memory accessor', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    dashboard = await startDash();
     const res = await postJson(testPort, '/api/memory/delete', { namespace: 'ns', key: 'k' });
     expect(res.status).toBe(503);
   });
@@ -367,7 +377,7 @@ describe('daemon-memory-rpc', () => {
   // ── batch ─────────────────────────────────────────────────────────────
 
   it('POST /api/memory/batch applies all ops sequentially and returns 200', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/batch', {
       ops: [
         { op: 'store', namespace: 'ns', key: 'k1', value: 'v1' },
@@ -391,7 +401,7 @@ describe('daemon-memory-rpc', () => {
     mockStoreEntry
       .mockResolvedValueOnce({ success: true, id: 'b1', embedding: { dimensions: 384, model: 'fastembed-bge-small-en-v1.5' } })
       .mockResolvedValueOnce({ success: true, id: 'b2' }); // opt-out / ephemeral path
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/batch', {
       ops: [
         { op: 'store', namespace: 'ns', key: 'k1', value: 'v1' },
@@ -409,7 +419,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/batch fails-all on any invalid op (no partial application)', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/batch', {
       ops: [
         { op: 'store', namespace: 'ns', key: 'k1', value: 'v1' },
@@ -426,7 +436,7 @@ describe('daemon-memory-rpc', () => {
     mockStoreEntry
       .mockResolvedValueOnce({ success: true, id: 'a' })
       .mockResolvedValueOnce({ success: false, id: '', error: 'mid-stream fault' });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/batch', {
       ops: [
         { op: 'store', namespace: 'ns', key: 'k1', value: 'v1' },
@@ -442,13 +452,13 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/batch rejects empty ops array with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/batch', { ops: [] });
     expect(res.status).toBe(400);
   });
 
   it('POST /api/memory/batch rejects > 100 ops with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const ops = Array.from({ length: 101 }, (_, i) => ({ op: 'store', namespace: 'ns', key: `k${i}`, value: 'v' }));
     const res = await postJson(testPort, '/api/memory/batch', { ops });
     expect(res.status).toBe(400);
@@ -456,7 +466,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/batch rejects unknown op type with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/batch', {
       ops: [{ op: 'wat', namespace: 'ns', key: 'k', value: 'v' }],
     });
@@ -467,13 +477,13 @@ describe('daemon-memory-rpc', () => {
   // ── method check ──────────────────────────────────────────────────────
 
   it('GET /api/memory/store returns 405', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await getRequest(testPort, '/api/memory/store');
     expect(res.status).toBe(405);
   });
 
   it('GET /api/memory/delete returns 405', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await getRequest(testPort, '/api/memory/delete');
     expect(res.status).toBe(405);
   });
@@ -481,7 +491,7 @@ describe('daemon-memory-rpc', () => {
   // ── concurrent ────────────────────────────────────────────────────────
 
   it('handles 10 parallel POST /api/memory/store requests', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const reqs = Array.from({ length: 10 }, (_, i) =>
       postJson(testPort, '/api/memory/store', { namespace: 'ns', key: `k${i}`, value: 'v' }),
     );
@@ -508,7 +518,7 @@ describe('daemon-memory-rpc', () => {
         tags: ['t1'],
       },
     });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'k' });
     expect(res.status).toBe(200);
     const data = JSON.parse(res.body);
@@ -520,7 +530,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/get returns ok:true, found:false on miss', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'absent' });
     expect(res.status).toBe(200);
     const data = JSON.parse(res.body);
@@ -530,7 +540,7 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/get rejects invalid namespace with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/get', { namespace: 'bad ns!', key: 'k' });
     expect(res.status).toBe(400);
     expect(mockGetEntry).not.toHaveBeenCalled();
@@ -538,14 +548,14 @@ describe('daemon-memory-rpc', () => {
 
   it('POST /api/memory/get surfaces getEntry failure as 500', async () => {
     mockGetEntry.mockResolvedValueOnce({ success: false, found: false, error: 'db read failed' });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'k' });
     expect(res.status).toBe(500);
     expect(JSON.parse(res.body).message).toContain('db read failed');
   });
 
   it('POST /api/memory/get returns 503 without memory accessor', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    dashboard = await startDash();
     const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'k' });
     expect(res.status).toBe(503);
   });
@@ -561,7 +571,7 @@ describe('daemon-memory-rpc', () => {
       ],
       searchTime: 12,
     });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/search', {
       query: 'hello world',
       namespace: 'ns',
@@ -580,27 +590,27 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/search accepts namespace:"all" (cross-namespace)', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/search', { query: 'q', namespace: 'all' });
     expect(res.status).toBe(200);
     expect(mockSearchEntries.mock.calls[0][0].namespace).toBe('all');
   });
 
   it('POST /api/memory/search rejects empty query with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/search', { query: '' });
     expect(res.status).toBe(400);
     expect(mockSearchEntries).not.toHaveBeenCalled();
   });
 
   it('POST /api/memory/search rejects out-of-range threshold with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/search', { query: 'q', threshold: 1.5 });
     expect(res.status).toBe(400);
   });
 
   it('POST /api/memory/search returns 503 without memory accessor', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    dashboard = await startDash();
     const res = await postJson(testPort, '/api/memory/search', { query: 'q' });
     expect(res.status).toBe(503);
   });
@@ -615,7 +625,7 @@ describe('daemon-memory-rpc', () => {
       ],
       total: 1,
     });
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/list', { namespace: 'ns', limit: 10, offset: 0 });
     expect(res.status).toBe(200);
     const data = JSON.parse(res.body);
@@ -625,26 +635,26 @@ describe('daemon-memory-rpc', () => {
   });
 
   it('POST /api/memory/list with empty body lists all (no params)', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/list', undefined);
     expect(res.status).toBe(200);
     expect(mockListEntries).toHaveBeenCalled();
   });
 
   it('POST /api/memory/list rejects negative offset with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/list', { offset: -1 });
     expect(res.status).toBe(400);
   });
 
   it('POST /api/memory/list rejects oversized limit with 400', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/list', { limit: 50_000 });
     expect(res.status).toBe(400);
   });
 
   it('POST /api/memory/list returns 503 without memory accessor', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    dashboard = await startDash();
     const res = await postJson(testPort, '/api/memory/list', {});
     expect(res.status).toBe(503);
   });
@@ -652,19 +662,19 @@ describe('daemon-memory-rpc', () => {
   // ── method check for new endpoints ─────────────────────────────────────
 
   it('GET /api/memory/get returns 405', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await getRequest(testPort, '/api/memory/get');
     expect(res.status).toBe(405);
   });
 
   it('GET /api/memory/search returns 405', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await getRequest(testPort, '/api/memory/search');
     expect(res.status).toBe(405);
   });
 
   it('GET /api/memory/list returns 405', async () => {
-    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    dashboard = await startDash({ memory: makeMockMemory() });
     const res = await getRequest(testPort, '/api/memory/list');
     expect(res.status).toBe(405);
   });

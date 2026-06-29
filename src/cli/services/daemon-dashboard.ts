@@ -760,7 +760,9 @@ export async function startDashboard(
  * Build the ordered list of ports to try.
  *
  * When the caller pinned a port (CLI flag), respect it without any
- * fallback — the consumer pinned it on purpose. When they didn't, use
+ * fallback — the consumer pinned it on purpose. Port 0 is honored too: it
+ * binds an OS-assigned ephemeral port (the handle reports the real one), which
+ * tests use for collision-free isolation. When they didn't pin anything, use
  * the deterministic per-project candidates so two projects never collide
  * silently on a fixed default.
  */
@@ -769,7 +771,7 @@ function buildBindCandidates(
   projectRoot: string,
   maxAttempts: number,
 ): number[] {
-  if (typeof explicitPort === 'number' && explicitPort > 0 && explicitPort < 65536) {
+  if (typeof explicitPort === 'number' && explicitPort >= 0 && explicitPort < 65536) {
     return [explicitPort];
   }
   return serverPortCandidates(projectRoot, maxAttempts);
@@ -798,9 +800,14 @@ function tryListenOnPort(
     });
 
     server.listen(port, '127.0.0.1', () => {
+      // Report the ACTUAL bound port from server.address() rather than echoing
+      // the requested one. Identical for any pinned port (>0), and the source of
+      // truth when port 0 lets the OS assign a free ephemeral port — which tests
+      // use to avoid the random-port collisions that flaked under parallel load.
+      const boundPort = (server.address() as { port: number } | null)?.port ?? port;
       resolve({
         server,
-        port,
+        port: boundPort,
         stop(): Promise<void> {
           return new Promise((res, rej) => {
             server.closeAllConnections?.();
