@@ -2106,6 +2106,56 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
+// ── 3e-1232. Sync durable namespaces with the shared store BEFORE daemon ────
+// When `memory.durable_path` (or MOFLO_DURABLE_PATH) is set, flush this
+// worktree's learnings to the shared store and seed any sibling-workspace
+// learnings back into the local DB. Runs BEFORE the daemon spawns so the
+// freshly-seeded rows are present when the daemon builds its in-memory HNSW
+// index — that's what makes the cross-worktree repro (#1231) pass. No-op when
+// the feature is off. Best-effort: a sync failure must never block session start.
+try {
+  // Cheap pre-gate so solo users (the overwhelming majority) pay nothing here —
+  // no module load, no moflo.yaml parse. The feature is only live when the env
+  // override is set or moflo.yaml has an UNcommented `durable_path:` line (the
+  // generated config ships a commented example, which this regex ignores).
+  const durableYamlPath = resolve(projectRoot, 'moflo.yaml');
+  let durableEnabled = Boolean(process.env.MOFLO_DURABLE_PATH);
+  if (!durableEnabled && existsSync(durableYamlPath)) {
+    try {
+      durableEnabled = /^[ \t]*durable_path[ \t]*:/m.test(readFileSync(durableYamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const durablePaths = durableEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/durable-sync.js'),
+        resolve(projectRoot, 'dist/src/cli/services/durable-sync.js'),
+      ]
+    : [];
+  const durablePath = durablePaths.find((p) => existsSync(p));
+  if (durablePath) {
+    const { syncDurableAtSessionStart } = await import(pathToFileURL(durablePath).href);
+    const result = await syncDurableAtSessionStart({ projectRoot });
+    if (result?.seededToLocal > 0) {
+      emitMutation(
+        'seeded shared learnings',
+        `${plural(result.seededToLocal, 'durable entry')} pulled from the shared store`,
+      );
+    }
+    if (result?.flushedToShared > 0) {
+      emitMutation(
+        'shared local learnings',
+        `${plural(result.flushedToShared, 'durable entry')} pushed to the shared store`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — durable sync reconciles on the next session start.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`durable-memory sync skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
 // ── 3e-1057. Run unmet schema migrations BEFORE daemon spawn ────────────────
 // run-migrations.mjs walks `bin/migrations/*.mjs` and invokes each that has
 // not been recorded in `.moflo/migrations.json`. Each migration opens sql.js

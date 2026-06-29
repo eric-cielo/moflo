@@ -11,8 +11,10 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 import { openDaemonDatabase } from './daemon-backend.js';
 import { ensureSchemaColumns } from './schema.js';
 import { generateEmbedding } from './embedding-model.js';
@@ -23,6 +25,23 @@ import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder, isEphemeralNamespace } from
 import { toFloat32 } from './controllers/_shared.js';
 import { serialiseMetadata } from './bridge-entries.js';
 import { logRoutingFault, writeVectorStatsCache } from './entries-shared.js';
+import { writeThroughDurable } from '../services/durable-sync.js';
+
+/**
+ * Propagate a just-persisted durable write to the shared store (#1232). The
+ * caller passes the project root the row actually landed under so the flush
+ * sources from the SAME `.moflo/moflo.db` (process.cwd() can differ from the
+ * project root in subshells/tests). In the long-lived daemon the flush is
+ * fire-and-forget so it never adds shared-store I/O latency to the user's
+ * write; a short-lived CLI process awaits it so it can't exit before the row
+ * reaches the shared store. `writeThroughDurable` swallows its own errors and
+ * is a no-op unless `memory.durable_path` is set, so this is safe either way.
+ */
+async function propagateDurable(namespace: string, projectRoot: string): Promise<void> {
+  const flush = writeThroughDurable(namespace, { projectRoot });
+  if (process.env.MOFLO_IS_DAEMON === '1') { void flush; return; }
+  await flush;
+}
 
 /**
  * Store an entry directly via node:sqlite.
@@ -127,7 +146,16 @@ export async function storeEntry(options: {
   const bridge = await getBridge();
   if (bridge) {
     const bridgeResult = await bridge.bridgeStoreEntry(options);
-    if (bridgeResult) return bridgeResult;
+    if (bridgeResult) {
+      // #1232 — propagate durable writes to the shared store. Best-effort and
+      // guarded; a no-op unless `memory.durable_path` is configured AND this is
+      // a durable namespace. When the daemon handled a routed write it reaches
+      // this same bridge path, so the flush happens exactly once (in whichever
+      // process actually persisted the row). The bridge resolves its DB via
+      // findProjectRoot(), so source the flush from the same root.
+      if (bridgeResult.success) await propagateDurable(options.namespace ?? 'default', findProjectRoot());
+      return bridgeResult;
+    }
   }
 
   // Fallback: direct node:sqlite write via the unified factory.
@@ -283,6 +311,13 @@ export async function storeEntry(options: {
 
     // Update statusline cache with exact counts
     writeVectorStatsCache(dbPath, { vectorCount: vecCount, namespaces: nsCount, missing: missingCount });
+
+    // #1232 — write-through durable namespaces to the shared store (no-op
+    // unless configured). Mirrors the bridge path above for the direct-write
+    // fallback. Source the flush from the root the row actually landed under
+    // (`dbPath` = <root>/.moflo/moflo.db) rather than process.cwd(), which can
+    // differ from the project root.
+    await propagateDurable(namespace, path.dirname(path.dirname(dbPath)));
 
     return {
       success: true,

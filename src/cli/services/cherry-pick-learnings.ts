@@ -46,6 +46,20 @@ import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-bac
 /** Namespaces preserved across upgrades. Everything else is derived. */
 export const DURABLE_NAMESPACES = ['learnings', 'knowledge'] as const;
 
+const DURABLE_NAMESPACE_SET: ReadonlySet<string> = new Set(DURABLE_NAMESPACES);
+
+/**
+ * Return `true` if a namespace is durable (user-authored, worth sharing across
+ * installations) — i.e. a member of {@link DURABLE_NAMESPACES}. Used by the
+ * cross-installation sharing layer (#1232) to decide which writes flow through
+ * to a shared durable store. Note `knowledge` writes are soft-redirected to
+ * `learnings` before reaching the write path, so in practice this matches
+ * `learnings`; `knowledge` is kept for back-compat reads.
+ */
+export function isDurableNamespace(namespace: string): boolean {
+  return DURABLE_NAMESPACE_SET.has(namespace);
+}
+
 /**
  * Reasons a single source contributed zero rows. Exported so callers can
  * branch on the cause without duplicating string literals.
