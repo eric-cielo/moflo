@@ -213,6 +213,11 @@
       "notes": "One-time launcher pre-boot cherry-pick"
     },
     {
+      "file": "src/cli/services/team-artifact-sync.ts",
+      "classification": "daemon-offline",
+      "notes": "Imports the git-tracked team JSONL artifact into local moflo.db at session-start before the daemon spawns (#1234); same pre-boot writer shape as cherry-pick. The team-import CLI path matches restore-learnings' offline usage."
+    },
+    {
       "file": "src/cli/services/learning-service.ts",
       "classification": "daemon-offline",
       "notes": "Hooks library save() — S3 verifies caller context and confirms classification"

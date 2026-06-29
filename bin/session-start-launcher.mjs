@@ -2225,6 +2225,58 @@ function runMigrationsAndAnnounce(runnerPath) {
   }
 }
 
+// ── 3e-1234. Import the git-tracked team learnings artifact BEFORE daemon spawn ─
+// Opt-in (#1234, epic #1231): when memory.team_artifact (or MOFLO_TEAM_ARTIFACT)
+// points at a committed JSONL file, merge it into the local durable namespaces
+// so teammates' learnings (pulled via git) are present when the daemon builds
+// its HNSW index in section 4. INSERT OR IGNORE → idempotent + first-write-wins.
+// Fully guarded: a disabled/absent artifact is a silent no-op, and any failure
+// is non-fatal (the next session-start retries). Runs every session (teammates
+// pull frequently without a moflo version bump), unlike the upgrade-gated
+// cherry-pick in section 3.
+try {
+  // Cheap pre-gate so solo users (the overwhelming majority) pay nothing here —
+  // no module load, no moflo.yaml parse. The feature is only live when an env
+  // override is set, the default artifact already exists, or moflo.yaml has an
+  // UNcommented `team_artifact:` line (the generated config ships a commented
+  // example, which this regex deliberately ignores). Only then import the service.
+  const defaultArtifact = resolve(projectRoot, '.moflo', 'shared', 'learnings.jsonl');
+  const yamlPath = resolve(projectRoot, 'moflo.yaml');
+  let teamEnabled = Boolean(process.env.MOFLO_TEAM_ARTIFACT) || existsSync(defaultArtifact);
+  if (!teamEnabled && existsSync(yamlPath)) {
+    try {
+      teamEnabled = /^[ \t]*team_artifact[ \t]*:/m.test(readFileSync(yamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const teamSyncPaths = teamEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/team-artifact-sync.js'),
+        resolve(projectRoot, 'dist/src/cli/services/team-artifact-sync.js'),
+      ]
+    : [];
+  const teamSyncPath = teamSyncPaths.find((p) => existsSync(p));
+  if (teamSyncPath) {
+    const mod = await import(pathToFileURL(teamSyncPath).href);
+    if (typeof mod.resolveTeamArtifactPath === 'function' && typeof mod.importTeamArtifact === 'function') {
+      const artifactPath = mod.resolveTeamArtifactPath(projectRoot);
+      if (artifactPath && existsSync(artifactPath)) {
+        const report = mod.importTeamArtifact({ projectRoot, artifactPath });
+        if (report?.imported > 0) {
+          emitMutation(
+            'merged team learnings',
+            `${plural(report.imported, 'shared learning')} imported from the git-tracked team artifact`,
+          );
+        }
+      }
+    }
+  }
+} catch (err) {
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`team-artifact import skipped: ${msg}\n`);
+  } catch { /* stderr write must not throw */ }
+}
+
 // ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
 // See the TTL rationale at the constants above for why we switch to a
 // short-TTL completed badge instead of clearing the file.

@@ -61,6 +61,26 @@ export function isDurableNamespace(namespace: string): boolean {
 }
 
 /**
+ * The canonical 14-column durable-row `INSERT OR IGNORE` statement. Exported so
+ * the team-artifact import (#1234) binds the EXACT same column order — a drift
+ * between the two writers would silently mis-bind or drop rows (INSERT OR IGNORE
+ * swallows the constraint violation). Single source of truth for both.
+ */
+export const DURABLE_INSERT_OR_IGNORE_SQL =
+  `INSERT OR IGNORE INTO memory_entries ` +
+  `(id, key, namespace, content, type, embedding, embedding_model, ` +
+  ` embedding_dimensions, tags, metadata, owner_id, created_at, updated_at, status) ` +
+  `VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+/** True if `db` exposes the `memory_entries` table (durable schema present). */
+export function hasMemoryEntriesTable(db: SqlJsLikeDatabase): boolean {
+  const probe = db.exec(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='memory_entries' LIMIT 1`,
+  );
+  return Boolean(probe[0]?.values?.[0]);
+}
+
+/**
  * Reasons a single source contributed zero rows. Exported so callers can
  * branch on the cause without duplicating string literals.
  */
@@ -184,12 +204,7 @@ export async function cherryPickLearningsFromLegacy(
       `FROM memory_entries WHERE namespace IN (${placeholders})`;
     // Hoisted prepare — avoids re-parsing the SQL for every INSERT. Matters
     // for legacy DBs with hundreds of learnings rows.
-    insertStmt = targetDb.prepare(
-      `INSERT OR IGNORE INTO memory_entries ` +
-        `(id, key, namespace, content, type, embedding, embedding_model, ` +
-        ` embedding_dimensions, tags, metadata, owner_id, created_at, updated_at, status) ` +
-        `VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
+    insertStmt = targetDb.prepare(DURABLE_INSERT_OR_IGNORE_SQL);
 
     for (const sourcePath of legacyPaths) {
       if (sourcePath === target) {
@@ -239,10 +254,7 @@ function readAndInsert(
 
   try {
     // Older / unrelated DBs may not have memory_entries.
-    const probe = sourceDb.exec(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name='memory_entries' LIMIT 1`,
-    );
-    if (!probe[0]?.values?.[0]) {
+    if (!hasMemoryEntriesTable(sourceDb)) {
       return {
         path: sourcePath,
         rowsRead: 0,

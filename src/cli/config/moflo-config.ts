@@ -108,6 +108,14 @@ export interface MofloConfig {
      * `src/cli/services/durable-sync.ts`.
      */
     durable_path?: string;
+    /**
+     * Optional path to a **git-tracked** team learnings artifact (JSONL),
+     * default `.moflo/shared/learnings.jsonl` (#1234, epic #1231). When set,
+     * session-start import-merges it into the local durable namespaces so a team
+     * accumulates each other's learnings about the same repo. Undefined = off
+     * (solo default). `MOFLO_TEAM_ARTIFACT` overrides. Relative → project root.
+     */
+    team_artifact?: string;
   };
 
   hooks: {
@@ -413,6 +421,10 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
         const v = raw.memory?.durable_path ?? raw.memory?.durablePath;
         return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
       })(),
+      team_artifact: (() => {
+        const v = raw.memory?.team_artifact ?? raw.memory?.teamArtifact;
+        return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+      })(),
     },
     hooks: {
       pre_edit: raw.hooks?.pre_edit ?? raw.hooks?.preEdit ?? DEFAULT_CONFIG.hooks.pre_edit,
@@ -626,6 +638,7 @@ memory:
   #   git worktrees / Conductor workspaces of this project share one learnings DB.
   #   Structural namespaces (code-map, guidance, tests) stay local per checkout.
   #   Absolute path recommended; overridable per-process via MOFLO_DURABLE_PATH.
+  # team_artifact: .moflo/shared/learnings.jsonl  # opt-in (#1234): git-track this JSONL to share learnings across a team. Session-start import-merges it; "flo memory team-export" writes it. Leave unset for solo use.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:
