@@ -171,7 +171,9 @@ export async function checkWritersAudit(cwd: string = process.cwd()): Promise<He
       status: 'fail',
       message:
         `${foreign.length} non-daemon writer(s) running concurrently with daemon (PID ${daemonPid}): ${detail}. ` +
-        `Each will clobber the daemon's sql.js snapshot on flush — #1054 bug class.`,
+        `Each bypasses the daemon's single-writer routing (#981): under node:sqlite+WAL they no longer clobber ` +
+        `the DB file (the sql.js whole-snapshot flush #1054 guarded against is gone), but concurrent writes leave ` +
+        `the daemon's in-memory HNSW index stale, so search returns outdated results until it reindexes.`,
       fix: process.platform === 'win32'
         ? `taskkill /F /PID ${foreign.map((p) => p.pid).join(' /PID ')}`
         : `kill ${foreign.map((p) => p.pid).join(' ')}`,

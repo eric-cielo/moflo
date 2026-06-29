@@ -152,6 +152,7 @@ The retrieval-specific rules below only apply to docs you want surfaced via `mem
 ## See Also
 
 - `.claude/guidance/moflo-memorydb-maintenance.md` — Database location, schema, purge/reindex procedures
+- `.claude/guidance/moflo-cross-install-memory-sharing.md` — Sharing the durable `learnings` slice across worktrees, machines, and teams (and why never to share the whole DB)
 - `.claude/guidance/moflo-guidance-rules.md` — Universal authoring rules every guidance doc must follow
 - `.claude/guidance/moflo-subagents.md` — Memory-first subagent protocol that uses these search paths
 - `.claude/guidance/moflo-claude-swarm-cohesion.md` — Task & swarm coordination layered on top of memory
