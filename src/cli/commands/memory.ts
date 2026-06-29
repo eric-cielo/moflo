@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as pathModule from 'path';
 import { createHash } from 'crypto';
 import { execSync } from 'child_process';
@@ -13,7 +14,7 @@ import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
-import { legacySwarmPath, runtimePath } from '../services/moflo-paths.js';
+import { legacySwarmPath, runtimePath, memoryDbPath } from '../services/moflo-paths.js';
 import { resolveBridgeDbPath } from '../memory/bridge-core.js';
 import { findProjectRoot } from '../services/project-root.js';
 
@@ -2991,11 +2992,151 @@ const restoreLearningsCommand: Command = {
   },
 };
 
+/**
+ * Expand a leading `~` to the user's home directory before path resolution.
+ * `path.resolve` does NOT do this — `~/x` would resolve to `<cwd>/~/x`. Handles
+ * both POSIX (`~/`) and Windows (`~\`) separators and bare `~` (Rule #1); a
+ * `~user` form is left untouched (we only resolve the current user's home).
+ */
+function expandHome(p: string): string {
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/') || p.startsWith('~\\')) {
+    return pathModule.join(os.homedir(), p.slice(2));
+  }
+  return p;
+}
+
+// Sync command (#1233, epic #1231) — portable durable artifact for same-user
+// multi-machine sharing. One durable-aware verb over the existing cherry-pick
+// primitive: it carries the durable slice (learnings, knowledge) to/from a
+// portable SQLite artifact you keep in a synced folder (Dropbox/iCloud) or copy
+// by hand. Embeddings ride along verbatim (no lossy re-embed) and the merge is
+// INSERT OR IGNORE on UNIQUE(namespace, key), so re-running --from is a no-op.
+//   --to <path>    flush local durable namespaces → artifact (created if absent)
+//   --from <path>  merge an artifact → local durable namespaces
+const syncCommand: Command = {
+  name: 'sync',
+  description: 'Export/import durable learnings to a portable artifact for multi-machine sharing',
+  options: [
+    {
+      name: 'to',
+      description: 'Write the durable slice (learnings, knowledge) to this artifact path',
+      type: 'string',
+    },
+    {
+      name: 'from',
+      description: 'Merge a durable artifact at this path into the local DB',
+      type: 'string',
+    },
+  ],
+  examples: [
+    {
+      command: 'flo memory sync --to ~/Dropbox/moflo/durable.db',
+      description: 'Export durable learnings to a synced folder',
+    },
+    {
+      command: 'flo memory sync --from ~/Dropbox/moflo/durable.db',
+      description: 'Merge durable learnings carried from another machine',
+    },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const to = ctx.flags.to as string | undefined;
+    const from = ctx.flags.from as string | undefined;
+    if ((!to && !from) || (to && from)) {
+      output.printError('Specify exactly one direction: --to <path> (export) or --from <path> (import).');
+      return { success: false, exitCode: 1 };
+    }
+
+    const projectRoot = findProjectRoot();
+    const localDb = memoryDbPath(projectRoot);
+    const { cherryPickLearningsFromLegacy, DURABLE_NAMESPACES, CHERRY_PICK_SKIP_REASONS } = await import(
+      '../services/cherry-pick-learnings.js'
+    );
+    const plural = (n: number): string => (n === 1 ? 'y' : 'ies');
+
+    const SELF = CHERRY_PICK_SKIP_REASONS.SELF_REFERENCE;
+
+    try {
+      if (to) {
+        const artifact = pathModule.resolve(expandHome(to));
+        if (!fs.existsSync(localDb)) {
+          output.printWarning(`No local memory DB at ${localDb} — nothing to export yet.`);
+          return { success: true, data: { copied: 0 } };
+        }
+        const result = await cherryPickLearningsFromLegacy({
+          projectRoot,
+          legacyPaths: [localDb],
+          toPath: artifact,
+          namespaces: DURABLE_NAMESPACES,
+        });
+        // The only no-op cherry-pick can hit here (source is our own valid DB)
+        // is the artifact aliasing the local DB — surface it, don't claim a copy.
+        if (result.sources[0]?.reason === SELF) {
+          output.printWarning(`--to path is the local memory DB itself (${artifact}) — nothing to export.`);
+          return { success: true, data: result };
+        }
+        output.printSuccess(`Exported ${result.copied} durable entr${plural(result.copied)} to ${artifact}`);
+        if (result.considered > result.copied) {
+          output.printInfo(`${result.considered - result.copied} already present in the artifact (skipped).`);
+        }
+        return { success: true, data: result };
+      }
+
+      // --from: merge the artifact into the local durable namespaces.
+      const artifact = pathModule.resolve(expandHome(from!));
+      if (!fs.existsSync(artifact)) {
+        output.printError(`Artifact not found: ${artifact}`);
+        return { success: false, exitCode: 1 };
+      }
+      const result = await cherryPickLearningsFromLegacy({
+        projectRoot,
+        legacyPaths: [artifact],
+        toPath: localDb,
+        namespaces: DURABLE_NAMESPACES,
+      });
+      const report = result.sources[0];
+      if (report?.reason === CHERRY_PICK_SKIP_REASONS.SCHEMA_MISMATCH) {
+        output.printWarning(`Artifact has no memory_entries table — not a moflo durable artifact: ${artifact}`);
+        return { success: true, data: result };
+      }
+      if (report?.reason === CHERRY_PICK_SKIP_REASONS.OPEN_FAILED) {
+        output.printError(`Could not open artifact: ${artifact}`);
+        return { success: false, exitCode: 1, data: result };
+      }
+      if (report?.reason === SELF) {
+        output.printWarning(`--from path is the local memory DB itself (${artifact}) — nothing to merge.`);
+        return { success: true, data: result };
+      }
+      // No recognised source report at all (e.g. the artifact vanished between
+      // the existsSync check above and the open — TOCTOU): a 0/0 result is not
+      // a real merge, so don't report success as if rows moved.
+      if (!report && result.considered === 0) {
+        output.printWarning(`No durable entries read from ${artifact} — it may have been moved or emptied.`);
+        return { success: true, data: result };
+      }
+      output.printSuccess(`Merged ${result.copied} durable entr${plural(result.copied)} from ${artifact}`);
+      if (result.considered > result.copied) {
+        const dupes = result.considered - result.copied;
+        output.printInfo(`${dupes} duplicate${dupes === 1 ? '' : 's'} skipped (conflict-free merge).`);
+      }
+      if (result.copied > 0) {
+        output.printInfo(
+          'Restart your Claude Code session (or run `flo memory rebuild-index`) so the merged learnings are searchable.',
+        );
+      }
+      return { success: true, data: result };
+    } catch (error) {
+      output.printError(`memory sync failed: ${error instanceof Error ? error.message : String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
 // Main memory command
 export const memoryCommand: Command = {
   name: 'memory',
   description: 'Memory management commands',
-  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand],
+  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand],
   options: [],
   examples: [
     { command: 'flo memory store -k "key" -v "value"', description: 'Store data' },
@@ -3026,7 +3167,8 @@ export const memoryCommand: Command = {
       `${output.highlight('rebuild-index')}   - Regenerate embeddings for memory entries`,
       `${output.highlight('code-map')}        - Generate structural code map`,
       `${output.highlight('refresh')}         - Reindex all content, rebuild embeddings, cleanup, and vacuum`,
-      `${output.highlight('restore-learnings')} - Cherry-pick learnings/knowledge from a legacy DB`
+      `${output.highlight('restore-learnings')} - Cherry-pick learnings/knowledge from a legacy DB`,
+      `${output.highlight('sync')}             - Export/import durable learnings to a portable artifact (multi-machine)`
     ]);
 
     return { success: true };
