@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, realpathSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, realpathSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { spawn, type ChildProcess } from 'child_process';
@@ -195,6 +195,79 @@ describe('daemon-lock orphan detection (#1150)', () => {
         expect(findProjectDaemonPids(otherDir, { pidsHint: hint })).not.toContain(4242);
       } finally {
         rmDirRetry(otherDir);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // Shared moflo install via symlink (git-worktree / Conductor / npm link)
+  // ---------------------------------------------------------------------
+  //
+  // Regression: when a SATELLITE project root symlinks its
+  // `node_modules/moflo` back to a MAIN checkout's physical install — a common
+  // git-worktree / Conductor space-saver, or `npm link moflo` across projects —
+  // both roots' `node_modules/moflo/bin/cli.js` realpath onto the SAME path.
+  // The pre-fix matcher realpath'd the full candidate path, collapsing the two
+  // roots, so `findProjectDaemonPids(satellite)` matched the MAIN repo's running
+  // daemon and `acquireDaemonLock` reaped it as a bogus "same-project orphan"
+  // (a daemon-start in the worktree killed the main repo's daemon). The matcher
+  // must attribute a daemon by its project root, never by the shared binary.
+  describe('shared install via symlink', () => {
+    /** Link satelliteDir/node_modules/moflo → mainDir/node_modules/moflo. Returns false if the OS refuses symlinks. */
+    function linkSatellite(mainDir: string, satelliteDir: string): boolean {
+      const mainBin = join(mainDir, 'node_modules', 'moflo', 'bin');
+      mkdirSync(mainBin, { recursive: true });
+      writeFileSync(join(mainBin, 'cli.js'), FAKE_DAEMON_SCRIPT);
+      mkdirSync(join(satelliteDir, 'node_modules'), { recursive: true });
+      try {
+        symlinkSync(
+          join(mainDir, 'node_modules', 'moflo'),
+          join(satelliteDir, 'node_modules', 'moflo'),
+          // 'junction' links dirs on Windows without elevation.
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+        return true;
+      } catch {
+        return false; // restricted host (e.g. Windows w/o privilege) — skip
+      }
+    }
+
+    it('does NOT attribute the main repo daemon to a satellite root sharing its install', () => {
+      const mainDir = mkdtempSync(join(tmpdir(), 'orphan-shared-main-'));
+      const satelliteDir = mkdtempSync(join(tmpdir(), 'orphan-shared-sat-'));
+      try {
+        if (!linkSatellite(mainDir, satelliteDir)) return;
+        // Precondition for the bug: both roots' cli.js realpath onto one file.
+        expect(realpathSync(join(satelliteDir, 'node_modules', 'moflo', 'bin', 'cli.js')))
+          .toBe(realpathSync(join(mainDir, 'node_modules', 'moflo', 'bin', 'cli.js')));
+
+        // The main daemon's cmdline records its own real install path.
+        const mainCli = realpathSync(join(mainDir, 'node_modules', 'moflo', 'bin', 'cli.js'));
+        const hint = [{ pid: 4242, cmdline: `"${process.execPath}" ${mainCli} daemon start --moflo` }];
+
+        // The fix: the satellite root must NOT claim (and thus reap) it…
+        expect(findProjectDaemonPids(satelliteDir, { pidsHint: hint })).not.toContain(4242);
+        // …while the main root still owns its own daemon (no #1150 regression).
+        expect(findProjectDaemonPids(mainDir, { pidsHint: hint })).toContain(4242);
+      } finally {
+        rmDirRetry(satelliteDir);
+        rmDirRetry(mainDir);
+      }
+    });
+
+    it('a satellite root still reaps ITS OWN orphan (launched via the symlink path)', () => {
+      const mainDir = mkdtempSync(join(tmpdir(), 'orphan-shared-main2-'));
+      const satelliteDir = mkdtempSync(join(tmpdir(), 'orphan-shared-sat2-'));
+      try {
+        if (!linkSatellite(mainDir, satelliteDir)) return;
+        // A satellite daemon is launched with the satellite's OWN (symlink) path
+        // — Node records argv verbatim, it does not realpath argv[1].
+        const satCli = join(satelliteDir, 'node_modules', 'moflo', 'bin', 'cli.js');
+        const hint = [{ pid: 5252, cmdline: `"${process.execPath}" ${satCli} daemon start --moflo` }];
+        expect(findProjectDaemonPids(satelliteDir, { pidsHint: hint })).toContain(5252);
+      } finally {
+        rmDirRetry(satelliteDir);
+        rmDirRetry(mainDir);
       }
     });
   });

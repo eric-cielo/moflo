@@ -500,10 +500,21 @@ export function findProjectDaemonPids(
  *
  * Returns the two layouts moflo ships with — consumer install
  * (`<root>/node_modules/moflo/bin/cli.js`) and dogfood-source
- * (`<root>/bin/cli.js`) — normalised for case-insensitive substring match
- * via the shared `normalizeProjectRoot` helper (which realpaths + lowercases
- * on Windows, matching the #1145 daemon-identity surface so the two checks
- * agree about which root a process belongs to).
+ * (`<root>/bin/cli.js`) — normalised for case-insensitive substring match.
+ *
+ * Realpath the project ROOT PREFIX ONLY (so the macOS `/var/folders` →
+ * `/private/var/folders` rewrite from #1145 still matches a daemon whose
+ * cmdline recorded the realpath'd root), then append the relative CLI path
+ * LITERALLY. We must NOT realpath the full joined path: that resolves a
+ * `node_modules/moflo` symlink, and when two distinct project roots share one
+ * physical moflo install via symlink — a git-worktree / Conductor workspace
+ * that links `node_modules` back to the main checkout, or `npm link moflo` —
+ * every root's `node_modules/moflo/bin/cli.js` realpaths onto the SAME path.
+ * That collapse made `findProjectDaemonPids(rootB)` match rootA's running
+ * daemon, so a daemon-start in the worktree reaped the main repo's daemon as a
+ * bogus "same-project orphan". A daemon's identity is its project root, not the
+ * (shareable) binary it executes — so the root prefix is the only part that may
+ * be realpath-resolved here.
  *
  * Never includes the bare `projectRoot` prefix as a match candidate: an
  * unrelated process (editor, npm script) whose cmdline happens to mention
@@ -515,18 +526,16 @@ function projectCliCandidates(projectRoot: string): string[] {
     join('node_modules', 'moflo', 'bin', 'cli.js'),
     join('bin', 'cli.js'),
   ];
-  // realpath both the input AND each candidate path — on macOS the
-  // command-line records the realpath'd form (`/private/var/folders/...`)
-  // while the cwd-rooted candidate stays under `/var/folders/...`.
+  // normRoot realpaths the ROOT only (#1145). Build both the literal-root and
+  // realpath'd-root forms so the substring match lands whichever the daemon's
+  // cmdline recorded — without ever resolving the node_modules/moflo symlink in
+  // the suffix (which would collapse sibling roots onto a shared install).
   const normRoot = normalizeProjectRoot(projectRoot);
   const out = new Set<string>();
   for (const rel of cliRelatives) {
-    // Apply normalizeForMatch ON TOP of normalizeProjectRoot so the
-    // substring match also tolerates mixed separators in the spawn-recorded
-    // cmdline ("\\" vs "/"). `normalizeProjectRoot` realpaths + lowercases
-    // on Windows; `normalizeForMatch` collapses slashes.
-    out.add(normalizeForMatch(normalizeProjectRoot(join(projectRoot, rel))));
-    out.add(normalizeForMatch(normalizeProjectRoot(join(normRoot, rel))));
+    // normalizeForMatch collapses mixed separators + case-folds on Windows.
+    out.add(normalizeForMatch(join(projectRoot, rel)));
+    out.add(normalizeForMatch(join(normRoot, rel)));
   }
   return Array.from(out).filter(s => s.length > 0);
 }
