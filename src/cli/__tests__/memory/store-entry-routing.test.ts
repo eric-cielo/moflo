@@ -18,8 +18,11 @@ import { randomUUID } from 'node:crypto';
 // We're testing the live storeEntry/deleteEntry from memory-initializer, NOT
 // a mock — so we DON'T `vi.mock` memory-initializer here.
 
-// Mock moflo-config so daemon is enabled regardless of repo state
-const mockLoadConfig = vi.fn();
+// Mock moflo-config so daemon is enabled regardless of repo state.
+// `vi.hoisted` so the mock var is initialized before the hoisted vi.mock
+// factory runs — required now that moflo-config sits in the static import
+// graph (memory-initializer → entries-write → durable-sync → moflo-config, #1232).
+const { mockLoadConfig } = vi.hoisted(() => ({ mockLoadConfig: vi.fn() }));
 vi.mock('../../config/moflo-config.js', () => ({
   loadMofloConfig: mockLoadConfig,
 }));

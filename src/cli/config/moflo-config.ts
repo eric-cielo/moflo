@@ -95,6 +95,19 @@ export interface MofloConfig {
     backend: MofloMemoryBackend;
     embedding_model: string;
     namespace: string;
+    /**
+     * Optional absolute path to a **durable-only** shared memory DB (#1232).
+     * When set, the durable namespaces (`learnings`, `knowledge`) are seeded
+     * from this store on session-start and written through to it on each
+     * durable write, so every git worktree / Conductor workspace of the same
+     * project shares one learnings store while structural namespaces stay
+     * local per checkout. Absent (the default) → behavior is unchanged.
+     *
+     * Resolved absolute (relative values are taken against the project root)
+     * and overridable per-process via the `MOFLO_DURABLE_PATH` env var. See
+     * `src/cli/services/durable-sync.ts`.
+     */
+    durable_path?: string;
   };
 
   hooks: {
@@ -392,6 +405,14 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       backend: coerceMemoryBackend(raw.memory?.backend),
       embedding_model: raw.memory?.embedding_model || raw.memory?.embeddingModel || DEFAULT_CONFIG.memory.embedding_model,
       namespace: raw.memory?.namespace || DEFAULT_CONFIG.memory.namespace,
+      // #1232 — optional shared durable store. Accept snake_case + camelCase;
+      // a non-string (or absent) value leaves the feature off. Resolution to
+      // an absolute path happens lazily in durable-sync.ts, not here, so the
+      // launcher's cold-start config parse stays path-IO-free.
+      durable_path: (() => {
+        const v = raw.memory?.durable_path ?? raw.memory?.durablePath;
+        return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+      })(),
     },
     hooks: {
       pre_edit: raw.hooks?.pre_edit ?? raw.hooks?.preEdit ?? DEFAULT_CONFIG.hooks.pre_edit,
@@ -600,6 +621,11 @@ memory:
   backend: node-sqlite         # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider.
   embedding_model: Xenova/all-MiniLM-L6-v2
   namespace: default
+  # durable_path: /abs/path/outside/repo/moflo-durable.db
+  #   Optional shared store for durable namespaces (learnings, knowledge) so all
+  #   git worktrees / Conductor workspaces of this project share one learnings DB.
+  #   Structural namespaces (code-map, guidance, tests) stay local per checkout.
+  #   Absolute path recommended; overridable per-process via MOFLO_DURABLE_PATH.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:
