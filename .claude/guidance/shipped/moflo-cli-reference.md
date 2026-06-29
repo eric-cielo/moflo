@@ -189,3 +189,4 @@ findings; if AI-driven security scanning returns it should be an opt-in
 - `.claude/guidance/moflo-subagents.md` — Subagent memory-first protocol and store-back rules
 - `.claude/guidance/moflo-memory-strategy.md` — Memory namespaces, RAG linking, and search query patterns
 - `.claude/guidance/moflo-memorydb-maintenance.md` — How the namespaces above are populated and refreshed
+- `.claude/guidance/moflo-cross-install-memory-sharing.md` — `flo memory sync` / `team-export` / `team-import` and `flo doctor -c shared-db` for sharing durable learnings across worktrees, machines, and teams
