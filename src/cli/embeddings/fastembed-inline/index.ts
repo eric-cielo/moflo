@@ -21,7 +21,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AddedToken, Tokenizer } from '@anush008/tokenizers';
-import { InferenceSession, Tensor } from 'onnxruntime-node';
+import { env as ortEnv, InferenceSession, Tensor } from 'onnxruntime-node';
 
 import { resolveCacheDir, retrieveModel, type DownloadDeps } from './model-loader.js';
 
@@ -163,22 +163,30 @@ export class FlagEmbedding {
     if (!existsSync(modelPath)) {
       throw new Error(`Model file not found at ${modelPath}`);
     }
+    // Suppress ORT's WARNING-level chatter on session bring-up. ORT emits a
+    // `[W:onnxruntime ... GetPciBusId] Skipping pci_bus_id` line on Linux Azure
+    // VMs whose `/sys/devices/...` filenames don't match the expected PCI
+    // pattern; the warning is harmless (we run on the CPU EP only) but leaks to
+    // stderr and confuses users into thinking moflo is broken.
+    //
+    // Two log severities are in play and BOTH must be raised:
+    //   - `logSeverityLevel` (per-session, below) covered the warning in ORT
+    //     1.26.x, where it fired during session bring-up.
+    //   - `env.logLevel` (global, here) is required from ORT 1.27.0 on, where
+    //     device discovery runs through the global env logger at EP-init time,
+    //     before any session logger applies — the per-session level no longer
+    //     reaches it (CI consumer-smoke doctor probe regressed on the leak).
+    // 0=verbose, 1=info, 2=warning (default), 3/'error', 4/'fatal'. 'error' is
+    // the right level — genuine session bring-up failures still surface.
+    //
+    // Re-audit when bumping onnxruntime-node: ORT occasionally promotes
+    // deprecation / model-compatibility notices to WARNING that would now be
+    // hidden. If a model upgrade ever lands alongside this, relax both to
+    // warning once to scan the output.
+    ortEnv.logLevel = 'error';
     const session = await InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],
       graphOptimizationLevel: 'all',
-      // Suppress ORT's WARNING-level chatter on session bring-up. ORT 1.26.0
-      // emits a `[W:onnxruntime ... GetPciBusId] Skipping pci_bus_id` line on
-      // Linux Azure VMs whose `/sys/devices/...` filenames don't match the
-      // `[0-9a-f]+:[0-9a-f]+:[0-9a-f]+.[0-9a-f]+` PCI pattern; the warning
-      // is harmless (we run on the CPU EP only) but leaks to stderr and
-      // confuses users into thinking moflo is broken. 0=verbose, 1=info,
-      // 2=warning (default), 3=error, 4=fatal — error is the right level
-      // because session bring-up genuine failures still surface.
-      //
-      // Re-audit when bumping fastembed or onnxruntime-node: ORT
-      // occasionally promotes deprecation / model-compatibility notices to
-      // WARNING that would now be hidden. If a model upgrade ever lands
-      // alongside this suppression, drop to 2 once to scan the output.
       logSeverityLevel: 3,
     });
     return new FlagEmbedding(tokenizer, session);

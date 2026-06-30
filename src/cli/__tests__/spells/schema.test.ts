@@ -66,7 +66,9 @@ describe('parseYaml', () => {
   });
 
   it('should reject invalid YAML', () => {
-    expect(() => parseYaml(':', 'bad.yaml')).toThrow();
+    // Unclosed flow sequence — malformed across js-yaml versions. (A bare `:`
+    // is a valid empty-key mapping under js-yaml >=5's spec-compliant parser.)
+    expect(() => parseYaml('foo: [1, 2', 'bad.yaml')).toThrow();
   });
 
   it('should reject non-object YAML', () => {

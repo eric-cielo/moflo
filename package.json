@@ -65,11 +65,11 @@
   "dependencies": {
     "@anush008/tokenizers": "^0.6.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^5.2.0",
     "lru-cache": "^11.3.5",
-    "onnxruntime-node": "^1.24.3",
+    "onnxruntime-node": "^1.27.0",
     "semver": "^7.7.4",
-    "tar": "^7.5.11",
+    "tar": "^7.5.16",
     "valibot": "^1.3.1"
   },
   "peerDependencies": {
@@ -90,7 +90,6 @@
     "protobufjs": ">=7.5.5"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.12.2",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
