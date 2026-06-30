@@ -48,7 +48,7 @@ export function generateSettings(options: InitOptions): object {
 
   // Note: Claude Code expects 'model' to be a string, not an object
   // Model preferences are stored in moflo settings instead
-  // settings.model = 'claude-sonnet-4-5-20250929'; // Uncomment if you want to set a default model
+  // settings.model = 'sonnet'; // Uncomment if you want to set a default model
 
   // Add Agent Teams configuration (experimental feature)
   settings.env = {
@@ -75,8 +75,8 @@ export function generateSettings(options: InitOptions): object {
       shell: platform.shell,
     },
     modelPreferences: {
-      default: 'claude-opus-4-6',
-      routing: 'claude-haiku-4-5-20251001',
+      default: 'opus',
+      routing: 'haiku',
     },
     agentTeams: {
       enabled: true,

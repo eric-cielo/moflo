@@ -312,8 +312,8 @@
       "shell": "powershell"
     },
     "modelPreferences": {
-      "default": "claude-opus-4-6",
-      "routing": "claude-haiku-4-5-20251001"
+      "default": "opus",
+      "routing": "haiku"
     },
     "agentTeams": {
       "enabled": true,

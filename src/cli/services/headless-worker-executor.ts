@@ -269,12 +269,18 @@ export const LOCAL_WORKER_TYPES: LocalWorkerType[] = [
 ];
 
 /**
- * Model ID mapping
+ * Model tier → ANTHROPIC_MODEL value.
+ *
+ * Bare aliases (not pinned IDs) on purpose: Claude Code resolves `opus`/`sonnet`/
+ * `haiku` to the current model for the consumer's auth provider at spawn time, so
+ * this never goes stale on a model release and automatically tracks per-provider
+ * defaults (e.g. on Claude Platform on AWS `opus` maps to a different version than
+ * on the first-party API). Pin a full ID here only if a tier must be frozen.
  */
 const MODEL_IDS: Record<ModelType, string> = {
-  sonnet: 'claude-sonnet-4-5-20250929',
-  opus: 'claude-opus-4-6',
-  haiku: 'claude-haiku-4-5-20251001',
+  sonnet: 'sonnet',
+  opus: 'opus',
+  haiku: 'haiku',
 };
 
 /**

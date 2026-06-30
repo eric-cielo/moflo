@@ -10,7 +10,7 @@
   config:
     agentType: researcher
     prompt: "Find all REST API endpoints in src/ and list their HTTP methods and paths"
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-5
     background: false
 ```
 
@@ -20,7 +20,7 @@
 |-------|----------|---------|-------------|
 | `prompt` | Yes | — | Task prompt for the agent |
 | `agentType` | No | `coder` | Agent specialization: `researcher`, `coder`, `tester`, `reviewer` |
-| `model` | No | system default | Model override (e.g. `claude-sonnet-4-20250514`) |
+| `model` | No | system default | Model override (e.g. `claude-sonnet-5`) |
 | `systemPrompt` | No | — | Custom system prompt replacing the default |
 | `background` | No | `false` | Run without waiting for the result |
 
