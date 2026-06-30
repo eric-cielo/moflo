@@ -76,6 +76,35 @@ function removeSidecars(dbPath: string): void {
   }
 }
 
+/** A backup tmp older than this is certainly orphaned (a live vacuum is seconds). */
+const STALE_SNAPSHOT_TMP_AGE_MS = 60_000;
+
+/**
+ * Best-effort sweep of orphaned `${target}.tmp.<pid>.<rand>` files left by a
+ * backup whose process was SIGKILLed mid-`VACUUM INTO` (e.g. the auto-snapshot
+ * ran inside a session-start hook that hit its timeout — see launcher §3e-1244b).
+ * Only files older than {@link STALE_SNAPSHOT_TMP_AGE_MS} are removed, so a
+ * concurrent in-flight backup's tmp on the same target is never deleted.
+ */
+function sweepStaleSnapshotTmp(target: string): void {
+  try {
+    const dir = path.dirname(target);
+    const prefix = `${path.basename(target)}.tmp.`;
+    const now = Date.now();
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(prefix)) continue;
+      const p = path.join(dir, name);
+      try {
+        if (now - fs.statSync(p).mtimeMs > STALE_SNAPSHOT_TMP_AGE_MS) fs.rmSync(p);
+      } catch {
+        /* best-effort — racing another sweep or a live backup is harmless */
+      }
+    }
+  } catch {
+    /* dir missing / unreadable — nothing to sweep */
+  }
+}
+
 /**
  * True when `file` is a SQLite DB carrying a `memory_entries` table. Opens
  * READ-ONLY on purpose: `openDaemonDatabase` forces `journal_mode=WAL`, which
@@ -174,6 +203,7 @@ export function backupSnapshot(options: BackupSnapshotOptions): BackupSnapshotRe
   }
 
   fs.mkdirSync(path.dirname(target), { recursive: true });
+  sweepStaleSnapshotTmp(target);
   const tmp = `${target}.tmp.${process.pid}.${process.hrtime.bigint().toString(36)}`;
   try {
     if (fs.existsSync(tmp)) fs.rmSync(tmp);
@@ -322,4 +352,137 @@ export async function hydrateAtSessionStart(
   }
   // force stays false — auto-hydrate must never clobber an active workspace.
   return restoreSnapshot({ projectRoot, fromPath: from });
+}
+
+// ── Producer side: auto-snapshot (#1244) ────────────────────────────────────
+
+/** Why an auto-snapshot did not produce a fresh seed. */
+export const SNAPSHOT_SKIP_REASONS = {
+  NOT_CONFIGURED: 'not-configured',
+  LINKED_WORKTREE: 'linked-worktree',
+  NO_LOCAL_DB: 'no-local-db',
+  SELF_REFERENCE: 'self-reference',
+  FRESH: 'fresh',
+} as const;
+export type SnapshotSkipReason = (typeof SNAPSHOT_SKIP_REASONS)[keyof typeof SNAPSHOT_SKIP_REASONS];
+
+export interface AutoSnapshotResult {
+  /** True when a fresh snapshot was written to the configured path. */
+  snapshotted: boolean;
+  /** Set when `snapshotted` is false. */
+  reason?: SnapshotSkipReason;
+  /** Resolved snapshot path (when configured). */
+  target?: string;
+  /** Snapshot size in bytes (when produced). */
+  bytes?: number;
+}
+
+/**
+ * Resolve the configured auto-snapshot destination, or `null` when off.
+ * Precedence: `MOFLO_SNAPSHOT_TO` env > `memory.snapshot_to` (moflo.yaml).
+ * Relative values resolve against the project root. Pure path work, no IO.
+ */
+export function resolveSnapshotToPath(
+  projectRoot: string = findProjectRoot(),
+  config?: MofloConfig,
+): string | null {
+  return pickConfiguredPath(
+    process.env.MOFLO_SNAPSHOT_TO,
+    (config ?? loadMofloConfig(projectRoot)).memory.snapshot_to,
+    projectRoot,
+  );
+}
+
+/**
+ * True when `projectRoot` is a **linked** git worktree (a Conductor workspace),
+ * as opposed to the primary working tree. A linked worktree's `.git` is a FILE
+ * containing `gitdir: <common>/worktrees/<id>`; the primary's `.git` is a
+ * DIRECTORY. A submodule's `.git` is also a file but points at `<super>/modules/
+ * <name>` (no `worktrees` segment), so it reads as primary. A missing `.git`
+ * (standalone project) also reads as primary. Pure `node:fs` — no git shell-out
+ * (Rule #1). This is the gate that stops N Conductor workspaces from each
+ * overwriting the shared seed with their own branch-drifted copy.
+ */
+export function isLinkedWorktree(projectRoot: string = findProjectRoot()): boolean {
+  try {
+    const dotgit = path.join(projectRoot, '.git');
+    const st = fs.statSync(dotgit);
+    if (!st.isFile()) return false; // directory (primary) or other → not linked
+    const m = fs.readFileSync(dotgit, 'utf-8').match(/gitdir:\s*(.+)/);
+    if (!m) return false;
+    // Match a `worktrees` path segment on either separator (Rule #1).
+    return /[\\/]worktrees[\\/]/.test(m[1].trim());
+  } catch {
+    return false; // no/unreadable .git → treat as primary (safe to produce)
+  }
+}
+
+/** Newest mtime across the DB and its `-wal`/`-shm` sidecars (WAL writes don't
+ * touch the main file's mtime, so the sidecars must be considered to tell
+ * whether the DB has advanced). Returns 0 when none exist. */
+function latestSourceMtimeMs(source: string): number {
+  let latest = 0;
+  for (const p of [source, ...sidecarPaths(source)]) {
+    try {
+      if (fs.existsSync(p)) latest = Math.max(latest, fs.statSync(p).mtimeMs);
+    } catch {
+      /* unreadable — ignore */
+    }
+  }
+  return latest;
+}
+
+/**
+ * True when the snapshot at `snapshot` is at least as new as the live DB
+ * (including its WAL sidecars) — i.e. the DB has NOT advanced since the last
+ * snapshot, so re-producing would be wasted work. A missing snapshot is never
+ * fresh. mtime comparison only — no content hash, no arbitrary TTL.
+ */
+function isSnapshotFresh(snapshot: string, source: string): boolean {
+  try {
+    if (!fs.existsSync(snapshot)) return false;
+    return fs.statSync(snapshot).mtimeMs >= latestSourceMtimeMs(source);
+  } catch {
+    return false; // can't tell → err toward producing
+  }
+}
+
+/**
+ * Session-start auto-snapshot: when `memory.snapshot_to` (or `MOFLO_SNAPSHOT_TO`)
+ * is set, refresh that whole-DB snapshot so fresh worktrees hydrating via
+ * {@link hydrateAtSessionStart} always seed from a current copy. The producer
+ * side of {@link hydrateAtSessionStart}; set both to the same path for the
+ * Conductor recipe.
+ *
+ * Gated, in order: unconfigured → no-op; a linked git worktree (Conductor
+ * workspace) never produces (only the primary checkout does); no local DB →
+ * nothing to snapshot; self-reference (path aliases the live DB, symlink-aware)
+ * → skip; snapshot already current (DB hasn't advanced) → skip. Otherwise takes
+ * a consistent {@link backupSnapshot}. Best-effort: callers swallow throws so a
+ * backup failure never blocks session start.
+ */
+export async function autoSnapshotAtSessionStart(
+  opts: { projectRoot?: string; config?: MofloConfig } = {},
+): Promise<AutoSnapshotResult> {
+  const projectRoot = opts.projectRoot ?? findProjectRoot();
+  const to = resolveSnapshotToPath(projectRoot, opts.config);
+  if (!to) return { snapshotted: false, reason: SNAPSHOT_SKIP_REASONS.NOT_CONFIGURED };
+  if (isLinkedWorktree(projectRoot)) {
+    return { snapshotted: false, reason: SNAPSHOT_SKIP_REASONS.LINKED_WORKTREE, target: to };
+  }
+
+  const source = path.resolve(memoryDbPath(projectRoot));
+  if (!fs.existsSync(source)) {
+    return { snapshotted: false, reason: SNAPSHOT_SKIP_REASONS.NO_LOCAL_DB, target: to };
+  }
+  // Never VACUUM INTO over the live DB itself (symlink-aware, Rule #1 / #1145).
+  if (stableAbsolute(to) === stableAbsolute(source)) {
+    return { snapshotted: false, reason: SNAPSHOT_SKIP_REASONS.SELF_REFERENCE, target: to };
+  }
+  if (isSnapshotFresh(to, source)) {
+    return { snapshotted: false, reason: SNAPSHOT_SKIP_REASONS.FRESH, target: to };
+  }
+
+  const result = backupSnapshot({ projectRoot, toPath: to });
+  return { snapshotted: true, target: result.target, bytes: result.bytes };
 }
