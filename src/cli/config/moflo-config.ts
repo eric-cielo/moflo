@@ -128,6 +128,17 @@ export interface MofloConfig {
      * `src/cli/services/snapshot-restore.ts`.
      */
     hydrate_from?: string;
+    /**
+     * Optional path to **auto-produce** a whole-DB snapshot to on session-start
+     * (#1244, epic #1231) — the producer side of {@link hydrate_from}. When set,
+     * the **primary** working tree (never a linked git worktree / Conductor
+     * workspace) refreshes this snapshot when the local DB has advanced past it,
+     * so fresh worktrees always hydrate from a current seed. Set this and
+     * `hydrate_from` to the SAME absolute path: the primary checkout produces,
+     * linked worktrees consume. Undefined = off. `MOFLO_SNAPSHOT_TO` overrides.
+     * Relative → project root. See `src/cli/services/snapshot-restore.ts`.
+     */
+    snapshot_to?: string;
   };
 
   hooks: {
@@ -443,6 +454,13 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
         const v = raw.memory?.hydrate_from ?? raw.memory?.hydrateFrom;
         return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
       })(),
+      // #1244 — optional path to auto-produce a whole-DB snapshot to (producer
+      // side of hydrate_from). Resolution to an absolute path happens lazily in
+      // snapshot-restore.ts, keeping the launcher's cold-start parse path-IO-free.
+      snapshot_to: (() => {
+        const v = raw.memory?.snapshot_to ?? raw.memory?.snapshotTo;
+        return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+      })(),
     },
     hooks: {
       pre_edit: raw.hooks?.pre_edit ?? raw.hooks?.preEdit ?? DEFAULT_CONFIG.hooks.pre_edit,
@@ -663,6 +681,12 @@ memory:
   #   embeddings restored at once). No-op once the local DB has content — never
   #   clobbers an active workspace. Take one with "flo memory backup --to <path>".
   #   Overridable per-process via MOFLO_HYDRATE_FROM.
+  # snapshot_to: /abs/path/to/moflo-snapshot.db
+  #   Producer side of hydrate_from (#1244): the PRIMARY checkout auto-refreshes
+  #   this snapshot on session-start when its DB has advanced, so fresh git
+  #   worktrees / Conductor workspaces always hydrate from a current seed. Linked
+  #   worktrees never produce. Conductor recipe: set hydrate_from AND snapshot_to
+  #   to the SAME absolute path. Overridable per-process via MOFLO_SNAPSHOT_TO.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:

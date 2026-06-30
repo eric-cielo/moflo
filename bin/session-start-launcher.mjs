@@ -2471,5 +2471,52 @@ if (hooksScript) {
 
 // Patches are now baked into moflo@4.0.0 source — no runtime patching needed.
 
+// ── 4b-1244. Auto-snapshot: refresh the hydrate seed (producer side) ────────
+// When `memory.snapshot_to` (or MOFLO_SNAPSHOT_TO) is set, the PRIMARY checkout
+// refreshes that whole-DB snapshot when its DB has advanced, so fresh git
+// worktrees / Conductor workspaces always hydrate (§3e-1244) from a current
+// seed. Linked worktrees never produce (they consume). Runs AFTER the daemon is
+// fired above on purpose: VACUUM INTO is concurrency-safe with the daemon, and
+// placing it post-spawn means even a slow/SIGKILLed backup can never delay the
+// daemon. No-op (a fast stat) when the snapshot is already current.
+try {
+  // Cheap pre-gate so the overwhelming majority (no snapshot_to configured) pay
+  // nothing — no module load, no moflo.yaml parse. Live only when the env
+  // override is set or moflo.yaml has an UNcommented `snapshot_to:` line (the
+  // generated config ships a commented example, which this regex ignores).
+  const snapshotYamlPath = resolve(projectRoot, 'moflo.yaml');
+  let snapshotEnabled = Boolean(process.env.MOFLO_SNAPSHOT_TO);
+  if (!snapshotEnabled && existsSync(snapshotYamlPath)) {
+    try {
+      snapshotEnabled = /^[ \t]*snapshot_to[ \t]*:/m.test(readFileSync(snapshotYamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const snapshotPaths = snapshotEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/snapshot-restore.js'),
+        resolve(projectRoot, 'dist/src/cli/services/snapshot-restore.js'),
+      ]
+    : [];
+  const snapshotPath = snapshotPaths.find((p) => existsSync(p));
+  if (snapshotPath) {
+    const { autoSnapshotAtSessionStart } = await import(pathToFileURL(snapshotPath).href);
+    const result = await autoSnapshotAtSessionStart({ projectRoot });
+    if (result?.snapshotted) {
+      const mb = ((result.bytes ?? 0) / (1024 * 1024)).toFixed(1);
+      emitMutation(
+        'refreshed memory snapshot',
+        `wrote ${mb} MB whole-DB seed — fresh worktrees hydrate without a cold reindex`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — a missed snapshot just leaves the previous seed in place; the
+  // next session retries. A failure here must never block session start.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`memory auto-snapshot skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
 // ── 5. Done — exit immediately ──────────────────────────────────────────────
 process.exit(0);

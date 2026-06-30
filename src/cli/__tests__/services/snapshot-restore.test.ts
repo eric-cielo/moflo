@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -29,6 +29,10 @@ import {
   resolveHydratePath,
   hydrateAtSessionStart,
   RESTORE_SKIP_REASONS,
+  resolveSnapshotToPath,
+  isLinkedWorktree,
+  autoSnapshotAtSessionStart,
+  SNAPSHOT_SKIP_REASONS,
 } from '../../services/snapshot-restore.js';
 import { loadMofloConfig, type MofloConfig } from '../../config/moflo-config.js';
 import { memoryDbPath } from '../../services/moflo-paths.js';
@@ -48,12 +52,16 @@ afterEach(async () => {
 });
 
 const savedEnv = process.env.MOFLO_HYDRATE_FROM;
+const savedSnapshotEnv = process.env.MOFLO_SNAPSHOT_TO;
 beforeEach(() => {
   delete process.env.MOFLO_HYDRATE_FROM;
+  delete process.env.MOFLO_SNAPSHOT_TO;
 });
 afterEach(() => {
   if (savedEnv === undefined) delete process.env.MOFLO_HYDRATE_FROM;
   else process.env.MOFLO_HYDRATE_FROM = savedEnv;
+  if (savedSnapshotEnv === undefined) delete process.env.MOFLO_SNAPSHOT_TO;
+  else process.env.MOFLO_SNAPSHOT_TO = savedSnapshotEnv;
 });
 
 async function makeRoot(prefix = 'moflo-snapshot-'): Promise<string> {
@@ -68,6 +76,18 @@ async function makeRoot(prefix = 'moflo-snapshot-'): Promise<string> {
 function configWithHydrate(root: string, hydrateFrom?: string): MofloConfig {
   const cfg = loadMofloConfig(root);
   return { ...cfg, memory: { ...cfg.memory, hydrate_from: hydrateFrom } };
+}
+
+function configWithSnapshotTo(root: string, snapshotTo?: string): MofloConfig {
+  const cfg = loadMofloConfig(root);
+  return { ...cfg, memory: { ...cfg.memory, snapshot_to: snapshotTo } };
+}
+
+/** Force `path`'s mtime to `whenMs` so staleness compares are deterministic
+ * (avoids filesystem mtime-granularity flakiness). */
+function setMtime(path: string, whenMs: number): void {
+  const secs = whenMs / 1000;
+  utimesSync(path, secs, secs);
 }
 
 /** Seed a V3 memory DB at `dbPath` with (namespace, key) rows. */
@@ -322,5 +342,159 @@ describe('resolveHydratePath / hydrateAtSessionStart', () => {
     });
     expect(result.restored).toBe(false);
     expect(result.reason).toBe(RESTORE_SKIP_REASONS.LOCAL_NOT_EMPTY);
+  });
+});
+
+describe('resolveSnapshotToPath', () => {
+  it('returns null when neither env nor config is set', async () => {
+    const root = await makeRoot();
+    expect(resolveSnapshotToPath(root, configWithSnapshotTo(root, undefined))).toBeNull();
+  });
+
+  it('resolves a relative config value against the project root', async () => {
+    const root = await makeRoot();
+    expect(resolveSnapshotToPath(root, configWithSnapshotTo(root, 'seeds/snap.db'))).toBe(
+      join(root, 'seeds', 'snap.db'),
+    );
+  });
+
+  it('prefers the MOFLO_SNAPSHOT_TO env over the config value', async () => {
+    const root = await makeRoot();
+    const envPath = join(root, 'from-env.db');
+    process.env.MOFLO_SNAPSHOT_TO = envPath;
+    expect(resolveSnapshotToPath(root, configWithSnapshotTo(root, 'from-config.db'))).toBe(envPath);
+  });
+});
+
+describe('isLinkedWorktree', () => {
+  it('is false for a primary checkout (.git is a directory)', async () => {
+    const root = await makeRoot();
+    mkdirSync(join(root, '.git'));
+    expect(isLinkedWorktree(root)).toBe(false);
+  });
+
+  it('is false when there is no .git at all', async () => {
+    const root = await makeRoot();
+    expect(isLinkedWorktree(root)).toBe(false);
+  });
+
+  it('is true for a linked worktree (.git file → gitdir under worktrees/)', async () => {
+    const root = await makeRoot();
+    writeFileSync(join(root, '.git'), 'gitdir: /repo/.git/worktrees/feature-x\n');
+    expect(isLinkedWorktree(root)).toBe(true);
+  });
+
+  it('is false for a submodule (.git file → gitdir under modules/)', async () => {
+    const root = await makeRoot();
+    writeFileSync(join(root, '.git'), 'gitdir: /repo/.git/modules/sub\n');
+    expect(isLinkedWorktree(root)).toBe(false);
+  });
+});
+
+describe('autoSnapshotAtSessionStart', () => {
+  it('is a no-op when snapshot_to is not configured', async () => {
+    const root = await makeRoot();
+    await makeDbWith(memoryDbPath(root), [{ key: 'a', namespace: 'learnings' }]);
+    const result = await autoSnapshotAtSessionStart({
+      projectRoot: root,
+      config: configWithSnapshotTo(root, undefined),
+    });
+    expect(result.snapshotted).toBe(false);
+    expect(result.reason).toBe(SNAPSHOT_SKIP_REASONS.NOT_CONFIGURED);
+  });
+
+  it('produces a faithful snapshot from the primary checkout', async () => {
+    const root = await makeRoot();
+    await makeDbWith(memoryDbPath(root), [
+      { key: 'a', namespace: 'learnings' },
+      { key: 'b', namespace: 'code-map' },
+      { key: 'c', namespace: 'guidance' },
+    ]);
+    const snap = join(root, 'seed.db');
+    const result = await autoSnapshotAtSessionStart({
+      projectRoot: root,
+      config: configWithSnapshotTo(root, snap),
+    });
+    expect(result.snapshotted).toBe(true);
+    expect(result.target).toBe(snap);
+    expect(existsSync(snap)).toBe(true);
+    expect(rowCount(snap)).toBe(3);
+    // Standalone single file — no sidecars (Rule #1 / hydrate reads it directly).
+    expect(existsSync(`${snap}-wal`)).toBe(false);
+  });
+
+  it('never produces from a linked worktree (Conductor workspace)', async () => {
+    const root = await makeRoot();
+    await makeDbWith(memoryDbPath(root), [{ key: 'a', namespace: 'learnings' }]);
+    writeFileSync(join(root, '.git'), 'gitdir: /repo/.git/worktrees/wt-1\n');
+    const snap = join(root, 'seed.db');
+    const result = await autoSnapshotAtSessionStart({
+      projectRoot: root,
+      config: configWithSnapshotTo(root, snap),
+    });
+    expect(result.snapshotted).toBe(false);
+    expect(result.reason).toBe(SNAPSHOT_SKIP_REASONS.LINKED_WORKTREE);
+    expect(existsSync(snap)).toBe(false);
+  });
+
+  it('skips when there is no local DB to snapshot', async () => {
+    const root = await makeRoot();
+    const result = await autoSnapshotAtSessionStart({
+      projectRoot: root,
+      config: configWithSnapshotTo(root, join(root, 'seed.db')),
+    });
+    expect(result.snapshotted).toBe(false);
+    expect(result.reason).toBe(SNAPSHOT_SKIP_REASONS.NO_LOCAL_DB);
+  });
+
+  it('skips when snapshot_to aliases the live DB (self-reference)', async () => {
+    const root = await makeRoot();
+    await makeDbWith(memoryDbPath(root), [{ key: 'a', namespace: 'learnings' }]);
+    const result = await autoSnapshotAtSessionStart({
+      projectRoot: root,
+      config: configWithSnapshotTo(root, memoryDbPath(root)),
+    });
+    expect(result.snapshotted).toBe(false);
+    expect(result.reason).toBe(SNAPSHOT_SKIP_REASONS.SELF_REFERENCE);
+  });
+
+  it('skips when the snapshot is already current (DB has not advanced)', async () => {
+    const root = await makeRoot();
+    const dbPath = memoryDbPath(root);
+    await makeDbWith(dbPath, [{ key: 'a', namespace: 'learnings' }]);
+    const snap = join(root, 'seed.db');
+    const config = configWithSnapshotTo(root, snap);
+
+    // First call produces. Then force the snapshot newer than the DB+sidecars.
+    expect((await autoSnapshotAtSessionStart({ projectRoot: root, config })).snapshotted).toBe(true);
+    const dbTime = Date.now() - 10_000;
+    setMtime(dbPath, dbTime);
+    if (existsSync(`${dbPath}-wal`)) setMtime(`${dbPath}-wal`, dbTime);
+    if (existsSync(`${dbPath}-shm`)) setMtime(`${dbPath}-shm`, dbTime);
+    setMtime(snap, Date.now());
+    const before = statSync(snap).mtimeMs;
+
+    const result = await autoSnapshotAtSessionStart({ projectRoot: root, config });
+    expect(result.snapshotted).toBe(false);
+    expect(result.reason).toBe(SNAPSHOT_SKIP_REASONS.FRESH);
+    // Confirm it did NOT rewrite the snapshot.
+    expect(statSync(snap).mtimeMs).toBe(before);
+  });
+
+  it('re-produces when the DB has advanced past the snapshot', async () => {
+    const root = await makeRoot();
+    const dbPath = memoryDbPath(root);
+    await makeDbWith(dbPath, [{ key: 'a', namespace: 'learnings' }]);
+    const snap = join(root, 'seed.db');
+    const config = configWithSnapshotTo(root, snap);
+
+    expect((await autoSnapshotAtSessionStart({ projectRoot: root, config })).snapshotted).toBe(true);
+    // Force the snapshot OLDER than the DB → it must re-produce.
+    setMtime(snap, Date.now() - 10_000);
+    setMtime(dbPath, Date.now());
+
+    const result = await autoSnapshotAtSessionStart({ projectRoot: root, config });
+    expect(result.snapshotted).toBe(true);
+    expect(rowCount(snap)).toBe(1);
   });
 });
