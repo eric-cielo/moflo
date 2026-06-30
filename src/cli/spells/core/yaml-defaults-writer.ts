@@ -186,10 +186,16 @@ function replaceDefaultValue(line: string, newValue: string): string {
 export function formatYamlValue(value: unknown): string {
   if (value === null || value === undefined) return 'null';
   if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+  // js-yaml >=5 defaults newline-containing strings to a block scalar (`|`),
+  // which is multi-line and gets rejected by the single-line `default:`
+  // replacement below. Force inline double-quoting (escaped `\n`) for those so
+  // they stay on one physical line — matching the pre-5 inline behavior.
+  const needsInlineQuoting = typeof value === 'string' && /[\r\n]/.test(value);
   const dumped = yaml.dump(value, {
     flowLevel: 0,
     lineWidth: -1,
     noRefs: true,
+    ...(needsInlineQuoting ? { forceQuotes: true, quotingType: '"' as const } : {}),
   }).replace(/\r?\n$/, '');
   return dumped;
 }
