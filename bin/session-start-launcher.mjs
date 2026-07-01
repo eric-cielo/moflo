@@ -2175,12 +2175,13 @@ try {
   // override is set or moflo.yaml has an UNcommented `durable_path:` line (the
   // generated config ships a commented example, which this regex ignores).
   const durableYamlPath = resolve(projectRoot, 'moflo.yaml');
-  let durableEnabled = Boolean(process.env.MOFLO_DURABLE_PATH);
-  if (!durableEnabled && existsSync(durableYamlPath)) {
-    try {
-      durableEnabled = /^[ \t]*durable_path[ \t]*:/m.test(readFileSync(durableYamlPath, 'utf-8'));
-    } catch { /* unreadable yaml — treat as not-configured */ }
-  }
+  // Read moflo.yaml ONCE, then run every pre-gate regex against the one string —
+  // every consumer with a moflo.yaml pays a single read here, not one per key.
+  let durableYaml = '';
+  try {
+    if (existsSync(durableYamlPath)) durableYaml = readFileSync(durableYamlPath, 'utf-8');
+  } catch { /* unreadable yaml — treat as not-configured */ }
+  let durableEnabled = Boolean(process.env.MOFLO_DURABLE_PATH) || /^[ \t]*durable_path[ \t]*:/m.test(durableYaml);
   // Auto-enable across git worktrees — moflo's core multi-worktree competency.
   // When durable_path isn't explicitly configured, still run the sync IF this
   // repo has worktrees in play (this checkout is a linked worktree, or the
@@ -2189,21 +2190,20 @@ try {
   // cheap fs stat with no module import, so solo users pay ~nothing. The
   // authoritative derivation lives in durable-sync.ts#resolveDurablePath.
   if (!durableEnabled) {
-    let optedOut = false;
-    if (existsSync(durableYamlPath)) {
-      try {
-        optedOut = /^[ \t]*worktree_sharing[ \t]*:[ \t]*false\b/m.test(readFileSync(durableYamlPath, 'utf-8'));
-      } catch { /* unreadable yaml — treat as not opted out */ }
-    }
+    const optedOut = /^[ \t]*(worktree_sharing|worktreeSharing)[ \t]*:[ \t]*false\b/m.test(durableYaml);
     if (!optedOut) {
       try {
         const dotgit = join(projectRoot, '.git');
         const st = statSync(dotgit);
         if (st.isFile()) {
-          durableEnabled = true; // linked worktree
+          // Linked worktree — `.git` file's `gitdir:` points into `.git/worktrees/…`.
+          // A submodule's points into `.git/modules/…` (no worktrees segment) and
+          // must NOT auto-share with its superproject, so gate on the segment.
+          if (/[\\/]worktrees[\\/]/.test(readFileSync(dotgit, 'utf-8'))) durableEnabled = true;
         } else if (st.isDirectory()) {
-          const wt = join(dotgit, 'worktrees');
-          if (existsSync(wt) && readdirSync(wt).length > 0) durableEnabled = true;
+          try {
+            if (readdirSync(join(dotgit, 'worktrees')).length > 0) durableEnabled = true;
+          } catch { /* no worktrees registry (ENOENT) — stay off */ }
         }
       } catch { /* no/unreadable .git — not a worktree, stay off */ }
     }

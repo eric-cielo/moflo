@@ -68,41 +68,51 @@ export interface DurableSyncReport {
 }
 
 /**
- * Resolve the git *common* directory for `projectRoot` — the shared `.git` that
- * every linked worktree of a repo points at — using filesystem reads only (no
- * `git` subprocess, so it's PATH-independent and cross-platform, Rule #1).
+ * Read `<projectRoot>/.git` ONCE and classify the checkout for worktree sharing,
+ * using filesystem reads only (no `git` subprocess, so it's PATH-independent and
+ * cross-platform, Rule #1). Returns the shared `.git` common dir plus whether
+ * THIS checkout is a linked worktree — or `null` when it's not a git repo root,
+ * `.git` is unreadable, or it's a **submodule**.
  *
  * - Primary checkout: `<root>/.git` is a directory → that IS the common dir.
- * - Linked worktree:  `<root>/.git` is a FILE (`gitdir: <main>/.git/worktrees/<id>`);
- *   the `commondir` file inside that gitdir points back to the shared `.git`.
+ * - Linked worktree:  `<root>/.git` is a FILE (`gitdir: <main>/.git/worktrees/<id>`)
+ *   whose `commondir` file points back to the shared `.git`.
+ * - Submodule:        `<root>/.git` is also a FILE, but `gitdir: <super>/.git/modules/<name>`
+ *   with NO `commondir`. It is NOT a worktree and must NEVER share a durable
+ *   store with its superproject — excluded via the `worktrees/` segment +
+ *   `commondir` checks (real worktrees have both; submodules have neither).
  *
- * Returns `null` when `projectRoot` isn't a git repo root (or `.git` is
- * unreadable). The primary tree and all its worktrees resolve to the SAME path,
- * which is what lets an auto-derived shared store converge with zero config.
+ * The primary tree and all its worktrees resolve to the SAME common dir, which
+ * is what lets an auto-derived shared store converge with zero config.
  */
-export function resolveGitCommonDir(projectRoot: string): string | null {
+function readGitLayout(projectRoot: string): { commonDir: string; linkedWorktree: boolean } | null {
+  const dotgit = path.join(projectRoot, '.git');
+  let st: fs.Stats;
   try {
-    const dotgit = path.join(projectRoot, '.git');
-    const st = fs.statSync(dotgit);
-    if (st.isDirectory()) return dotgit;
-    if (!st.isFile()) return null;
+    st = fs.statSync(dotgit);
+  } catch {
+    return null;
+  }
+  if (st.isDirectory()) return { commonDir: dotgit, linkedWorktree: false };
+  if (!st.isFile()) return null;
+  try {
     const m = fs.readFileSync(dotgit, 'utf-8').match(/gitdir:\s*(.+)/);
     if (!m) return null;
     let gitdir = m[1].trim();
     if (!path.isAbsolute(gitdir)) gitdir = path.resolve(projectRoot, gitdir);
-    // `<gitdir>/commondir` holds the (usually relative) path back to the shared
-    // `.git`; git writes it for every linked worktree.
-    const commondirFile = path.join(gitdir, 'commondir');
-    if (fs.existsSync(commondirFile)) {
-      let cd = fs.readFileSync(commondirFile, 'utf-8').trim();
-      if (!path.isAbsolute(cd)) cd = path.resolve(gitdir, cd);
-      return path.resolve(cd);
-    }
-    // Fallback for the standard `<main>/.git/worktrees/<id>` layout.
-    return path.resolve(gitdir, '..', '..');
+    // Linked worktree only — exclude submodules (`.../modules/...`, no commondir).
+    if (!/[\\/]worktrees[\\/]/.test(gitdir)) return null;
+    let cd = fs.readFileSync(path.join(gitdir, 'commondir'), 'utf-8').trim();
+    if (!path.isAbsolute(cd)) cd = path.resolve(gitdir, cd);
+    return { commonDir: path.resolve(cd), linkedWorktree: true };
   } catch {
     return null;
   }
+}
+
+/** The shared git common dir for `projectRoot`, or `null` — see {@link readGitLayout}. */
+export function resolveGitCommonDir(projectRoot: string): string | null {
+  return readGitLayout(projectRoot)?.commonDir ?? null;
 }
 
 /**
@@ -110,25 +120,19 @@ export function resolveGitCommonDir(projectRoot: string): string | null {
  * shared `.git` common dir to derive the store under — or `null` to stay off.
  *
  * Activates ONLY when git worktrees are actually in play, so a plain single
- * checkout writes nothing and behaves byte-identically to before. "In play" =
- * this checkout is itself a linked worktree, OR the shared `.git` has a
- * non-empty `worktrees/` registry (a sibling worktree exists).
+ * checkout (and any submodule) writes nothing and behaves byte-identically to
+ * before. "In play" = this checkout is itself a linked worktree, OR the shared
+ * `.git` has a non-empty `worktrees/` registry (a sibling worktree exists).
  */
 export function detectWorktreeCommonDir(projectRoot: string): string | null {
-  const commonDir = resolveGitCommonDir(projectRoot);
-  if (!commonDir) return null;
-  let linkedHere = false;
+  const layout = readGitLayout(projectRoot);
+  if (!layout) return null;
+  if (layout.linkedWorktree) return layout.commonDir;
+  // Primary checkout — activate only if it has registered linked worktrees.
   try {
-    linkedHere = fs.statSync(path.join(projectRoot, '.git')).isFile();
+    if (fs.readdirSync(path.join(layout.commonDir, 'worktrees')).length > 0) return layout.commonDir;
   } catch {
-    /* handled by resolveGitCommonDir returning null above */
-  }
-  if (linkedHere) return commonDir;
-  try {
-    const wt = path.join(commonDir, 'worktrees');
-    if (fs.existsSync(wt) && fs.readdirSync(wt).length > 0) return commonDir;
-  } catch {
-    /* unreadable registry — treat as no worktrees */
+    /* no worktrees registry (ENOENT) or unreadable — treat as no worktrees */
   }
   return null;
 }

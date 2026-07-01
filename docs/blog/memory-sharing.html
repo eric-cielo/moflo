@@ -156,7 +156,7 @@
 
 <h1>Your Project's Memory, Everywhere It Runs</h1>
 
-<p><em>MoFlo learns about your project and remembers it across sessions — but the hard-won part of that memory used to be trapped wherever it was first learned. A new git worktree, a fresh machine, a teammate's clone: each started blank on everything you'd taught the project. Over the last few days we closed that gap. The headline: across git worktrees, your <a href="https://github.com/eric-cielo/moflo">MoFlo</a> learnings now follow you <strong>automatically</strong>, with no setup at all — and for teams and multiple machines, one guided command wires up the rest. Here's what changed, and why it's safe.</em></p>
+<p><em>MoFlo learns about your project and remembers it across sessions — but the hard-won part of that memory used to be trapped wherever it was first learned. A new git worktree, a fresh machine, a teammate's clone reindexes your code and guidance on its own, but starts blank on everything you'd actually taught the project. Over the last few days we closed that gap. The headline: across git worktrees, your <a href="https://github.com/eric-cielo/moflo">MoFlo</a> learnings now follow you <strong>automatically</strong>, with no setup at all — and for teams and multiple machines, one guided command wires up the rest. Here's what changed, and why it's safe.</em></p>
 
 <hr />
 
@@ -171,7 +171,7 @@
 
 <p>The whole pitch for MoFlo is that an assistant which <em>remembers</em> beats one that starts cold every session. As you work, it accumulates durable knowledge about your project — the gotcha that cost you two hours, the decision you'll regret re-litigating next month, the pattern that turned out to be the right one. That lives in a local SQLite database at <code>.moflo/moflo.db</code>, and it's what makes the next session smarter than the last.</p>
 
-<p>There's a catch. That database is <strong>gitignored</strong> — deliberately, because most of what's in it is machine-local scratch. Step outside the one checkout where you built up that knowledge and you don't land completely cold: MoFlo reindexes your code and rebuilds its structural model on its own. But that rebuild costs minutes on a large repo — and the durable, hard-won learnings don't come back with it. Spin up a git worktree to review a PR? It re-indexes the code, but your learnings are gone. Clone the repo on your laptop instead of your desktop? Same. Onboard a teammate? They inherit none of what you already taught the project, and re-learn it the hard way.</p>
+<p>There's a catch. That database is <strong>gitignored</strong> — deliberately, because most of what's in it is machine-local scratch. Step outside the one checkout where you built up that knowledge and you don't land completely cold: MoFlo reindexes your code and guidance and rebuilds its structural model on its own. But that rebuild costs minutes on a large repo — and the durable, hard-won learnings don't come back with it. Spin up a git worktree to review a PR? It re-indexes the code and guidance, but your learnings are gone. Clone the repo on your laptop instead of your desktop? Same. Onboard a teammate? They inherit none of what you already taught the project, and re-learn it the hard way.</p>
 
 <p>The knowledge was real, durable, and hard-won — and it was stranded. That's the gap these changes close.</p>
 

@@ -60,7 +60,8 @@ memory:
   backend: node-sqlite            # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider (#1144).
   embedding_model: Xenova/all-MiniLM-L6-v2   # 384-dim neural embeddings
   namespace: default              # Default namespace for memory operations
-  # durable_path: ~/.moflo-shared/team-learnings.db   # opt-in (#1232): share durable namespaces (learnings, knowledge) across worktrees / Conductor workspaces. Point at a DEDICATED store, never a full moflo.db. Env override: MOFLO_DURABLE_PATH.
+  # worktree_sharing: false                            # opt-OUT (#1231): automatic durable-learning sharing across git worktrees is ON by default (derived at <git-common-dir>/moflo/durable.db, active only when worktrees exist; a single checkout is untouched). Set false to disable.
+  # durable_path: ~/.moflo-shared/team-learnings.db   # opt-in (#1232): OVERRIDE the auto worktree store — a custom durable-only path for learnings/knowledge, or to converge separate clones. Point at a DEDICATED store, never a full moflo.db. Env override: MOFLO_DURABLE_PATH.
   # team_artifact: .moflo/shared/learnings.jsonl       # opt-in (#1234): git-tracked JSONL the team commits; session-start import-merges it. Env override: MOFLO_TEAM_ARTIFACT. See moflo-cross-install-memory-sharing.md.
   # hydrate_from: /abs/path/to/moflo-snapshot.db       # opt-in (#1244): whole-DB snapshot to seed a fresh/empty workspace on session-start (skips the cold reindex). No-op once the local DB has content. Take one with "flo memory backup --to <path>". Env override: MOFLO_HYDRATE_FROM.
 

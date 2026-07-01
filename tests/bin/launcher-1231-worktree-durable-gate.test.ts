@@ -33,12 +33,12 @@ const src = readFileSync(LAUNCHER, 'utf-8');
 // The exact opt-out pre-gate regex the launcher uses (§3e-1232). The
 // source-invariant test asserts the launcher still contains this literal, so
 // the behavioral tests are guaranteed to exercise the real gate.
-const OPT_OUT_REGEX = /^[ \t]*worktree_sharing[ \t]*:[ \t]*false\b/m;
+const OPT_OUT_REGEX = /^[ \t]*(worktree_sharing|worktreeSharing)[ \t]*:[ \t]*false\b/m;
 
 describe('session-start-launcher — automatic worktree durable gate (#1231)', () => {
   describe('source-invariant: §3e-1232 durable auto-share wiring', () => {
-    it('uses the exact `worktree_sharing: false` opt-out regex', () => {
-      expect(src).toContain('/^[ \\t]*worktree_sharing[ \\t]*:[ \\t]*false\\b/m');
+    it('uses the exact opt-out regex (snake_case + camelCase)', () => {
+      expect(src).toContain('/^[ \\t]*(worktree_sharing|worktreeSharing)[ \\t]*:[ \\t]*false\\b/m');
     });
 
     it('detects worktrees import-free via .git stat + worktrees registry', () => {
@@ -46,8 +46,18 @@ describe('session-start-launcher — automatic worktree durable gate (#1231)', (
       // branch (.git/worktrees non-empty) — both must be present so a single
       // checkout short-circuits without importing the service.
       expect(src).toMatch(/statSync\(dotgit\)/);
-      expect(src).toContain("join(dotgit, 'worktrees')");
-      expect(src).toMatch(/readdirSync\(wt\)\.length/);
+      expect(src).toContain("readdirSync(join(dotgit, 'worktrees'))");
+    });
+
+    it('excludes submodules — gates the .git-file branch on a worktrees segment', () => {
+      // A submodule's `.git` file points into `.git/modules/…`, NOT `worktrees/`;
+      // it must NOT auto-share with its superproject, so the file branch reads
+      // the gitdir content and requires a `worktrees` path segment.
+      expect(src).toContain("/[\\\\/]worktrees[\\\\/]/.test(readFileSync(dotgit, 'utf-8'))");
+    });
+
+    it('reads moflo.yaml once and runs both pre-gates against the one string', () => {
+      expect(src).toContain('.test(durableYaml)');
     });
 
     it('still honors the explicit durable_path pre-gate + env override', () => {
@@ -82,6 +92,7 @@ describe('session-start-launcher — automatic worktree durable gate (#1231)', (
       'nested 2-space (typical moflo.yaml)': 'memory:\n  worktree_sharing: false\n',
       'tab-indented': 'memory:\n\tworktree_sharing: false\n',
       'top-level': 'worktree_sharing: false\n',
+      'camelCase (worktreeSharing)': 'memory:\n  worktreeSharing: false\n',
     };
     for (const [label, yaml] of Object.entries(disabling)) {
       it(`OPTS OUT on a real worktree_sharing: false line — ${label}`, () => {

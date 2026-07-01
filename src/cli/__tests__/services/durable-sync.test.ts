@@ -171,6 +171,21 @@ describe('resolveDurablePath — automatic worktree sharing (#1231 follow-up)', 
     expect(r.autoWorktree).toBe(true);
   });
 
+  it('does NOT auto-derive for a git submodule (.git file → modules/, not worktrees/)', async () => {
+    // A submodule's `.git` is a FILE like a linked worktree, but its gitdir points
+    // into the superproject's `.git/modules/<name>` (no `worktrees` segment, no
+    // `commondir`). It must never share a durable store with the superproject.
+    const superRepo = await makeRoot('moflo-super-');
+    const modulesGitdir = join(superRepo, '.git', 'modules', 'sub');
+    mkdirSync(modulesGitdir, { recursive: true });
+    const sub = await makeRoot('moflo-sub-');
+    writeFileSync(join(sub, '.git'), `gitdir: ${modulesGitdir}\n`);
+
+    const r = resolveDurablePath(sub, loadMofloConfig(sub));
+    expect(r.path).toBeNull();
+    expect(r.skipped).toBe('not-configured');
+  });
+
   it('auto-derives the SAME path from a linked worktree (via commondir)', async () => {
     const main = await makeRoot('moflo-main-');
     const gitdir = join(main, '.git', 'worktrees', 'wtA');

@@ -585,16 +585,23 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
  * Tries moflo.yaml first, then moflo.config.json.
  * Returns defaults merged with file contents.
  */
+/**
+ * A fresh defaults-only config for `root`. Deep-clones DEFAULT_CONFIG so a caller
+ * mutating the returned config's nested objects (e.g. `cfg.memory.durable_path =
+ * …`) can't poison the module-global DEFAULT_CONFIG and leak into every later
+ * load — a shallow spread shares the nested `memory`/`hooks`/… references, a
+ * latent cross-contamination bug.
+ */
+function freshDefaultConfig(root: string): MofloConfig {
+  return { ...structuredClone(DEFAULT_CONFIG), project: { name: path.basename(root) } };
+}
+
 export function loadMofloConfig(projectRoot?: string): MofloConfig {
   const root = projectRoot || process.cwd();
   const configFile = findConfigFile(root);
 
   if (!configFile) {
-    // Deep-clone so a caller mutating the returned config's nested objects
-    // (e.g. `cfg.memory.durable_path = …`) can't poison the module-global
-    // DEFAULT_CONFIG and leak into every later load. A shallow spread shares the
-    // nested `memory`/`hooks`/… references — a latent cross-contamination bug.
-    return { ...structuredClone(DEFAULT_CONFIG), project: { name: path.basename(root) } };
+    return freshDefaultConfig(root);
   }
 
   try {
@@ -610,20 +617,12 @@ export function loadMofloConfig(projectRoot?: string): MofloConfig {
     }
 
     if (!raw || typeof raw !== 'object') {
-      // Deep-clone so a caller mutating the returned config's nested objects
-    // (e.g. `cfg.memory.durable_path = …`) can't poison the module-global
-    // DEFAULT_CONFIG and leak into every later load. A shallow spread shares the
-    // nested `memory`/`hooks`/… references — a latent cross-contamination bug.
-    return { ...structuredClone(DEFAULT_CONFIG), project: { name: path.basename(root) } };
+      return freshDefaultConfig(root);
     }
 
     return mergeConfig(raw, root);
   } catch {
-    // Deep-clone so a caller mutating the returned config's nested objects
-    // (e.g. `cfg.memory.durable_path = …`) can't poison the module-global
-    // DEFAULT_CONFIG and leak into every later load. A shallow spread shares the
-    // nested `memory`/`hooks`/… references — a latent cross-contamination bug.
-    return { ...structuredClone(DEFAULT_CONFIG), project: { name: path.basename(root) } };
+    return freshDefaultConfig(root);
   }
 }
 
