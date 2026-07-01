@@ -2181,6 +2181,33 @@ try {
       durableEnabled = /^[ \t]*durable_path[ \t]*:/m.test(readFileSync(durableYamlPath, 'utf-8'));
     } catch { /* unreadable yaml — treat as not-configured */ }
   }
+  // Auto-enable across git worktrees — moflo's core multi-worktree competency.
+  // When durable_path isn't explicitly configured, still run the sync IF this
+  // repo has worktrees in play (this checkout is a linked worktree, or the
+  // shared .git has a non-empty worktrees/ registry), unless the user opted out
+  // with `worktree_sharing: false`. A plain single checkout short-circuits on a
+  // cheap fs stat with no module import, so solo users pay ~nothing. The
+  // authoritative derivation lives in durable-sync.ts#resolveDurablePath.
+  if (!durableEnabled) {
+    let optedOut = false;
+    if (existsSync(durableYamlPath)) {
+      try {
+        optedOut = /^[ \t]*worktree_sharing[ \t]*:[ \t]*false\b/m.test(readFileSync(durableYamlPath, 'utf-8'));
+      } catch { /* unreadable yaml — treat as not opted out */ }
+    }
+    if (!optedOut) {
+      try {
+        const dotgit = join(projectRoot, '.git');
+        const st = statSync(dotgit);
+        if (st.isFile()) {
+          durableEnabled = true; // linked worktree
+        } else if (st.isDirectory()) {
+          const wt = join(dotgit, 'worktrees');
+          if (existsSync(wt) && readdirSync(wt).length > 0) durableEnabled = true;
+        }
+      } catch { /* no/unreadable .git — not a worktree, stay off */ }
+    }
+  }
   const durablePaths = durableEnabled
     ? [
         resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/durable-sync.js'),
@@ -2191,6 +2218,12 @@ try {
   if (durablePath) {
     const { syncDurableAtSessionStart } = await import(pathToFileURL(durablePath).href);
     const result = await syncDurableAtSessionStart({ projectRoot });
+    if (result?.autoWorktree && (result.seededToLocal > 0 || result.flushedToShared > 0)) {
+      emitMutation(
+        'auto-shared learnings across git worktrees',
+        'converging durable learnings for this repo — set memory.worktree_sharing: false to opt out',
+      );
+    }
     if (result?.seededToLocal > 0) {
       emitMutation(
         'seeded shared learnings',

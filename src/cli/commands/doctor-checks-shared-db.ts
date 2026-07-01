@@ -23,6 +23,7 @@ import * as path from 'path';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { loadMofloConfig, type MofloConfig } from '../config/moflo-config.js';
+import { resolveDurablePath } from '../services/durable-sync.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
 
@@ -109,6 +110,20 @@ export async function checkSharedFullDb(deps?: {
         name: NAME,
         status: 'pass',
         message: `Durable-only shared store configured (${durableRaw}) — safe; structural namespaces stay local.`,
+      };
+    }
+
+    // 3. No explicit durable_path — surface automatic worktree sharing when it's
+    //    active, so the default-on behavior is visible (and reassuringly safe:
+    //    the derived store is a dedicated durable.db, never a full moflo.db).
+    const auto = resolveDurablePath(root, config);
+    if (auto.autoWorktree && auto.path) {
+      return {
+        name: NAME,
+        status: 'pass',
+        message:
+          `Automatic worktree learning sharing active (${auto.path}) — durable learnings converge across this ` +
+          `repo's git worktrees; structural namespaces stay local. Set memory.worktree_sharing: false to disable.`,
       };
     }
 
