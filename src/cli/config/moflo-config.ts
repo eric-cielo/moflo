@@ -109,6 +109,18 @@ export interface MofloConfig {
      */
     durable_path?: string;
     /**
+     * Opt OUT of automatic durable-learning sharing across git worktrees
+     * (#1231 follow-up). Working across worktrees / Conductor workspaces is a
+     * core moflo competency, so when no explicit `durable_path` is set moflo
+     * auto-derives a shared durable store at `<git-common-dir>/moflo/durable.db`
+     * and converges learnings across every worktree of the repo — but ONLY when
+     * worktrees are actually in play (a single checkout is untouched). Set this
+     * to `false` to disable that auto-behavior. Absent/`true` (the default) →
+     * auto-sharing is on. Explicit `durable_path` always takes precedence. See
+     * `src/cli/services/durable-sync.ts#resolveDurablePath`.
+     */
+    worktree_sharing?: boolean;
+    /**
      * Optional path to a **git-tracked** team learnings artifact (JSONL),
      * default `.moflo/shared/learnings.jsonl` (#1234, epic #1231). When set,
      * session-start import-merges it into the local durable namespaces so a team
@@ -444,6 +456,13 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
         const v = raw.memory?.durable_path ?? raw.memory?.durablePath;
         return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
       })(),
+      // #1231 follow-up — opt-out toggle for automatic worktree learning
+      // sharing. Only an explicit `false` disables it; absent/true leaves the
+      // default auto-behavior on. Detection + derivation live in durable-sync.ts.
+      worktree_sharing: (() => {
+        const v = raw.memory?.worktree_sharing ?? raw.memory?.worktreeSharing;
+        return typeof v === 'boolean' ? v : undefined;
+      })(),
       team_artifact: (() => {
         const v = raw.memory?.team_artifact ?? raw.memory?.teamArtifact;
         return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
@@ -566,12 +585,23 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
  * Tries moflo.yaml first, then moflo.config.json.
  * Returns defaults merged with file contents.
  */
+/**
+ * A fresh defaults-only config for `root`. Deep-clones DEFAULT_CONFIG so a caller
+ * mutating the returned config's nested objects (e.g. `cfg.memory.durable_path =
+ * …`) can't poison the module-global DEFAULT_CONFIG and leak into every later
+ * load — a shallow spread shares the nested `memory`/`hooks`/… references, a
+ * latent cross-contamination bug.
+ */
+function freshDefaultConfig(root: string): MofloConfig {
+  return { ...structuredClone(DEFAULT_CONFIG), project: { name: path.basename(root) } };
+}
+
 export function loadMofloConfig(projectRoot?: string): MofloConfig {
   const root = projectRoot || process.cwd();
   const configFile = findConfigFile(root);
 
   if (!configFile) {
-    return { ...DEFAULT_CONFIG, project: { name: path.basename(root) } };
+    return freshDefaultConfig(root);
   }
 
   try {
@@ -587,12 +617,12 @@ export function loadMofloConfig(projectRoot?: string): MofloConfig {
     }
 
     if (!raw || typeof raw !== 'object') {
-      return { ...DEFAULT_CONFIG, project: { name: path.basename(root) } };
+      return freshDefaultConfig(root);
     }
 
     return mergeConfig(raw, root);
   } catch {
-    return { ...DEFAULT_CONFIG, project: { name: path.basename(root) } };
+    return freshDefaultConfig(root);
   }
 }
 

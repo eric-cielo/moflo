@@ -1,6 +1,6 @@
 # Cross-Installation Memory Sharing
 
-**Purpose:** Decide how to share moflo's durable learnings across git worktrees, machines, or a team — and how to do it WITHOUT corrupting search. Read this before configuring `memory.durable_path`, running `flo memory sync`, or pointing two checkouts at one database.
+**Purpose:** Decide how to share moflo's durable learnings across git worktrees, machines, or a team — WITHOUT corrupting search. Worktrees on one machine share automatically; read this before customizing that, running `flo memory sync`, or pointing two checkouts at one database.
 
 ---
 
@@ -26,7 +26,7 @@ Choose by who needs the learnings, not by what is easiest to wire.
 
 | Topology | Mechanism | How |
 |----------|-----------|-----|
-| Same machine, many worktrees / Conductor workspaces | `memory.durable_path` | Point every checkout at one durable-only store; session-start seeds + writes through automatically |
+| Same machine, many worktrees / Conductor workspaces | **Automatic** (default) | Learnings converge across worktrees at session-start with no config; override the store with `memory.durable_path`, or opt out with `memory.worktree_sharing: false` |
 | One person, many machines | `flo memory sync` | `--to <file>` then `--from <file>` via a synced folder (Dropbox/iCloud) or a hand-copied file |
 | A team sharing one repo | Git-tracked team artifact | `flo memory team-export` writes `.moflo/shared/learnings.jsonl`; teammates' session-start import-merges it after `git pull` |
 | A fresh/empty workspace that must be ready FAST | Whole-DB snapshot (`memory.hydrate_from`) | `flo memory backup --to <snap>` once; a new workspace restores the entire DB so search works on session one — no cold reindex |
@@ -35,16 +35,25 @@ The first three move the SAME durable slice and dedupe on `UNIQUE(namespace, key
 
 ---
 
-## Configure a Same-Machine Shared Store
+## Automatic Worktree Sharing (Default)
 
-Set `memory.durable_path` in `moflo.yaml` to a dedicated file — NOT a full `moflo.db`.
+**Worktrees on one machine need no setup — sharing is automatic.** When moflo starts in a checkout whose repo has git worktrees in play, it derives a durable-only store at `<git-common-dir>/moflo/durable.db` (a path every worktree computes identically, since they share one `.git`) and converges `learnings` + `knowledge` across them at session-start. Conductor builds on git worktrees, so its workspaces are covered too.
+
+| Guardrail | Behavior |
+|-----------|----------|
+| Activates only with worktrees | A plain single checkout writes nothing — byte-for-byte unchanged |
+| Never a full DB | The derived store is a dedicated `durable.db`, so it can't trip the index-divergence hazard above |
+| Opt out | `memory.worktree_sharing: false` |
+| Override the location | `memory.durable_path` (also use this to converge separate *clones*, which don't share a `.git`) |
+
+To override the store location, set a dedicated file — NOT a full `moflo.db`:
 
 ```yaml
 memory:
-  durable_path: ~/.moflo-shared/team-learnings.db   # a durable-only store, created on first flush
+  durable_path: ~/.moflo-shared/team-learnings.db   # overrides the auto store; created on first flush
 ```
 
-The path must resolve to a file that is NOT any project's `.moflo/moflo.db`. Pointing it at a real `moflo.db` re-introduces the whole-DB-sharing hazard. `MOFLO_DURABLE_PATH` overrides the config per process; relative paths resolve against the project root.
+Pointing `durable_path` at a real `moflo.db` re-introduces the whole-DB-sharing hazard. `MOFLO_DURABLE_PATH` overrides per process; relative paths resolve against the project root. The `/memory-worktree` skill verifies, customizes, or opts out for you.
 
 ---
 
@@ -111,6 +120,7 @@ flo doctor -c shared-db
 
 | Result | Meaning |
 |--------|---------|
+| **pass** — "Automatic worktree learning sharing active" | No `durable_path` set, but worktrees are present — the auto-derived durable-only store is on and safe |
 | **pass** — "durable-only shared store configured" | `durable_path` points at a dedicated file — safe |
 | **warn** — "points at a full moflo.db" | `durable_path` aliases or is named like a full DB — repoint it at a dedicated store |
 | **warn** — "is a symlink" | The local `moflo.db` is symlinked into a shared location — replace it with a local DB and use `durable_path` |

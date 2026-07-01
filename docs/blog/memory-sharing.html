@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your Project's Memory, Everywhere It Runs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fg: #1f2328;
+      --fg-muted: #57606a;
+      --bg: #faf9f6;
+      --accent: #b91c1c;
+      --accent-hover: #7f1d1d;
+      --code-bg: #f1ece4;
+      --code-fg: #1f2328;
+      --rule: #e3dfd8;
+      --shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--fg);
+      max-width: 740px;
+      margin: 3rem auto;
+      padding: 0 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.018em;
+      line-height: 1.22;
+      color: var(--fg);
+    }
+    h1 {
+      font-size: 2.25rem;
+      margin: 1.25rem 0 1rem;
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 0.25rem;
+    }
+    p {
+      margin: 0.95rem 0;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(185, 28, 28, 0.35);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      border-bottom-color: var(--accent-hover);
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: inset 0 0 0 1px rgba(31, 35, 40, 0.04);
+      margin: 1.25rem 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+    li::marker {
+      color: var(--fg-muted);
+    }
+    em {
+      font-style: italic;
+      color: var(--fg);
+    }
+    strong {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2rem 0;
+    }
+    blockquote {
+      margin: 1.25rem 0;
+      padding: 0.5rem 1.25rem;
+      border-left: 3px solid var(--accent);
+      color: var(--fg-muted);
+      font-style: italic;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.8rem;
+      border: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    th {
+      background: var(--code-bg);
+      font-weight: 600;
+    }
+    h1 + p em {
+      color: var(--fg-muted);
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; margin: 1.5rem auto; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.25rem; }
+      table { font-size: 0.88rem; }
+      th, td { padding: 0.4rem 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_guidance2.png" alt="MoFlo — sharing what it has learned across every place it runs" /></p>
+
+<h1>Your Project's Memory, Everywhere It Runs</h1>
+
+<p><em>MoFlo learns about your project and remembers it across sessions — but the hard-won part of that memory used to be trapped in whatever checkout first learned it. A new git worktree, a fresh machine, a teammate's clone would reindex your code and guidance on its own, yet start blank on everything you'd actually taught the project. That's fixed now: across git worktrees, your <a href="https://github.com/eric-cielo/moflo">MoFlo</a> learnings follow you <strong>automatically</strong>, with no setup — and one guided command covers teams and extra machines. Here's what changed, and why it's safe.</em></p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+<hr />
+
+<h2>The premise: MoFlo remembers, until it doesn't</h2>
+
+<p>The whole pitch for MoFlo is that an assistant which <em>remembers</em> beats one that starts cold every session. As you work, it accumulates durable knowledge about your project — the gotcha that cost you two hours, the decision you'll regret re-litigating next month, the pattern that turned out to be the right one. That lives in a local SQLite database at <code>.moflo/moflo.db</code>, and it's what makes each session smarter than the last.</p>
+
+<p>There's a catch: that database is <strong>gitignored</strong> — deliberately, since most of it is machine-local scratch. Step into a new checkout and you don't land completely cold; MoFlo reindexes your code and guidance on its own. But that costs minutes on a large repo, and the durable, hard-won learnings don't come back with it. A worktree to review a PR, a clone on your laptop, a teammate onboarding — the code gets reindexed, but the learnings are stranded. That's the gap these changes close.</p>
+
+<hr />
+
+<h2>The one insight that makes it safe</h2>
+
+<p>The naive fix — point every checkout at one shared database — is a trap, and understanding <em>why</em> is the whole design. That database holds three very different kinds of data, and only one is worth sharing:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Kind</th>
+      <th>Examples</th>
+      <th>Share it?</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Durable</strong></td>
+      <td><code>learnings</code>, <code>knowledge</code> — things you or Claude decided are worth keeping</td>
+      <td>Yes — this is the good stuff</td>
+    </tr>
+    <tr>
+      <td><strong>Structural</strong></td>
+      <td>the code map, guidance chunks, test index — a searchable model of <em>this branch's</em> code</td>
+      <td>No — it's branch-specific and rebuilds cheaply</td>
+    </tr>
+    <tr>
+      <td><strong>Ephemeral</strong></td>
+      <td>task lists, swarm run-state, epic state</td>
+      <td>No — it's per-run scratch, meaningless elsewhere</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Only the <strong>durable slice</strong> is user-authored, slow to recreate, and identical no matter which checkout you're in. The structural data is actively <em>harmful</em> to share: a code map from one branch is wrong on another, so syncing it just means stale search results. So the rule the whole design rests on is simple:</p>
+
+<blockquote>Share only the durable slice. Let everything else stay local and rebuild itself.</blockquote>
+
+<p>There's a second, subtler reason, and it's the one that bites silently. MoFlo's semantic search runs on an in-memory vector index (HNSW), and each running daemon builds its <em>own</em> copy. Point two daemons at one shared file and a learning written by the first never shows up in the second's index until a full rebuild — a database that looks shared but a search that quietly lies. Sharing only the small, append-mostly durable slice sidesteps that entirely.</p>
+
+<hr />
+
+<h2>Worktrees just work — automatically</h2>
+
+<p>This is the change you'll feel first, and it needs <strong>no setup at all</strong>. Spinning up git worktrees to juggle several branches or reviews at once is a core moflo workflow, so we made sharing across them the default: start moflo in a checkout whose repo has worktrees in play, and your durable learnings converge across every one of them on their own.</p>
+
+<p>There's nothing to configure because there's nothing to <em>coordinate</em>. Every linked worktree shares one <code>.git</code> common directory, so moflo derives the store at a path they all compute the same way — <code>&lt;git-common-dir&gt;/moflo/durable.db</code> — and converges on it with no registry and no config key. (Conductor builds on git worktrees, so its workspaces are covered too.) At each session start, before the daemon comes up, a checkout <em>flushes</em> its new learnings up to that store and <em>seeds</em> its siblings' back down; every durable write also writes through as it happens. Structural and ephemeral data stays local, where it belongs.</p>
+
+<p>Two guardrails make this safe on by default:</p>
+
+<ul>
+  <li><strong>It only wakes for worktrees.</strong> A plain single checkout derives nothing and writes nothing — byte-for-byte as before — after a couple of filesystem stats.</li>
+  <li><strong>It can't trip the index hazard.</strong> The derived store is a dedicated <code>durable.db</code>, never a full <code>moflo.db</code>, so only the safe durable slice ever travels.</li>
+</ul>
+
+<p>Want it elsewhere, or off? <code>memory.durable_path</code> overrides the location (and can converge separate <em>clones</em>, which don't share a <code>.git</code>); <code>memory.worktree_sharing: false</code> turns it off. The <code>/memory-worktree</code> skill handles all three — but for the common case, you do nothing.</p>
+
+<hr />
+
+<h2>Beyond one machine — teams and your other laptops</h2>
+
+<p>Worktrees share a disk. Once learnings need to leave this machine, the destination is the same whether it's a teammate or your own laptop — a file that travels with the repo — because "just me on two machines" is a team of one. So the learnings live <em>in the repo</em>, reviewed like any other change, in a text format instead of a binary one:</p>
+
+<pre><code>flo memory team-export     # writes .moflo/shared/learnings.jsonl and makes it git-trackable
+git add .moflo/shared/learnings.jsonl && git commit && git push</code></pre>
+
+<p>The file is <strong>JSONL</strong> — one learning per line, sorted by namespace and key — so a committed file stays diff-reviewable and merge-friendly; you can see in a pull request exactly what a teammate is adding. Embeddings are omitted (384 floats a row would wreck the diff) and regenerated on import. After a <code>git pull</code>, the next session auto-imports the merged file, each entry stamped with its git author — no import command to remember.</p>
+
+<p>One bit of git plumbing: you can't re-include a file with <code>!</code> under an ignored parent, so <code>team-export</code> rewrites <code>.gitignore</code> from a blanket <code>.moflo/</code> to <code>.moflo/*</code> plus <code>!/.moflo/shared/</code> — tracking just the shared artifact, ignoring the machine-local DB.</p>
+
+<p>You still have to <em>export</em> before committing, and that's easy to forget — so the <code>/memory-team</code> skill installs a <strong>pre-commit hook</strong> that re-exports and stages the artifact on every commit (only when it changed, so no empty-diff churn). Learnings ride along with the change that produced them; the artifact is never stale in a PR.</p>
+
+<p>Prefer to keep your cross-machine learnings <em>out</em> of git? A portable binary artifact skips the repo entirely — carry it through a synced folder, USB stick, or <code>scp</code>:</p>
+
+<pre><code>flo memory sync --to   ~/Dropbox/moflo-learnings.db   # on machine A
+flo memory sync --from ~/Dropbox/moflo-learnings.db   # on machine B</code></pre>
+
+<p>Being a plain SQLite file, it carries the embeddings <em>verbatim</em> — no recompute on the far side — and the same <code>INSERT OR IGNORE</code> merge never duplicates or clobbers, run it twice or in both directions. The trade-off: not diffable, not reviewed. Just for you.</p>
+
+<hr />
+
+<h2>The fast-start bonus: whole-DB snapshots</h2>
+
+<p>Everything above shares the durable <em>slice</em>. One related problem it doesn't solve: on a large repo, a brand-new workspace with an empty database faces a full cold reindex on its first session — parse all your code, re-embed everything through the ONNX model — minutes before search works. So there's one more tool: a whole-database <strong>snapshot</strong>.</p>
+
+<pre><code>flo memory backup  --to   ~/moflo-snapshot.db    # consistent snapshot of the entire DB
+flo memory restore --from ~/moflo-snapshot.db    # hydrate a fresh workspace instantly</code></pre>
+
+<p>Or set <code>memory.hydrate_from</code> and a fresh workspace seeds itself at session start. Because the snapshot already holds the structural namespaces <em>and</em> their embeddings, the first-pass reindex is skipped — search works on session one.</p>
+
+<p>Isn't that the whole-database sharing the last section warned against? No — the trap is two <em>running</em> daemons on one file, their indexes drifting apart. A snapshot restore is a one-time copy into an empty workspace that then <strong>owns its own copy</strong>: no second daemon, no divergence, and any branch drift self-heals on the next reindex.</p>
+
+<hr />
+
+<h2>How the pieces fit together</h2>
+
+<p>These aren't competitors — they compose, running in a fixed order at session start, all before the daemon comes up:</p>
+
+<pre><code>1. hydrate    → restore a whole-DB snapshot (only if the local DB is empty)
+2. purge      → drop ephemeral namespaces from the restored copy
+3. durable    → flush + seed the durable slice against the shared store
+4. team       → import the git-tracked team artifact
+5. daemon     → starts, builds its index over everything above</code></pre>
+
+<p>A fresh workspace bootstraps from a snapshot, then durable-slice sync keeps its <code>learnings</code> converged from then on. Every step is purely additive — <code>INSERT OR IGNORE</code> on the same unique key — so they never fight.</p>
+
+<hr />
+
+<h2>Setup, and what's on by default</h2>
+
+<p>The whole surface, from "do nothing" to "wire up a team":</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Your situation</th>
+      <th>What you do</th>
+      <th>What travels</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Worktrees / Conductor on one machine</td>
+      <td><strong>Nothing — it's automatic</strong></td>
+      <td>A shared SQLite store in <code>.git</code></td>
+    </tr>
+    <tr>
+      <td>A team on one repo — <em>or</em> just you across several machines</td>
+      <td>Run <code>/memory-team</code> once</td>
+      <td>A git-tracked JSONL file</td>
+    </tr>
+    <tr>
+      <td>A fresh workspace on a huge repo</td>
+      <td>Set <code>memory.hydrate_from</code></td>
+      <td>A whole-DB snapshot (one-time)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Two guided skills own the setup so you're not hand-assembling paths and hooks: <code>/memory-team</code> configures the git-tracked artifact and its pre-commit hook (a team, or your own machines); <code>/memory-worktree</code> covers the automatic case's edges — confirm it, move it, extend it to separate clones, or opt out. Under the hood it's one <code>memory:</code> block, every line optional and off unless you set it:</p>
+
+<pre><code>memory:
+  # worktree_sharing: false                            # opt OUT of the automatic worktree default
+  # durable_path: ~/.moflo-shared/team-learnings.db    # override the auto store / share across separate clones
+  # team_artifact: .moflo/shared/learnings.jsonl        # git-tracked JSONL — team, or you across machines
+  # hydrate_from:  /path/to/moflo-snapshot.db           # seed a fresh workspace from a snapshot</code></pre>
+
+<p>So almost everything is off until you ask. The one exception is worktree sharing — on by default because worktrees are central to how moflo is used, and even then only when a repo actually has worktrees. Wire it up the risky way (a config pointed at a full database instead of a dedicated store) and <code>flo doctor -c shared-db</code> warns you first; it also reports when automatic sharing is active, so you can always see what's on.</p>
+
+<hr />
+
+<h2>Why this matters</h2>
+
+<p>An assistant that learns is only as good as its reach. A lesson MoFlo picked up Monday, on your desktop, is worth little if it's invisible Tuesday on your laptop — or to the teammate who hits the same gotcha next week.</p>
+
+<p>These changes make that learning <em>portable</em> without making it <em>dangerous</em>, by refusing to treat "the database" as one thing: share the small, durable, human-meaningful slice freely; let the branch-specific, machine-generated part stay local and rebuild. That's what lets your worktrees, your machines, and your whole team get smarter about a project together while search stays fast and correct on every one of them — and for worktrees, the workflow moflo leans on hardest, it happens without you lifting a finger.</p>
+
+<p><strong>Teach the project once. Have it remembered everywhere it runs.</strong></p>
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+</body>
+</html>

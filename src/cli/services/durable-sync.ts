@@ -35,6 +35,7 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
 import { findProjectRoot } from './project-root.js';
 import { stableAbsolute, pickConfiguredPath } from './configured-path.js';
 import { memoryDbPath } from './moflo-paths.js';
@@ -58,34 +59,132 @@ export interface DurableSyncReport {
   flushedToShared: number;
   /** Rows copied shared → local (seed direction). */
   seededToLocal: number;
+  /**
+   * True when the durable store was auto-derived from the git worktree layout
+   * (no explicit `durable_path` / env), rather than user-configured. Lets the
+   * launcher explain the first-time convergence to the user.
+   */
+  autoWorktree?: boolean;
 }
 
 /**
- * Resolve the configured durable-store path to an absolute path, or `null`
- * when the feature is off (no env, no `memory.durable_path`) or misconfigured
- * (points at this project's own local DB — syncing a DB with itself is a
- * no-op, so we disable rather than thrash).
+ * Read `<projectRoot>/.git` ONCE and classify the checkout for worktree sharing,
+ * using filesystem reads only (no `git` subprocess, so it's PATH-independent and
+ * cross-platform, Rule #1). Returns the shared `.git` common dir plus whether
+ * THIS checkout is a linked worktree — or `null` when it's not a git repo root,
+ * `.git` is unreadable, or it's a **submodule**.
  *
- * Precedence: `MOFLO_DURABLE_PATH` env > `memory.durable_path` (moflo.yaml).
- * Relative values resolve against the project root. Path-pick + symlink-stable
- * identity live in {@link pickConfiguredPath}/{@link stableAbsolute}.
+ * - Primary checkout: `<root>/.git` is a directory → that IS the common dir.
+ * - Linked worktree:  `<root>/.git` is a FILE (`gitdir: <main>/.git/worktrees/<id>`)
+ *   whose `commondir` file points back to the shared `.git`.
+ * - Submodule:        `<root>/.git` is also a FILE, but `gitdir: <super>/.git/modules/<name>`
+ *   with NO `commondir`. It is NOT a worktree and must NEVER share a durable
+ *   store with its superproject — excluded via the `worktrees/` segment +
+ *   `commondir` checks (real worktrees have both; submodules have neither).
+ *
+ * The primary tree and all its worktrees resolve to the SAME common dir, which
+ * is what lets an auto-derived shared store converge with zero config.
+ */
+function readGitLayout(projectRoot: string): { commonDir: string; linkedWorktree: boolean } | null {
+  const dotgit = path.join(projectRoot, '.git');
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(dotgit);
+  } catch {
+    return null;
+  }
+  if (st.isDirectory()) return { commonDir: dotgit, linkedWorktree: false };
+  if (!st.isFile()) return null;
+  try {
+    const m = fs.readFileSync(dotgit, 'utf-8').match(/gitdir:\s*(.+)/);
+    if (!m) return null;
+    let gitdir = m[1].trim();
+    if (!path.isAbsolute(gitdir)) gitdir = path.resolve(projectRoot, gitdir);
+    // Linked worktree only — exclude submodules (`.../modules/...`, no commondir).
+    if (!/[\\/]worktrees[\\/]/.test(gitdir)) return null;
+    let cd = fs.readFileSync(path.join(gitdir, 'commondir'), 'utf-8').trim();
+    if (!path.isAbsolute(cd)) cd = path.resolve(gitdir, cd);
+    return { commonDir: path.resolve(cd), linkedWorktree: true };
+  } catch {
+    return null;
+  }
+}
+
+/** The shared git common dir for `projectRoot`, or `null` — see {@link readGitLayout}. */
+export function resolveGitCommonDir(projectRoot: string): string | null {
+  return readGitLayout(projectRoot)?.commonDir ?? null;
+}
+
+/**
+ * Decide whether to AUTO-enable durable sharing for `projectRoot`, returning the
+ * shared `.git` common dir to derive the store under — or `null` to stay off.
+ *
+ * Activates ONLY when git worktrees are actually in play, so a plain single
+ * checkout (and any submodule) writes nothing and behaves byte-identically to
+ * before. "In play" = this checkout is itself a linked worktree, OR the shared
+ * `.git` has a non-empty `worktrees/` registry (a sibling worktree exists).
+ */
+export function detectWorktreeCommonDir(projectRoot: string): string | null {
+  const layout = readGitLayout(projectRoot);
+  if (!layout) return null;
+  if (layout.linkedWorktree) return layout.commonDir;
+  // Primary checkout — activate only if it has registered linked worktrees.
+  try {
+    if (fs.readdirSync(path.join(layout.commonDir, 'worktrees')).length > 0) return layout.commonDir;
+  } catch {
+    /* no worktrees registry (ENOENT) or unreadable — treat as no worktrees */
+  }
+  return null;
+}
+
+/**
+ * Resolve the durable-store path to an absolute path, or `null` when there's
+ * nothing to sync.
+ *
+ * Precedence:
+ *   1. Explicit config — `MOFLO_DURABLE_PATH` env > `memory.durable_path`
+ *      (moflo.yaml). Relative values resolve against the project root.
+ *   2. Auto worktree sharing — when NOTHING is explicitly configured, moflo's
+ *      multi-worktree competency kicks in: if this checkout is part of a repo
+ *      with git worktrees in play, derive a shared store at
+ *      `<git-common-dir>/moflo/durable.db`. Every worktree of the repo resolves
+ *      to the same path, so their learnings converge with zero config. Opt out
+ *      with `memory.worktree_sharing: false`. A single checkout (no worktrees)
+ *      derives nothing and stays byte-identical to before.
+ *
+ * A store that aliases this project's own local DB is rejected (syncing a DB
+ * with itself is a no-op). Path-pick + symlink-stable identity live in
+ * {@link pickConfiguredPath}/{@link stableAbsolute}.
  */
 export function resolveDurablePath(
   projectRoot: string = findProjectRoot(),
   config?: MofloConfig,
-): { path: string | null; skipped?: DurableSyncReport['skipped'] } {
-  const abs = pickConfiguredPath(
-    process.env.MOFLO_DURABLE_PATH,
-    (config ?? loadMofloConfig(projectRoot)).memory.durable_path,
-    projectRoot,
-  );
-  if (!abs) return { path: null, skipped: 'not-configured' };
+): { path: string | null; skipped?: DurableSyncReport['skipped']; autoWorktree?: boolean } {
+  const cfg = config ?? loadMofloConfig(projectRoot);
+  const local = () => stableAbsolute(memoryDbPath(projectRoot));
 
-  // Self-reference guard — never let the shared store alias the local DB.
-  if (stableAbsolute(abs) === stableAbsolute(memoryDbPath(projectRoot))) {
-    return { path: null, skipped: 'same-as-local' };
+  const abs = pickConfiguredPath(process.env.MOFLO_DURABLE_PATH, cfg.memory.durable_path, projectRoot);
+  if (abs) {
+    // Self-reference guard — never let the shared store alias the local DB.
+    if (stableAbsolute(abs) === local()) {
+      return { path: null, skipped: 'same-as-local' };
+    }
+    return { path: abs };
   }
-  return { path: abs };
+
+  // No explicit config → auto-share across git worktrees unless opted out.
+  if (cfg.memory.worktree_sharing !== false) {
+    const commonDir = detectWorktreeCommonDir(projectRoot);
+    if (commonDir) {
+      const derived = path.join(commonDir, 'moflo', 'durable.db');
+      // Paranoia guard — a derived path should never alias the local DB, but a
+      // pathological `.git` layout shouldn't turn into a self-sync.
+      if (stableAbsolute(derived) !== local()) {
+        return { path: derived, autoWorktree: true };
+      }
+    }
+  }
+  return { path: null, skipped: 'not-configured' };
 }
 
 /**
@@ -113,6 +212,13 @@ export async function flushDurableToShared(
   projectRoot: string,
   durablePath: string,
 ): Promise<CherryPickResult> {
+  // Ensure the parent dir exists — auto-derived worktree stores live under
+  // `<git-common-dir>/moflo/`, which won't exist on the very first flush.
+  try {
+    fs.mkdirSync(path.dirname(durablePath), { recursive: true });
+  } catch {
+    /* a real open failure surfaces from cherry-pick below */
+  }
   return cherryPickLearningsFromLegacy({
     projectRoot,
     legacyPaths: [memoryDbPath(projectRoot)],
@@ -135,7 +241,7 @@ export async function syncDurableAtSessionStart(
   opts: { projectRoot?: string; config?: MofloConfig } = {},
 ): Promise<DurableSyncReport> {
   const projectRoot = opts.projectRoot ?? findProjectRoot();
-  const { path: durablePath, skipped } = resolveDurablePath(projectRoot, opts.config);
+  const { path: durablePath, skipped, autoWorktree } = resolveDurablePath(projectRoot, opts.config);
   if (!durablePath) {
     return { durablePath: null, skipped, flushedToShared: 0, seededToLocal: 0 };
   }
@@ -146,6 +252,7 @@ export async function syncDurableAtSessionStart(
   const seed = await seedDurableFromShared(projectRoot, durablePath);
   return {
     durablePath,
+    autoWorktree: autoWorktree ?? false,
     flushedToShared: flush.copied,
     seededToLocal: seed.copied,
   };

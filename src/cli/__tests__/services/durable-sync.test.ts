@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -137,6 +137,100 @@ describe('resolveDurablePath (#1232)', () => {
     const r = resolveDurablePath(root, configWithDurable(root, memoryDbPath(root)));
     expect(r.path).toBeNull();
     expect(r.skipped).toBe('same-as-local');
+  });
+});
+
+/** Config with the worktree-sharing opt-out toggle set. */
+function configWithWorktreeSharing(root: string, enabled: boolean): MofloConfig {
+  const cfg = loadMofloConfig(root);
+  cfg.memory.worktree_sharing = enabled;
+  return cfg;
+}
+
+describe('resolveDurablePath — automatic worktree sharing (#1231 follow-up)', () => {
+  it('does NOT auto-derive for a plain single checkout (no worktrees)', async () => {
+    const root = await makeRoot('moflo-solo-');
+    mkdirSync(join(root, '.git'), { recursive: true }); // primary checkout, no worktrees
+    const r = resolveDurablePath(root, loadMofloConfig(root));
+    expect(r.path).toBeNull();
+    expect(r.skipped).toBe('not-configured');
+  });
+
+  it('does NOT auto-derive when there is no .git at all', async () => {
+    const root = await makeRoot('moflo-nogit-');
+    const r = resolveDurablePath(root, loadMofloConfig(root));
+    expect(r.path).toBeNull();
+    expect(r.autoWorktree).toBeUndefined();
+  });
+
+  it('auto-derives under the git common dir for a primary checkout WITH worktrees', async () => {
+    const root = await makeRoot('moflo-primary-');
+    mkdirSync(join(root, '.git', 'worktrees', 'wt1'), { recursive: true }); // a sibling worktree exists
+    const r = resolveDurablePath(root, loadMofloConfig(root));
+    expect(r.path).toBe(join(root, '.git', 'moflo', 'durable.db'));
+    expect(r.autoWorktree).toBe(true);
+  });
+
+  it('does NOT auto-derive for a git submodule (.git file → modules/, not worktrees/)', async () => {
+    // A submodule's `.git` is a FILE like a linked worktree, but its gitdir points
+    // into the superproject's `.git/modules/<name>` (no `worktrees` segment, no
+    // `commondir`). It must never share a durable store with the superproject.
+    const superRepo = await makeRoot('moflo-super-');
+    const modulesGitdir = join(superRepo, '.git', 'modules', 'sub');
+    mkdirSync(modulesGitdir, { recursive: true });
+    const sub = await makeRoot('moflo-sub-');
+    writeFileSync(join(sub, '.git'), `gitdir: ${modulesGitdir}\n`);
+
+    const r = resolveDurablePath(sub, loadMofloConfig(sub));
+    expect(r.path).toBeNull();
+    expect(r.skipped).toBe('not-configured');
+  });
+
+  it('auto-derives the SAME path from a linked worktree (via commondir)', async () => {
+    const main = await makeRoot('moflo-main-');
+    const gitdir = join(main, '.git', 'worktrees', 'wtA');
+    mkdirSync(gitdir, { recursive: true });
+    writeFileSync(join(gitdir, 'commondir'), '../..\n');
+
+    const wt = await makeRoot('moflo-linked-');
+    writeFileSync(join(wt, '.git'), `gitdir: ${gitdir}\n`);
+
+    const r = resolveDurablePath(wt, loadMofloConfig(wt));
+    // Resolves to the MAIN repo's shared .git — the same store the primary
+    // checkout would derive, which is what makes worktrees converge.
+    expect(r.path).toBe(join(main, '.git', 'moflo', 'durable.db'));
+    expect(r.autoWorktree).toBe(true);
+  });
+
+  it('an explicit durable_path wins over auto-derivation', async () => {
+    const root = await makeRoot('moflo-primary-');
+    mkdirSync(join(root, '.git', 'worktrees', 'wt1'), { recursive: true });
+    const explicit = join(await makeRoot('moflo-shared-'), 'durable.db');
+    const r = resolveDurablePath(root, configWithDurable(root, explicit));
+    expect(r.path).toBe(explicit);
+    expect(r.autoWorktree).toBeUndefined();
+  });
+
+  it('memory.worktree_sharing: false disables auto-derivation', async () => {
+    const root = await makeRoot('moflo-optout-');
+    mkdirSync(join(root, '.git', 'worktrees', 'wt1'), { recursive: true });
+    const r = resolveDurablePath(root, configWithWorktreeSharing(root, false));
+    expect(r.path).toBeNull();
+    expect(r.skipped).toBe('not-configured');
+  });
+
+  it('syncDurableAtSessionStart auto-creates the derived store and flags autoWorktree', async () => {
+    const root = await makeRoot('moflo-primary-');
+    mkdirSync(join(root, '.git', 'worktrees', 'wt1'), { recursive: true });
+    await makeDbWith(memoryDbPath(root), [{ key: 'auto-lesson', namespace: 'learnings' }]);
+
+    const report = await syncDurableAtSessionStart({ projectRoot: root, config: loadMofloConfig(root) });
+    const derived = join(root, '.git', 'moflo', 'durable.db');
+    expect(report.durablePath).toBe(derived);
+    expect(report.autoWorktree).toBe(true);
+    expect(report.flushedToShared).toBe(1);
+    expect(existsSync(derived)).toBe(true); // parent dir was created on flush
+    expect(readRows(derived).map((r) => r.key)).toEqual(['auto-lesson']);
   });
 });
 

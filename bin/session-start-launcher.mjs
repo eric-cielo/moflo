@@ -2175,11 +2175,38 @@ try {
   // override is set or moflo.yaml has an UNcommented `durable_path:` line (the
   // generated config ships a commented example, which this regex ignores).
   const durableYamlPath = resolve(projectRoot, 'moflo.yaml');
-  let durableEnabled = Boolean(process.env.MOFLO_DURABLE_PATH);
-  if (!durableEnabled && existsSync(durableYamlPath)) {
-    try {
-      durableEnabled = /^[ \t]*durable_path[ \t]*:/m.test(readFileSync(durableYamlPath, 'utf-8'));
-    } catch { /* unreadable yaml — treat as not-configured */ }
+  // Read moflo.yaml ONCE, then run every pre-gate regex against the one string —
+  // every consumer with a moflo.yaml pays a single read here, not one per key.
+  let durableYaml = '';
+  try {
+    if (existsSync(durableYamlPath)) durableYaml = readFileSync(durableYamlPath, 'utf-8');
+  } catch { /* unreadable yaml — treat as not-configured */ }
+  let durableEnabled = Boolean(process.env.MOFLO_DURABLE_PATH) || /^[ \t]*durable_path[ \t]*:/m.test(durableYaml);
+  // Auto-enable across git worktrees — moflo's core multi-worktree competency.
+  // When durable_path isn't explicitly configured, still run the sync IF this
+  // repo has worktrees in play (this checkout is a linked worktree, or the
+  // shared .git has a non-empty worktrees/ registry), unless the user opted out
+  // with `worktree_sharing: false`. A plain single checkout short-circuits on a
+  // cheap fs stat with no module import, so solo users pay ~nothing. The
+  // authoritative derivation lives in durable-sync.ts#resolveDurablePath.
+  if (!durableEnabled) {
+    const optedOut = /^[ \t]*(worktree_sharing|worktreeSharing)[ \t]*:[ \t]*false\b/m.test(durableYaml);
+    if (!optedOut) {
+      try {
+        const dotgit = join(projectRoot, '.git');
+        const st = statSync(dotgit);
+        if (st.isFile()) {
+          // Linked worktree — `.git` file's `gitdir:` points into `.git/worktrees/…`.
+          // A submodule's points into `.git/modules/…` (no worktrees segment) and
+          // must NOT auto-share with its superproject, so gate on the segment.
+          if (/[\\/]worktrees[\\/]/.test(readFileSync(dotgit, 'utf-8'))) durableEnabled = true;
+        } else if (st.isDirectory()) {
+          try {
+            if (readdirSync(join(dotgit, 'worktrees')).length > 0) durableEnabled = true;
+          } catch { /* no worktrees registry (ENOENT) — stay off */ }
+        }
+      } catch { /* no/unreadable .git — not a worktree, stay off */ }
+    }
   }
   const durablePaths = durableEnabled
     ? [
@@ -2191,6 +2218,12 @@ try {
   if (durablePath) {
     const { syncDurableAtSessionStart } = await import(pathToFileURL(durablePath).href);
     const result = await syncDurableAtSessionStart({ projectRoot });
+    if (result?.autoWorktree && (result.seededToLocal > 0 || result.flushedToShared > 0)) {
+      emitMutation(
+        'auto-shared learnings across git worktrees',
+        'converging durable learnings for this repo — set memory.worktree_sharing: false to opt out',
+      );
+    }
     if (result?.seededToLocal > 0) {
       emitMutation(
         'seeded shared learnings',
