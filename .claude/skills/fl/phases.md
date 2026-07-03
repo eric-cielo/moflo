@@ -109,12 +109,44 @@ If `--epic-branch <branch>` is set, the epic orchestrator already created and ch
 git branch --show-current  # should match the epic branch name
 ```
 
-Otherwise:
+Otherwise, **without** `--worktree`:
 ```bash
 git checkout main && git pull origin main
 git checkout -b <type>/<issue-number>-<short-desc>
 ```
 Types: `feature/`, `fix/`, `refactor/`, `docs/`.
+
+#### With `--worktree` (`-w` / `-wt`) — isolate the run in a fresh worktree
+
+When the worktree flag is set, create the branch **in a new git worktree** and do all
+implementation, tests, simplify, commit, and PR from inside it. The current checkout is left
+untouched. Durable learnings still converge automatically — a worktree shares the repo's
+`<git-common-dir>/moflo/durable.db` (see `/memory-worktree`).
+
+Compute paths with Node, never string-concatenate — the branch name contains `/`, and the
+worktree dir must sit **outside** the checkout on every OS (Rule #1: no hardcoded separators,
+no `/tmp`, no `mkdir -p`):
+
+```bash
+# 1. Fresh base — update main in the current checkout first (worktrees share objects).
+git fetch origin main
+
+# 2. Resolve a sibling worktree path: <repo-parent>/<repo>-worktrees/<slugged-branch>
+#    Slug the branch's "/" to "-" so the dir is flat and valid on Windows/macOS/Linux.
+node -e "const p=require('path'),cp=require('child_process');const root=cp.execSync('git rev-parse --show-toplevel').toString().trim();const branch=process.argv[1];const slug=branch.replace(/[\\\\/]/g,'-');const dir=p.join(p.dirname(root),p.basename(root)+'-worktrees',slug);console.log(dir)" "<type>/<issue-number>-<short-desc>"
+
+# 3. Create the worktree + branch off origin/main in one step (the printed path from step 2).
+git worktree add -b <type>/<issue-number>-<short-desc> "<computed-path>" origin/main
+```
+
+Then `cd "<computed-path>"` and run **every** remaining phase (implement → tests → simplify →
+commit → PR) from there. Report the worktree path to the user. Leave the worktree in place
+after the PR — the user may want to inspect it; note that `git worktree remove "<path>"` cleans
+it up when done.
+
+If `git worktree add` fails because the path already exists (a prior run), reuse it:
+`cd "<computed-path>" && git status` and continue, or pick a `-2` suffix — do not delete a dir
+you did not just create.
 
 ### 3.3 Implement
 Follow the plan from the ticket.
