@@ -31,7 +31,7 @@ import { fileURLToPath } from 'url';
 import { execSync, execFileSync, spawn } from 'child_process';
 import { memoryDbPath, MOFLO_DIR, findProjectRoot } from './lib/moflo-paths.mjs';
 import { openBackend } from './lib/get-backend.mjs';
-import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
+import { applyIncrementalChunks, schemeTaggedContentHash } from './lib/incremental-write.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 
 
@@ -41,6 +41,16 @@ const projectRoot = findProjectRoot();
 const NAMESPACE = 'code-map';
 const DB_PATH = memoryDbPath(projectRoot);
 const HASH_CACHE_PATH = resolve(projectRoot, MOFLO_DIR, 'code-map-hash.txt');
+
+// Output-scheme version for the skip-cache (#1260). Bump whenever the emitted
+// key scheme changes (chunk kinds, batch sizes, `file:` granularity) so a
+// generator upgrade forces one rebuild + orphan sweep instead of silently
+// skipping and leaving the previous scheme's rows orphaned. This is also the
+// single source of truth for the code-map scheme now that `flo memory code-map`
+// delegates here rather than shipping a second, divergent generator.
+// v2: unified scheme — invalidates every pre-#1260 cache (bare hash or the
+// old directory-level `flo memory code-map` output) exactly once on pickup.
+const SCHEME_VERSION = 2;
 
 // Directories to exclude from indexing
 const EXCLUDE_DIRS = [
@@ -786,15 +796,16 @@ async function main() {
     return;
   }
 
-  // 2. Check hash for incremental skip
-  const currentHash = computeContentListHash(files);
+  // 2. Check hash for incremental skip — scheme-versioned so a scheme change
+  // invalidates the cache and forces a rebuild + orphan sweep (#1260).
+  const currentHash = schemeTaggedContentHash(files, SCHEME_VERSION);
 
   if (statsOnly) {
     const db = await getDb();
     const count = countNamespace(db);
     db.close();
     log(`Stats: ${files.length} source files, ${count} chunks in code-map namespace`);
-    log(`File list hash: ${currentHash.slice(0, 12)}...`);
+    log(`Scheme v${SCHEME_VERSION}, file list hash: ${currentHash.slice(0, 20)}...`);
     return;
   }
 

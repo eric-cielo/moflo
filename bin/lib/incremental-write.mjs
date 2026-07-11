@@ -66,6 +66,29 @@ export function computeContentListHash(files) {
 }
 
 /**
+ * Scheme-versioned wrapper around {@link computeContentListHash}. Prefixes the
+ * content hash with `v<schemeVersion>:` so the indexer's skip-cache encodes the
+ * OUTPUT scheme, not just the input file list (#1260).
+ *
+ * Why this is load-bearing: the skip gate short-circuits the whole
+ * extract+write pipeline (including the orphan sweep) whenever the stored hash
+ * matches. If a generator upgrade changes the emitted key scheme (e.g. drops
+ * `file:` entries, or two entry points write divergent shapes) while the source
+ * file list is unchanged, an unversioned hash still matches → the generator
+ * skips → the previous scheme's orphaned rows persist forever. Bumping
+ * `schemeVersion` invalidates every stored cache exactly once, forcing a
+ * rebuild + orphan sweep that reconciles the namespace. Legacy bare-hash caches
+ * (no `v<n>:` prefix) also mismatch, so upgrading consumers self-heal.
+ *
+ * @param {string[]} files - absolute paths
+ * @param {number|string} schemeVersion - monotonically-bumped scheme tag
+ * @returns {string} `v<schemeVersion>:<sha256>`
+ */
+export function schemeTaggedContentHash(files, schemeVersion) {
+  return `v${schemeVersion}:${computeContentListHash(files)}`;
+}
+
+/**
  * Load `key → content` for every active row in the namespace, optionally
  * scoped to keys starting with `keyPrefix` (one doc's chunks at a time —
  * lets per-file indexers like `index-guidance.mjs` content-diff without

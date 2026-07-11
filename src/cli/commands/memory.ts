@@ -6,15 +6,13 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as pathModule from 'path';
-import { createHash } from 'crypto';
-import { execSync } from 'child_process';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
-import { legacySwarmPath, runtimePath, memoryDbPath } from '../services/moflo-paths.js';
+import { memoryDbPath } from '../services/moflo-paths.js';
 import { resolveBridgeDbPath } from '../memory/bridge-core.js';
 import { findProjectRoot } from '../services/project-root.js';
 
@@ -2270,137 +2268,45 @@ const rebuildIndexCommand: Command = {
 };
 
 // ============================================================================
-// code-map subcommand
+// code-map subcommand — delegates to the single shipped generator (#1260)
 // ============================================================================
 
-const EXCLUDE_DIRS = [
-  'back-office-template', 'template', '.claude', 'node_modules',
-  'dist', 'build', '.next', 'coverage',
-];
-
-const DIR_DESCRIPTIONS: Record<string, string> = {
-  entities: 'MikroORM entity definitions',
-  services: 'business logic services',
-  routes: 'Fastify route handlers',
-  middleware: 'request middleware (auth, validation, tenancy)',
-  schemas: 'Zod validation schemas',
-  types: 'TypeScript type definitions',
-  utils: 'utility helpers',
-  config: 'configuration',
-  migrations: 'database migrations',
-  scripts: 'CLI scripts',
-  components: 'React components',
-  pages: 'route page components',
-  contexts: 'React context providers',
-  hooks: 'React custom hooks',
-  layout: 'app shell layout',
-  themes: 'MUI theme configuration',
-  api: 'API client layer',
-  locales: 'i18n translation files',
-  tests: 'test suites',
-  e2e: 'end-to-end tests',
-};
-
-const TS_PATTERNS = [
-  /^export\s+(?:default\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+([\w.]+))?(?:\s+implements\s+([\w,\s.]+))?/,
-  /^export\s+(?:default\s+)?interface\s+(\w+)(?:\s+extends\s+([\w,\s.]+))?/,
-  /^export\s+(?:default\s+)?type\s+(\w+)\s*[=<]/,
-  /^export\s+(?:const\s+)?enum\s+(\w+)/,
-  /^export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)/,
-  /^export\s+(?:default\s+)?const\s+(\w+)\s*[=:]/,
-];
-
-const ENTITY_DECORATOR = /@Entity\s*\(/;
-const IFACE_MAP_BATCH = 20;
-const TYPE_INDEX_BATCH = 80;
-
-interface ExtractedType {
-  name: string;
-  kind: string;
-  bases: string | null;
-  implements: string | null;
-  isEntity: boolean;
-  file: string;
-}
-
-function detectKind(line: string): string {
-  if (/\bclass\b/.test(line)) return 'class';
-  if (/\binterface\b/.test(line)) return 'interface';
-  if (/\btype\b/.test(line)) return 'type';
-  if (/\benum\b/.test(line)) return 'enum';
-  if (/\bfunction\b/.test(line)) return 'function';
-  if (/\bconst\b/.test(line)) return 'const';
-  return 'export';
-}
-
-function extractTypesFromFile(filePath: string, projectRoot: string): ExtractedType[] {
-  const fullPath = pathModule.resolve(projectRoot, filePath);
-  if (!fs.existsSync(fullPath)) return [];
-
-  let content: string;
-  try {
-    content = fs.readFileSync(fullPath, 'utf-8');
-  } catch {
-    return [];
-  }
-
-  const lines = content.split(/\r?\n/);
-  const types: ExtractedType[] = [];
-  const seen = new Set<string>();
-  let isEntityNext = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-
-    if (ENTITY_DECORATOR.test(line)) {
-      isEntityNext = true;
-      continue;
-    }
-
-    for (const pattern of TS_PATTERNS) {
-      const m = line.match(pattern);
-      if (m && m[1] && !seen.has(m[1])) {
-        seen.add(m[1]);
-        const kind = detectKind(line);
-        const bases = (m[2] || '').trim();
-        const implements_ = (m[3] || '').trim();
-        types.push({
-          name: m[1],
-          kind,
-          bases: bases || null,
-          implements: implements_ || null,
-          isEntity: isEntityNext,
-          file: filePath,
-        });
-        isEntityNext = false;
-        break;
-      }
-    }
-
-    if (isEntityNext && !line.startsWith('@') && !line.startsWith('export') && line.length > 0) {
-      isEntityNext = false;
+/**
+ * Resolve the file-level code-map generator (`bin/generate-code-map.mjs`) for
+ * `cwd`, reusing moflo's canonical bin resolver so this dist CLI command and
+ * the batch indexer (`.claude/scripts/index-all.mjs`) spawn the exact same
+ * script — one generator, one key scheme (#1260).
+ *
+ * Cross-platform: the resolver is located via a cwd-relative path (never a
+ * file-relative `../../../../` depth — that broke #1126) and imported as a
+ * `file://` URL so Windows accepts the absolute path (Rule #1). Returns null
+ * when no copy is found (broken install / not-yet-synced worktree).
+ */
+async function resolveCodeMapGenerator(cwd: string): Promise<string | null> {
+  const { pathToFileURL } = await import('url');
+  const resolverCandidates = [
+    pathModule.join(cwd, 'node_modules', 'moflo', 'bin', 'lib', 'resolve-bin.mjs'),
+    pathModule.join(cwd, 'bin', 'lib', 'resolve-bin.mjs'), // dev / source tree
+  ];
+  for (const resolverPath of resolverCandidates) {
+    if (!fs.existsSync(resolverPath)) continue;
+    try {
+      const { resolveMofloBin } = await import(pathToFileURL(resolverPath).href);
+      return (
+        resolveMofloBin(cwd, 'flo-codemap', 'generate-code-map.mjs', {
+          includeDevFallback: true,
+        }) ?? null
+      );
+    } catch {
+      // Fall through to the next resolver candidate.
     }
   }
-
-  return types;
-}
-
-function getProjectName(filePath: string): string {
-  const parts = filePath.split('/');
-  if (parts[0] === 'packages' && parts.length >= 2) return `${parts[0]}/${parts[1]}`;
-  if (parts[0] === 'back-office' && parts.length >= 2) return `${parts[0]}/${parts[1]}`;
-  if (parts[0] === 'customer-portal' && parts.length >= 2) return `${parts[0]}/${parts[1]}`;
-  if (parts[0] === 'admin-console' && parts.length >= 2) return `${parts[0]}/${parts[1]}`;
-  if (parts[0] === 'webhooks' && parts.length >= 2) return `${parts[0]}/${parts[1]}`;
-  if (parts[0] === 'mobile-app') return 'mobile-app';
-  if (parts[0] === 'tests') return 'tests';
-  if (parts[0] === 'scripts') return 'scripts';
-  return parts[0];
+  return null;
 }
 
 const codeMapCommand: Command = {
   name: 'code-map',
-  description: 'Generate structural code map (project overviews, directory details, type indexes) into code-map namespace',
+  description: 'Generate the structural code map (project overviews, directory details, type + file indexes) into the code-map namespace',
   options: [
     {
       name: 'force',
@@ -2438,318 +2344,52 @@ const codeMapCommand: Command = {
     const verbose = ctx.flags.verbose as boolean;
     const statsOnly = ctx.flags.stats as boolean;
     const skipEmbeddings = ctx.flags.noEmbeddings as boolean;
-    const NAMESPACE = 'code-map';
-
-    const fs = await import('fs');
-    const pathMod = await import('path');
-    const { execSync } = await import('child_process');
-    const { createHash } = await import('crypto');
-
     const cwd = ctx.cwd || process.cwd();
-    // Post-#1168: canonical at `.moflo/memory/code-map-hash.txt`. Legacy
-    // `.swarm/code-map-hash.txt` is read-only fallback for upgrade scenarios.
-    const hashCachePath = runtimePath('memory', 'code-map-hash.txt');
-    const legacyHashCachePath = legacySwarmPath('code-map-hash.txt');
 
     output.writeln();
     output.writeln(output.bold('Generating Code Map'));
     output.writeln(output.dim('─'.repeat(50)));
 
-    // 1. Get source files via git
-    let raw: string;
-    try {
-      raw = execSync(
-        `git ls-files -- "*.ts" "*.tsx" "*.js" "*.mjs" "*.jsx"`,
-        { cwd, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true }
-      ).trim();
-    } catch {
-      output.printError('Failed to list source files via git. Is this a git repository?');
+    // Single source of truth (#1260): delegate to the one shipped generator —
+    // the same `bin/generate-code-map.mjs` that `index-all.mjs` runs. This
+    // command previously carried a SECOND, divergent generator (directory-level
+    // scheme with no `file:` entries, a path-list-only skip hash at a different
+    // cache path, and a DELETE+reinsert write that nulled embeddings). The two
+    // fought over the `code-map` namespace and accumulated orphaned rows that
+    // neither skip-cache could reconcile. Delegating here makes divergence
+    // structurally impossible.
+    const script = await resolveCodeMapGenerator(cwd);
+    if (!script) {
+      output.printError(
+        'Could not locate the code-map generator (bin/generate-code-map.mjs). Is the moflo package installed?',
+      );
       return { success: false, exitCode: 1 };
     }
 
-    const files = raw ? raw.split(/\r?\n/).filter((f: string) => {
-      for (const ex of EXCLUDE_DIRS) {
-        if (f.startsWith(ex + '/') || f.startsWith(ex + '\\')) return false;
-      }
-      return true;
-    }) : [];
+    const scriptArgs: string[] = [];
+    if (forceRegen) scriptArgs.push('--force');
+    if (verbose) scriptArgs.push('--verbose');
+    if (statsOnly) scriptArgs.push('--stats');
+    if (skipEmbeddings) scriptArgs.push('--no-embeddings');
 
-    if (files.length === 0) {
-      output.writeln('No source files found.');
-      return { success: true };
-    }
-
-    output.writeln(`Found ${files.length} source files`);
-
-    // 2. Hash check
-    const sorted = [...files].sort();
-    const currentHash = createHash('sha256').update(sorted.join('\n')).digest('hex');
-
-    if (statsOnly) {
-      const { db } = await openDb(cwd);
-      const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = ?`);
-      stmt.bind([NAMESPACE]);
-      const count = stmt.step() ? (stmt.getAsObject() as any).cnt : 0;
-      stmt.free();
-      db.close();
-      output.writeln(`Stats: ${files.length} source files, ${count} chunks in code-map namespace`);
-      output.writeln(`File list hash: ${currentHash.slice(0, 12)}...`);
-      return { success: true };
-    }
-
-    // Check if unchanged — canonical first, then legacy `.swarm/` fallback.
-    const cachedReadPath = fs.existsSync(hashCachePath)
-      ? hashCachePath
-      : (fs.existsSync(legacyHashCachePath) ? legacyHashCachePath : null);
-    if (!forceRegen && cachedReadPath) {
-      const cached = fs.readFileSync(cachedReadPath, 'utf-8').trim();
-      if (cached === currentHash) {
-        const { db } = await openDb(cwd);
-        const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = ?`);
-        stmt.bind([NAMESPACE]);
-        const count = stmt.step() ? (stmt.getAsObject() as any).cnt : 0;
-        stmt.free();
-        db.close();
-        if (count > 0) {
-          output.writeln(output.dim(`Skipping -- file list unchanged (${count} chunks in DB)`));
-          return { success: true };
-        }
-      }
-    }
-
-    // 3. Extract types
-    output.writeln('Extracting type declarations...');
-    const allTypes: ExtractedType[] = [];
-    const filesByProject: Record<string, string[]> = {};
-    const typesByProject: Record<string, ExtractedType[]> = {};
-    const typesByDir: Record<string, ExtractedType[]> = {};
-
-    for (const file of files) {
-      const project = getProjectName(file);
-      if (!filesByProject[project]) filesByProject[project] = [];
-      filesByProject[project].push(file);
-
-      const types = extractTypesFromFile(file, cwd);
-      for (const t of types) {
-        allTypes.push(t);
-        if (!typesByProject[project]) typesByProject[project] = [];
-        typesByProject[project].push(t);
-
-        const dir = pathModule.dirname(t.file).replace(/\\/g, '/');
-        if (!typesByDir[dir]) typesByDir[dir] = [];
-        typesByDir[dir].push(t);
-      }
-    }
-
-    output.writeln(`Extracted ${allTypes.length} types from ${Object.keys(filesByProject).length} projects`);
-
-    // 4. Generate chunks
-    const allChunks: Array<{ key: string; content: string; metadata: Record<string, unknown>; tags: string[] }> = [];
-
-    // Project overviews
-    for (const [project, projFiles] of Object.entries(filesByProject)) {
-      const types = typesByProject[project] || [];
-      const dirMap: Record<string, string[]> = {};
-
-      for (const t of types) {
-        const rel = pathModule.relative(project, pathModule.dirname(t.file)).replace(/\\/g, '/') || '(root)';
-        if (!dirMap[rel]) dirMap[rel] = [];
-        dirMap[rel].push(t.name);
-      }
-
-      // Detect primary language
-      let tsx = 0, ts = 0, js = 0;
-      for (const f of projFiles) {
-        const ext = pathModule.extname(f);
-        if (ext === '.tsx' || ext === '.jsx') tsx++;
-        else if (ext === '.ts') ts++;
-        else js++;
-      }
-      const lang = tsx > ts && tsx > js ? 'React/TypeScript' : ts >= js ? 'TypeScript' : 'JavaScript';
-
-      let content = `# ${project} [${lang}, ${projFiles.length} files, ${types.length} types]\n\n`;
-      for (const dir of Object.keys(dirMap).sort()) {
-        const names = dirMap[dir];
-        const lastDir = dir.split('/').pop() || '';
-        const desc = DIR_DESCRIPTIONS[lastDir];
-        const descStr = desc ? ` -- ${desc}` : '';
-        const shown = names.slice(0, 8).join(', ');
-        const overflow = names.length > 8 ? `, ... (+${names.length - 8} more)` : '';
-        content += `  ${dir}${descStr}: ${shown}${overflow}\n`;
-      }
-
-      allChunks.push({
-        key: `project:${project}`,
-        content: content.trim(),
-        metadata: { kind: 'project-overview', project, language: lang, fileCount: projFiles.length, typeCount: types.length },
-        tags: ['project', project],
+    const { execFileSync } = await import('child_process');
+    try {
+      // process.execPath (not bare 'node') so the child uses the exact same
+      // interpreter with no PATH dependency — robust on Windows where the
+      // launching node need not be on PATH (Rule #1). execFileSync passes argv
+      // as an array, so spaces in the path (e.g. "Program Files") are safe.
+      execFileSync(process.execPath, [script, ...scriptArgs], {
+        cwd,
+        stdio: 'inherit',
+        windowsHide: true,
+        timeout: 5 * 60_000,
       });
-    }
-
-    // Directory details
-    for (const [dir, types] of Object.entries(typesByDir)) {
-      if (types.length < 2) continue;
-      const lastDir = dir.split('/').pop() || '';
-      const desc = DIR_DESCRIPTIONS[lastDir];
-      let content = `# ${dir} (${types.length} types)\n`;
-      if (desc) content += `${desc}\n`;
-      content += '\n';
-
-      const sortedTypes = [...types].sort((a, b) => a.name.localeCompare(b.name));
-      for (const t of sortedTypes) {
-        const suffix: string[] = [];
-        if (t.bases) suffix.push(`: ${t.bases}`);
-        if (t.implements) suffix.push(`: ${t.implements}`);
-        const suffixStr = suffix.length ? ` ${suffix.join(' ')}` : '';
-        const fileName = pathModule.basename(t.file);
-        content += `  ${t.name}${suffixStr} (${fileName})\n`;
-      }
-
-      allChunks.push({
-        key: `dir:${dir}`,
-        content: content.trim(),
-        metadata: { kind: 'directory-detail', directory: dir, typeCount: types.length },
-        tags: ['directory', dir.split('/')[0]],
-      });
-    }
-
-    // Interface maps
-    const interfaces = new Map<string, { defined: string; implementations: Array<{ name: string; project: string }> }>();
-    for (const t of allTypes) {
-      if (t.kind === 'interface' && !interfaces.has(t.name)) {
-        interfaces.set(t.name, { defined: t.file, implementations: [] });
-      }
-    }
-    for (const t of allTypes) {
-      if (t.kind !== 'class') continue;
-      const impls = t.implements ? t.implements.split(',').map((s: string) => s.trim()) : [];
-      const bases = t.bases ? [t.bases.trim()] : [];
-      for (const iface of [...impls, ...bases]) {
-        if (interfaces.has(iface)) {
-          interfaces.get(iface)!.implementations.push({ name: t.name, project: getProjectName(t.file) });
-        }
-      }
-    }
-
-    const mapped = Array.from(interfaces.entries())
-      .filter(([, v]) => v.implementations.length > 0)
-      .sort(([a], [b]) => a.localeCompare(b));
-
-    if (mapped.length > 0) {
-      const totalBatches = Math.ceil(mapped.length / IFACE_MAP_BATCH);
-      for (let i = 0; i < mapped.length; i += IFACE_MAP_BATCH) {
-        const batch = mapped.slice(i, i + IFACE_MAP_BATCH);
-        const batchNum = Math.floor(i / IFACE_MAP_BATCH) + 1;
-
-        let content = `# Interface-to-Implementation Map (${batchNum}/${totalBatches})\n\n`;
-        for (const [name, info] of batch) {
-          const implStr = info.implementations.map(impl => `${impl.name} (${impl.project})`).join(', ');
-          content += `  ${name} -> ${implStr}\n`;
-        }
-
-        allChunks.push({
-          key: `iface-map:${batchNum}`,
-          content: content.trim(),
-          metadata: { kind: 'interface-map', batch: batchNum, totalBatches, count: batch.length },
-          tags: ['interface-map'],
-        });
-      }
-    }
-
-    // Type index
-    const sortedAllTypes = [...allTypes].sort((a, b) => a.name.localeCompare(b.name));
-    const typeIdxTotalBatches = Math.ceil(sortedAllTypes.length / TYPE_INDEX_BATCH);
-
-    for (let i = 0; i < sortedAllTypes.length; i += TYPE_INDEX_BATCH) {
-      const batch = sortedAllTypes.slice(i, i + TYPE_INDEX_BATCH);
-      const batchNum = Math.floor(i / TYPE_INDEX_BATCH) + 1;
-
-      let content = `# Type Index (batch ${batchNum}, ${batch.length} types)\n\n`;
-      for (const t of batch) {
-        const ext = pathModule.extname(t.file);
-        const lang = (ext === '.tsx' || ext === '.jsx') ? 'tsx' : ext === '.ts' ? 'ts' : ext === '.mjs' ? 'esm' : 'js';
-        content += `  ${t.name} -> ${t.file} [${lang}]\n`;
-      }
-
-      allChunks.push({
-        key: `type-index:${batchNum}`,
-        content: content.trim(),
-        metadata: { kind: 'type-index', batch: batchNum, totalBatches: typeIdxTotalBatches, count: batch.length },
-        tags: ['type-index'],
-      });
-    }
-
-    output.writeln(`Generated ${allChunks.length} chunks`);
-    if (verbose) {
-      const projectCount = allChunks.filter(c => (c.metadata.kind as string) === 'project-overview').length;
-      const dirCount = allChunks.filter(c => (c.metadata.kind as string) === 'directory-detail').length;
-      const ifaceCount = allChunks.filter(c => (c.metadata.kind as string) === 'interface-map').length;
-      const typeIdxCount = allChunks.filter(c => (c.metadata.kind as string) === 'type-index').length;
-      output.writeln(`  Project overviews: ${projectCount}`);
-      output.writeln(`  Directory details: ${dirCount}`);
-      output.writeln(`  Interface maps:    ${ifaceCount}`);
-      output.writeln(`  Type index:        ${typeIdxCount}`);
-    }
-
-    // 5. Write to DB
-    output.writeln('Writing to memory database...');
-    const { db, dbPath } = await openDb(cwd);
-
-    // Clear old code-map entries
-    db.run(`DELETE FROM memory_entries WHERE namespace = ?`, [NAMESPACE]);
-
-    for (const chunk of allChunks) {
-      batchStoreEntry(db, chunk.key, NAMESPACE, chunk.content, chunk.metadata, chunk.tags);
-    }
-
-    saveAndCloseDb(db, dbPath);
-
-    // Save hash
-    const hashDir = pathModule.dirname(hashCachePath);
-    if (!fs.existsSync(hashDir)) {
-      fs.mkdirSync(hashDir, { recursive: true });
-    }
-    fs.writeFileSync(hashCachePath, currentHash, 'utf-8');
-
-    output.printSuccess(`${allChunks.length} chunks written to code-map namespace`);
-
-    // Generate embeddings unless skipped
-    if (!skipEmbeddings) {
-      output.writeln(output.dim('Generating embeddings for code-map entries...'));
-      try {
-        const { generateEmbedding } = await import('../memory/memory-initializer.js');
-        const { db: db2, dbPath: dbPath2 } = await openDb(cwd);
-
-        const stmt = db2.prepare(
-          `SELECT id, content FROM memory_entries WHERE namespace = ? AND (embedding IS NULL OR embedding = '')`,
-        );
-        stmt.bind([NAMESPACE]);
-        const entries: Array<{ id: string; content: string }> = [];
-        while (stmt.step()) entries.push(stmt.getAsObject() as { id: string; content: string });
-        stmt.free();
-
-        let embedded = 0;
-        for (const entry of entries) {
-          try {
-            const text = entry.content.substring(0, 1500);
-            const { embedding, dimensions, model } = await generateEmbedding(text);
-            db2.run(
-              `UPDATE memory_entries SET embedding = ?, embedding_model = ?, embedding_dimensions = ?, updated_at = ? WHERE id = ?`,
-              [JSON.stringify(embedding), model, dimensions, Date.now(), entry.id]
-            );
-            embedded++;
-          } catch { /* skip */ }
-        }
-
-        if (embedded > 0) {
-          saveAndCloseDb(db2, dbPath2);
-          output.printSuccess(`Generated ${embedded} embeddings`);
-        } else {
-          db2.close();
-        }
-      } catch (err: any) {
-        output.writeln(output.dim(`  Embedding generation skipped: ${err.message}`));
-      }
+    } catch (err) {
+      const code = (err as { status?: number }).status;
+      output.printError(
+        `Code map generation failed${typeof code === 'number' ? ` (exit ${code})` : ''}: ${errorDetail(err)}`,
+      );
+      return { success: false, exitCode: typeof code === 'number' ? code : 1 };
     }
 
     return { success: true };
