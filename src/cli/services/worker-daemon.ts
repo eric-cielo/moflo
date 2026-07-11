@@ -2,20 +2,25 @@
  * Worker Daemon Service
  * Node.js-based background worker system that auto-runs like shell daemons.
  *
- * Default workers:
+ * Default workers (local-only, free — no model calls):
  * - map: Codebase mapping (15 min interval)
- * - optimize: Performance optimization (15 min interval)
  * - consolidate: Memory consolidation (30 min interval)
- * - testgaps: Test coverage analysis (20 min interval)
  *
  * Manual-trigger-only workers (disabled by default, no scheduled run):
  * ultralearn, refactor, deepdive, benchmark, preload.
  *
  * The `audit`, `predict`, and `document` workers were removed in #970 —
  * they were default-disabled with no surfacing layer for findings, and the
- * dashboard rendered them as "disabled" rows that read as broken. If a
- * security or doc scan returns it should land as an opt-in `flo doctor`
- * one-shot with a real findings UI, not as a recurring background worker.
+ * dashboard rendered them as "disabled" rows that read as broken.
+ *
+ * The `optimize` + `testgaps` workers were removed in #1258. They were the
+ * only default-ON workers that spawned billed `claude --print` agents, on a
+ * 15/20-min timer with no change-detection or dedup, and their reports landed
+ * in `.moflo/reports/` where nothing ever surfaced them — a runaway cost sink.
+ * Their capability now lives in the ad-hoc `/quicken` (perf) and `/ward`
+ * (test-gap) skills, which scope to the diff and surface findings in-thread.
+ * Any recurring analysis belongs on an explicit manual trigger with a real
+ * findings UI, not a default-on background loop.
  */
 
 import { EventEmitter } from 'events';
@@ -43,19 +48,21 @@ import { CircuitBreaker } from '../production/circuit-breaker.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Worker types matching hooks-tools.ts. `audit`, `predict`, `document`
-// were removed in #970 — the WorkerType union is the source of truth for
+// were removed in #970; `optimize` + `testgaps` were removed in #1258 (moved
+// to the ad-hoc `/quicken` + `/ward` skills — they were default-on, billed
+// `claude --print` loops with no change-detection whose reports were never
+// surfaced). The WorkerType union is the source of truth for
 // `daemon-state.json` validation, so dropping them here is what makes the
-// state loader silently drop stale entries (see `initializeWorkerStates`).
+// state loader silently drop stale entries from existing consumers'
+// daemon-state.json on the next daemon start (see `initializeWorkerStates`).
 export type WorkerType =
   | 'ultralearn'
-  | 'optimize'
   | 'consolidate'
   | 'map'
   | 'preload'
   | 'deepdive'
   | 'refactor'
-  | 'benchmark'
-  | 'testgaps';
+  | 'benchmark';
 
 /**
  * Runtime allow-list of known {@link WorkerType} values. Used by
@@ -65,14 +72,12 @@ export type WorkerType =
  */
 const KNOWN_WORKER_TYPES: ReadonlySet<WorkerType> = new Set<WorkerType>([
   'ultralearn',
-  'optimize',
   'consolidate',
   'map',
   'preload',
   'deepdive',
   'refactor',
   'benchmark',
-  'testgaps',
 ]);
 
 function isKnownWorkerType(value: unknown): value is WorkerType {
@@ -145,9 +150,7 @@ interface WorkerConfigInternal extends WorkerConfig {
 // Default worker configurations with improved intervals (P0 fix: map 5min -> 15min)
 const DEFAULT_WORKERS: WorkerConfigInternal[] = [
   { type: 'map', intervalMs: 15 * 60 * 1000, offsetMs: 0, priority: 'normal', description: 'Codebase mapping', enabled: true },
-  { type: 'optimize', intervalMs: 15 * 60 * 1000, offsetMs: 4 * 60 * 1000, priority: 'high', description: 'Performance optimization', enabled: true },
   { type: 'consolidate', intervalMs: 30 * 60 * 1000, offsetMs: 6 * 60 * 1000, priority: 'low', description: 'Memory consolidation', enabled: true },
-  { type: 'testgaps', intervalMs: 20 * 60 * 1000, offsetMs: 8 * 60 * 1000, priority: 'normal', description: 'Test coverage analysis', enabled: true },
 ];
 
 // Worker timeout (5 minutes max per worker)
@@ -967,12 +970,8 @@ export class WorkerDaemon extends EventEmitter {
     switch (workerConfig.type) {
       case 'map':
         return this.runMapWorker();
-      case 'optimize':
-        return this.runOptimizeWorkerLocal();
       case 'consolidate':
         return this.runConsolidateWorker();
-      case 'testgaps':
-        return this.runTestGapsWorkerLocal();
       case 'ultralearn':
         return this.runUltralearnWorkerLocal();
       case 'refactor':
@@ -1015,34 +1014,6 @@ export class WorkerDaemon extends EventEmitter {
     return map;
   }
 
-  /**
-   * Local optimize worker (fallback when headless unavailable)
-   */
-  private async runOptimizeWorkerLocal(): Promise<unknown> {
-    // Update performance metrics
-    const optimizeFile = join(this.projectRoot, '.moflo', 'metrics', 'performance.json');
-    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
-
-    if (!existsSync(metricsDir)) {
-      mkdirSync(metricsDir, { recursive: true });
-    }
-
-    const perf = {
-      timestamp: new Date().toISOString(),
-      mode: 'local',
-      memoryUsage: process.memoryUsage(),
-      uptime: process.uptime(),
-      optimizations: {
-        cacheHitRate: 0.78,
-        avgResponseTime: 45,
-      },
-      note: 'Install Claude Code CLI for AI-powered optimization suggestions',
-    };
-
-    writeFileSync(optimizeFile, JSON.stringify(perf, null, 2));
-    return perf;
-  }
-
   private async runConsolidateWorker(): Promise<unknown> {
     // Memory consolidation - clean up old patterns
     const consolidateFile = join(this.projectRoot, '.moflo', 'metrics', 'consolidation.json');
@@ -1060,31 +1031,6 @@ export class WorkerDaemon extends EventEmitter {
     };
 
     writeFileSync(consolidateFile, JSON.stringify(result, null, 2));
-    return result;
-  }
-
-  /**
-   * Local testgaps worker (fallback when headless unavailable)
-   */
-  private async runTestGapsWorkerLocal(): Promise<unknown> {
-    // Check for test coverage gaps
-    const testGapsFile = join(this.projectRoot, '.moflo', 'metrics', 'test-gaps.json');
-    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
-
-    if (!existsSync(metricsDir)) {
-      mkdirSync(metricsDir, { recursive: true });
-    }
-
-    const result = {
-      timestamp: new Date().toISOString(),
-      mode: 'local',
-      hasTestDir: existsSync(join(this.projectRoot, 'tests')) || existsSync(join(this.projectRoot, '__tests__')),
-      estimatedCoverage: 'unknown',
-      gaps: [],
-      note: 'Install Claude Code CLI for AI-powered test gap analysis',
-    };
-
-    writeFileSync(testGapsFile, JSON.stringify(result, null, 2));
     return result;
   }
 

@@ -54,7 +54,7 @@ const startCommand: Command = {
   name: 'start',
   description: 'Start the worker daemon with all enabled background workers',
   options: [
-    { name: 'workers', short: 'w', type: 'string', description: 'Comma-separated list of workers to enable (default: map,optimize,consolidate,testgaps)' },
+    { name: 'workers', short: 'w', type: 'string', description: 'Comma-separated list of workers to enable (default: map,consolidate)' },
     { name: 'quiet', short: 'Q', type: 'boolean', description: 'Suppress output' },
     { name: 'background', short: 'b', type: 'boolean', description: 'Run daemon in background (detached process)', default: true },
     { name: 'foreground', short: 'f', type: 'boolean', description: 'Run daemon in foreground (blocks terminal)' },
@@ -68,7 +68,7 @@ const startCommand: Command = {
   examples: [
     { command: 'flo daemon start', description: 'Start daemon in background (default)' },
     { command: 'flo daemon start --foreground', description: 'Start in foreground (blocks terminal)' },
-    { command: 'flo daemon start -w map,optimize', description: 'Start with specific workers' },
+    { command: 'flo daemon start -w map,consolidate', description: 'Start with specific workers' },
     { command: 'flo daemon start --headless --sandbox strict', description: 'Start with headless workers in strict sandbox' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -802,7 +802,7 @@ const triggerCommand: Command = {
   ],
   examples: [
     { command: 'flo daemon trigger -w map', description: 'Trigger the map worker' },
-    { command: 'flo daemon trigger -w optimize --headless', description: 'Trigger optimize in headless sandbox' },
+    { command: 'flo daemon trigger -w deepdive --headless', description: 'Trigger deepdive in headless sandbox' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workerType = ctx.flags.worker as WorkerType;
@@ -810,7 +810,7 @@ const triggerCommand: Command = {
     if (!workerType) {
       output.printError('Worker type is required. Use --worker or -w flag.');
       output.writeln();
-      output.writeln('Available workers: map, optimize, consolidate, testgaps, ultralearn, refactor, benchmark, deepdive, preload');
+      output.writeln('Available workers: map, consolidate, ultralearn, refactor, benchmark, deepdive, preload');
       return { success: false, exitCode: 1 };
     }
 
@@ -851,7 +851,7 @@ const enableCommand: Command = {
     { name: 'disable', short: 'd', type: 'boolean', description: 'Disable instead of enable' },
   ],
   examples: [
-    { command: 'flo daemon enable -w testgaps', description: 'Enable testgaps worker' },
+    { command: 'flo daemon enable -w deepdive', description: 'Enable deepdive worker' },
     { command: 'flo daemon enable -w refactor --disable', description: 'Disable refactor worker' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -1006,15 +1006,17 @@ export const daemonCommand: Command = {
     output.writeln(output.bold('Available Workers'));
     output.printList([
       `${output.highlight('map')}         - Codebase mapping (15 min interval)`,
-      `${output.highlight('optimize')}    - Performance optimization (15 min interval)`,
       `${output.highlight('consolidate')} - Memory consolidation (30 min interval)`,
-      `${output.highlight('testgaps')}    - Test coverage analysis (20 min interval)`,
       `${output.highlight('ultralearn')}  - Deep knowledge acquisition (manual trigger)`,
       `${output.highlight('refactor')}    - Code refactoring suggestions (manual trigger)`,
       `${output.highlight('benchmark')}   - Performance benchmarking (manual trigger)`,
       `${output.highlight('deepdive')}    - Deep code analysis (manual trigger)`,
       `${output.highlight('preload')}     - Resource preloading (manual trigger)`,
     ]);
+    output.writeln();
+    output.writeln(output.dim('Performance & test-gap analysis are no longer background workers (they were a'));
+    output.writeln(output.dim('billed, unsurfaced cost sink — see #1258). Run them ad-hoc as the /quicken and'));
+    output.writeln(output.dim('/ward skills inside Claude Code, where findings surface in the conversation.'));
 
     output.writeln();
     output.writeln(output.bold('Subcommands'));

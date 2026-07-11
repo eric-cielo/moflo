@@ -138,16 +138,18 @@ For the full `moflo.yaml` schema, gate toggles, model routing, and sandbox confi
 
 ### Continuous Improvement Triggers
 
-| Trigger | Worker | Use For |
-|---------|--------|---------|
-| After major refactor | `optimize` | Performance optimization |
-| After adding features | `testgaps` | Find missing test coverage |
-| Every 5+ file changes | `map` | Update codebase map |
-| Complex debugging | `deepdive` | Deep code analysis |
+| Trigger | Run | Use For |
+|---------|-----|---------|
+| After major refactor / feels slow | `/quicken` skill (alias `/perf-audit`) | Performance audit — reveals N+1s, re-renders, leaks; findings surface in-thread |
+| After adding features | `/ward` skill (alias `/test-gaps`) | Test-gap audit — untested funcs, edge cases, missing error tests; emits skeletons in-thread |
+| Every 5+ file changes | `map` worker | Update codebase map (local, automatic) |
+| Complex debugging | `deepdive` worker | Deep code analysis (manual trigger) |
+
+**Performance and test-gap analysis are ad-hoc skills, not background workers.** The old always-on `optimize`/`testgaps` daemon workers were removed in #1258 — they were billed `claude --print` loops with no change-detection whose reports were never surfaced. Run `/quicken` and `/ward` when you want them; they scope to the diff and report in the conversation.
 
 ### Worker Report Location
 
-Headless workers (`optimize`, `testgaps`, `ultralearn`, `refactor`, `deepdive`) write the latest run's full output to `.moflo/reports/<workerType>.<ext>` (`.md` for markdown workers, `.json` for `ultralearn`). The path is overwritten each run; for history, see `.moflo/logs/headless/`. The directory is gitignored by `flo init`, so reports never reach a consumer's commit. When the user asks "what did testgaps find?" or "where's the optimize report?", read `.moflo/reports/<workerType>.md` directly — do NOT re-run the worker.
+Headless workers (`ultralearn`, `refactor`, `deepdive`) write the latest run's full output to `.moflo/reports/<workerType>.<ext>` (`.md` for markdown workers, `.json` for `ultralearn`). The path is overwritten each run; for history, see `.moflo/logs/headless/`. The directory is gitignored by `flo init`, so reports never reach a consumer's commit. When the user asks "what did the deepdive find?", read `.moflo/reports/<workerType>.md` directly — do NOT re-run the worker. (Perf and test-gap results are no longer files here — they come from the `/quicken` and `/ward` skills in-thread.)
 
 ### Memory-Enhanced Development
 

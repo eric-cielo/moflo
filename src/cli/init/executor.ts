@@ -55,6 +55,10 @@ export const SKILLS_MAP: Record<string, string[]> = {
     'reasoningbank-intelligence',
     'meditate',
     'divine',
+    'quicken', // ad-hoc performance audit (replaced the always-on `optimize` daemon worker)
+    'perf-audit', // alias for quicken (pointer skill); installed alongside it
+    'ward', // ad-hoc test-gap audit (replaced the always-on `testgaps` daemon worker)
+    'test-gaps', // alias for ward (pointer skill); installed alongside it
   ],
   memory: [
     'memory-patterns',

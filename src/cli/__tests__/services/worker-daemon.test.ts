@@ -85,22 +85,25 @@ describe('WorkerDaemon', () => {
       // No explicit workers config — falls through to DEFAULT_WORKERS
       const defaultDaemon = new WorkerDaemon('/tmp/test-default', { autoStart: false });
       const workers = defaultDaemon.getStatus().config.workers;
-      for (const removed of ['audit', 'predict', 'document'] as const) {
+      // audit/predict/document removed in #970; optimize/testgaps in #1258.
+      for (const removed of ['audit', 'predict', 'document', 'optimize', 'testgaps'] as const) {
         expect(workers.find(w => w.type === removed as never)).toBeUndefined();
       }
     });
 
-    it('default registry keeps the four scheduled workers enabled', () => {
+    it('default registry keeps only the local (free) scheduled workers enabled', () => {
+      // After #1258 the sole default-scheduled workers are map + consolidate,
+      // both pure local computation with no model calls. The billed
+      // optimize/testgaps workers were removed (moved to /quicken + /ward).
       const defaultDaemon = new WorkerDaemon('/tmp/test-default-others', { autoStart: false });
       const workers = defaultDaemon.getStatus().config.workers;
       const map = workers.find(w => w.type === 'map');
-      const optimize = workers.find(w => w.type === 'optimize');
       const consolidate = workers.find(w => w.type === 'consolidate');
-      const testgaps = workers.find(w => w.type === 'testgaps');
       expect(map?.enabled).toBe(true);
-      expect(optimize?.enabled).toBe(true);
       expect(consolidate?.enabled).toBe(true);
-      expect(testgaps?.enabled).toBe(true);
+      // No billed worker ships enabled-by-default.
+      expect(workers.find(w => w.type === 'optimize' as never)).toBeUndefined();
+      expect(workers.find(w => w.type === 'testgaps' as never)).toBeUndefined();
     });
   });
 

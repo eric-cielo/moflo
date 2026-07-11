@@ -25,11 +25,11 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 
 /**
  * Headless worker types - workers that use Claude Code AI.
- * `audit`/`document`/`predict` removed in #970.
+ * `audit`/`document`/`predict` removed in #970; `optimize`/`testgaps` removed
+ * in #1258 (moved to the ad-hoc `/quicken` + `/ward` skills — they were the
+ * only default-on billed workers and their reports were never surfaced).
  */
 export type HeadlessWorkerType =
-  | 'optimize'
-  | 'testgaps'
   | 'ultralearn'
   | 'refactor'
   | 'deepdive';
@@ -251,8 +251,6 @@ export interface PoolStatus {
  * Array of headless worker types for runtime checking.
  */
 export const HEADLESS_WORKER_TYPES: HeadlessWorkerType[] = [
-  'optimize',
-  'testgaps',
   'ultralearn',
   'refactor',
   'deepdive',
@@ -292,17 +290,19 @@ const MODEL_IDS: Record<ModelType, string> = {
  * Restricting tools here is a GATE-INTEGRITY guarantee, not a tidy-up. The
  * spawn previously ran `claude --print <prompt>` with no tool restriction, so
  * a daemon-spawned worker inherited the consumer's permissions and could edit
- * any file in their tree. The `optimize` ("Performance optimization") worker
- * is `enabled: true` by default and runs unattended; given write access and a
- * "analyze this codebase for performance optimizations" prompt, it reasons its
- * way into editing `moflo.yaml` to `memory_first: false`
+ * any file in their tree. The now-removed `optimize` worker (see #1258) was
+ * `enabled: true` by default and ran unattended; given write access and a
+ * "analyze this codebase for performance optimizations" prompt, it reasoned
+ * its way into editing `moflo.yaml` to `memory_first: false`
  * (`# Temporarily disabled for performance analysis`) to unblock its own
  * non-memory-first tool calls against the gate — silently disabling the
  * memory-first protocol repo-wide and dirtying the working tree every run.
- * Worse, the gate it disables is what surfaces the "never disable memory_first"
- * learning, so the loop self-conceals. A read-only allowlist makes that edit
- * physically impossible while leaving full analysis capability (Read/Glob/Grep)
- * intact. See issue #1229.
+ * Worse, the gate it disabled is what surfaces the "never disable memory_first"
+ * learning, so the loop self-concealed. The remaining headless workers
+ * (ultralearn/refactor/deepdive) are manual-trigger only, but the same
+ * unattended-spawn risk applies, so the read-only allowlist stays: it makes
+ * that edit physically impossible while leaving full analysis capability
+ * (Read/Glob/Grep) intact. See issues #1229 and #1258.
  */
 const HEADLESS_WORKER_ALLOWED_TOOLS = 'Read,Glob,Grep';
 
@@ -312,54 +312,6 @@ const HEADLESS_WORKER_ALLOWED_TOOLS = 'Read,Glob,Grep';
  * in #970 — see worker-daemon.ts header for rationale).
  */
 export const HEADLESS_WORKER_CONFIGS: Record<HeadlessWorkerType, HeadlessWorkerConfig> = {
-  optimize: {
-    type: 'optimize',
-    mode: 'headless',
-    intervalMs: 60 * 60 * 1000,
-    priority: 'high',
-    description: 'AI optimization suggestions',
-    enabled: true,
-    headless: {
-      promptTemplate: `Analyze this codebase for performance optimizations:
-- Identify N+1 query patterns
-- Find unnecessary re-renders in React
-- Suggest caching opportunities
-- Identify memory leaks
-- Find redundant computations
-
-Provide actionable suggestions with code examples.`,
-      sandbox: 'permissive',
-      model: 'sonnet',
-      outputFormat: 'markdown',
-      contextPatterns: ['src/**/*.ts', 'src/**/*.tsx'],
-      timeoutMs: 10 * 60 * 1000,
-    },
-  },
-
-  testgaps: {
-    type: 'testgaps',
-    mode: 'headless',
-    intervalMs: 60 * 60 * 1000,
-    priority: 'normal',
-    description: 'AI test gap analysis',
-    enabled: true,
-    headless: {
-      promptTemplate: `Analyze test coverage and identify gaps:
-- Find untested functions and classes
-- Identify edge cases not covered
-- Suggest new test scenarios
-- Check for missing error handling tests
-- Identify integration test gaps
-
-For each gap, include a test skeleton inline in the report as a fenced code block — DO NOT create separate test files; the consumer will copy the skeletons into their test tree by hand.`,
-      sandbox: 'permissive',
-      model: 'sonnet',
-      outputFormat: 'markdown',
-      contextPatterns: ['src/**/*.ts', 'tests/**/*.ts', '__tests__/**/*.ts'],
-      timeoutMs: 10 * 60 * 1000,
-    },
-  },
-
   ultralearn: {
     type: 'ultralearn',
     mode: 'headless',

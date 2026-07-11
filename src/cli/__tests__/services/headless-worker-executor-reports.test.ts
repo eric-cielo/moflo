@@ -71,17 +71,17 @@ describe('HeadlessWorkerExecutor — report persistence', () => {
     vi.restoreAllMocks();
   });
 
-  it('writes the testgaps report to .moflo/reports/testgaps.md, never the project root', async () => {
+  it('writes the deepdive report to .moflo/reports/deepdive.md, never the project root', async () => {
     const child = makeStubChild(SAMPLE_OUTPUT);
     (spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
 
-    const result = await executor.execute('testgaps');
+    const result = await executor.execute('deepdive');
 
     expect(result.success).toBe(true);
 
     const writes = (writeFileSync as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string]>;
-    const reportWrite = writes.find(([p]) => p === join(PROJECT_ROOT, '.moflo', 'reports', 'testgaps.md'));
-    expect(reportWrite, 'expected a write to .moflo/reports/testgaps.md').toBeTruthy();
+    const reportWrite = writes.find(([p]) => p === join(PROJECT_ROOT, '.moflo', 'reports', 'deepdive.md'));
+    expect(reportWrite, 'expected a write to .moflo/reports/deepdive.md').toBeTruthy();
     expect(reportWrite![1]).toBe(SAMPLE_OUTPUT);
 
     // No write should land at <projectRoot>/<something>.md — those are the
@@ -98,14 +98,14 @@ describe('HeadlessWorkerExecutor — report persistence', () => {
     const child = makeStubChild(SAMPLE_OUTPUT);
     (spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
 
-    await executor.execute('testgaps');
+    await executor.execute('deepdive');
 
     const spawnCalls = (spawn as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string[], SpawnOptions]>;
     // The executor probes availability separately; pick the `claude --print` call.
     const printCall = spawnCalls.find(([cmd, args]) => cmd === 'claude' && args[0] === '--print');
     expect(printCall, 'expected a claude --print spawn').toBeTruthy();
     const prompt = printCall![1][1];
-    expect(prompt).toContain(join(PROJECT_ROOT, '.moflo', 'reports', 'testgaps.md'));
+    expect(prompt).toContain(join(PROJECT_ROOT, '.moflo', 'reports', 'deepdive.md'));
     expect(prompt).toMatch(/Save the full report to/);
   });
 
@@ -113,7 +113,7 @@ describe('HeadlessWorkerExecutor — report persistence', () => {
     const child = makeStubChild(SAMPLE_OUTPUT);
     (spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
 
-    await executor.execute('optimize');
+    await executor.execute('deepdive');
 
     const spawnCalls = (spawn as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string[], SpawnOptions]>;
     const printCall = spawnCalls.find(([cmd, args]) => cmd === 'claude' && args[0] === '--print');
@@ -140,7 +140,7 @@ describe('HeadlessWorkerExecutor — report persistence', () => {
     const child = makeStubChild(SAMPLE_OUTPUT);
     (spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
 
-    await executor.execute('optimize');
+    await executor.execute('deepdive');
 
     const spawnCalls = (spawn as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string[], SpawnOptions]>;
     const printCall = spawnCalls.find(([cmd, args]) => cmd === 'claude' && args[0] === '--print');
@@ -162,10 +162,11 @@ describe('HeadlessWorkerExecutor — report persistence', () => {
     expect(jsonReport, 'ultralearn report should be .json not .md').toBeTruthy();
   });
 
-  it('covers all five headless worker types', () => {
+  it('covers all headless worker types', () => {
     // Pin the worker set so a future worker addition forces a deliberate
-    // decision about its report location.
+    // decision about its report location. optimize/testgaps were removed in
+    // #1258 (moved to the /quicken + /ward skills).
     const workerTypes = Object.keys(HEADLESS_WORKER_CONFIGS).sort() as HeadlessWorkerType[];
-    expect(workerTypes).toEqual(['deepdive', 'optimize', 'refactor', 'testgaps', 'ultralearn']);
+    expect(workerTypes).toEqual(['deepdive', 'refactor', 'ultralearn']);
   });
 });

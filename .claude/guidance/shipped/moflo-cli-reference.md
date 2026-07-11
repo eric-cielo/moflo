@@ -118,18 +118,21 @@ The orchestrator is the calling Claude, not a named agent. Pick specialists from
 
 ### Background Workers
 
-The daemon ships nine workers — four scheduled by default plus five
-manual-trigger only. The pre-#970 `audit`, `predict`, and `document`
-workers were removed because they ran without a surfacing layer for
-findings; if AI-driven security scanning returns it should be an opt-in
-`flo doctor` one-shot, not a recurring background task.
+The daemon ships seven workers — two scheduled by default (both local, no
+model calls) plus five manual-trigger only. The pre-#970 `audit`, `predict`,
+and `document` workers were removed because they ran without a surfacing
+layer for findings. The `optimize` and `testgaps` workers were removed in
+#1258 — they were the only default-ON workers that spawned billed
+`claude --print` agents, on a 15/20-min timer with no change-detection, and
+their reports were never surfaced. Their capability now lives in the ad-hoc
+`/quicken` (perf) and `/ward` (test-gap) skills, which scope to the diff and
+report in-thread. Any recurring AI analysis should be an opt-in one-shot with
+a real findings UI, not a default-on background task.
 
 | Worker        | Priority | Default       | Description                |
 |---------------|----------|---------------|----------------------------|
-| `map`         | normal   | scheduled 15m | Codebase mapping           |
-| `optimize`    | high     | scheduled 15m | Performance optimization   |
-| `consolidate` | low      | scheduled 30m | Memory consolidation       |
-| `testgaps`    | normal   | scheduled 20m | Test coverage analysis     |
+| `map`         | normal   | scheduled 15m | Codebase mapping (local)   |
+| `consolidate` | low      | scheduled 30m | Memory consolidation (local) |
 | `ultralearn`  | normal   | manual        | Deep knowledge acquisition |
 | `refactor`    | normal   | manual        | Refactoring suggestions    |
 | `deepdive`    | normal   | manual        | Deep code analysis         |

@@ -30,6 +30,8 @@ These drive code changes against GitHub issues and the working tree.
 |-------|-------------|
 | `/flo` (alias `/fl`) | Execute a GitHub issue end to end: research → ticket → implement → test → simplify → PR. Detects and processes epics automatically. |
 | `/flo-simplify` (alias `/distill`) | Review the current diff for reuse, quality, and efficiency, then fix what it finds. Effort scales to the diff size. |
+| `/quicken` (alias `/perf-audit`) | Audit performance — N+1s, re-renders, missing caching, leaks, redundant work — and prescribe fixes in-thread. Scopes to the diff (or a path). The ad-hoc successor to the removed `optimize` daemon worker. |
+| `/ward` (alias `/test-gaps`) | Audit test coverage — untested functions, uncovered edge cases, missing error/integration tests — and conjure paste-ready skeletons in-thread. Scopes to the diff (or a path). The ad-hoc successor to the removed `testgaps` daemon worker. |
 
 ## Setup, health, and audit skills
 
@@ -91,6 +93,8 @@ These help build retrieval and stateful-agent layers on moflo's memory stack.
 | "I need to settle a question the web can answer" | `/divine` |
 | "Implement this GitHub issue" | `/flo` |
 | "Tidy up the diff before I push" | `/flo-simplify` |
+| "Is this change slow / can it be faster?" | `/quicken` |
+| "What isn't tested in what I changed?" | `/ward` |
 | "I just finished something worth remembering" | `/meditate` (or let auto-meditate catch it) |
 | "Claude feels lost in this project" | `/eldar` |
 | "Is moflo itself healthy?" | `/healer` |

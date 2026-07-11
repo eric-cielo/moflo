@@ -352,7 +352,7 @@ describe('WorkerDaemon resource thresholds', () => {
       });
 
       const pendingWorkers = (daemon as any).pendingWorkers as string[];
-      pendingWorkers.push('optimize');
+      pendingWorkers.push('map');
 
       // Ensure no workers are currently running
       expect((daemon as any).runningWorkers.size).toBe(0);
@@ -378,7 +378,7 @@ describe('WorkerDaemon resource thresholds', () => {
       });
 
       // Simulate a worker already running — its finally block will re-trigger processPendingWorkers
-      (daemon as any).runningWorkers.add('optimize');
+      (daemon as any).runningWorkers.add('consolidate');
 
       const pendingWorkers = (daemon as any).pendingWorkers as string[];
       pendingWorkers.push('map');

@@ -122,20 +122,20 @@ export function generateSettings(options: InitOptions): object {
       // worker registry lives in src/cli/services/worker-daemon.ts
       // DEFAULT_WORKERS. The `audit`/`predict`/`document` workers were
       // removed in #970 (no surfacing layer for findings + dashboard
-      // pollution); restore them as opt-in `flo doctor` one-shots if their
-      // value is ever re-established.
+      // pollution). The `optimize`/`testgaps` workers were removed in #1258 —
+      // they were default-on billed `claude --print` loops with no
+      // change-detection whose reports were never surfaced; their capability
+      // moved to the ad-hoc `/quicken` + `/ward` skills. Restore any of these
+      // as opt-in one-shots if their value is ever re-established.
       workers: [
-        'map',           // Codebase mapping
-        'optimize',      // Performance optimization (high priority)
-        'consolidate',   // Memory consolidation
-        'testgaps',      // Test coverage gaps
-        'ultralearn',    // Deep knowledge acquisition
-        'deepdive',      // Deep code analysis
-        'refactor',      // Refactoring suggestions (DDD alignment)
-        'benchmark',     // Performance benchmarking
+        'map',           // Codebase mapping (local, free)
+        'consolidate',   // Memory consolidation (local, free)
+        'ultralearn',    // Deep knowledge acquisition (manual trigger)
+        'deepdive',      // Deep code analysis (manual trigger)
+        'refactor',      // Refactoring suggestions (manual trigger)
+        'benchmark',     // Performance benchmarking (manual trigger)
       ],
       schedules: {
-        optimize: { interval: '30m', priority: 'high' },
         consolidate: { interval: '2h', priority: 'low' },
         deepdive: { interval: '4h', priority: 'normal', triggers: ['complex-change'] },
         ultralearn: { interval: '1h', priority: 'normal' },
