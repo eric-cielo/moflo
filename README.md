@@ -6,6 +6,8 @@
 
 **A standalone, opinionated AI agent orchestration toolkit for Claude Code, optimized for local development.**
 
+**[Website](https://cielolimitada.com/moflo)** · [npm](https://www.npmjs.com/package/moflo) · [GitHub](https://github.com/eric-cielo/moflo)
+
 ## TL;DR
 
 MoFlo makes Claude Code remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart Claude Code, and everything just works: your docs and code are indexed on session start so Claude can search them instantly, gates prevent Claude from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
