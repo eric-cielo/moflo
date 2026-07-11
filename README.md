@@ -955,13 +955,13 @@ MoFlo started from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) but is n
 
 ## Why I Made This
 
-[Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) is an incredible piece of work. The engineering that [rUv](https://github.com/ruvnet) and the contributors put into the original — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, and so much more — made it one of the most comprehensive agent orchestration frameworks available. It was built to support a wide range of scenarios: distributed systems, multi-agent swarms, enterprise orchestration, research workflows, and beyond.
+Ruflo / Claude Flow is an incredible piece of work. The engineering that [rUv](https://github.com/ruvnet) and the contributors put into the original — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, and so much more — made it one of the most comprehensive agent orchestration frameworks available. It was built to support a wide range of scenarios: distributed systems, multi-agent swarms, enterprise orchestration, research workflows, and beyond.
 
 My use case was just one of those many scenarios: day-to-day local coding, enhancing my normal Claude Code experience on a single project. The original supported this — it was all in there — but because the project served so many different needs, I found myself configuring and tailoring things for my specific setup each time I pulled in updates. That isn't a shortcoming of the original; it's the natural trade-off of a tool designed to be that flexible and powerful.
 
 So I started from that foundation and narrowed the focus to my particular corner of it. I baked in the defaults I kept setting manually, added automatic indexing and memory gating at session start, and tuned the out-of-box experience so that `npm install` and `flo init` gets you straight to coding. Over time MoFlo grew its own architecture (workspace collapse, in-tree fastembed runtime, node:sqlite + HNSW memory layer, spell engine, daemon-driven scheduling) and the two projects fully diverged.
 
-If you're exploring the full breadth of agent orchestration, go look at [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) — it's the real deal. If your needs are similar to mine — a focused, opinionated local dev setup that just works — MoFlo is for you.
+If you're exploring the full breadth of agent orchestration, go look at Ruflo / Claude Flow — it's the real deal. If your needs are similar to mine — a focused, opinionated local dev setup that just works — MoFlo is for you.
 
 ## Contributing
 
