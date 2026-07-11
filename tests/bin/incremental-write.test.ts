@@ -25,6 +25,7 @@ import { resolve } from 'path';
 import {
   applyIncrementalChunks,
   computeContentListHash,
+  schemeTaggedContentHash,
   loadExistingContent,
 } from '../../bin/lib/incremental-write.mjs';
 import { mkdtempSync, writeFileSync, utimesSync, rmSync } from 'fs';
@@ -288,16 +289,99 @@ describe('computeContentListHash (#746)', () => {
 
 describe('indexer source uses content-hash gate (#746)', () => {
   for (const file of ['index-patterns.mjs', 'generate-code-map.mjs', 'index-tests.mjs']) {
-    it(`${file} imports computeContentListHash and dropped the mtime/size hash`, () => {
+    it(`${file} imports the content-hash gate and dropped the mtime/size hash`, () => {
       const src = readFileSync(resolve(BIN, file), 'utf-8');
-      // Helper imported and called.
-      expect(src).toMatch(/computeContentListHash\b/);
+      // Content-hash gate in use. code-map wraps it in the scheme-versioned
+      // variant (#1260); patterns/tests use the bare helper directly.
+      expect(src).toMatch(/\b(computeContentListHash|schemeTaggedContentHash)\b/);
       // Old gates are gone.
       expect(src).not.toMatch(/statSync\([^)]*\)\.mtimeMs/);
       expect(src).not.toMatch(/statSync\([^)]*\)\.size/);
       expect(src).not.toMatch(/^\s*function\s+computeFileListHash\s*\(/m);
     });
   }
+});
+
+describe('schemeTaggedContentHash (#1260)', () => {
+  // Reuse a tmpdir so the wrapped content hash reads real bytes, mirroring the
+  // computeContentListHash suite above.
+  let dir: string;
+
+  function tmpFile(name: string, content: string) {
+    const p = join(dir, name);
+    writeFileSync(p, content);
+    return p;
+  }
+
+  it('prefixes the content hash with the scheme version tag', () => {
+    dir = mkdtempSync(join(tmpdir(), 'moflo-scheme-'));
+    const a = tmpFile('a.ts', 'export const A = 1;');
+    const tagged = schemeTaggedContentHash([a], 2);
+    expect(tagged).toBe(`v2:${computeContentListHash([a])}`);
+    expect(tagged.startsWith('v2:')).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('same files + same version → identical tag (stable skip-cache key)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'moflo-scheme-'));
+    const a = tmpFile('a.ts', 'A');
+    const b = tmpFile('b.ts', 'B');
+    expect(schemeTaggedContentHash([a, b], 3)).toBe(schemeTaggedContentHash([a, b], 3));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('bumping the scheme version invalidates the cache even when files are unchanged', () => {
+    dir = mkdtempSync(join(tmpdir(), 'moflo-scheme-'));
+    const a = tmpFile('a.ts', 'A');
+    // Same file list + content, only the scheme version differs. This is the
+    // core of #1260: a generator upgrade that changes the emitted key scheme
+    // must force a rebuild + orphan sweep rather than silently skipping.
+    expect(schemeTaggedContentHash([a], 1)).not.toBe(schemeTaggedContentHash([a], 2));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a legacy bare hash never equals a scheme-tagged hash (upgrading consumers self-heal)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'moflo-scheme-'));
+    const a = tmpFile('a.ts', 'A');
+    // Pre-#1260 caches stored the bare hex digest. On pickup the tagged value
+    // mismatches, so the skip is bypassed and the accumulated orphans are swept.
+    expect(schemeTaggedContentHash([a], 2)).not.toBe(computeContentListHash([a]));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('still tracks content edits (delegates to the content hash)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'moflo-scheme-'));
+    const a = tmpFile('a.ts', 'export const A = 1;');
+    const before = schemeTaggedContentHash([a], 2);
+    writeFileSync(a, 'export const A = 2;');
+    expect(schemeTaggedContentHash([a], 2)).not.toBe(before);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('code-map single source of truth (#1260)', () => {
+  it('generate-code-map.mjs gates on the scheme-versioned hash and declares SCHEME_VERSION', () => {
+    const src = readFileSync(resolve(BIN, 'generate-code-map.mjs'), 'utf-8');
+    expect(src).toMatch(/schemeTaggedContentHash\s*\(/);
+    expect(src).toMatch(/const\s+SCHEME_VERSION\s*=\s*\d+/);
+  });
+
+  it('flo memory code-map delegates to the one shipped generator (no second inline generator)', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../src/cli/commands/memory.ts'),
+      'utf-8',
+    );
+    // The dist command must spawn bin/generate-code-map.mjs via the canonical
+    // resolver — not carry a divergent directory-level generator (#1260).
+    expect(src).toMatch(/generate-code-map\.mjs/);
+    expect(src).toMatch(/resolveMofloBin/);
+    // The old inline generator's fingerprints are gone: no per-file type
+    // extractor, no TS-only pattern table, no DELETE-then-reinsert of the
+    // whole namespace.
+    expect(src).not.toMatch(/function\s+extractTypesFromFile\s*\(/);
+    expect(src).not.toMatch(/const\s+TS_PATTERNS\s*=/);
+    expect(src).not.toMatch(/DELETE FROM memory_entries WHERE namespace = \?`,\s*\[NAMESPACE\]/);
+  });
 });
 
 describe('indexer source no longer wipes namespace before reinsert (#745)', () => {
