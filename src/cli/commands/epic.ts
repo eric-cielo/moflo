@@ -12,6 +12,7 @@
  *   flo epic run 42 --verbose                Echo each step's stdout/stderr after it completes
  *   flo epic status <epic-number>            Check progress via memory
  *   flo epic reset <epic-number>             Clear epic memory state
+ *   flo epic checkoff <epic> <story>         Check a story off; close the epic if it was the last
  */
 
 import { readFileSync } from 'node:fs';
@@ -23,6 +24,7 @@ import {
   fetchEpicIssue,
   extractStories,
   enrichStoryNames,
+  checkOffStoryInEpic,
 } from '../epic/index.js';
 import type { EpicStrategy } from '../epic/types.js';
 import {
@@ -430,6 +432,38 @@ async function resetEpic(epicNumber: string): Promise<CommandResult> {
 }
 
 // ============================================================================
+// Subcommand: checkoff
+// ============================================================================
+
+async function checkOffStory(epicArg: string, storyArg: string): Promise<CommandResult> {
+  const epic = parseInt(epicArg, 10);
+  const story = parseInt(storyArg, 10);
+  if (isNaN(epic) || isNaN(story)) {
+    return { success: false, message: 'Usage: flo epic checkoff <epic-number> <story-number>' };
+  }
+
+  try {
+    const { checked, epicClosed, alreadyClosed } = await checkOffStoryInEpic(epic, story);
+    const parts: string[] = [];
+    parts.push(
+      checked
+        ? `Checked off story #${story} in epic #${epic}.`
+        : `Story #${story} was already checked (or not listed) in epic #${epic}.`,
+    );
+    if (epicClosed) parts.push(`All stories complete — closed epic #${epic}.`);
+    else if (alreadyClosed) parts.push(`Epic #${epic} was already closed.`);
+    const message = parts.join(' ');
+    console.log(`[epic] ${message}`);
+    return { success: true, message };
+  } catch (err) {
+    return {
+      success: false,
+      message: buildFailureSummary((err as Error).message, { stepId: 'checkoff' }),
+    };
+  }
+}
+
+// ============================================================================
 // Preflight warning interactive resolver
 // ============================================================================
 
@@ -541,6 +575,7 @@ const epicCommand: Command = {
     { command: 'flo epic run 42', description: 'Explicit run subcommand (same as above)' },
     { command: 'flo epic status 42', description: 'Check epic progress' },
     { command: 'flo epic reset 42', description: 'Reset epic state for re-run' },
+    { command: 'flo epic checkoff 42 43', description: 'Check story #43 off in epic #42; close #42 if it was the last story' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const subcommand = ctx.args?.[0];
@@ -550,10 +585,11 @@ const epicCommand: Command = {
       console.log('       flo epic <command> [args] [flags]');
       console.log('');
       console.log('Commands:');
-      console.log('  <issue-number>           Execute epic (shorthand for "run")');
-      console.log('  run <issue-number>       Execute a GitHub epic via spell engine');
-      console.log('  status <epic-number>     Check epic progress');
-      console.log('  reset <epic-number>      Reset epic state for re-run');
+      console.log('  <issue-number>              Execute epic (shorthand for "run")');
+      console.log('  run <issue-number>          Execute a GitHub epic via spell engine');
+      console.log('  status <epic-number>        Check epic progress');
+      console.log('  reset <epic-number>         Reset epic state for re-run');
+      console.log('  checkoff <epic> <story>     Check a story off in its epic; close the epic if it was the last');
       console.log('');
       console.log('Flags:');
       console.log('  --strategy <name>        single-branch (default) or auto-merge');
@@ -604,8 +640,11 @@ const epicCommand: Command = {
       case 'reset':
         return resetEpic(commandArgs[0] || '');
 
+      case 'checkoff':
+        return checkOffStory(commandArgs[0] || '', commandArgs[1] || '');
+
       default:
-        return { success: false, message: `Unknown subcommand: ${subcommand}. Available: run, status, reset` };
+        return { success: false, message: `Unknown subcommand: ${subcommand}. Available: run, status, reset, checkoff` };
     }
   },
 };

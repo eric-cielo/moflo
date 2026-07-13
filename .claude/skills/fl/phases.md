@@ -224,6 +224,14 @@ gh issue edit <issue-number> --remove-label "in-progress" --add-label "ready-for
 gh issue comment <issue-number> --body "PR created: <pr-url>"
 ```
 
+If the story body carries an `Epic: #<n>` back-reference (decomposition writes it — `./ticket.md`) **and** `--epic-branch` is not set, sync the parent epic — check this story's box off and close the epic if it was the last:
+
+```bash
+flo epic checkoff <epic-number> <story-number>
+```
+
+Idempotent and safe to skip when there is no back-reference. `--epic-branch` runs skip it — the epic orchestrator owns checklist state there. The box flips when the work is delivered (PR opened), matching the orchestrator; if a PR is later rejected, reopen the epic manually.
+
 ### 5.5 Finalize run record (Flo Runs dashboard)
 
 Update the tasklist row written in Phase 0 with the terminal status. Same `runId`, `upsert: true`. On success:

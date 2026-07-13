@@ -7,7 +7,7 @@
  * Story #195: Shared epic detection & extraction module.
  */
 
-import { exec } from 'node:child_process';
+import { exec, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { GitHubIssue, StoryDefinition } from './types.js';
 
@@ -160,4 +160,90 @@ export async function findPrForIssue(
   } catch {
     return null;
   }
+}
+
+// ============================================================================
+// Story checkoff (standalone `/flo <story>` runs)
+// ============================================================================
+
+/**
+ * Pure core of the story-checkoff operation — no I/O, unit-testable.
+ *
+ * Flips a story's `- [ ] #<n>` checkbox to `- [x] #<n>` in an epic body and
+ * reports whether the epic is now complete (it has story checkboxes and none
+ * remain unchecked). Word-boundary guarded so #12 never matches inside #123.
+ */
+export function computeEpicCheckoff(
+  body: string,
+  storyNumber: number,
+): { updated: string; checked: boolean; allComplete: boolean } {
+  const pattern = new RegExp(`- \\[ \\] #${storyNumber}(?!\\d)`);
+  const updated = body.replace(pattern, `- [x] #${storyNumber}`);
+  const checked = updated !== body;
+
+  const hasStoryCheckboxes = /- \[[ x]\] #\d+/.test(updated);
+  const hasUnchecked = /- \[ \] #\d+/.test(updated);
+  const allComplete = hasStoryCheckboxes && !hasUnchecked;
+
+  return { updated, checked, allComplete };
+}
+
+export interface CheckOffResult {
+  /** The story's box was flipped (false if already checked or not listed). */
+  readonly checked: boolean;
+  /** The epic was closed because this was the last unchecked story. */
+  readonly epicClosed: boolean;
+  /** The epic was already closed before this call. */
+  readonly alreadyClosed: boolean;
+}
+
+/**
+ * Check a story off in its parent epic's checklist, and close the epic when no
+ * unchecked stories remain. Used by standalone `/flo <story>` runs via
+ * `flo epic checkoff`; the orchestrated `flo epic run` path does its own
+ * checkoff inside the spell (epic-single-branch.yaml).
+ *
+ * Cross-platform (Rule #1): drives `gh` through `spawnSync` arg arrays (no
+ * shell string to escape) and pipes the rewritten body over stdin
+ * (`--body-file -`), the same pattern proven on Windows CI in the spell.
+ */
+export async function checkOffStoryInEpic(
+  epicNumber: number,
+  storyNumber: number,
+): Promise<CheckOffResult> {
+  const issue = await fetchEpicIssue(epicNumber);
+  const { updated, checked, allComplete } = computeEpicCheckoff(issue.body || '', storyNumber);
+
+  if (checked) {
+    const edit = spawnSync('gh', ['issue', 'edit', String(epicNumber), '--body-file', '-'], {
+      input: updated,
+      encoding: 'utf8',
+    });
+    if (edit.status !== 0) {
+      throw new Error(
+        `gh issue edit failed: ${(edit.stderr || edit.error?.message || 'unknown').toString().trim()}`,
+      );
+    }
+  }
+
+  const alreadyClosed = issue.state.toUpperCase() === 'CLOSED';
+  const epicClosed = allComplete && !alreadyClosed;
+  if (epicClosed) {
+    const close = spawnSync(
+      'gh',
+      [
+        'issue', 'close', String(epicNumber),
+        '--reason', 'completed',
+        '--comment', `All stories complete — closed automatically after story #${storyNumber}.`,
+      ],
+      { encoding: 'utf8' },
+    );
+    if (close.status !== 0) {
+      throw new Error(
+        `gh issue close failed: ${(close.stderr || close.error?.message || 'unknown').toString().trim()}`,
+      );
+    }
+  }
+
+  return { checked, epicClosed, alreadyClosed };
 }
