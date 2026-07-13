@@ -1,6 +1,7 @@
 /**
  * #1053 S6: cosmetic trims to memory_search response.
- *  - default limit: 10 → 8 → 5 (#1262 lever #1)
+ *  - default user-facing limit: 10 → 8 (unchanged by #1262; see dedup below)
+ *  - #1262 lever #1: over-fetch (limit*3) then dedup-by-source, trim to limit
  *  - default threshold: 0.3 → 0.5  (#837 explicit-zero passthrough still respected)
  *  - similarity rounded to 2dp
  *  - searchTime dropped from MCP envelope (CLI keeps it)
@@ -42,10 +43,12 @@ async function getSearchTool(): Promise<MCPTool> {
 }
 
 describe('memory_search — cosmetic trims (#1053 S6)', () => {
-  it('default limit is 5 (#1262 lever #1)', async () => {
+  it('over-fetches limit*3 for dedup headroom, default user limit stays 8 (#1262 lever #1)', async () => {
     const tool = await getSearchTool();
     await tool.handler({ query: 'q' });
-    expect(searchSpy.mock.calls[0]?.[0]?.limit).toBe(5);
+    // searchEntries is asked for the overscan (8*3=24); the handler dedups +
+    // trims back to the user-facing 8 before returning.
+    expect(searchSpy.mock.calls[0]?.[0]?.limit).toBe(24);
   });
 
   it('rounds similarity to 2 decimal places', async () => {

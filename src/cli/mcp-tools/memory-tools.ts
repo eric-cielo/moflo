@@ -195,6 +195,20 @@ function parseNavigation(
   };
 }
 
+// #1262 lever #1 (dedup-by-source): collapse multiple representations of the
+// SAME underlying source to one result slot. Dogfooding showed a dense query's
+// top-8 is routinely ~40% duplicates — e.g. one file indexed in code-map as
+// `file:<path>` AND in patterns as `pattern:file:<path>`, or a test surfaced as
+// both `file:<path>` and `test-file:<path>`. Path-bearing keys reduce to their
+// path; symbol/chunk/learning keys keep their own identity (a `pattern:class:X`
+// symbol view is NOT the same source as the file, so it survives separately).
+// Operates purely on logical DB keys (always forward-slash), so platform-agnostic.
+function sourceIdOf(key: string): string {
+  const pathMatch = key.match(/^(?:pattern:)?(?:file|test-file|dir):(.+)$/);
+  if (pathMatch) return `src:${pathMatch[1]}`;
+  return key.startsWith('pattern:') ? key.slice('pattern:'.length) : key;
+}
+
 function shapeRetrievedEntry(entry: MemoryEntryWithMeta): RetrievedEntry {
   let value: unknown = entry.content;
   try { value = JSON.parse(entry.content); } catch { /* keep string */ }
@@ -460,7 +474,7 @@ export const memoryTools: MCPTool[] = [
       properties: {
         query: { type: 'string', description: 'Search query (semantic similarity)' },
         namespace: { type: 'string', description: 'Namespace to search (default: all namespaces)' },
-        limit: { type: 'number', description: 'Maximum results (default: 5)' },
+        limit: { type: 'number', description: 'Maximum results (default: 8). Multiple representations of the same source (a file indexed in both code-map and patterns, a test surfaced as both file and test-file) are collapsed to one before this cap, so every slot is a distinct source.' },
         threshold: { type: 'number', description: 'Minimum similarity threshold 0-1 (default: 0.5)' },
         expand: {
           type: 'string',
@@ -476,16 +490,21 @@ export const memoryTools: MCPTool[] = [
 
       const query = input.query as string;
       const namespace = (input.namespace as string) || 'all';
-      // #1053 S6 / #1262 lever #1: tighter defaults — fewer hits, higher
-      // relevance bar. Each returned chunk is injected verbatim into context,
-      // so 5 confident hits beats 8 with marginal tail.
-      const limit = (input.limit as number) || 5;
+      // #1053 S6: injected-token bar. Each returned hit is injected verbatim,
+      // so keep the cap tight — but #1262 dedup (below) makes every one of these
+      // slots a DISTINCT source rather than 8 slots holding ~5 uniques + dupes.
+      const limit = (input.limit as number) || 8;
       // Falsiness check would coerce a caller-supplied 0 to default and silently
       // filter low-similarity matches; use a typeof guard so explicit zero
       // means "no threshold" (#837).
       const threshold = typeof input.threshold === 'number' ? input.threshold : 0.5;
       // #1262 lever #3: opt-in single-call neighbor expansion.
       const wantExpand = input.expand === 'neighbors' || input.expand === true;
+      // #1262 lever #1: over-fetch so dedup-by-source can still return a FULL
+      // `limit` distinct sources. Local HNSW makes the extra hits free (they're
+      // just not injected); 3x headroom clears the ~40% duplication observed in
+      // dogfooding. Capped so an explicit large limit can't blow up the fetch.
+      const overscan = Math.min(limit * 3, 50);
 
       validateMemoryInput(undefined, undefined, query);
 
@@ -493,12 +512,12 @@ export const memoryTools: MCPTool[] = [
         const result = await searchEntries({
           query,
           namespace,
-          limit,
+          limit: overscan,
           threshold,
         });
 
         // Parse JSON values in results
-        const results: SearchHit[] = result.results.map(r => {
+        const mapped: SearchHit[] = result.results.map(r => {
           let value: unknown = r.content;
           try {
             value = JSON.parse(r.content);
@@ -521,6 +540,20 @@ export const memoryTools: MCPTool[] = [
             navigation,
           };
         });
+
+        // #1262 lever #1: collapse duplicate representations of the same source,
+        // keeping the highest-scoring one (results arrive score-desc), then trim
+        // to `limit`. Net effect vs. the old code: `limit` DISTINCT sources
+        // instead of `limit` slots that were often ~40% near-duplicates.
+        const seenSources = new Set<string>();
+        const results: SearchHit[] = [];
+        for (const hit of mapped) {
+          const id = sourceIdOf(hit.key);
+          if (seenSources.has(id)) continue;
+          seenSources.add(id);
+          results.push(hit);
+          if (results.length >= limit) break;
+        }
 
         // #1262 lever #3: when asked, fetch each chunk hit's prev/next content
         // inline (one round-trip) so the model doesn't fall back to a full-doc
