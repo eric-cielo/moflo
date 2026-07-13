@@ -13,7 +13,7 @@
 | `init`      | 4           | Project initialization with wizard, presets, skills, hooks               |
 | `agent`     | 8           | Agent lifecycle (spawn, list, status, stop, metrics, pool, health, logs) |
 | `swarm`     | 6           | Multi-agent swarm coordination and orchestration                         |
-| `memory`    | 11          | node:sqlite + HNSW vector search, 150x-12,500x faster                    |
+| `memory`    | 11          | node:sqlite + HNSW approximate-nearest-neighbor vector search            |
 | `mcp`       | 9           | MCP server management and tool execution                                 |
 | `task`      | 6           | Task creation, assignment, and lifecycle                                 |
 | `session`   | 7           | Session state management and persistence                                 |
@@ -174,12 +174,12 @@ a real findings UI, not a default-on background task.
 
 ## RuVector Integration (HNSW Vector Search)
 
-| Feature | Performance | Description |
-|---------|-------------|-------------|
-| **HNSW Index** | 150x–12,500x faster | Hierarchical Navigable Small World search |
-| **MicroLoRA** | <100µs adaptation | Fast model adaptation (508k+ ops/sec) |
-| **FlashAttention** | 2.49x–7.47x speedup | Optimized attention computation |
-| **Int8 Quantization** | 3.92x memory reduction | Compressed weight storage |
+| Feature | Description |
+|---------|-------------|
+| **HNSW Index** | Hierarchical Navigable Small World approximate-nearest-neighbor search — scales sub-linearly as the index grows, vs. a brute-force linear scan |
+| **MicroLoRA** | Lightweight rank-2 weight adaptation from successful patterns, without full retraining |
+| **FlashAttention** | Memory-efficient attention computation |
+| **Int8 Quantization** | Compressed 8-bit weight storage to reduce memory footprint |
 
 ---
 

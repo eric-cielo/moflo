@@ -215,7 +215,7 @@ export class ReasoningBank {
   /**
    * Retrieve relevant memories using Maximal Marginal Relevance (MMR)
    *
-   * Uses MofloDb HNSW index for 150x faster retrieval when available.
+   * Uses MofloDb HNSW approximate-nearest-neighbor (ANN) index for retrieval when available.
    *
    * @param queryEmbedding - Query vector for similarity search
    * @param k - Number of results to return (default: config.retrievalK)

@@ -826,7 +826,7 @@ const providersCommand: Command = {
     });
 
     output.writeln();
-    output.writeln(output.dim('Agentic Flow provider uses WASM SIMD for 75x faster inference'));
+    output.writeln(output.dim('Agentic Flow provider uses WASM SIMD for lightweight pure-TS inference'));
 
     return { success: true };
   },
@@ -1163,7 +1163,7 @@ const neuralCommand: Command = {
         },
         {
           component: 'Flash Attention',
-          description: '2.49x-7.47x attention speedup',
+          description: 'memory-efficient attention',
           status: neural.flashAttention ? output.success('Enabled') : output.dim('Disabled')
         },
         {
@@ -1715,8 +1715,8 @@ export const embeddingsCommand: Command = {
     output.writeln();
     output.writeln('Performance:');
     output.printList([
-      'HNSW indexing: 150x-12,500x faster search',
-      'Agentic Flow: 75x faster than Transformers.js (~3ms)',
+      'HNSW indexing: approximate-nearest-neighbor (ANN) search',
+      'Agentic Flow: lightweight pure-TS inference',
       'Persistent cache: SQLite-backed, survives restarts',
       'Hyperbolic: Better hierarchical representation',
     ]);

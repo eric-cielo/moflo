@@ -3,16 +3,11 @@
  *
  * Implements attention-based coordination mechanisms from agentic-flow@alpha:
  * - multi-head: Standard multi-head attention
- * - flash: 2.49x-7.47x speedup, 75% memory reduction
+ * - flash: memory-efficient attention (Int8 quantized weight storage)
  * - linear: For long sequences
  * - hyperbolic: Hierarchical data
  * - moe: Mixture of Experts routing
  * - graph-rope: Graph-aware positional embeddings
- *
- * Performance Targets:
- * - Flash Attention: 2.49x-7.47x speedup
- * - Memory Reduction: 50-75%
- * - MoE Routing: <5ms
  *
  * @module v3/swarm/attention-coordinator
  */
@@ -41,7 +36,7 @@ export interface IEmbeddingProvider {
  */
 export type AttentionType =
   | 'multi-head'   // Standard multi-head attention
-  | 'flash'        // 2.49x-7.47x speedup, 75% memory reduction
+  | 'flash'        // memory-efficient attention, Int8 quantized
   | 'linear'       // For long sequences
   | 'hyperbolic'   // Hierarchical data
   | 'moe'          // Mixture of Experts
@@ -196,8 +191,6 @@ export class AttentionCoordinator extends EventEmitter {
   private performanceStats = {
     totalCoordinations: 0,
     totalLatency: 0,
-    flashSpeedup: 0,
-    memoryReduction: 0,
   };
 
   constructor(
@@ -399,7 +392,7 @@ export class AttentionCoordinator extends EventEmitter {
   // ===========================================================================
 
   /**
-   * Flash Attention - 2.49x-7.47x speedup
+   * Flash Attention - memory-efficient attention
    */
   private async flashAttentionCoordination(
     agentOutputs: AgentOutput[]
@@ -445,8 +438,6 @@ export class AttentionCoordinator extends EventEmitter {
       memoryUsed,
       participatingAgents: agentOutputs.map(o => o.agentId),
       metadata: {
-        speedup: '2.49x-7.47x',
-        memoryReduction: '75%',
         blockSize,
       },
     };
@@ -1015,13 +1006,6 @@ export class AttentionCoordinator extends EventEmitter {
   ): void {
     this.performanceStats.totalCoordinations++;
     this.performanceStats.totalLatency += latency;
-
-    if (mechanism === 'flash') {
-      // Track Flash Attention performance
-      // In production, compare against baseline
-      this.performanceStats.flashSpeedup = 2.49 + Math.random() * 4.98; // 2.49x-7.47x
-      this.performanceStats.memoryReduction = 0.75;
-    }
   }
 
   // ===========================================================================

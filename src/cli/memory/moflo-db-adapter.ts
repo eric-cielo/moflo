@@ -1,7 +1,7 @@
 /**
  * MofloDb Adapter
  *
- * Moflo-owned in-memory backend with HNSW indexing for 150x-12,500x faster
+ * Moflo-owned in-memory backend with HNSW approximate-nearest-neighbor (ANN)
  * vector search. Implements IMemoryBackend interface. Backed by Map + HNSW
  * with optional sql.js persistence; has no external agentdb dependency.
  *
@@ -87,7 +87,7 @@ const DEFAULT_CONFIG: MofloDbAdapterConfig = {
  * MofloDb Memory Backend Adapter
  *
  * Provides unified memory storage with:
- * - HNSW-based vector search (150x-12,500x faster than brute force)
+ * - HNSW-based approximate-nearest-neighbor (ANN) vector search
  * - LRU caching with TTL support
  * - Namespace-based organization
  * - Full-text and metadata filtering

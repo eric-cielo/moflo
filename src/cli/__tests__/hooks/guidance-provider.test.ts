@@ -39,14 +39,14 @@ describe('GuidanceProvider', () => {
       expect(context).toContain('V3 Development Context');
       expect(context).toContain('Architecture');
       expect(context).toContain('Domain-Driven Design');
-      expect(context).toContain('Performance Targets');
+      expect(context).toContain('Performance Characteristics');
     });
 
     it('should include HNSW performance targets', async () => {
       const context = await provider.generateSessionContext();
 
-      expect(context).toContain('HNSW search');
-      expect(context).toContain('150x');
+      expect(context).toContain('HNSW approximate-nearest-neighbor');
+      expect(context).toContain('ANN');
     });
 
     it('should include code quality rules', async () => {

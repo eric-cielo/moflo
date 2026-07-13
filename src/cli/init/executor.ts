@@ -1655,7 +1655,7 @@ async function writeCapabilitiesDoc(
 MoFlo V4 is a domain-driven design architecture for multi-agent AI coordination with:
 
 - **15-Agent Swarm Coordination** with hierarchical and mesh topologies
-- **HNSW Vector Search** - 150x-12,500x faster pattern retrieval
+- **HNSW Vector Search** - approximate-nearest-neighbor (ANN) pattern retrieval
 - **SONA Neural Learning** - Self-optimizing with <0.05ms adaptation
 - **Byzantine Fault Tolerance** - Queen-led consensus mechanisms
 - **MCP Server Integration** - Model Context Protocol support
@@ -1845,10 +1845,10 @@ npx moflo doctor --fix
 ### MoVector Intelligence System
 - **SONA**: Self-Optimizing Neural Architecture (<0.05ms)
 - **MoE**: Mixture of Experts routing
-- **HNSW**: 150x-12,500x faster search
+- **HNSW**: approximate-nearest-neighbor (ANN) search
 - **EWC++**: Prevents catastrophic forgetting
-- **Flash Attention**: 2.49x-7.47x speedup
-- **Int8 Quantization**: 3.92x memory reduction
+- **Flash Attention**: memory-efficient attention
+- **Int8 Quantization**: compressed 8-bit weight storage
 
 ### 4-Step Intelligence Pipeline
 1. **RETRIEVE** - HNSW pattern search
@@ -1934,10 +1934,10 @@ npx moflo hive-mind consensus --propose "task"
 
 | Metric | Target | Status |
 |--------|--------|--------|
-| HNSW Search | 150x-12,500x faster | ✅ Implemented |
-| Memory Reduction | 50-75% | ✅ Implemented (3.92x) |
+| HNSW Search | ANN (sub-linear scaling) | ✅ Implemented |
+| Memory Reduction | Int8 quantized | ✅ Implemented |
 | SONA Integration | Pattern learning | ✅ Implemented |
-| Flash Attention | 2.49x-7.47x | 🔄 In Progress |
+| Flash Attention | memory-efficient | 🔄 In Progress |
 | MCP Response | <100ms | ✅ Achieved |
 | CLI Startup | <500ms | ✅ Achieved |
 | SONA Adaptation | <0.05ms | 🔄 In Progress |

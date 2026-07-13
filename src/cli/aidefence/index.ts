@@ -3,7 +3,7 @@
  *
  * Features:
  * - 50+ prompt injection patterns
- * - HNSW-indexed threat pattern search (150x-12,500x faster with MofloDb)
+ * - HNSW-indexed threat pattern search (approximate-nearest-neighbor with MofloDb)
  * - ReasoningBank-style pattern learning
  * - Adaptive mitigation with effectiveness tracking
  *
@@ -97,7 +97,7 @@ export interface AIDefence {
 
   /**
    * Search for similar threat patterns using HNSW
-   * Achieves 150x-12,500x speedup when connected to AgentDB
+   * Uses HNSW approximate-nearest-neighbor (ANN) search when connected to AgentDB
    */
   searchSimilarThreats(
     query: string,

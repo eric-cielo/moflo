@@ -990,12 +990,6 @@ const metricsCommand: Command = {
           successRate: number;
           avgRiskScore: number;
         };
-        performance: {
-          flashAttention: string;
-          memoryReduction: string;
-          searchImprovement: string;
-          tokenReduction: string;
-        };
       }>('hooks_metrics', {
         period,
         includeV3: v3Dashboard,
@@ -1053,18 +1047,6 @@ const metricsCommand: Command = {
           { metric: 'Avg Risk Score', value: result.commands.avgRiskScore.toFixed(2) }
         ]
       });
-
-      if (v3Dashboard && result.performance) {
-        const p = result.performance;
-        output.writeln();
-        output.writeln(output.bold('🚀 V3 Performance Gains'));
-        output.printList([
-          `Flash Attention: ${output.success(p.flashAttention ?? 'N/A')}`,
-          `Memory Reduction: ${output.success(p.memoryReduction ?? 'N/A')}`,
-          `Search Improvement: ${output.success(p.searchImprovement ?? 'N/A')}`,
-          `Token Reduction: ${output.success(p.tokenReduction ?? 'N/A')}`
-        ]);
-      }
 
       return { success: true, data: result };
     } catch (error) {
@@ -1758,7 +1740,7 @@ const sessionRestoreCommand: Command = {
 // Intelligence subcommand (SONA, MoE, HNSW)
 const intelligenceCommand: Command = {
   name: 'intelligence',
-  description: 'MoVector intelligence system (SONA, MoE, HNSW 150x faster)',
+  description: 'MoVector intelligence system (SONA, MoE, HNSW ANN search)',
   options: [
     {
       name: 'mode',
@@ -1782,7 +1764,7 @@ const intelligenceCommand: Command = {
     },
     {
       name: 'enable-hnsw',
-      description: 'Enable HNSW 150x faster search',
+      description: 'Enable HNSW approximate-nearest-neighbor (ANN) search',
       type: 'boolean',
       default: true
     },
@@ -1897,13 +1879,6 @@ const intelligenceCommand: Command = {
             cacheHitRate: number;
           };
         };
-        performance: {
-          flashAttention: string;
-          memoryReduction: string;
-          searchImprovement: string;
-          tokenReduction: string;
-          sweBenchScore: string;
-        };
         lastTrainingMs?: number;
       }>('hooks_intelligence', {
         mode,
@@ -1985,7 +1960,7 @@ const intelligenceCommand: Command = {
 
       // HNSW Component
       output.writeln();
-      output.writeln(output.bold('🔍 HNSW (150x Faster Search)'));
+      output.writeln(output.bold('🔍 HNSW (ANN Search)'));
       const hnsw = result.components?.hnsw;
       if (hnsw?.enabled) {
         output.printTable({
@@ -2026,19 +2001,6 @@ const intelligenceCommand: Command = {
         output.writeln(output.dim('  Not initialized'));
       }
 
-      // V3 Performance
-      const perf = result.performance;
-      if (perf) {
-        output.writeln();
-        output.writeln(output.bold('🚀 V3 Performance Gains'));
-        output.printList([
-          `Flash Attention: ${output.success(perf.flashAttention ?? 'N/A')}`,
-          `Memory Reduction: ${output.success(perf.memoryReduction ?? 'N/A')}`,
-          `Search Improvement: ${output.success(perf.searchImprovement ?? 'N/A')}`,
-          `Token Reduction: ${output.success(perf.tokenReduction ?? 'N/A')}`,
-          `SWE-Bench Score: ${output.success(perf.sweBenchScore ?? 'N/A')}`
-        ]);
-      }
 
       return { success: true, data: result };
     } catch (error) {
@@ -3545,10 +3507,9 @@ const statuslineCommand: Command = {
 
     const domainsColor = progress.domainsCompleted >= 3 ? c.brightGreen : progress.domainsCompleted > 0 ? c.yellow : c.red;
     // Dynamic perf indicator based on patterns/HNSW
-    let perfIndicator = `${c.dim}⚡ target: 150x-12500x${c.reset}`;
+    let perfIndicator = `${c.dim}⚡ HNSW${c.reset}`;
     if (agentdbStats.hasHnsw && agentdbStats.vectorCount > 0) {
-      const speedup = agentdbStats.vectorCount > 10000 ? '12500x' : agentdbStats.vectorCount > 1000 ? '150x' : '10x';
-      perfIndicator = `${c.brightGreen}⚡ HNSW ${speedup}${c.reset}`;
+      perfIndicator = `${c.brightGreen}⚡ HNSW (ANN)${c.reset}`;
     } else if (progress.patternsLearned > 0) {
       const patternsK = progress.patternsLearned >= 1000 ? `${(progress.patternsLearned / 1000).toFixed(1)}k` : String(progress.patternsLearned);
       perfIndicator = `${c.brightYellow}📚 ${patternsK} patterns${c.reset}`;
@@ -4515,11 +4476,8 @@ export const hooksCommand: Command = {
     output.writeln(output.bold('V3 Features:'));
     output.printList([
       '🧠 ReasoningBank adaptive learning',
-      '⚡ Flash Attention (2.49x-7.47x speedup)',
-      '🔍 AgentDB integration (150x faster search)',
-      '📊 84.8% SWE-Bench solve rate',
-      '🎯 32.3% token reduction',
-      '🚀 2.8-4.4x speed improvement',
+      '⚡ Flash Attention (memory-efficient attention)',
+      '🔍 AgentDB integration (HNSW ANN search)',
       '👥 Agent Teams integration (auto task assignment)'
     ]);
 

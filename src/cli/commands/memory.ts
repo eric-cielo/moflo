@@ -18,7 +18,7 @@ import { findProjectRoot } from '../services/project-root.js';
 
 // Memory backends
 const BACKENDS = [
-  { value: 'agentdb', label: 'AgentDB', hint: 'Vector database with HNSW indexing (150x-12,500x faster)' },
+  { value: 'agentdb', label: 'AgentDB', hint: 'Vector database with HNSW approximate-nearest-neighbor (ANN) indexing' },
   { value: 'sqlite', label: 'SQLite', hint: 'Lightweight local storage' },
   { value: 'hybrid', label: 'Hybrid', hint: 'SQLite + AgentDB (recommended)' },
   { value: 'memory', label: 'In-Memory', hint: 'Fast but non-persistent' }
@@ -284,7 +284,7 @@ const searchCommand: Command = {
     },
     {
       name: 'build-hnsw',
-      description: 'Build/rebuild HNSW index before searching (enables 150x-12,500x speedup)',
+      description: 'Build/rebuild HNSW index before searching (enables approximate-nearest-neighbor search)',
       type: 'boolean',
       default: false
     }
@@ -322,7 +322,6 @@ const searchCommand: Command = {
           const status = getHNSWStatus();
           output.printSuccess(`HNSW index built (${status.entryCount} vectors, ${buildTime}ms)`);
           output.writeln(output.dim(`  Dimensions: ${status.dimensions}, Metric: cosine`));
-          output.writeln(output.dim(`  Search speedup: ${status.entryCount > 10000 ? '12,500x' : status.entryCount > 1000 ? '150x' : '10x'}`));
         } else {
           output.printWarning('HNSW index not available (will be initialized on first use)');
         }
@@ -652,7 +651,7 @@ const statsCommand: Command = {
       });
 
       output.writeln();
-      output.printInfo('V3 Performance: 150x-12,500x faster search with HNSW indexing');
+      output.printInfo('V3 Performance: HNSW approximate-nearest-neighbor (ANN) search');
 
       return { success: true, data: stats };
     } catch (error) {

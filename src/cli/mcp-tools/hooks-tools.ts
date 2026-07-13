@@ -972,10 +972,9 @@ export const hooksMetrics: MCPTool = {
         avgRiskScore: 0.15,
       },
       performance: {
-        flashAttention: '2.49x-7.47x speedup',
-        memoryReduction: '50-75% reduction',
-        searchImprovement: '150x-12,500x faster',
-        tokenReduction: '32.3% fewer tokens',
+        flashAttention: 'flash',
+        memoryReduction: 'int8',
+        searchImprovement: 'HNSW (ANN)',
       },
       status: 'healthy',
       lastUpdated: new Date().toISOString(),
@@ -2227,13 +2226,13 @@ export const hooksIntelligence: MCPTool = {
           implemented: true,
           indexSize: realStats.memory.indexSize,
           memorySizeBytes: realStats.memory.memorySizeBytes,
-          note: 'HNSW vector indexing with 150x-12,500x speedup',
+          note: 'HNSW approximate-nearest-neighbor (ANN) vector indexing',
         },
         flashAttention: {
           enabled: true,
           status: flashAvailable ? 'active' : 'loading',
           implemented: true, // NOW IMPLEMENTED in alpha.102
-          note: flashAvailable ? 'Flash Attention with O(N) memory (2.49x-7.47x speedup)' : 'Flash Attention loading...',
+          note: flashAvailable ? 'Flash Attention with O(N) memory-efficient attention' : 'Flash Attention loading...',
         },
         ewc: {
           enabled: true,

@@ -230,7 +230,7 @@ export interface VectorIndexConfig {
   dimensions: number;
   metric: 'cosine' | 'euclidean' | 'dot';
 
-  // HNSW specific (150x faster search)
+  // HNSW specific (approximate-nearest-neighbor search)
   hnsw?: {
     m: number;
     efConstruction: number;
@@ -252,7 +252,7 @@ export interface VectorIndexConfig {
 }
 
 /**
- * Flash Attention configuration (2.49x-7.47x speedup)
+ * Flash Attention configuration (memory-efficient attention)
  */
 export interface FlashAttentionConfig {
   enabled: boolean;

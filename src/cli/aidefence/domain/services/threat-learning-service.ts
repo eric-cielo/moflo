@@ -5,7 +5,7 @@
  * and ReasoningBank-style pattern storage.
  *
  * Features:
- * - HNSW-indexed threat pattern search (150x-12,500x faster)
+ * - HNSW-indexed threat pattern search (approximate-nearest-neighbor)
  * - Pattern learning from successful detections
  * - Effectiveness tracking for adaptive mitigation
  * - Integration with agentic-flow attention mechanisms
@@ -174,7 +174,7 @@ export class ThreatLearningService {
 
   /**
    * Search for similar threat patterns using HNSW
-   * When connected to AgentDB, achieves 150x-12,500x speedup
+   * When connected to AgentDB, uses HNSW approximate-nearest-neighbor (ANN) search
    */
   async searchSimilarThreats(
     query: string,

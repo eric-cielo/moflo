@@ -14,8 +14,8 @@ Claude processes guidance as part of a large context window alongside code, tool
 
 ```markdown
 ## Good
-**Always search memory before Glob/Grep.** Memory search is 150x faster and returns
-domain-aware results that Glob cannot provide.
+**Always search memory before Glob/Grep.** It returns domain-aware semantic matches
+from a prebuilt index that Glob cannot — one lookup, not a fresh filesystem scan.
 
 ## Bad
 Memory search uses HNSW indexing with domain-aware embeddings that provide much better

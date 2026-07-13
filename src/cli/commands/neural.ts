@@ -25,7 +25,7 @@ const trainCommand: Command = {
     { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size', default: '32' },
     { name: 'dim', type: 'number', description: 'Embedding dimension (max 256)', default: '256' },
     { name: 'wasm', short: 'w', type: 'boolean', description: 'Use MoVector WASM acceleration', default: 'true' },
-    { name: 'flash', type: 'boolean', description: 'Enable Flash Attention (2.49x-7.47x speedup)', default: 'true' },
+    { name: 'flash', type: 'boolean', description: 'Enable Flash Attention (memory-efficient attention)', default: 'true' },
     { name: 'moe', type: 'boolean', description: 'Enable Mixture of Experts routing', default: 'false' },
     { name: 'hyperbolic', type: 'boolean', description: 'Enable hyperbolic attention for hierarchical patterns', default: 'false' },
     { name: 'contrastive', type: 'boolean', description: 'Use contrastive learning (InfoNCE)', default: 'true' },
@@ -844,7 +844,7 @@ const optimizeCommand: Command = {
             { metric: 'Pattern Count', before: String(patterns.length), after: String(patterns.length) },
             { metric: 'Storage Size', before: `${(beforeSize / 1024).toFixed(1)} KB`, after: `${(afterSize / 1024).toFixed(1)} KB` },
             { metric: 'Embedding Memory', before: `${((memoryReduction * 4) / 1024).toFixed(1)} KB`, after: `${(memoryReduction / 1024).toFixed(1)} KB` },
-            { metric: 'Memory Reduction', before: '-', after: `~${(3.92).toFixed(2)}x (Int8)` },
+            { metric: 'Memory Reduction', before: '-', after: 'compressed 8-bit storage' },
             { metric: 'Precision', before: 'Float32', after: 'Int8 (±0.5%)' },
           ],
         });
