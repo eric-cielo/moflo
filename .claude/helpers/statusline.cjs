@@ -773,6 +773,10 @@ function generateStatusline() {
 function generateDashboard() {
   const git = getGitInfo();
   const session = getSessionStats();
+  // Hoisted to function scope: the embeddings block below also reads `system`,
+  // so it must not be scoped inside the show_swarm branch (fixed a ReferenceError
+  // when the swarm line was toggled off / the block ordering changed).
+  const system = getSystemMetrics();
   const lines = [];
 
   // Header: branding + dir + git
@@ -808,7 +812,6 @@ function generateDashboard() {
   // Swarm line (if enabled)
   if (SL_CONFIG.show_swarm) {
     const swarm = getSwarmStatus();
-    const system = getSystemMetrics();
     const swarmInd = swarm.coordinationActive ? `${c.brightGreen}\u25C9${c.reset}` : `${c.dim}\u25CB${c.reset}`;
     const agentsColor = swarm.activeAgents > 0 ? c.brightGreen : c.red;
     lines.push(
