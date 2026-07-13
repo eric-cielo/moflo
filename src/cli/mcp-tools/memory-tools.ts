@@ -136,6 +136,24 @@ interface RetrievedEntry {
   backend: string;
 }
 
+// #1262 lever #3: an adjacent chunk inlined into a search hit via expand.
+interface ExpandedNeighbor {
+  position: 'prev' | 'next';
+  key: string;
+  value: unknown;
+}
+
+// A single memory_search hit. `expanded` is populated only when the caller
+// passes expand:'neighbors'.
+interface SearchHit {
+  key: string;
+  namespace: string;
+  value: unknown;
+  similarity: number;
+  navigation: NavigationCompact | null;
+  expanded?: ExpandedNeighbor[];
+}
+
 function parseNavigation(metadataJson: string | undefined, mode: 'full'): NavigationFull | null;
 function parseNavigation(metadataJson: string | undefined, mode: 'compact'): NavigationCompact | null;
 function parseNavigation(
@@ -175,6 +193,20 @@ function parseNavigation(
     chunkTitle: meta.chunkTitle as string | undefined,
     headerLevel: meta.headerLevel as number | undefined,
   };
+}
+
+// #1262 lever #1 (dedup-by-source): collapse multiple representations of the
+// SAME underlying source to one result slot. Dogfooding showed a dense query's
+// top-8 is routinely ~40% duplicates — e.g. one file indexed in code-map as
+// `file:<path>` AND in patterns as `pattern:file:<path>`, or a test surfaced as
+// both `file:<path>` and `test-file:<path>`. Path-bearing keys reduce to their
+// path; symbol/chunk/learning keys keep their own identity (a `pattern:class:X`
+// symbol view is NOT the same source as the file, so it survives separately).
+// Operates purely on logical DB keys (always forward-slash), so platform-agnostic.
+function sourceIdOf(key: string): string {
+  const pathMatch = key.match(/^(?:pattern:)?(?:file|test-file|dir):(.+)$/);
+  if (pathMatch) return `src:${pathMatch[1]}`;
+  return key.startsWith('pattern:') ? key.slice('pattern:'.length) : key;
 }
 
 function shapeRetrievedEntry(entry: MemoryEntryWithMeta): RetrievedEntry {
@@ -435,30 +467,44 @@ export const memoryTools: MCPTool[] = [
   },
   {
     name: 'memory_search',
-    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search). When a result has a non-null `navigation` crumb, you MUST traverse via `memory_get_neighbors` — bulk `memory_retrieve` per hit is a protocol violation. See `.claude/guidance/moflo-memory-protocol.md`.',
+    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search). On chunk hits (non-null `navigation`) you MUST get adjacent context via chunk traversal, never a full-doc `Read`: prefer `expand: "neighbors"` in THIS call (cheapest — inlines prev/next), else `memory_get_neighbors`. Bulk `memory_retrieve` per hit is a protocol violation. See `.claude/guidance/moflo-memory-protocol.md`.',
     category: 'memory',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Search query (semantic similarity)' },
         namespace: { type: 'string', description: 'Namespace to search (default: all namespaces)' },
-        limit: { type: 'number', description: 'Maximum results (default: 8)' },
+        limit: { type: 'number', description: 'Maximum results (default: 8). Multiple representations of the same source (a file indexed in both code-map and patterns, a test surfaced as both file and test-file) are collapsed to one before this cap, so every slot is a distinct source.' },
         threshold: { type: 'number', description: 'Minimum similarity threshold 0-1 (default: 0.5)' },
+        expand: {
+          type: 'string',
+          enum: ['neighbors'],
+          description: "Set to 'neighbors' to inline each chunk hit's adjacent (prev/next) chunk content in this single call. Use instead of a follow-up full-doc `Read` when you need surrounding context. Off by default to keep the envelope lean.",
+        },
       },
       required: ['query'],
     },
     handler: async (input) => {
       await ensureInitialized();
-      const { searchEntries } = await getMemoryFunctions();
+      const { searchEntries, getEntry } = await getMemoryFunctions();
 
       const query = input.query as string;
       const namespace = (input.namespace as string) || 'all';
-      // #1053 S6: tighter defaults — fewer hits, higher relevance bar.
+      // #1053 S6: injected-token bar. Each returned hit is injected verbatim,
+      // so keep the cap tight — but #1262 dedup (below) makes every one of these
+      // slots a DISTINCT source rather than 8 slots holding ~5 uniques + dupes.
       const limit = (input.limit as number) || 8;
       // Falsiness check would coerce a caller-supplied 0 to default and silently
       // filter low-similarity matches; use a typeof guard so explicit zero
       // means "no threshold" (#837).
       const threshold = typeof input.threshold === 'number' ? input.threshold : 0.5;
+      // #1262 lever #3: opt-in single-call neighbor expansion.
+      const wantExpand = input.expand === 'neighbors' || input.expand === true;
+      // #1262 lever #1: over-fetch so dedup-by-source can still return a FULL
+      // `limit` distinct sources. Local HNSW makes the extra hits free (they're
+      // just not injected); 3x headroom clears the ~40% duplication observed in
+      // dogfooding. Capped so an explicit large limit can't blow up the fetch.
+      const overscan = Math.min(limit * 3, 50);
 
       validateMemoryInput(undefined, undefined, query);
 
@@ -466,12 +512,12 @@ export const memoryTools: MCPTool[] = [
         const result = await searchEntries({
           query,
           namespace,
-          limit,
+          limit: overscan,
           threshold,
         });
 
         // Parse JSON values in results
-        const results = result.results.map(r => {
+        const mapped: SearchHit[] = result.results.map(r => {
           let value: unknown = r.content;
           try {
             value = JSON.parse(r.content);
@@ -495,7 +541,59 @@ export const memoryTools: MCPTool[] = [
           };
         });
 
+        // #1262 lever #1: collapse duplicate representations of the same source,
+        // keeping the highest-scoring one (results arrive score-desc), then trim
+        // to `limit`. Net effect vs. the old code: `limit` DISTINCT sources
+        // instead of `limit` slots that were often ~40% near-duplicates.
+        const seenSources = new Set<string>();
+        const results: SearchHit[] = [];
+        for (const hit of mapped) {
+          const id = sourceIdOf(hit.key);
+          if (seenSources.has(id)) continue;
+          seenSources.add(id);
+          results.push(hit);
+          if (results.length >= limit) break;
+        }
+
+        // #1262 lever #3: when asked, fetch each chunk hit's prev/next content
+        // inline (one round-trip) so the model doesn't fall back to a full-doc
+        // `Read` for surrounding context. Opt-in keeps the default lean.
+        if (wantExpand) {
+          await Promise.all(
+            results.map(async hit => {
+              const nav = hit.navigation;
+              if (!nav) return; // non-chunk hit — nothing adjacent to fetch
+              const targets = [
+                { position: 'prev' as const, key: nav.prevChunk },
+                { position: 'next' as const, key: nav.nextChunk },
+              ].filter((t): t is { position: 'prev' | 'next'; key: string } => Boolean(t.key));
+              if (targets.length === 0) return;
+              const fetched = await Promise.all(
+                targets.map(async t => {
+                  const res = await getEntry({ key: t.key, namespace: hit.namespace });
+                  if (!res.found || !res.entry) return null;
+                  const entry = res.entry as MemoryEntryWithMeta;
+                  let value: unknown = entry.content;
+                  try { value = JSON.parse(entry.content); } catch { /* keep string */ }
+                  return { position: t.position, key: t.key, value };
+                }),
+              );
+              const neighbors = fetched.filter((n): n is ExpandedNeighbor => n !== null);
+              if (neighbors.length > 0) hit.expanded = neighbors;
+            }),
+          );
+        }
+
         notifyMemoryGate();
+
+        // #1262 lever #3: steer away from full-doc `Read` toward the cheap
+        // adjacent-context path — but only when it's actionable (chunk hits
+        // present and the caller didn't already expand), so the hint itself
+        // costs no tokens on the common case.
+        const nextStep =
+          !wantExpand && results.some(r => r.navigation)
+            ? "Chunk hits present. For adjacent context, re-call memory_search with expand:'neighbors' (one call) rather than Read-ing parentPath — full-doc Read costs far more tokens."
+            : undefined;
 
         // #1053 S6: searchTime dropped from MCP envelope (CLI keeps it for
         // human reading); `backend` retained — doctor reads it (#1053 epic).
@@ -503,6 +601,7 @@ export const memoryTools: MCPTool[] = [
           query,
           results,
           total: results.length,
+          ...(nextStep ? { nextStep } : {}),
           backend: BACKEND_LABEL,
         };
       } catch (error) {

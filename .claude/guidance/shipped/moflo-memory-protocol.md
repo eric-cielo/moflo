@@ -4,7 +4,7 @@
 
 ## Rule (MUST)
 
-When a search hit carries a non-null `navigation` field, you MUST traverse via `mcp__moflo__memory_get_neighbors` — NOT bulk-retrieve every hit with `memory_retrieve`. The `navigation` crumb is the chunking architecture's contract; bulk-retrieving every search hit defeats it and is a protocol violation. Use `memory_retrieve` only for a single specific key you already hold, or for non-chunk entries where `navigation` is null.
+When a search hit carries a non-null `navigation` field and you need adjacent context, prefer `memory_search` with `expand: 'neighbors'` — it inlines each chunk hit's prev/next content in the SAME call (one round-trip, no re-embedding). Otherwise traverse via `mcp__moflo__memory_get_neighbors`. NEVER bulk-retrieve every hit with `memory_retrieve` — the `navigation` crumb is the chunking architecture's contract, and bulk-retrieving defeats it (protocol violation). NEVER `Read` a chunk's `parentPath` for surrounding context when `expand`/neighbors would do — a full-doc Read costs far more tokens. Use `memory_retrieve` only for a single specific key you already hold, or for non-chunk entries where `navigation` is null.
 
 ---
 
@@ -146,7 +146,8 @@ Once you have a search hit, pick the right follow-up call by what you need next.
 | You want | Use | Why |
 |----------|-----|-----|
 | Find an entry-point | `mcp__moflo__memory_search` | Returns chunk hits with `navigation` (parentDoc, prev/next, chunkTitle) |
-| Adjacent context (1 chunk over) | `mcp__moflo__memory_get_neighbors` `{ key, include: ['prev','next'] }` | One round-trip, shaped entries with full nav |
+| Adjacent context AND you're still searching | `mcp__moflo__memory_search` `{ query, expand: 'neighbors' }` | Cheapest — prev/next content inlined in the search call itself, zero extra round-trips |
+| Adjacent context for a hit you already have | `mcp__moflo__memory_get_neighbors` `{ key, include: ['prev','next'] }` | One round-trip, shaped entries with full nav |
 | Same-section peers (h2/h3 family) | `memory_get_neighbors` `{ include: ['siblings'] }` or `['parent','children']` | Hierarchical traversal — cheaper than re-searching |
 | Full content of one specific chunk | `mcp__moflo__memory_retrieve` `{ key }` | For a key you already hold — never for bulk-retrieving search hits |
 | Whole source doc when truly needed | `Read` `parentPath` from any chunk's nav | Disk read is cheaper than re-indexed `doc-*` |
