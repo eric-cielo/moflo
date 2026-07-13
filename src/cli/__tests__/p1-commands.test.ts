@@ -92,10 +92,6 @@ vi.mock('../mcp-client.js', () => ({
           avgWriteTime: 1.2,
           cacheHitRate: 0.85,
           hnswEnabled: true
-        },
-        v3Gains: {
-          searchImprovement: '150x faster',
-          memoryReduction: '50% reduction'
         }
       };
     }

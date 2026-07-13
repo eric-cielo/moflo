@@ -449,7 +449,7 @@ describe('AutoMemoryBridge', () => {
       await bridge.recordInsight(createTestInsight());
       await bridge.recordInsight(createTestInsight({
         category: 'performance',
-        summary: 'Use Int8 quantization for 3.92x memory reduction',
+        summary: 'Use Int8 quantization for compressed 8-bit weight storage',
       }));
 
       const result = await bridge.syncToAutoMemory();

@@ -7,7 +7,7 @@
  * Format matches the working .claude/statusline.sh output:
  * ▊ MoFlo ● <user>  │  ⎇ <branch>  │  Opus 4.8
  * ─────────────────────────────────────────────────────
- * 🏗️  DDD Domains    [●●●●●]  5/5    ⚡ 1.0x → 2.49x-7.47x
+ * 🏗️  DDD Domains    [●●●●●]  5/5
  * 🤖 Swarm  ◉ [58/15]  👥 0    🟢 CVE 3/3    💾 22282MB    📂  47%    🧠  10%
  * 🔧 Architecture    DDD ● 98%  │  Security ●CLEAN  │  Memory ●AgentDB  │  Integration ●
  */
@@ -165,10 +165,9 @@ export class StatuslineGenerator {
     );
     const domainsColor = data.v3Progress.domainsCompleted >= 3 ? c.brightGreen :
                          data.v3Progress.domainsCompleted > 0 ? c.yellow : c.red;
-    const speedup = `${c.brightYellow}⚡ 1.0x${c.reset} ${c.dim}→${c.reset} ${c.brightYellow}${data.performance.flashAttentionTarget}${c.reset}`;
     lines.push(
       `${c.brightCyan}🏗️  DDD Domains${c.reset}    ${progressBar}  ` +
-      `${domainsColor}${data.v3Progress.domainsCompleted}${c.reset}/${c.brightWhite}${data.v3Progress.totalDomains}${c.reset}    ${speedup}`
+      `${domainsColor}${data.v3Progress.domainsCompleted}${c.reset}/${c.brightWhite}${data.v3Progress.totalDomains}${c.reset}`
     );
 
     // Line 2: Swarm + CVE + Memory + Context + Intelligence
@@ -313,10 +312,9 @@ export class StatuslineGenerator {
     );
     const domainsColor = data.v3Progress.domainsCompleted >= 3 ? c.brightGreen :
                          data.v3Progress.domainsCompleted > 0 ? c.yellow : c.red;
-    const speedup = `${c.brightYellow}⚡ 1.0x${c.reset} ${c.dim}→${c.reset} ${c.brightYellow}${data.performance.flashAttentionTarget}${c.reset}`;
     lines.push(
       `${c.brightCyan}🏗️  DDD Domains${c.reset}    ${progressBar}  ` +
-      `${domainsColor}${data.v3Progress.domainsCompleted}${c.reset}/${c.brightWhite}${data.v3Progress.totalDomains}${c.reset}    ${speedup}`
+      `${domainsColor}${data.v3Progress.domainsCompleted}${c.reset}/${c.brightWhite}${data.v3Progress.totalDomains}${c.reset}`
     );
 
     // Line 4: COLLISION ZONE LINE - restructure to avoid cols 15-25
@@ -526,9 +524,9 @@ export class StatuslineGenerator {
     }
 
     return {
-      flashAttentionTarget: '2.49x-7.47x',
-      searchImprovement: '150x-12,500x',
-      memoryReduction: '50-75%',
+      flashAttentionTarget: 'flash',
+      searchImprovement: 'HNSW (ANN)',
+      memoryReduction: 'int8',
     };
   }
 
@@ -699,7 +697,7 @@ export function parseStatuslineData(json: string): StatuslineData | null {
       security: data.security ?? { status: 'PENDING', cvesFixed: 0, totalCves: 3 },
       swarm: data.swarm ?? { activeAgents: 0, maxAgents: 15, coordinationActive: false },
       hooks: data.hooks ?? { status: 'INACTIVE', patternsLearned: 0, routingAccuracy: 0, totalOperations: 0 },
-      performance: data.performance ?? { flashAttentionTarget: '2.49x-7.47x', searchImprovement: '150x', memoryReduction: '50%' },
+      performance: data.performance ?? { flashAttentionTarget: 'flash', searchImprovement: 'HNSW (ANN)', memoryReduction: 'int8' },
       lastUpdated: data.lastUpdated ? new Date(data.lastUpdated) : new Date(),
     };
   } catch {

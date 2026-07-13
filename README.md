@@ -49,7 +49,7 @@ MoFlo makes deliberate choices so you don't have to:
 - **Neural embeddings by default** — 384-dimensional embeddings using `all-MiniLM-L6-v2`. No hash fallback, no peer-optional setup, no install prompts — real semantic search works out of the box. A `postinstall` step trims the embedding runtime to your platform and strips GPU-only libraries the runtime never loads, reclaiming roughly 340 MB on Linux and 150 MB on Windows from a fresh install. Set `MOFLO_NO_PRUNE=1` to skip the trim, or `ONNXRUNTIME_NODE_INSTALL_CUDA=true` to keep CUDA GPU support.
 - **Full learning stack wired up OOTB** — All configured and functional from `flo init`, no manual setup:
   - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories
-  - **MicroLoRA** — fast rank-2 weight adaptations (~1µs per adapt)
+  - **MicroLoRA** — fast rank-2 weight adaptations from successful patterns
   - **EWC++** (Elastic Weight Consolidation) — prevents catastrophic forgetting across sessions
   - **HNSW Vector Search** — fast nearest-neighbor search over your knowledge base
   - **Semantic Routing** — maps tasks to the right agent via learned patterns (ReasoningBank)
@@ -751,7 +751,7 @@ These are the backend systems that hooks and commands interact with.
 | **Semantic Routing** | Matches task descriptions to agent types using vector similarity against 12 built-in patterns | Routes work to the right specialist (security-architect, tester, coder, etc.) automatically | Yes |
 | **Learned Routing** | Records task outcomes (agent type + success/failure) and feeds them back into routing | Routing gets smarter over time — successful patterns are weighted higher in future recommendations | Yes |
 | **SONA Learning** | Self-Optimizing Neural Architecture that learns from task trajectories | Adapts routing weights based on actual outcomes, not just keyword matching | Yes |
-| **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | Fine-grained model adaptation without full retraining | Yes |
+| **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns | Fine-grained model adaptation without full retraining | Yes |
 | **EWC++ Consolidation** | Elastic Weight Consolidation that prevents catastrophic forgetting | New learning doesn't overwrite patterns from earlier sessions | Yes |
 | **Session Persistence** | Stop hook exports session metrics; SessionStart hook restores prior state | Patterns learned on Monday are available on Friday | Yes |
 | **Auto-Meditate** | Recognizes durable lessons in the live session and distills them into the `learnings` namespace in a background pass at the next session start | The high-signal lessons from each session are kept automatically — no need to remember to run `/meditate` | Yes |

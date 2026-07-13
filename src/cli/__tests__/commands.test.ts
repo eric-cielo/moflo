@@ -356,7 +356,7 @@ describe('Agent Commands', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('summary');
-      expect(result.data).toHaveProperty('performance');
+      expect(result.data).toHaveProperty('byType');
     });
 
     it('should accept period option', async () => {

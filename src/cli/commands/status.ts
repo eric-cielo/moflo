@@ -178,8 +178,8 @@ async function getSystemStatus(): Promise<{
       performance: {
         cpuUsage: getProcessCpuUsage(),
         memoryUsage: getProcessMemoryUsage(),
-        flashAttention: '2.8x speedup',
-        searchSpeed: '150x faster'
+        flashAttention: 'flash',
+        searchSpeed: 'HNSW (ANN)'
       }
     };
   } catch (error) {
@@ -630,10 +630,6 @@ const memoryCommand: Command = {
           cacheHitRate: number;
           hnswEnabled: boolean;
         };
-        v3Gains: {
-          searchImprovement: string;
-          memoryReduction: string;
-        };
       }>('memory_detailed-stats', {});
 
       if (ctx.flags.format === 'json') {
@@ -671,13 +667,6 @@ const memoryCommand: Command = {
           { metric: 'Cache Hit Rate', value: `${(result.performance.cacheHitRate * 100).toFixed(1)}%` }
         ]
       });
-
-      output.writeln();
-      output.writeln(output.bold('V3 Performance Gains'));
-      output.printList([
-        `Search Speed: ${output.success(result.v3Gains.searchImprovement)}`,
-        `Memory Usage: ${output.success(result.v3Gains.memoryReduction)}`
-      ]);
 
       return { success: true, data: result };
     } catch (error) {

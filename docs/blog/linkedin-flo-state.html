@@ -163,7 +163,7 @@
 
 <ul>
   <li><strong>It consumes everything that matters</strong> — project guidance, reusable patterns, code maps (exports, classes, functions, types), test-to-source mappings, and a continuously updated stream of learnings from <em>both</em> Claude and the humans on the team. A correction you make once, a convention you write down, a routing decision that worked: all of it lands in the same index and shows up the next time it's relevant.</li>
-  <li><strong>HNSW vector indexing</strong> — semantic search runs 150x to 12,500x faster than brute-force cosine, depending on project size.</li>
+  <li><strong>HNSW vector indexing</strong> — approximate-nearest-neighbor search that scales sub-linearly as the store grows, instead of a brute-force cosine scan over every entry.</li>
   <li><strong>Neural embeddings by default</strong> — <code>fastembed</code> with the <code>all-MiniLM-L6-v2</code> 384-dim model, ONNX runtime, native Rust tokenizer. Hash-based "fake" embeddings are gone. If a search returns a result, it's because the meaning matched, not because the bytes did.</li>
   <li><strong>One store, many consumers</strong> — the embeddings cache, knowledge graph, RVF/SONA learning store, and the auto-memory bridge all share the same database file. Backups are a single <code>cp</code>.</li>
 </ul>

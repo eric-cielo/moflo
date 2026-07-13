@@ -3,7 +3,7 @@
  *
  * Wraps the CLI memory-bridge (MofloDb v3 + HNSW + embeddings) so the
  * 6 aidefence_* MCP tools persist learned threat patterns and mitigation
- * strategies across process restarts with 150x-12,500x faster search.
+ * strategies across process restarts with HNSW approximate-nearest-neighbor (ANN) search.
  *
  * The aidefence facade itself stays pure-lib (no MofloDb import); this
  * adapter is the seam where the bridge is plugged in. Arbitrary values are

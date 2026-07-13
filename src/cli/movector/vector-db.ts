@@ -3,7 +3,7 @@
  *
  * Provides optional WASM-accelerated vector operations for:
  * - Semantic similarity search
- * - HNSW indexing (150x faster)
+ * - HNSW indexing (approximate-nearest-neighbor)
  * - Embedding generation
  *
  * Gracefully degrades when native backend is not available.

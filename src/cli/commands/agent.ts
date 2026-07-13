@@ -526,12 +526,7 @@ const metricsCommand: Command = {
         { type: 'coder', count: 2, tasks: 45, successRate: '97%' },
         { type: 'researcher', count: 1, tasks: 32, successRate: '95%' },
         { type: 'tester', count: 1, tasks: 50, successRate: '98%' }
-      ],
-      performance: {
-        flashAttention: '2.8x speedup',
-        memoryReduction: '52%',
-        searchImprovement: '150x faster'
-      }
+      ]
     };
 
     if (ctx.flags.format === 'json') {
@@ -569,14 +564,6 @@ const metricsCommand: Command = {
       ],
       data: metrics.byType
     });
-
-    output.writeln();
-    output.writeln(output.bold('V3 Performance Gains'));
-    output.printList([
-      `Flash Attention: ${output.success(metrics.performance.flashAttention)}`,
-      `Memory Reduction: ${output.success(metrics.performance.memoryReduction)}`,
-      `Search: ${output.success(metrics.performance.searchImprovement)}`
-    ]);
 
     return { success: true, data: metrics };
   }

@@ -5,7 +5,7 @@
  * No JSON - all patterns stored as vectors in memory.db
  *
  * Features:
- * - Real HNSW indexing (M=16, efConstruction=200) for 150x+ faster search
+ * - Real HNSW indexing (M=16, efConstruction=200) for approximate-nearest-neighbor (ANN) search
  * - ONNX embeddings via cli/src/embeddings (MiniLM-L6 384-dim)
  * - MofloDb backend for persistence
  * - Pattern promotion from short-term to long-term memory
@@ -411,7 +411,7 @@ export class ReasoningBank extends EventEmitter {
 
     let results: Array<{ pattern: GuidancePattern; similarity: number }> = [];
 
-    // Try HNSW search first (150x+ faster)
+    // Try HNSW search first (approximate-nearest-neighbor)
     if (this.hnswIndex && this.useRealBackend) {
       const hnswStart = performance.now();
       try {

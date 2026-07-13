@@ -1,5 +1,5 @@
 /**
- * Process-wide HNSW vector-index singleton (150x faster vector search).
+ * Process-wide HNSW vector-index singleton (approximate-nearest-neighbor search).
  *
  * Extracted from `memory-initializer.ts` (#1203 decomposition). Owns the
  * lazy HNSW index built from the SQLite `embedding` column (or a binary
@@ -206,7 +206,7 @@ export async function addToHNSWIndex(
 }
 
 /**
- * Search HNSW index (150x faster than brute-force)
+ * Search HNSW index (approximate-nearest-neighbor; scales sub-linearly vs. brute-force)
  * Returns results sorted by similarity (highest first)
  */
 export async function searchHNSWIndex(

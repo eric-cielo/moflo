@@ -422,7 +422,7 @@ export class AgentRegistry implements IAgentRegistry {
         id: 'agent-7',
         role: 'memory-specialist',
         domain: 'core',
-        description: 'Memory system unification with AgentDB (150x-12500x improvement)',
+        description: 'Memory system unification with AgentDB (HNSW ANN search)',
         capabilities: [
           { name: 'memory-optimization', description: 'Optimize memory systems', supportedTaskTypes: ['memory-optimization', 'implementation'] }
         ],
@@ -499,7 +499,7 @@ export class AgentRegistry implements IAgentRegistry {
         id: 'agent-14',
         role: 'performance-engineer',
         domain: 'performance',
-        description: 'Benchmarking and performance optimization (2.49x-7.47x target)',
+        description: 'Benchmarking and performance optimization',
         capabilities: [
           { name: 'benchmarking', description: 'Run performance benchmarks', supportedTaskTypes: ['benchmark'] }
         ],
