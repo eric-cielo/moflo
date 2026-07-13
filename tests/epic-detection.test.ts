@@ -9,6 +9,7 @@ import {
   isEpicIssue,
   extractStories,
   extractUncheckedStories,
+  computeEpicCheckoff,
 } from '../src/cli/epic/detection.js';
 import type { GitHubIssue } from '../src/cli/epic/types.js';
 
@@ -142,5 +143,63 @@ describe('extractUncheckedStories', () => {
   it('returns empty for all checked', () => {
     const issue = makeIssue({ body: '- [x] #1\n- [x] #2' });
     expect(extractUncheckedStories(issue)).toEqual([]);
+  });
+});
+
+// ============================================================================
+// computeEpicCheckoff (pure core of `flo epic checkoff`)
+// ============================================================================
+
+describe('computeEpicCheckoff', () => {
+  const epicBody = '## Stories\n\n- [ ] #101 — First\n- [ ] #102 — Second\n- [ ] #103 — Third';
+
+  it('flips the targeted story box and reports it checked', () => {
+    const { updated, checked } = computeEpicCheckoff(epicBody, 102);
+    expect(checked).toBe(true);
+    expect(updated).toContain('- [x] #102 — Second');
+    expect(updated).toContain('- [ ] #101 — First');
+    expect(updated).toContain('- [ ] #103 — Third');
+  });
+
+  it('does not mark complete while other stories remain unchecked', () => {
+    expect(computeEpicCheckoff(epicBody, 102).allComplete).toBe(false);
+  });
+
+  it('marks complete when the last unchecked story is flipped', () => {
+    const body = '- [x] #101\n- [x] #102\n- [ ] #103';
+    const { checked, allComplete } = computeEpicCheckoff(body, 103);
+    expect(checked).toBe(true);
+    expect(allComplete).toBe(true);
+  });
+
+  it('is idempotent — an already-checked story is not re-flipped', () => {
+    const body = '- [x] #101\n- [ ] #102';
+    const { updated, checked, allComplete } = computeEpicCheckoff(body, 101);
+    expect(checked).toBe(false);
+    expect(updated).toBe(body);
+    expect(allComplete).toBe(false); // #102 still open
+  });
+
+  it('respects word boundaries — #12 does not match #123', () => {
+    const body = '- [ ] #12\n- [ ] #123';
+    const { updated } = computeEpicCheckoff(body, 12);
+    expect(updated).toContain('- [x] #12\n');
+    expect(updated).toContain('- [ ] #123');
+  });
+
+  it('does not treat a checkbox-less epic as complete (no false close)', () => {
+    // Bare `## Stories` refs, no `- [ ]` boxes — flipping nothing must not
+    // report allComplete, or the CLI would close an epic with open work.
+    const body = '## Stories\nWe still need #5 and #6.';
+    const { checked, allComplete } = computeEpicCheckoff(body, 5);
+    expect(checked).toBe(false);
+    expect(allComplete).toBe(false);
+  });
+
+  it('reports complete when the target story is already the only checked box left', () => {
+    const body = '- [x] #101\n- [x] #102';
+    const { checked, allComplete } = computeEpicCheckoff(body, 101);
+    expect(checked).toBe(false); // already checked
+    expect(allComplete).toBe(true); // nothing unchecked remains
   });
 });

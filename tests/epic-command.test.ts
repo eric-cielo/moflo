@@ -88,6 +88,33 @@ describe('epic command structure', () => {
     expect(examples).toContainEqual(expect.stringContaining('--no-merge'));
     expect(examples).toContainEqual(expect.stringContaining('--verbose'));
   });
+
+  it('rejects checkoff with non-numeric args before touching gh', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await epicCommand.action({ args: ['checkoff', 'abc', 'def'], flags: {} });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Usage: flo epic checkoff');
+    logSpy.mockRestore();
+  });
+
+  it('rejects checkoff missing the story argument', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await epicCommand.action({ args: ['checkoff', '42'], flags: {} });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Usage: flo epic checkoff');
+    logSpy.mockRestore();
+  });
+
+  it('lists the checkoff subcommand in help and examples', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await epicCommand.action({ args: [], flags: {} });
+    expect(result.success).toBe(true);
+    const output = logSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(output).toContain('checkoff');
+    logSpy.mockRestore();
+    const examples = epicCommand.examples.map((e: any) => e.command);
+    expect(examples).toContainEqual(expect.stringContaining('checkoff'));
+  });
 });
 
 describe('makeEpicBranchName', () => {

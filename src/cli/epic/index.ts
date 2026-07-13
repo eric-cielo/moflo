@@ -10,6 +10,8 @@ export type {
   EpicStrategy,
 } from './types.js';
 
+export type { CheckOffResult } from './detection.js';
+
 export {
   isEpicIssue,
   extractStories,
@@ -17,4 +19,6 @@ export {
   fetchEpicIssue,
   enrichStoryNames,
   findPrForIssue,
+  computeEpicCheckoff,
+  checkOffStoryInEpic,
 } from './detection.js';
