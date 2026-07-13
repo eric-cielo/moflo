@@ -191,8 +191,6 @@ export class AttentionCoordinator extends EventEmitter {
   private performanceStats = {
     totalCoordinations: 0,
     totalLatency: 0,
-    flashSpeedup: 0,
-    memoryReduction: 0,
   };
 
   constructor(
@@ -440,8 +438,6 @@ export class AttentionCoordinator extends EventEmitter {
       memoryUsed,
       participatingAgents: agentOutputs.map(o => o.agentId),
       metadata: {
-        speedup: 'flash',
-        memoryReduction: 'int8',
         blockSize,
       },
     };
@@ -1010,11 +1006,6 @@ export class AttentionCoordinator extends EventEmitter {
   ): void {
     this.performanceStats.totalCoordinations++;
     this.performanceStats.totalLatency += latency;
-
-    if (mechanism === 'flash') {
-      // Flash Attention speedup is not benchmarked against a live baseline; left unmeasured.
-      // Memory reduction is likewise not measured here; both remain at their initialized value (0).
-    }
   }
 
   // ===========================================================================

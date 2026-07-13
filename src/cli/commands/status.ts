@@ -107,8 +107,6 @@ async function getSystemStatus(): Promise<{
   performance: {
     cpuUsage: number;
     memoryUsage: number;
-    flashAttention: string;
-    searchSpeed: string;
   };
 }> {
   try {
@@ -177,9 +175,7 @@ async function getSystemStatus(): Promise<{
       tasks: taskStatus,
       performance: {
         cpuUsage: getProcessCpuUsage(),
-        memoryUsage: getProcessMemoryUsage(),
-        flashAttention: 'flash',
-        searchSpeed: 'HNSW (ANN)'
+        memoryUsage: getProcessMemoryUsage()
       }
     };
   } catch (error) {
@@ -204,9 +200,7 @@ async function getSystemStatus(): Promise<{
       tasks: { total: 0, pending: 0, running: 0, completed: 0, failed: 0 },
       performance: {
         cpuUsage: 0,
-        memoryUsage: 0,
-        flashAttention: 'N/A',
-        searchSpeed: 'N/A'
+        memoryUsage: 0
       }
     };
   }
@@ -303,10 +297,8 @@ function displayStatus(status: Awaited<ReturnType<typeof getSystemStatus>>): voi
 
   // Performance section
   if (status.running) {
-    output.writeln(output.bold('V3 Performance Gains'));
+    output.writeln(output.bold('Performance'));
     output.printList([
-      `Flash Attention: ${output.success(status.performance.flashAttention)}`,
-      `Vector Search: ${output.success(status.performance.searchSpeed)}`,
       `CPU Usage: ${status.performance.cpuUsage.toFixed(1)}%`,
       `Memory Usage: ${status.performance.memoryUsage.toFixed(1)}%`
     ]);
