@@ -467,7 +467,7 @@ export const memoryTools: MCPTool[] = [
   },
   {
     name: 'memory_search',
-    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search). On chunk hits (non-null `navigation`), get adjacent context in THIS call via `expand: "neighbors"` — cheaper than a follow-up `Read` of the parent doc, and the preferred path over a separate `memory_get_neighbors` round-trip. See `.claude/guidance/moflo-memory-protocol.md`.',
+    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search). On chunk hits (non-null `navigation`) you MUST get adjacent context via chunk traversal, never a full-doc `Read`: prefer `expand: "neighbors"` in THIS call (cheapest — inlines prev/next), else `memory_get_neighbors`. Bulk `memory_retrieve` per hit is a protocol violation. See `.claude/guidance/moflo-memory-protocol.md`.',
     category: 'memory',
     inputSchema: {
       type: 'object',
