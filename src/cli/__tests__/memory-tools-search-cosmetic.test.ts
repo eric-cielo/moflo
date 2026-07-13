@@ -1,6 +1,6 @@
 /**
  * #1053 S6: cosmetic trims to memory_search response.
- *  - default limit: 10 → 8
+ *  - default limit: 10 → 8 → 5 (#1262 lever #1)
  *  - default threshold: 0.3 → 0.5  (#837 explicit-zero passthrough still respected)
  *  - similarity rounded to 2dp
  *  - searchTime dropped from MCP envelope (CLI keeps it)
@@ -42,10 +42,10 @@ async function getSearchTool(): Promise<MCPTool> {
 }
 
 describe('memory_search — cosmetic trims (#1053 S6)', () => {
-  it('default limit is 8', async () => {
+  it('default limit is 5 (#1262 lever #1)', async () => {
     const tool = await getSearchTool();
     await tool.handler({ query: 'q' });
-    expect(searchSpy.mock.calls[0]?.[0]?.limit).toBe(8);
+    expect(searchSpy.mock.calls[0]?.[0]?.limit).toBe(5);
   });
 
   it('rounds similarity to 2 decimal places', async () => {
