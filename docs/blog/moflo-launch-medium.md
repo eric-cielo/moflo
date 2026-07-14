@@ -1,11 +1,34 @@
----
-title: "MoFlo: local-first agent orchestration for Claude Code"
-published: false
-description: "MoFlo gives Claude Code a memory, learned model routing, and repeatable workflows — local-first, no API keys, one npm install."
-tags: claude, ai, productivity, opensource
-canonical_url: https://cielolimitada.com/moflo-local-first-agent-orchestration-for-claude-code/
-cover_image:
----
+<!--
+====================================================================
+MEDIUM CROSS-POST — canonical setup (READ BEFORE PUBLISHING)
+====================================================================
+Medium does NOT parse YAML front matter, so canonical is set in the UI.
+
+The canonical is the actual WordPress article URL so all cross-posts credit
+one source. Do NOT use /moflo or /blog/moflo — those redirect to the moflo
+landing page, not the article; canonical must resolve to the matching article
+itself.
+
+Best path — use Medium's Import tool, which sets canonical automatically:
+  1. The canonical source is the WordPress article:
+       https://cielolimitada.com/moflo-local-first-agent-orchestration-for-claude-code/
+  2. In Medium: profile menu → "Stories" → "Import a story", paste that URL.
+     Medium sets the canonical link to the imported URL for you.
+
+Manual path — if you paste this article in by hand:
+  1. Write/paste the story, then in the editor click "..." → "More settings".
+  2. Under "Advanced settings" → "Customize canonical link", set:
+       https://cielolimitada.com/moflo-local-first-agent-orchestration-for-claude-code/
+  3. Publish.
+
+Title:    MoFlo: local-first agent orchestration for Claude Code
+Subtitle: Give Claude Code a memory, learned model routing, and repeatable
+          workflows — local-first, no API keys, one npm install.
+Tags:     Claude, AI, Productivity, Open Source, Developer Tools
+
+Everything below the line is the article body. Do not paste this comment block.
+====================================================================
+-->
 
 Claude Code is the best coding agent I've used. But every session starts from zero. It re-reads the same files, re-derives the same conclusions, and forgets everything the moment you close the terminal. There's no memory of what your codebase means, no learning from what worked last time, and no repeatable way to hand it a task and trust the same steps run every time.
 

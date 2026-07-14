@@ -1,11 +1,22 @@
 ---
 title: "MoFlo: local-first agent orchestration for Claude Code"
-published: false
-description: "MoFlo gives Claude Code a memory, learned model routing, and repeatable workflows — local-first, no API keys, one npm install."
-tags: claude, ai, productivity, opensource
-canonical_url: https://cielolimitada.com/moflo-local-first-agent-orchestration-for-claude-code/
-cover_image:
+subtitle: "Give Claude Code a memory, learned model routing, and repeatable workflows — local-first, no API keys, one npm install."
+tags: claude, ai, productivity, opensource, developer-tools
+canonicalUrl: https://cielolimitada.com/moflo-local-first-agent-orchestration-for-claude-code/
+cover:
+saveAsDraft: true
+enableToc: true
 ---
+
+<!--
+Hashnode cross-post. `canonicalUrl` above points at the actual WordPress
+article URL so search engines credit one source and these republications
+aren't treated as duplicate content. Do NOT use /moflo or /blog/moflo — those
+redirect to the moflo landing page, not the article; canonical must resolve to
+the matching article itself. If you import via the Hashnode dashboard instead
+of the Git-backed flow, set the same canonical URL under the article's
+"SEO / Advanced" settings.
+-->
 
 Claude Code is the best coding agent I've used. But every session starts from zero. It re-reads the same files, re-derives the same conclusions, and forgets everything the moment you close the terminal. There's no memory of what your codebase means, no learning from what worked last time, and no repeatable way to hand it a task and trust the same steps run every time.
 
