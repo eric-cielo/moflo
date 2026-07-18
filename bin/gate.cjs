@@ -667,11 +667,14 @@ switch (command) {
     // via mcp__moflo__memory_store — same division of labour as testsRun vs the
     // test output; this recorder only tracks that verification happened.
     var vName = (process.env.TOOL_INPUT_skill || '');
-    if (vName === 'verify' || vName === 'ward') {
+    // Only the native /verify skill satisfies verify-before-done. /ward and
+    // /quicken are targeted audits, NOT the completion gate (see fl/sdd.md) —
+    // crediting them would let the gate pass without an end-to-end verify.
+    if (vName === 'verify') {
       var s = readState();
       if (!s.verifyRun) { s.verifyRun = true; writeState(s); }
     } else if (vName) {
-      process.stderr.write('gate: record-verify-run no-op — TOOL_INPUT_skill="' + vName + '" is not verify/ward\n');
+      process.stderr.write('gate: record-verify-run no-op — TOOL_INPUT_skill="' + vName + '" is not verify\n');
     }
     break;
   }

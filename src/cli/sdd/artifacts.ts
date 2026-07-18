@@ -362,5 +362,9 @@ export function newArtifact(
 
 /** Return true if a spec dir exists for the slug. */
 export function specExists(projectRoot: string, slug: string): boolean {
-  return existsSync(specDir(projectRoot, slug)) && statSync(specDir(projectRoot, slug)).isDirectory();
+  try {
+    return statSync(specDir(projectRoot, slug)).isDirectory();
+  } catch {
+    return false;
+  }
 }

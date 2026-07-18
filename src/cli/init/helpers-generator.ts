@@ -577,7 +577,9 @@ switch (command) {
     // Story #1274 (Epic #1269) — credit the native /verify skill for the
     // verify-before-done gate.
     var vName = (process.env.TOOL_INPUT_skill || '');
-    if (vName === 'verify' || vName === 'ward') {
+    // Only /verify satisfies the gate — /ward and /quicken are audits, not
+    // end-to-end verification (see fl/sdd.md).
+    if (vName === 'verify') {
       var s = readState();
       if (!s.verifyRun) { s.verifyRun = true; writeState(s); }
     }
@@ -628,7 +630,10 @@ switch (command) {
   case 'check-before-done': {
     // Story #1274 (Epic #1269) — verify-before-done. OFF unless the consumer
     // opts in via moflo.yaml gates.verify_before_done: true, so existing installs
-    // see zero change. Same 'gh pr create' trigger as check-before-pr.
+    // see zero change. Same 'gh pr create' trigger as check-before-pr. This
+    // template variant intentionally omits the no-source (docs-only) exemption to
+    // stay consistent with THIS file's simpler check-before-pr; the full exemption
+    // lives in the source bin/gate.cjs that the launcher syncs over this fallback.
     if (!config.verify_before_done) break;
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\\s*|\\|\\|\\s*|;\\s*)\\s*(?:[A-Z_][A-Z0-9_]*=\\S+\\s+)*gh\\s+pr\\s+create\\b/.test(cmd)) break;
