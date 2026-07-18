@@ -215,6 +215,7 @@ gates:
   memory_first: ${gates}
   task_create_first: ${gates}
   context_tracking: ${gates}
+  verify_before_done: false   # Epic #1269: require /verify before 'gh pr create' (opt-in; independent of the toggle above)
 
 # Auto-index on session start
 auto_index:

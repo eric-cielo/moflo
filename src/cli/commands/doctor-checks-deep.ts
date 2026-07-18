@@ -487,6 +487,9 @@ const REQUIRED_GATE_CASES = [
   'record-learnings-stored',
   'record-test-run',
   'record-skill-run',
+  // Story #1274 (Epic #1269) — verify-before-done gate + its recorder.
+  'record-verify-run',
+  'check-before-done',
   'reset-edit-gates',
   'check-before-pr',
   'check-dangerous-command',

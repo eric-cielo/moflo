@@ -7,7 +7,7 @@ var cp = require('child_process');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -60,7 +60,10 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true };
+  // Note: verify_before_done defaults to FALSE (opt-in) — the only gate that
+  // ships off, so existing consumers see zero behavior change on upgrade
+  // (Story #1274, Epic #1269). Every other gate is opt-out (default true).
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: false };
   try {
     var yamlPath = path.join(PROJECT_DIR, 'moflo.yaml');
     if (fs.existsSync(yamlPath)) {
@@ -72,6 +75,8 @@ function loadGateConfig() {
       if (/simplify_gate:\s*false/i.test(content)) defaults.simplify_gate = false;
       if (/learnings_gate:\s*false/i.test(content)) defaults.learnings_gate = false;
       if (/swarm_invocation_gate:\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
+      // Opt-in: enable only when explicitly set true.
+      if (/verify_before_done:\s*true/i.test(content)) defaults.verify_before_done = true;
     }
   } catch (e) { /* use defaults */ }
   return defaults;
@@ -654,6 +659,22 @@ switch (command) {
     }
     break;
   }
+  case 'record-verify-run': {
+    // Story #1274 (Epic #1269). Fires PostToolUse on ^Skill$ when the native
+    // /verify skill runs, satisfying the verify-before-done gate. Mirrors
+    // record-skill-run's fault-tolerant shape. The verification OUTCOME (what
+    // was checked, pass/fail) is written to memory by the verify flow itself
+    // via mcp__moflo__memory_store — same division of labour as testsRun vs the
+    // test output; this recorder only tracks that verification happened.
+    var vName = (process.env.TOOL_INPUT_skill || '');
+    if (vName === 'verify' || vName === 'ward') {
+      var s = readState();
+      if (!s.verifyRun) { s.verifyRun = true; writeState(s); }
+    } else if (vName) {
+      process.stderr.write('gate: record-verify-run no-op — TOOL_INPUT_skill="' + vName + '" is not verify/ward\n');
+    }
+    break;
+  }
   case 'reset-edit-gates': {
     var fp = process.env.TOOL_INPUT_file_path || '';
     // Inert files (markdown, lockfiles, CHANGELOG, .env.example) AND inert paths
@@ -664,10 +685,14 @@ switch (command) {
     // Test-only edits invalidate testsRun but preserve simplifyRun (#908).
     var isTestOnly = fp && EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE.test(fp);
     var resetTests = s.testsRun;
+    // A code edit invalidates a prior verification (Story #1274) — same as tests,
+    // including test-only edits (the criteria being verified may have moved).
+    var resetVerify = s.verifyRun;
     var resetSimplify = s.simplifyRun && !isTestOnly;
-    if (!resetTests && !resetSimplify) break;
+    if (!resetTests && !resetSimplify && !resetVerify) break;
     var gates = [];
     if (resetTests) { s.testsRun = false; gates.push('tests'); }
+    if (resetVerify) { s.verifyRun = false; gates.push('verify'); }
     if (resetSimplify) { s.simplifyRun = false; gates.push('simplify'); }
     if (fp) {
       s.lastResetBy = { file: fp, at: new Date().toISOString(), gates: gates };
@@ -732,6 +757,39 @@ switch (command) {
     }
     process.stderr.write('Disable per-gate via moflo.yaml:\n');
     process.stderr.write('  gates:\n    testing_gate: false\n    simplify_gate: false\n    learnings_gate: false\n');
+    process.exit(2);
+  }
+  case 'check-before-done': {
+    // Story #1274 (Epic #1269). Verify-before-done: block `gh pr create` until
+    // the change has been verified end-to-end (native /verify skill) against the
+    // plan's acceptance criteria. OFF by default — only enforced when the
+    // consumer opts in via moflo.yaml `gates: verify_before_done: true`, so
+    // existing installs see zero change on upgrade. Same trigger + no-source
+    // exemption as check-before-pr, so the two gates compose on one command.
+    if (!config.verify_before_done) break;
+    var cmd = process.env.TOOL_INPUT_command || '';
+    if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;
+    // No-source-files exemption — a docs-only / path-inert diff needs no verify.
+    var changedD = getChangedFilesVsBase();
+    if (changedD && changedD.length > 0) {
+      var hasSourceD = changedD.some(function(f) {
+        return SOURCE_FILE_RE.test(f) && !EDIT_RESET_SKIP_PATH_RE.test(f);
+      });
+      if (!hasSourceD) {
+        var reasonD = changedD.every(function(f) { return DOCS_ONLY_RE.test(f); }) ? 'Docs-only' : 'No source files in branch diff';
+        process.stdout.write(reasonD + ' (' + changedD.length + ' file' + (changedD.length === 1 ? '' : 's') + ') — skipping verify-before-done gate.\n');
+        break;
+      }
+    }
+    var sd = readState();
+    if (sd.verifyRun) break;
+    process.stderr.write('BLOCKED: gh pr create requires verification before done:\n');
+    process.stderr.write('  - the change has not been verified since the last code edit (run /verify)\n');
+    if (sd.lastResetBy && sd.lastResetBy.file && (sd.lastResetBy.gates || []).indexOf('verify') >= 0) {
+      process.stderr.write('Last gate reset: ' + sd.lastResetBy.file + ' (verify)\n');
+    }
+    process.stderr.write('Disable via moflo.yaml:\n');
+    process.stderr.write('  gates:\n    verify_before_done: false\n');
     process.exit(2);
   }
   case 'check-dangerous-command': {

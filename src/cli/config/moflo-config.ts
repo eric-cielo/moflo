@@ -45,6 +45,8 @@ export interface MofloConfig {
     memory_first: boolean;
     task_create_first: boolean;
     context_tracking: boolean;
+    /** Verify-before-done gate (Epic #1269). Opt-in — default false. */
+    verify_before_done: boolean;
   };
 
   auto_index: {
@@ -255,6 +257,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     memory_first: true,
     task_create_first: true,
     context_tracking: true,
+    verify_before_done: false,
   },
   auto_index: {
     guidance: true,
@@ -429,6 +432,7 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       memory_first: raw.gates?.memory_first ?? DEFAULT_CONFIG.gates.memory_first,
       task_create_first: raw.gates?.task_create_first ?? DEFAULT_CONFIG.gates.task_create_first,
       context_tracking: raw.gates?.context_tracking ?? DEFAULT_CONFIG.gates.context_tracking,
+      verify_before_done: raw.gates?.verify_before_done ?? DEFAULT_CONFIG.gates.verify_before_done,
     },
     auto_index: {
       guidance: raw.auto_index?.guidance ?? raw.autoIndex?.guidance ?? DEFAULT_CONFIG.auto_index.guidance,
@@ -688,6 +692,7 @@ gates:
   memory_first: true          # Search memory before Glob/Grep
   task_create_first: true     # TaskCreate before Agent tool
   context_tracking: true      # Track context bracket (FRESH/MODERATE/DEPLETED/CRITICAL)
+  verify_before_done: false   # Epic #1269: require /verify before 'gh pr create' (opt-in)
 
 # Auto-index on session start
 auto_index:
