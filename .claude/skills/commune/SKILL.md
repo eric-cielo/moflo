@@ -119,11 +119,16 @@ The whole point is to feed moflo's existing strengths, not start a parallel trac
 | Destination | When | How |
 |-------------|------|-----|
 | **`/flo` ticket** (Recommended) | The spec is a unit of work to build | Map the spec to Description / Acceptance Criteria / Suggested Test Cases, then run `/fl -t <title>` to create the GitHub issue (or `/fl <issue#>` to implement immediately). The spec's Success criteria become Acceptance Criteria; Scope+Approach become the Description. |
+| **SDD spec artifact** | The user wants the spec to drive an `/flo --sdd` run (the spec→plan→implement→verify cycle) | Pipe the synthesized markdown into the SDD spine: `flo sdd spec "<title>" --from -` (writes `.moflo/specs/<slug>/spec.md`, git-tracked + memory-indexed). Rename the spec's **Success criteria** section to **`## Acceptance Criteria`** first — the SDD validator requires it. Then `flo sdd review <slug>` when signed off, and hand to `/fl --sdd <issue#>` (or `/fl -sd <issue#>`). This is the pre-execution counterpart to `/meditate`. |
 | **Spell** | The spec describes a repeatable, automatable pipeline | Hand the spec to `/spell-builder` as the design input. |
 | **Memory** | The spec is a decision/insight to retain, not build now | `mcp__moflo__memory_store { namespace: "learnings", key: "spec:<topic>", value: <spec> }` (use `patterns` for a reusable approach). |
 | **Just the file** | The user wants the artifact only | `Write` the markdown to a path the user names, or to a repo-relative `docs/specs/<kebab-title>.md`. Never hardcode an absolute or OS-specific path (e.g. `/tmp`); build the path from the project root. |
 
-Offer to do more than one (e.g. save to memory **and** open a ticket). Default to the `/flo` ticket path when the user is unsure.
+Offer to do more than one (e.g. save to memory **and** open a ticket). Default to the `/flo` ticket path when the user is unsure. For the **SDD spec** path, always create the artifact through the `flo sdd` CLI — never hand-write the `.moflo/specs/...` path (cross-platform, Rule #1).
+
+## See Also — SDD
+
+`.claude/skills/fl/sdd.md` — how `/flo --sdd` consumes the spec artifact this skill produces and drives it through plan → implement → verify.
 
 ## Guardrails
 

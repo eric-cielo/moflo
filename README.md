@@ -76,6 +76,7 @@ MoFlo makes deliberate choices so you don't have to:
 | **Learned Routing** | Routes tasks to the right agent type. Learns from outcomes — gets better over time. |
 | **Spell Engine** | Define multi-step automations as YAML — shell commands, agent spawns, conditionals, loops, memory ops. [Full documentation →](docs/SPELLS.md) |
 | **`/flo` Skill** | Execute GitHub issues through a full process: research → enhance → implement → test → simplify → PR. (Also available as `/fl`.) |
+| **Spec-Driven Development** | `/flo -sd` runs a spec → plan → implement → verify cycle with reviewable, memory-indexed artifacts; `/flo -v` enforces verify-before-done on its own. Both opt-in. [Details →](#spec-driven-development-sdd) |
 | **Context Tracking** | Monitors context window usage (FRESH → MODERATE → DEPLETED → CRITICAL) and advises accordingly. |
 | **Cross-Platform** | Works on macOS, Linux, and Windows. |
 
@@ -292,6 +293,7 @@ MoFlo installs Claude Code hooks that run on every tool call. Together, these ga
 | **TaskCreate-first** | Claude must call TaskCreate before spawning sub-agents via the Task tool | Before every Task (agent spawn) call | Ensures every piece of delegated work is tracked. Prevents runaway agent proliferation where Claude spawns agents without a clear plan. |
 | **Context tracking** | Tracks conversation length and warns about context depletion | On every user prompt (UserPromptSubmit hook) | As conversations grow, AI quality degrades. MoFlo tracks interaction count and assigns a bracket (FRESH → MODERATE → DEPLETED → CRITICAL), advising Claude to checkpoint progress or start a fresh session before quality drops. |
 | **Routing** | Analyzes each prompt and recommends the optimal agent type and model tier | On every user prompt (UserPromptSubmit hook) | Saves cost by suggesting haiku for simple tasks, sonnet for moderate ones, opus for complex reasoning — without you having to think about model selection. |
+| **Verify-before-done** *(opt-in)* | Claude must verify the change end-to-end (native `/verify`) before `gh pr create` | Before `gh pr create`, only when `gates.verify_before_done: true` | Enforces "prove it works before done." Off by default, so it never surprises an existing install. Pairs with the [Spec-Driven Development](#spec-driven-development-sdd) cycle, which gives verification its acceptance criteria. |
 
 ### Smart classification
 
@@ -320,6 +322,7 @@ gates:
   memory_first: true          # Set to false to disable memory-first enforcement
   task_create_first: true     # Set to false to disable TaskCreate enforcement
   context_tracking: true      # Set to false to disable context bracket warnings
+  verify_before_done: false   # Set to true to require /verify before `gh pr create`
 ```
 
 You can also disable individual hooks in `.claude/settings.json` by removing the corresponding hook entries.
@@ -335,9 +338,29 @@ Inside Claude Code, the `/flo` (or `/fl`) slash command drives GitHub issue exec
 /flo -s <issue>               # Swarm mode (multi-agent coordination)
 /flo -h <issue>               # Hive-mind mode (consensus-based coordination)
 /flo -n <issue>               # Normal mode (default, single agent, no swarm)
+/flo -sd <issue>              # SDD: spec → plan → implement → verify (implies --verify)
+/flo -v <issue>               # Verify-before-done only (no spec/plan front-half)
 ```
 
 For full options and details, type `/flo` with no arguments — Claude Code will display the complete skill documentation. Also available as `/fl`.
+
+### Spec-Driven Development (SDD)
+
+`/flo` can run the full **spec → plan → (review) → implement → verify** cycle — the 2026 agentic-coding pattern — with two independent, opt-in modifiers:
+
+- **`-sd` / `--sdd`** — author a **spec** (the *what* + acceptance criteria) and a **plan** (the *steps*), with a review checkpoint between each stage, before implementing. Artifacts persist as reviewable Markdown at `.moflo/specs/<slug>/{spec,plan}.md` and are indexed into memory, so prior specs are searchable across sessions. Implies `--verify`.
+- **`-v` / `--verify`** — the verify half on its own: a normal run plus the [verify-before-done gate](#the-gate-system). Separable from SDD so you can enforce "prove it works" without the spec ceremony.
+
+Both compose with execution mode (`-n`/`-s`/`-h`) and `--worktree`, and default from `moflo.yaml`:
+
+```yaml
+sdd:
+  default: false              # true → every /flo run uses the SDD cycle unless --no-sdd
+gates:
+  verify_before_done: false   # true → require /verify before `gh pr create` unless --no-verify
+```
+
+`--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). Manage artifacts directly with `flo sdd` (`spec`, `plan`, `review`, `check`, `list`), and start from a fuzzy idea with **`/commune`**, which can hand its synthesized spec straight into the SDD spine. Wiring status is reported by **`/healer`** (and `/eldar`).
 
 ### Epic handling
 
