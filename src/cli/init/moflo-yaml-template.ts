@@ -242,6 +242,11 @@ session_continuity:
 auto_meditate:
   enabled: true
 
+# Spec-Driven Development (Epic #1269) — spec -> plan -> implement -> verify.
+# When default is true, every /flo run uses the SDD cycle unless --no-sdd.
+sdd:
+  default: false
+
 # Memory backend
 memory:
   backend: node-sqlite
@@ -353,6 +358,7 @@ export const REQUIRED_TOP_LEVEL_SECTIONS = [
   'auto_index',
   'session_continuity',
   'auto_meditate',
+  'sdd',
   'memory',
   'hooks',
   'mcp',

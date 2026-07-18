@@ -2,6 +2,8 @@
 
 The execution mode chooses how work is carried out across the phases. Pass `-s/--swarm`, `-h/--hive`, or `-n/--normal` (default).
 
+The SDD/verify modifiers (`-sd`/`--sdd`, `-v`/`--verify` — see `./sdd.md`) are **orthogonal** to execution mode: they change *what stages run* (spec/plan front-half, verify-before-done), not *how work is carried out*. So `--sdd -s` runs the spec→plan→implement→verify cycle with a swarm carrying out the implement/test phases. Note `-sd` (SDD) is a distinct token from `-s` (swarm) — they compose, they don't collide.
+
 ## SWARM mode (`-s`, `--swarm`)
 
 > **MANDATORY when `-s` is passed.** Your first Execute-phase action MUST be `mcp__moflo__swarm_init`, followed by `mcp__moflo__agent_spawn` for each role. Spawning subagents via `Agent` (or `Task`) without first registering the swarm is a violation of issue #952. The `Agent` PreToolUse gate will BLOCK the call until `swarm_init` runs. Even when you also use `Agent` for parallelism, the moflo swarm IS the registration surface — call it first. See CLAUDE.md "⛔ Protected functionality — swarm + hive-mind".

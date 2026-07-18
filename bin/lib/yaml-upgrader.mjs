@@ -60,6 +60,15 @@ sandbox:
   tier: auto                     # auto | denylist-only | full
 `,
   },
+  {
+    key: 'sdd',
+    block: `# Spec-Driven Development (Epic #1269) — spec -> plan -> implement -> verify.
+# When default is true, every /flo run uses the SDD cycle unless --no-sdd is passed.
+# The separate verify-before-done gate lives under gates.verify_before_done.
+sdd:
+  default: false
+`,
+  },
 ];
 
 /**

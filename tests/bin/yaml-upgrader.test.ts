@@ -112,7 +112,8 @@ describe('yaml-upgrader', () => {
         'project:\n  name: foo\n' +
         'session_continuity:\n  capture: true\n  inject: true\n' +
         'auto_meditate:\n  enabled: false\n' +
-        'sandbox:\n  enabled: true\n  tier: full\n';
+        'sandbox:\n  enabled: true\n  tier: full\n' +
+        'sdd:\n  default: false\n';
       writeFileSync(yamlPath, existing, 'utf-8');
 
       const firstRun = ensureYamlSections(yamlPath);

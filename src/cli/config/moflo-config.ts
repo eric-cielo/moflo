@@ -213,6 +213,12 @@ export interface MofloConfig {
     default_strategy: 'single-branch' | 'auto-merge';
   };
 
+  /** Spec-Driven Development defaults (Epic #1269). */
+  sdd: {
+    /** true ⇒ every /flo run uses the spec→plan→implement→verify cycle unless --no-sdd. */
+    default: boolean;
+  };
+
   spells: {
     userDirs: string[];
     shippedDir?: string;
@@ -323,6 +329,9 @@ const DEFAULT_CONFIG: MofloConfig = {
   epic: {
     admin_merge: true,
     default_strategy: 'single-branch',
+  },
+  sdd: {
+    default: false,
   },
   spells: {
     userDirs: ['.claude/spells'],
@@ -551,6 +560,9 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     epic: {
       admin_merge: raw.epic?.admin_merge ?? raw.epic?.adminMerge ?? DEFAULT_CONFIG.epic.admin_merge,
       default_strategy: raw.epic?.default_strategy ?? raw.epic?.defaultStrategy ?? DEFAULT_CONFIG.epic.default_strategy,
+    },
+    sdd: {
+      default: raw.sdd?.default ?? DEFAULT_CONFIG.sdd.default,
     },
     spells: {
       // Accept camelCase (`userDirs`) or snake_case (`user_dirs`) to match
@@ -792,6 +804,10 @@ sandbox:
 epic:
   admin_merge: true              # Use --admin flag on gh pr merge (bypasses branch protection)
   default_strategy: single-branch  # single-branch (one PR) or auto-merge (per-story PRs)
+
+# Spec-Driven Development (Epic #1269)
+sdd:
+  default: false                 # true = every /flo run uses spec->plan->implement->verify unless --no-sdd
 
 # Spell engine discovery
 # userDirs: directories to scan for user-authored spells (YAML/JSON).
