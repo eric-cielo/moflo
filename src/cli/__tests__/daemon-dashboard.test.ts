@@ -4,7 +4,7 @@
  * Tests the dashboard HTTP server, API routes, and HTML serving.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import http from 'node:http';
 
 // Mock memory-initializer for handleMemoryStats (GROUP BY query)
@@ -184,12 +184,22 @@ async function fetchMethod(port: number, path: string, method: string): Promise<
 
 describe('DaemonDashboard', () => {
   let dashboard: DashboardHandle | null = null;
-  // Use a random port range to avoid collisions in parallel test runs
+  // OS-assigned ephemeral port, captured from the handle after each start —
+  // collision-free under parallel load, unlike the old random 30000-39999 range
+  // (see learning pattern:test-ephemeral-port-os-assigned, #1278).
   let testPort: number;
 
-  beforeEach(() => {
-    testPort = 30000 + Math.floor(Math.random() * 10000);
-  });
+  // Start the dashboard on an OS-assigned ephemeral port (listen(0)) and record
+  // the real bound port, so every fetchDashboard(testPort, ...) below is unchanged
+  // yet can never collide with another worker's port under `maxForks` load.
+  async function startDash(
+    daemon: any,
+    opts: Omit<DashboardOptions, 'port'> = {},
+  ): Promise<DashboardHandle> {
+    const handle = await startDashboard(daemon, { ...opts, port: 0 });
+    testPort = handle.port;
+    return handle;
+  }
 
   afterEach(async () => {
     if (dashboard) {
@@ -200,7 +210,7 @@ describe('DaemonDashboard', () => {
 
   it('serves HTML at GET /', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const res = await fetchDashboard(testPort, '/');
     expect(res.status).toBe(200);
@@ -212,7 +222,7 @@ describe('DaemonDashboard', () => {
 
   it('renders the title with a wizardy font and a flowing gradient (#973)', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
     const res = await fetchDashboard(testPort, '/');
     // Single-span title wrapped in the gradient class, wizardy font family
     expect(res.body).toContain('<span class="luminarium-title">The Luminarium</span>');
@@ -227,7 +237,7 @@ describe('DaemonDashboard', () => {
 
   it('returns daemon status at GET /api/status', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const res = await fetchDashboard(testPort, '/api/status');
     expect(res.status).toBe(200);
@@ -250,7 +260,7 @@ describe('DaemonDashboard', () => {
 
   it('exposes per-worker enabled flag so disabled workers render distinct (#968)', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
     const res = await fetchDashboard(testPort, '/api/status');
     const data = JSON.parse(res.body);
     // map + testgaps are enabled in the default mock; refactor is disabled
@@ -270,7 +280,7 @@ describe('DaemonDashboard', () => {
         score: 1,
       }],
     });
-    dashboard = await startDashboard(daemon, { port: testPort, memory });
+    dashboard = await startDash(daemon, { memory });
 
     const res = await fetchDashboard(testPort, '/api/schedules');
     expect(res.status).toBe(200);
@@ -285,7 +295,7 @@ describe('DaemonDashboard', () => {
 
   it('returns unavailable when memory is not provided', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const res = await fetchDashboard(testPort, '/api/schedules');
     const data = JSON.parse(res.body);
@@ -302,7 +312,7 @@ describe('DaemonDashboard', () => {
         score: 1,
       }],
     });
-    dashboard = await startDashboard(daemon, { port: testPort, memory });
+    dashboard = await startDash(daemon, { memory });
 
     const res = await fetchDashboard(testPort, '/api/spells');
     const data = JSON.parse(res.body);
@@ -320,7 +330,7 @@ describe('DaemonDashboard', () => {
       total: 176,
       withEmbeddings: 170,
     });
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const res = await fetchDashboard(testPort, '/api/memory/stats');
     const data = JSON.parse(res.body);
@@ -344,7 +354,7 @@ describe('DaemonDashboard', () => {
   it('returns 500 from /api/memory/stats when underlying query throws', async () => {
     const daemon = makeMockDaemon();
     mockGetNamespaceCounts.mockRejectedValueOnce(new Error('disk read failed'));
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const res = await fetchDashboard(testPort, '/api/memory/stats');
     expect(res.status).toBe(500);
@@ -354,7 +364,7 @@ describe('DaemonDashboard', () => {
 
   it('returns 404 for unknown routes', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const res = await fetchDashboard(testPort, '/api/nonexistent');
     expect(res.status).toBe(404);
@@ -364,7 +374,7 @@ describe('DaemonDashboard', () => {
 
   it('returns 405 for non-GET methods', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const res = await fetchMethod(testPort, '/api/status', 'POST');
     expect(res.status).toBe(405);
@@ -374,7 +384,7 @@ describe('DaemonDashboard', () => {
 
   it('binds to 127.0.0.1 only', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const addr = dashboard.server.address();
     expect(addr).not.toBeNull();
@@ -385,7 +395,7 @@ describe('DaemonDashboard', () => {
 
   it('stop() closes the server', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     expect(dashboard.server.listening).toBe(true);
     await dashboard.stop();
@@ -393,16 +403,19 @@ describe('DaemonDashboard', () => {
     dashboard = null; // Prevent double-close in afterEach
   });
 
-  it('reports the correct port', async () => {
+  it('reports the actual OS-assigned bound port', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDashboard(daemon, { port: 0 });
 
-    expect(dashboard.port).toBe(testPort);
+    // With listen(0) the handle must surface the real ephemeral port the OS
+    // assigned, not the requested 0 — that is what fetches target (#1278).
+    expect(dashboard.port).toBeGreaterThan(0);
+    expect(dashboard.port).toBe((dashboard.server.address() as { port: number }).port);
   });
 
   it('all API responses include Content-Type header', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
 
     const endpoints = ['/api/status', '/api/schedules', '/api/spells', '/api/memory/stats'];
     for (const ep of endpoints) {
@@ -419,7 +432,7 @@ describe('DaemonDashboard', () => {
 
   it('returns disabledInConfig state when schedulerEnabledInConfig: false', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: false });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: false });
     const res = await fetchDashboard(testPort, '/api/schedules');
     const data = JSON.parse(res.body);
     expect(data.disabledInConfig).toBe(true);
@@ -443,7 +456,7 @@ describe('DaemonDashboard', () => {
       },
     });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchDashboard(testPort, '/api/schedules');
     const data = JSON.parse(res.body);
@@ -461,7 +474,7 @@ describe('DaemonDashboard', () => {
       schedules: [{ id: 'sched-1', spellName: 'w', enabled: true, nextRunAt: Date.now() + 1000, source: 'adhoc', createdAt: Date.now() }],
     });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchMethod(testPort, '/api/schedules/sched-1/disable', 'POST');
     expect(res.status).toBe(200);
@@ -477,7 +490,7 @@ describe('DaemonDashboard', () => {
       schedules: [{ id: 'sched-2', spellName: 'w', enabled: false, nextRunAt: 0, source: 'adhoc', createdAt: Date.now() }],
     });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchMethod(testPort, '/api/schedules/sched-2/enable', 'POST');
     expect(res.status).toBe(200);
@@ -492,7 +505,7 @@ describe('DaemonDashboard', () => {
       schedules: [{ id: 'sched-3', spellName: 'w', enabled: true, nextRunAt: Date.now() + 3_600_000, source: 'adhoc', createdAt: Date.now() }],
     });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchMethod(testPort, '/api/schedules/sched-3/run', 'POST');
     expect(res.status).toBe(202);
@@ -505,7 +518,7 @@ describe('DaemonDashboard', () => {
 
   it('POST schedule action returns 503 when scheduler is not attached', async () => {
     const daemon = makeMockDaemon({}, /*scheduler*/ null);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchMethod(testPort, '/api/schedules/sched-x/disable', 'POST');
     expect(res.status).toBe(503);
@@ -515,7 +528,7 @@ describe('DaemonDashboard', () => {
   it('POST schedule action returns 404 when schedule is unknown', async () => {
     const { scheduler } = makeMockScheduler({ schedules: [] });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchMethod(testPort, '/api/schedules/missing/disable', 'POST');
     expect(res.status).toBe(404);
@@ -524,7 +537,7 @@ describe('DaemonDashboard', () => {
   it('POST to unknown schedule action URL returns 405', async () => {
     const { scheduler } = makeMockScheduler({ schedules: [] });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchMethod(testPort, '/api/schedules/x/unknown', 'POST');
     expect(res.status).toBe(405);
@@ -532,7 +545,7 @@ describe('DaemonDashboard', () => {
 
   it('HTML no longer contains the "Scheduler not connected" placeholder literal', async () => {
     const daemon = makeMockDaemon();
-    dashboard = await startDashboard(daemon, { port: testPort });
+    dashboard = await startDash(daemon);
     const res = await fetchDashboard(testPort, '/');
     expect(res.body).not.toContain('Scheduler not connected');
     expect(res.body).toContain('Scheduler disabled in moflo.yaml');
@@ -548,7 +561,7 @@ describe('DaemonDashboard', () => {
         score: 1,
       }],
     });
-    dashboard = await startDashboard(daemon, { port: testPort, memory });
+    dashboard = await startDash(daemon, { memory });
 
     const res = await fetchDashboard(testPort, '/api/spells');
     const data = JSON.parse(res.body);
@@ -560,7 +573,7 @@ describe('DaemonDashboard', () => {
 
   it('GET /api/schedules/events returns 503 when scheduler is not attached', async () => {
     const daemon = makeMockDaemon({}, /*scheduler*/ null);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     const res = await fetchDashboard(testPort, '/api/schedules/events');
     expect(res.status).toBe(503);
@@ -571,7 +584,7 @@ describe('DaemonDashboard', () => {
   it('GET /api/schedules/events streams scheduler events as SSE frames', async () => {
     const { scheduler } = makeMockScheduler({ schedules: [] });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     // Open the SSE stream and collect frames as they arrive
     const frames: string[] = await new Promise((resolve, reject) => {
@@ -622,7 +635,7 @@ describe('DaemonDashboard', () => {
   it('SSE listener is detached when client disconnects', async () => {
     const { scheduler } = makeMockScheduler({ schedules: [] });
     const daemon = makeMockDaemon({}, scheduler);
-    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+    dashboard = await startDash(daemon, { schedulerEnabledInConfig: true });
 
     expect(scheduler.__listenerCount()).toBe(0);
 
