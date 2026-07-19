@@ -3043,6 +3043,7 @@ export const hooksModelRoute: MCPTool = {
       complexity: result.complexity,
       reasoning: result.reasoning,
       alternatives: result.alternatives,
+      fallbackModel: result.fallbackModel,
       inferenceTimeUs: result.inferenceTimeUs,
       costMultiplier: result.costMultiplier,
       implementation: 'tiny-dancer-neural',

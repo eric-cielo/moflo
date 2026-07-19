@@ -57,6 +57,7 @@ The strategy is resolved with this precedence (highest first):
 
 ## See Also
 
+- `.claude/guidance/moflo-session-continuity.md` — How `epic-state` + git reconciliation resume works vs. native Claude Code checkpoints (`/rewind`, agent-tree)
 - `src/cli/commands/epic.ts` — Epic command implementation
 - `src/cli/config/moflo-config.ts` — `MofloConfig.epic` interface and defaults
 - `.claude/skills/fl/SKILL.md` — `/flo` skill epic handling section
