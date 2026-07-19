@@ -29,6 +29,14 @@ beforeEach(() => {
 
 afterEach(() => {
   resetDefaultCredentialStore();
+  // Clean the env symmetrically with beforeEach. vitest's `forks` pool reuses a
+  // worker process across test files (module registry resets, `process.env` does
+  // not), so leaving MOFLO_CREDENTIALS_* set here would leak stale paths — often
+  // pointing at the just-removed workDir — into the next credential test file
+  // running in the same fork, flaking it under parallel load (#1278).
+  delete process.env.MOFLO_CREDENTIALS_FILE;
+  delete process.env.MOFLO_CREDENTIALS_PASSPHRASE;
+  delete process.env.MOFLO_CREDENTIALS_KEY_FILE;
   rmSync(workDir, { recursive: true, force: true });
 });
 

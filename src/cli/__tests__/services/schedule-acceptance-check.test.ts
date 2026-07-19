@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { checkScheduleAcceptance } from '../../services/schedule-acceptance-check.js';
@@ -28,7 +28,10 @@ describe('checkScheduleAcceptance (#1037)', () => {
   let mofloYaml: string;
 
   beforeEach(() => {
-    projectRoot = join(tmpdir(), `schedule-accept-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    // OS-assigned unique temp dir — `Date.now()+Math.random()` name-building
+    // collides when tests run in the same millisecond under parallel load
+    // (see learning pattern:test-tmpdir-mkdtemp-not-timestamp, #1278).
+    projectRoot = mkdtempSync(join(tmpdir(), 'schedule-accept-'));
     userSpellDir = join(projectRoot, '.claude', 'spells');
     mkdirSync(userSpellDir, { recursive: true });
     writeFileSync(join(userSpellDir, 'acceptance-test.yaml'), SPELL_YAML, 'utf-8');
