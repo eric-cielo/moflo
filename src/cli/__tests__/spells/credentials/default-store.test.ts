@@ -152,7 +152,12 @@ describe('runner-factory + bridge integration', () => {
     const store = getDefaultCredentialStore({ filePath: credFile });
     expect(await store.get('SEEDED')).toBe('value-from-seed');
     expect(runner).toBeDefined();
-  });
+    // Explicit 20s timeout: this test does real passphrase key-derivation
+    // (scrypt) AND a cold dynamic import of runner-factory's module graph. Under
+    // the full parallel suite (forks pool, maxForks 2) that CPU contention can
+    // push past vitest's default 5s, flaking it (#1278 follow-up). Isolated runs
+    // finish in well under a second.
+  }, 20_000);
 });
 
 describe('readFileSync handling', () => {

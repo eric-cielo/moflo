@@ -128,6 +128,8 @@ async function determineAgentModel(
   canSkipLLM?: boolean;
   agentBoosterIntent?: string;
   tier?: 1 | 2 | 3;
+  /** Circuit-breaker-aware failover chain, present when the basic router ran. */
+  fallbackModel?: ClaudeModel[];
 }> {
   // 1. Explicit model in config
   if (config.model && ['haiku', 'sonnet', 'opus', 'inherit'].includes(config.model as string)) {
@@ -164,7 +166,11 @@ async function determineAgentModel(
       if (router) {
         try {
           const result = await router.route(task);
-          return { model: result.model, routedBy: 'router' };
+          return {
+            model: result.model,
+            routedBy: 'router',
+            fallbackModel: result.fallbackModel,
+          };
         } catch {
           // Fall through to defaults on router error
         }
@@ -255,6 +261,13 @@ export const agentTools: MCPTool[] = [
         };
       }
 
+      // Advisory failover chain surfaced to the orchestrator alongside `model`.
+      // Router-driven decisions carry a breaker-aware chain; other paths get a
+      // static capability-ordered one (pure fn — no router instance needed).
+      const { staticFallbackChain } = await import('../movector/model-router.js');
+      const fallbackModel =
+        routingResult.fallbackModel ?? staticFallbackChain(routingResult.model);
+
       const response: Record<string, unknown> = {
         success: true,
         agentId: spawned.agentId,
@@ -264,6 +277,7 @@ export const agentTools: MCPTool[] = [
         spawned: spawned.spawned,
         model: routingResult.model,
         modelRoutedBy: routingResult.routedBy,
+        fallbackModel,
         bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE,
         createdAt: new Date().toISOString(),
       };

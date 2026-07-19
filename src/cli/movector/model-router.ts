@@ -145,6 +145,13 @@ export interface ModelRoutingResult {
   inferenceTimeUs: number;
   /** Estimated cost multiplier */
   costMultiplier: number;
+  /**
+   * Circuit-breaker-aware ordered failover chain (excludes the primary `model`
+   * and `inherit`). Maps onto Claude Code's native `fallbackModel`: try each in
+   * order if the primary is unavailable. Advisory — the orchestrator/Task tool
+   * consumes it; the router never auto-launches a model itself.
+   */
+  fallbackModel: ClaudeModel[];
 }
 
 /**
@@ -201,6 +208,56 @@ const DEFAULT_CONFIG: ModelRouterConfig = {
   enableCostOptimization: true,
   preferSpeed: true,
 };
+
+// ============================================================================
+// Fallback Chain
+// ============================================================================
+
+/**
+ * Build a circuit-breaker-aware ordered fallback chain from model scores.
+ *
+ * The chain excludes the `primary` and `inherit`, drops zero-score models
+ * (never useful fallbacks), and demotes any tier whose circuit is OPEN
+ * (`consecutiveFailures >= threshold`) to the tail regardless of raw score — so
+ * a healthy but lower-scoring tier is always tried before a failing one. Within
+ * each partition (healthy, then open) models are ordered by descending score.
+ */
+export function buildFallbackChain(
+  scores: Record<ClaudeModel, number>,
+  consecutiveFailures: Record<ClaudeModel, number>,
+  circuitBreakerThreshold: number,
+  primary: ClaudeModel,
+): ClaudeModel[] {
+  const isOpen = (m: ClaudeModel): boolean =>
+    consecutiveFailures[m] >= circuitBreakerThreshold;
+
+  return (Object.entries(scores) as [ClaudeModel, number][])
+    .filter(([m, score]) => m !== primary && m !== 'inherit' && score > 0)
+    .sort((a, b) => {
+      // Healthy tiers first; within a group, higher score first.
+      const openDelta = (isOpen(a[0]) ? 1 : 0) - (isOpen(b[0]) ? 1 : 0);
+      return openDelta !== 0 ? openDelta : b[1] - a[1];
+    })
+    .map(([m]) => m);
+}
+
+/**
+ * Capability-ordered fallback chain (most → least capable) for an already-chosen
+ * `primary`, derived from `MODEL_CAPABILITIES` so it never drifts from the tier
+ * definitions. Excludes the `primary` and `inherit`.
+ *
+ * Breaker-agnostic — for callers that picked a model WITHOUT consulting the
+ * router's circuit breaker (explicit config, Agent Booster, keyword/AST
+ * routing). Router-driven decisions get the breaker-aware chain from `route()`.
+ */
+export function staticFallbackChain(primary: ClaudeModel): ClaudeModel[] {
+  return (Object.keys(MODEL_CAPABILITIES) as ClaudeModel[])
+    .filter((m) => m !== primary && m !== 'inherit')
+    .sort(
+      (a, b) =>
+        MODEL_CAPABILITIES[b].costMultiplier - MODEL_CAPABILITIES[a].costMultiplier,
+    );
+}
 
 // ============================================================================
 // Model Router Implementation
@@ -272,6 +329,12 @@ export class ModelRouter {
         .sort((a, b) => b.score - a.score),
       inferenceTimeUs,
       costMultiplier: MODEL_CAPABILITIES[model].costMultiplier,
+      fallbackModel: buildFallbackChain(
+        adjustedScores,
+        this.consecutiveFailures,
+        this.config.circuitBreakerThreshold,
+        model,
+      ),
     };
 
     // Track decision

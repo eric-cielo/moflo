@@ -9,7 +9,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { ModelRouter, type ClaudeModel } from '../../movector/model-router';
+import {
+  ModelRouter,
+  buildFallbackChain,
+  staticFallbackChain,
+  type ClaudeModel,
+} from '../../movector/model-router';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -195,6 +200,76 @@ describe('ModelRouter selection (issue #891)', () => {
       expect(result.alternatives.find((a) => a.model === 'sonnet')).toBeUndefined();
       expect(result.alternatives.find((a) => a.model === 'opus')).toBeDefined();
       expect(result.costMultiplier).toBeLessThan(1); // sonnet < opus
+    });
+  });
+
+  describe('fallbackModel chain (#1272)', () => {
+    const noFailures: Record<ClaudeModel, number> = {
+      haiku: 0,
+      sonnet: 0,
+      opus: 0,
+      inherit: 0,
+    };
+
+    it('buildFallbackChain excludes the primary and inherit, orders by score', () => {
+      const scores = { haiku: 0.1, sonnet: 0.5, opus: 0.9, inherit: 0.5 } as Record<
+        ClaudeModel,
+        number
+      >;
+      const chain = buildFallbackChain(scores, noFailures, 5, 'haiku');
+      // primary (haiku) and inherit excluded; opus > sonnet by score.
+      expect(chain).toEqual(['opus', 'sonnet']);
+    });
+
+    it('buildFallbackChain drops zero-score models (never useful fallbacks)', () => {
+      const scores = { haiku: 0, sonnet: 0.5, opus: 0.9, inherit: 0 } as Record<
+        ClaudeModel,
+        number
+      >;
+      const chain = buildFallbackChain(scores, noFailures, 5, 'sonnet');
+      expect(chain).toEqual(['opus']); // haiku (0) dropped, sonnet is primary
+    });
+
+    it('buildFallbackChain demotes an OPEN-circuit tier to the tail despite high score', () => {
+      const scores = { haiku: 0.1, sonnet: 0.5, opus: 0.9, inherit: 0 } as Record<
+        ClaudeModel,
+        number
+      >;
+      // opus circuit is open (5 >= threshold 5) → tail despite the best score.
+      const failures = { ...noFailures, opus: 5 };
+      const chain = buildFallbackChain(scores, failures, 5, 'haiku');
+      expect(chain).toEqual(['sonnet', 'opus']);
+    });
+
+    it('route() returns a chain that excludes the primary and lists real tiers', async () => {
+      const result = await router.route('fix a simple typo in the readme comment');
+      expect(result.model).toBe('haiku');
+      expect(result.fallbackModel).not.toContain('haiku');
+      expect(result.fallbackModel).not.toContain('inherit');
+      expect(result.fallbackModel).toContain('sonnet');
+      expect(result.fallbackModel).toContain('opus');
+    });
+
+    it('route() demotes a tier to the chain tail once its circuit opens', async () => {
+      const task = 'fix a simple typo in the readme comment';
+      const before = await router.route(task);
+      expect(before.fallbackModel[0]).toBe('sonnet'); // highest-scoring fallback
+
+      // Open sonnet's circuit (default threshold 5).
+      for (let i = 0; i < 5; i++) router.recordOutcome(task, 'sonnet', 'failure');
+
+      const after = await router.route(task);
+      // sonnet demoted to the tail; opus (healthy) now leads.
+      expect(after.fallbackModel[0]).toBe('opus');
+      expect(after.fallbackModel[after.fallbackModel.length - 1]).toBe('sonnet');
+    });
+
+    it('staticFallbackChain gives a capability-ordered chain excluding primary + inherit', () => {
+      // Derived from MODEL_CAPABILITIES cost tiers: opus > sonnet > haiku.
+      expect(staticFallbackChain('sonnet')).toEqual(['opus', 'haiku']);
+      expect(staticFallbackChain('haiku')).toEqual(['opus', 'sonnet']);
+      expect(staticFallbackChain('opus')).toEqual(['sonnet', 'haiku']);
+      expect(staticFallbackChain('sonnet')).not.toContain('inherit');
     });
   });
 });

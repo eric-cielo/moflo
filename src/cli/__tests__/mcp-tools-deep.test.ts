@@ -115,6 +115,8 @@ vi.mock('../memory/intelligence.js', () => ({
 // Mock movector modules
 vi.mock('../movector/model-router.js', () => ({
   getModelRouter: vi.fn(() => ({ route: async () => ({ model: 'sonnet', routedBy: 'router' }) })),
+  staticFallbackChain: (primary: string) =>
+    ['opus', 'sonnet', 'haiku'].filter((m) => m !== primary),
 }));
 
 vi.mock('../movector/enhanced-model-router.js', () => ({
