@@ -59,6 +59,7 @@ import {
 import { checkIntelligence } from './doctor-checks-intelligence.js';
 import { checkVersionFreshness } from './doctor-version.js';
 import { checkZombieProcesses } from './doctor-zombies.js';
+import { checkAgentsMd } from './doctor-checks-agents-md.js';
 import type { CheckFn, HealthCheck } from './doctor-types.js';
 
 export type { CheckFn, HealthCheck };
@@ -124,6 +125,7 @@ export const allChecks: CheckFn[] = [
   checkGateHealth,
   checkHookBlockDrift,
   checkClaudeMdInjectionDrift,
+  checkAgentsMd,
   checkMofloDbBridge,
   // Issue #818 / epic #798 — coordinator-path tripwires. They share the
   // singleton coordinator with checkSubagentHealth above and assert by
@@ -211,6 +213,8 @@ export const componentMap: Record<string, CheckFn> = {
   'claudemd-drift': checkClaudeMdInjectionDrift,
   'claudemd': checkClaudeMdInjectionDrift,
   'injection-drift': checkClaudeMdInjectionDrift,
+  'agents-md': checkAgentsMd,
+  'agentsmd': checkAgentsMd,
   'sandbox': checkSandboxTier,
   'sandbox-tier': checkSandboxTier,
   'moflodb': checkMofloDbBridge,

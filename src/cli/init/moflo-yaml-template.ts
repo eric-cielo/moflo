@@ -274,6 +274,13 @@ sandbox:
   enabled: false                 # Set to true to wrap bash steps in an OS sandbox
   tier: auto                     # auto | denylist-only | full
 
+# AGENTS.md — the neutral, cross-tool agent-config convention (#1270).
+# When enabled, flo init / flo init upgrade emit and refresh a root AGENTS.md
+# as an interop view of moflo's conventions (CLAUDE.md stays canonical for
+# Claude Code). Content outside the moflo markers is never overwritten.
+agents_md:
+  enabled: true                  # Set to false to opt out of AGENTS.md generation
+
 # Status line display (shown at bottom of Claude Code)
 # mode: "compact" (default), "single-line", or "dashboard" (full multi-line)
 status_line:
@@ -356,6 +363,7 @@ export const REQUIRED_TOP_LEVEL_SECTIONS = [
   'hooks',
   'mcp',
   'sandbox',
+  'agents_md',
   'status_line',
   'models',
   'model_routing',

@@ -27,6 +27,7 @@ import {
   generateHookHandlerScript,
 } from './helpers-generator.js';
 import { generateClaudeMd } from './claudemd-generator.js';
+import { writeAgentsMd } from './agentsmd-generator.js';
 import { loadShippedScripts } from './shipped-scripts.js';
 import { writeEnvrc } from './envrc-generator.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
@@ -757,6 +758,16 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
       if (!fs.existsSync(cfDir)) fs.mkdirSync(cfDir, { recursive: true });
       fs.writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2), 'utf-8');
     } catch { /* non-fatal */ }
+
+    // Refresh AGENTS.md interop projection (#1270), honoring the opt-out toggle.
+    // Merge-safe: only the moflo marker block is rewritten; user content survives.
+    try {
+      const { loadMofloConfig } = await import('../config/moflo-config.js');
+      const agentsEnabled = loadMofloConfig(targetDir).agents_md.enabled;
+      const agentsResult = writeAgentsMd(targetDir, agentsEnabled);
+      if (agentsResult.status === 'created') result.created.push('AGENTS.md');
+      else if (agentsResult.status === 'updated') result.updated.push('AGENTS.md');
+    } catch { /* non-fatal — AGENTS.md is an interop convenience, not critical */ }
 
   } catch (error) {
     result.success = false;

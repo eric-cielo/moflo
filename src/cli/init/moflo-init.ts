@@ -24,6 +24,8 @@ import {
 } from './moflo-yaml-template.js';
 import { generateClaudeMd as generateMofloSection } from './claudemd-generator.js';
 import { applyInjectionReplacement } from '../services/claudemd-injection.js';
+import { writeAgentsMd } from './agentsmd-generator.js';
+import { loadMofloConfig } from '../config/moflo-config.js';
 import { loadShippedScripts } from './shipped-scripts.js';
 import { DEFAULT_INIT_OPTIONS } from './types.js';
 import { generateSettings } from './settings-generator.js';
@@ -203,6 +205,9 @@ export async function initMoflo(options: MofloInitOptions): Promise<MofloInitRes
 
   // Step 4: CLAUDE.md MoFlo section
   steps.push(generateClaudeMd(projectRoot, force));
+
+  // Step 4b: AGENTS.md cross-tool interop projection (#1270)
+  steps.push(generateAgentsMdStep(projectRoot));
 
   // Step 5: .claude/scripts/ from moflo bin/
   steps.push(syncScripts(projectRoot, force));
@@ -446,6 +451,26 @@ function generateClaudeMd(root: string, _force?: boolean): MofloInitResult['step
     status: existed ? 'updated' : 'created',
     detail: 'MoFlo section injected (~22 lines)',
   };
+}
+
+// ============================================================================
+// Step 4b: AGENTS.md — cross-tool interop projection (#1270)
+// ============================================================================
+
+function generateAgentsMdStep(root: string): MofloInitResult['steps'][0] {
+  // Respect the opt-out toggle. Config is read after step 1 wrote moflo.yaml,
+  // so a fresh init sees the default (true) and a re-run honors a user opt-out.
+  let enabled = true;
+  try {
+    enabled = loadMofloConfig(root).agents_md.enabled;
+  } catch { /* config unreadable — fall back to the default-on behaviour */ }
+
+  const result = writeAgentsMd(root, enabled);
+  // 'unchanged' (already in sync) and 'skipped' (opted out) both map to the
+  // 'skipped' step status — the detail line carries the specific reason.
+  const status: MofloInitResult['steps'][0]['status'] =
+    result.status === 'created' ? 'created' : result.status === 'updated' ? 'updated' : 'skipped';
+  return { name: 'AGENTS.md', status, detail: result.detail };
 }
 
 // ============================================================================

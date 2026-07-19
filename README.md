@@ -105,9 +105,16 @@ It also generates:
 | `.claude/settings.json` | Gate hooks for Claude Code |
 | `.claude/skills/flo/` | The `/flo` issue execution skill (also `/fl`) |
 | `CLAUDE.md` section | Teaches Claude how to use MoFlo |
+| `AGENTS.md` | Cross-tool interop view (the neutral convention other agents read) |
 | `.gitignore` entries | Excludes MoFlo state directories |
 
 In interactive mode (`flo init` without `--yes`), it shows what it found and lets you confirm or adjust before writing.
+
+#### AGENTS.md — cross-tool interop
+
+`flo init` (and `flo init upgrade`) also emit an **`AGENTS.md`** at the repo root — the neutral, tool-agnostic agent-configuration convention that Cursor, Kiro, and most SDD tools read. `CLAUDE.md` stays canonical for Claude Code; `AGENTS.md` is a generated *interop view* of the same moflo conventions (memory-first search, cross-platform rules, guidance pointers), written CLI-forward (`flo-search`) so any agent can use it.
+
+It is merge-safe: moflo only ever rewrites the block between its `<!-- MOFLO:AGENTS:START -->` / `:END` markers — anything you add outside the markers is preserved. `/healer` (component `agents-md`) flags a missing or stale `AGENTS.md` and points you at `flo init upgrade` to refresh it. Opt out with `agents_md.enabled: false` in `moflo.yaml`.
 
 #### Migrating from Claude Flow / Ruflo
 

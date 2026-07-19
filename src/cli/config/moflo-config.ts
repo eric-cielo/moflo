@@ -211,6 +211,12 @@ export interface MofloConfig {
     default_strategy: 'single-branch' | 'auto-merge';
   };
 
+  /** AGENTS.md cross-tool interop projection (#1270). Opt-out. */
+  agents_md: {
+    /** true ⇒ `flo init` / `flo init upgrade` emit and refresh a root AGENTS.md. */
+    enabled: boolean;
+  };
+
   spells: {
     userDirs: string[];
     shippedDir?: string;
@@ -320,6 +326,9 @@ const DEFAULT_CONFIG: MofloConfig = {
   epic: {
     admin_merge: true,
     default_strategy: 'single-branch',
+  },
+  agents_md: {
+    enabled: true,
   },
   spells: {
     userDirs: ['.claude/spells'],
@@ -547,6 +556,9 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     epic: {
       admin_merge: raw.epic?.admin_merge ?? raw.epic?.adminMerge ?? DEFAULT_CONFIG.epic.admin_merge,
       default_strategy: raw.epic?.default_strategy ?? raw.epic?.defaultStrategy ?? DEFAULT_CONFIG.epic.default_strategy,
+    },
+    agents_md: {
+      enabled: raw.agents_md?.enabled ?? raw.agentsMd?.enabled ?? DEFAULT_CONFIG.agents_md.enabled,
     },
     spells: {
       // Accept camelCase (`userDirs`) or snake_case (`user_dirs`) to match
@@ -787,6 +799,10 @@ sandbox:
 epic:
   admin_merge: true              # Use --admin flag on gh pr merge (bypasses branch protection)
   default_strategy: single-branch  # single-branch (one PR) or auto-merge (per-story PRs)
+
+# AGENTS.md cross-tool interop (#1270)
+agents_md:
+  enabled: true                  # Emit + refresh a root AGENTS.md on flo init / upgrade (opt-out)
 
 # Spell engine discovery
 # userDirs: directories to scan for user-authored spells (YAML/JSON).

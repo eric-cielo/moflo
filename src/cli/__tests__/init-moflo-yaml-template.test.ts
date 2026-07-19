@@ -47,7 +47,7 @@ describe('renderMofloYaml', () => {
     const yaml = renderMofloYaml(baselineConfig);
     for (const key of [
       'project:', 'guidance:', 'code_map:', 'tests:', 'gates:', 'auto_index:',
-      'memory:', 'hooks:', 'mcp:', 'sandbox:', 'status_line:', 'models:', 'model_routing:',
+      'memory:', 'hooks:', 'mcp:', 'sandbox:', 'agents_md:', 'status_line:', 'models:', 'model_routing:',
     ]) {
       expect(yaml).toContain(key);
     }
@@ -160,7 +160,7 @@ describe('ensureMofloYamlExists', () => {
     const content = fs.readFileSync(path.join(root, 'moflo.yaml'), 'utf-8');
     for (const key of [
       'project:', 'guidance:', 'code_map:', 'tests:', 'gates:', 'auto_index:',
-      'memory:', 'hooks:', 'mcp:', 'sandbox:', 'status_line:', 'models:', 'model_routing:',
+      'memory:', 'hooks:', 'mcp:', 'sandbox:', 'agents_md:', 'status_line:', 'models:', 'model_routing:',
     ]) {
       expect(content).toContain(key);
     }

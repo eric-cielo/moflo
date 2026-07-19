@@ -60,6 +60,16 @@ sandbox:
   tier: auto                     # auto | denylist-only | full
 `,
   },
+  {
+    key: 'agents_md',
+    block: `# AGENTS.md — the neutral, cross-tool agent-config convention (#1270).
+# When enabled, flo init / flo init upgrade emit and refresh a root AGENTS.md
+# as an interop view of moflo's conventions (CLAUDE.md stays canonical for
+# Claude Code). Content outside the moflo markers is never overwritten.
+agents_md:
+  enabled: true                  # Set to false to opt out of AGENTS.md generation
+`,
+  },
 ];
 
 /**
