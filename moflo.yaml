@@ -55,6 +55,16 @@ session_continuity:
 auto_meditate:
   enabled: true
 
+# Spec-Driven Development (Epic #1269) — spec -> plan -> implement -> verify.
+# When default is true, every /flo run uses the SDD cycle unless --no-sdd.
+sdd:
+  default: false
+
+# Auto-merge the PR at the end of a full /flo run once preconditions are met (#1285).
+# Opt-in; default false. Override per-run with --merge / --no-merge.
+merge:
+  auto: false
+
 # Memory backend
 memory:
   backend: node-sqlite

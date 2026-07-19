@@ -235,6 +235,44 @@ flo epic checkoff <epic-number> <story-number>
 
 Idempotent and safe to skip when there is no back-reference. `--epic-branch` runs skip it — the epic orchestrator owns checklist state there. The box flips when the work is delivered (PR opened), matching the orchestrator; if a PR is later rejected, reopen the epic manually.
 
+### 5.3b Auto-merge the PR (`mergeMode` / `merge.auto`)
+
+Runs only in **full** workflow mode, only when `mergeMode` is true, and only **after** the PR is open (5.3) and issue status is updated (5.4). Skipped entirely under `--epic-branch` and in `-t`/`-r` (the parser already cleared `mergeMode` there). Because it runs after `gh pr create`, every quality gate (tests, simplify, learnings, verify) has already passed — auto-merge never bypasses them.
+
+**Never merge on red or unknown checks.** Only merge when required checks are affirmatively `SUCCESS` and the state is `MERGEABLE`/`CLEAN`. A green exit code is not proof (see the gotcha below).
+
+Order of preference:
+
+**1. GitHub native auto-merge (preferred).** If the repo allows it, queue the merge and let GitHub land it when required checks + reviews pass — no local polling:
+```bash
+# Is "Allow auto-merge" enabled on the repo?
+gh repo view --json autoMergeAllowed --jq .autoMergeAllowed   # true | false
+# If true:
+gh pr merge <n> --auto --squash --delete-branch
+```
+`--auto` is not `--admin` and is not subject to the classifier denial below. If `autoMergeAllowed` is false or `gh` reports auto-merge is unavailable, fall through to (2).
+
+**2. Poll-then-merge fallback.** Await preconditions locally, then merge. Do **not** rely on `gh pr checks --watch`'s exit code — inspect the rollup explicitly:
+```bash
+gh pr view <n> --json statusCheckRollup,mergeStateStatus,mergeable,reviewDecision,isDraft
+```
+Merge only when: every **required** entry in `statusCheckRollup` is `SUCCESS` (or `NEUTRAL`/`SKIPPED`), `mergeable == "MERGEABLE"`, `mergeStateStatus` is `CLEAN` (or `UNSTABLE` solely from non-required checks), and `isDraft == false`. Re-query on an interval until preconditions hold or a sensible cap elapses (a handful of checks over a few minutes; surface a timeout rather than looping forever). Use a Node timer or `gh ... --watch` for the wait — **never a bash-only `sleep` loop** (Rule #1: not on Windows). Then:
+```bash
+gh pr merge <n> --squash --delete-branch
+```
+
+**3. Admin override (review-required fallback, opt-in).** If the *only* remaining blocker is `reviewDecision == "REVIEW_REQUIRED"` on a repo the actor administers (e.g. a solo repo where GitHub blocks self-approval), an admin squash-merge is the sole path:
+```bash
+gh pr merge <n> --squash --admin --delete-branch
+```
+**Gotcha — the Claude Code auto-mode permission classifier reliably DENIES `gh pr merge --admin`.** When the call is denied, do **not** silently swallow it or retry in a loop. Surface a copy-paste command for the user to run themselves and stop:
+> Admin merge is required (review-required on an administered repo) but was blocked by the permission classifier. Run it manually:
+> `! gh pr merge <n> --squash --admin --delete-branch`
+
+Before any `--admin` merge, re-confirm checks are affirmatively green per the (2) rollup rule — `--admin` bypasses branch protection, so never `--admin` over a red or unknown X (learning `ci-watch-exit-code-not-proof-of-green`).
+
+On a successful merge the branch is deleted (`--delete-branch`) and the `Closes #<n>` reference auto-closes the issue. If merge does not complete (timeout, denied admin, red checks), leave the PR open, report why, and continue to 5.5 — a stuck merge is not a failed run.
+
 ### 5.5 Finalize run record (Flo Runs dashboard)
 
 Update the tasklist row written in Phase 0 with the terminal status. Same `runId`, `upsert: true`. On success:

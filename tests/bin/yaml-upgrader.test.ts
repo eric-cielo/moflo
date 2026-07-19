@@ -107,13 +107,24 @@ describe('yaml-upgrader', () => {
       expect(content).toContain('enabled: true');
     });
 
+    it('appends merge block (default-off) when missing (#1285)', () => {
+      writeFileSync(yamlPath, 'project:\n  name: foo\n', 'utf-8');
+      const appended = ensureYamlSections(yamlPath);
+
+      expect(appended).toContain('merge');
+      const content = readFileSync(yamlPath, 'utf-8');
+      expect(content).toMatch(/^merge:/m);
+      expect(content).toContain('auto: false');
+    });
+
     it('is idempotent when all required sections are already present', () => {
       const existing =
         'project:\n  name: foo\n' +
         'session_continuity:\n  capture: true\n  inject: true\n' +
         'auto_meditate:\n  enabled: false\n' +
         'sandbox:\n  enabled: true\n  tier: full\n' +
-        'sdd:\n  default: false\n';
+        'sdd:\n  default: false\n' +
+        'merge:\n  auto: false\n';
       writeFileSync(yamlPath, existing, 'utf-8');
 
       const firstRun = ensureYamlSections(yamlPath);

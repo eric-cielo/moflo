@@ -69,6 +69,16 @@ sdd:
   default: false
 `,
   },
+  {
+    key: 'merge',
+    block: `# Auto-merge the PR at the end of a full /flo run once preconditions are met (#1285).
+# When auto is true, a full /flo run awaits required checks + MERGEABLE state then
+# merges and deletes the branch, instead of stopping at "PR opened". Opt-in;
+# override per-run with --merge / --no-merge.
+merge:
+  auto: false
+`,
+  },
 ];
 
 /**

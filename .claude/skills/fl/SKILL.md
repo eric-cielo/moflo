@@ -54,6 +54,15 @@ Two **independent** modifiers, orthogonal to execution mode (`-n`/`-s`/`-h`) and
 
 Defaults seed from `moflo.yaml` — `sdd.default` and `gates.verify_before_done` — so a project can make either the default; per-run flags override. `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). In `-t`/`-r` modes (no implementation) `--verify` is a no-op — emit the one-line ignored note; `--sdd` in `-t` writes the spec/plan **into the ticket** rather than scaffolding artifacts. Full mechanics in `./sdd.md`.
 
+## Auto-merge (#1285)
+
+| Flag | Long | Effect |
+|------|------|--------|
+| `-m` | `--merge` | After the PR is opened, **await its merge preconditions and merge it** (Phase 5.3b) instead of stopping at "PR opened". |
+| `--no-merge` | | Opt a single run out when `moflo.yaml merge.auto: true` turned it on. |
+
+Default seeds from `moflo.yaml merge.auto` (absent ⇒ `false`); the per-run flag overrides. Auto-merge is **orthogonal** to exec mode (`-n`/`-s`/`-h`), `--worktree`, and `--sdd`/`--verify`, and happens strictly **after** the existing gates (tests, simplify, learnings, verify) have let `gh pr create` through — so `--merge` never bypasses a quality gate. It is a documented no-op in `-t`/`-r` (no PR) and under `--epic-branch` (the epic orchestrator owns merging). Merge mechanics — native `--auto` first, poll-then-merge fallback, admin-override caveat — live in `./phases.md` Phase 5.3b.
+
 ## Epic detection
 
 An issue is processed as an epic when any of these hold:
@@ -114,6 +123,12 @@ let titleWords = [];
 let sddMode = false;          // -sd / --sdd  (full spec→plan→implement→verify)
 let verifyMode = false;       // -v  / --verify (verify-before-done only)
 
+// Auto-merge modifier (#1285). Seed from moflo.yaml BEFORE parsing, same as
+// sddMode/verifyMode: read `merge.auto` at the project root (absent ⇒ false).
+// When true, a full run awaits the PR's merge preconditions and merges it
+// (Phase 5.3b) instead of stopping at "PR opened".
+let mergeMode = false;        // -m / --merge  ← moflo.yaml merge.auto
+
 let wfName = null, wfSubcommand = null;
 let wfArgs = [], wfNamedArgs = {};
 
@@ -154,6 +169,9 @@ for (let i = 0; i < args.length; i++) {
   else if (arg === "--no-sdd")                  sddMode = false;
   else if (arg === "-v" || arg === "--verify")  verifyMode = true;
   else if (arg === "--no-verify")               verifyMode = false;
+  // Auto-merge modifier. `-m` is free (`-h` is hive, `-s` is swarm) — no collision.
+  else if (arg === "-m" || arg === "--merge")   mergeMode = true;
+  else if (arg === "--no-merge")                mergeMode = false;
   else if (/^\d+$/.test(arg)) issueNumber = arg;
   else titleWords.push(arg);
 }
@@ -180,6 +198,13 @@ if (sddMode && workflowMode === "research") {
   sddMode = false;
 }
 
+// Auto-merge only applies to a full run that opens a PR. -t/-r never open one,
+// and under --epic-branch the epic orchestrator owns merging — drop it with a note.
+if (mergeMode && (epicBranch || workflowMode === "ticket" || workflowMode === "research")) {
+  console.log("Note: --merge ignored — " + (epicBranch ? "--epic-branch" : workflowMode + " mode") + " does not open a PR to merge.");
+  mergeMode = false;
+}
+
 if (workflowMode === "spell-engine") {
   if (!wfName && !wfSubcommand) throw new Error("Spell name or subcommand required.");
 } else {
@@ -203,3 +228,4 @@ Full mode runs end-to-end without further prompts.
 8. **If `verifyMode`** (always on under `sddMode`): verify the change end-to-end with `/verify` against the plan's acceptance criteria, and store the outcome to memory — `./sdd.md`. This satisfies the verify-before-done gate.
 9. Store learnings via `mcp__moflo__memory_store` — `./phases.md` Phase 5.2
 10. Open PR, update issue status — `./phases.md` Phases 5.3–5.4
+11. **If `mergeMode`:** await the PR's merge preconditions and merge it (native `--auto` preferred, else poll-then-merge) — `./phases.md` Phase 5.3b

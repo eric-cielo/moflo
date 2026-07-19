@@ -247,6 +247,13 @@ auto_meditate:
 sdd:
   default: false
 
+# Auto-merge the PR at the end of a full /flo run once preconditions are met (#1285).
+# When auto is true, a full /flo run awaits required checks + MERGEABLE state then
+# merges and deletes the branch, instead of stopping at "PR opened". Opt-in;
+# override per-run with --merge / --no-merge.
+merge:
+  auto: false
+
 # Memory backend
 memory:
   backend: node-sqlite
@@ -359,6 +366,7 @@ export const REQUIRED_TOP_LEVEL_SECTIONS = [
   'session_continuity',
   'auto_meditate',
   'sdd',
+  'merge',
   'memory',
   'hooks',
   'mcp',
