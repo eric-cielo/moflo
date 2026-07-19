@@ -170,8 +170,20 @@ export class CommandParser {
         continue;
       }
 
-      // Handle positional arguments
-      if (result.command.length === 0 && this.commands.has(arg)) {
+      // Handle positional arguments.
+      //
+      // A command token is only recognized in the LEADING position — as the
+      // first positional-eligible arg. The `positional.length === 0` guard is
+      // load-bearing: without it, an unrecognized leading token (a lazy command
+      // not yet registered in `this.commands`, e.g. `sdd` or `epic`) drops to
+      // positional, and a LATER token that happens to match an eager command
+      // (e.g. `status`) gets wrongly promoted to the command slot — so
+      // `flo sdd status` ran the top-level `status` command. In this grammar the
+      // command is always the first positional; enforce that here. Lazy commands
+      // whose name the parser didn't know are then recovered by the
+      // empty-commandPath fallback in index.ts (`run()`), which re-dispatches
+      // positional[0] through the async command registry.
+      if (result.command.length === 0 && result.positional.length === 0 && this.commands.has(arg)) {
         // This is a command — walk its subcommand chain greedily.
         result.command.push(arg);
         let current: Command | undefined = this.commands.get(arg);
