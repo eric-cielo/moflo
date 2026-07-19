@@ -69,14 +69,22 @@ export interface InjectionReplacementResult {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Locate the MoFlo-injected block in `claudeMdContents`, normalising line
- * endings so a CRLF file matches an LF canonical block (Windows consumers
- * regularly hit this — git autocrlf can flip the source bytes on checkout).
+ * Locate the MoFlo-injected block in `claudeMdContents`.
+ *
+ * `start`/`end` are offsets into the **raw** `claudeMdContents` (not a
+ * CRLF-normalised view), so callers can splice against the original bytes and
+ * preserve line endings outside the marker block (#1281). The markers are
+ * CR-free ASCII, so `indexOf` locates them at identical positions in the raw
+ * and normalised views — but only the raw offsets are valid substring bounds
+ * for the untouched original string.
+ *
+ * `block` IS CRLF-normalised, so a byte-for-byte compare against the LF
+ * canonical block works even on a CRLF checkout (Windows consumers regularly
+ * hit this — git autocrlf can flip the source bytes on checkout).
  *
  * Returns null when `contents` is null/undefined/empty, or when no marker
- * pair is found. Includes the marker strings themselves in the extracted
- * block, matching `MARKER_START…MARKER_END` exactly so a byte-for-byte
- * compare against the canonical block works.
+ * pair is found. `block` includes the marker strings themselves, matching
+ * `MARKER_START…MARKER_END` exactly.
  */
 export function extractInjectedBlock(claudeMdContents: string | null | undefined): {
   block: string;
@@ -85,7 +93,6 @@ export function extractInjectedBlock(claudeMdContents: string | null | undefined
   markerIndex: number;
 } | null {
   if (!claudeMdContents) return null;
-  const normalised = claudeMdContents.replace(/\r\n/g, '\n');
 
   // Try the current marker pair first, then each legacy pair. markerIndex:
   //   0  → current MARKER_START/MARKER_END
@@ -94,13 +101,18 @@ export function extractInjectedBlock(claudeMdContents: string | null | undefined
   const ends: readonly string[] = [MARKER_END, ...LEGACY_MARKER_ENDS];
 
   for (let i = 0; i < starts.length; i++) {
-    const startIdx = normalised.indexOf(starts[i]);
+    // Search the RAW string: markers are CR-free, so this matches the
+    // normalised view's positions, but yields offsets valid against the
+    // original bytes for splicing.
+    const startIdx = claudeMdContents.indexOf(starts[i]);
     if (startIdx < 0) continue;
-    const endIdx = normalised.indexOf(ends[i], startIdx + starts[i].length);
+    const endIdx = claudeMdContents.indexOf(ends[i], startIdx + starts[i].length);
     if (endIdx <= startIdx) continue;
     const endInclusive = endIdx + ends[i].length;
     return {
-      block: normalised.substring(startIdx, endInclusive),
+      // Normalise only the extracted block for drift comparison; start/end
+      // remain raw-byte offsets.
+      block: claudeMdContents.substring(startIdx, endInclusive).replace(/\r\n/g, '\n'),
       start: startIdx,
       end: endInclusive,
       markerIndex: i,
@@ -197,11 +209,12 @@ export function applyInjectionReplacement(
     return { contents: claudeMdContents, changed: false, state: 'in-sync' };
   }
 
-  // Operate on the line-ending-normalised view so the byte offsets we record
-  // line up with the actual replacement window. The output keeps LF endings
-  // — the launcher and setup-project both write LF.
-  const normalised = claudeMdContents.replace(/\r\n/g, '\n');
-  const next = normalised.substring(0, extracted.start) + want + normalised.substring(extracted.end);
+  // Splice against the ORIGINAL bytes (extracted.start/end are raw-byte
+  // offsets), so line endings OUTSIDE the marker block are preserved — a CRLF
+  // consumer's surrounding content keeps its CRLF (#1281). Only the canonical
+  // block itself is (re)written with LF, matching what the generator emits.
+  const next =
+    claudeMdContents.substring(0, extracted.start) + want + claudeMdContents.substring(extracted.end);
   return { contents: next, changed: true, state: 'in-sync' };
 }
 

@@ -81,6 +81,16 @@ describe('extractInjectedBlock', () => {
     expect(result).not.toBeNull();
     expect(result!.markerIndex).toBe(0);
   });
+
+  it('returns raw-byte offsets valid against the original CRLF string (#1281)', () => {
+    const crlfBlock = CANONICAL_BLOCK.replace(/\n/g, '\r\n');
+    const file = `# Project\r\n\r\n${crlfBlock}\r\nTrailing.`;
+    const result = extractInjectedBlock(file)!;
+    // start/end index the ORIGINAL bytes: slicing them back out yields the raw
+    // CRLF block verbatim, while .block is its LF-normalised form for compare.
+    expect(file.substring(result.start, result.end)).toBe(crlfBlock);
+    expect(result.block).toBe(CANONICAL_BLOCK);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -221,6 +231,66 @@ describe('applyInjectionReplacement', () => {
     const second = applyInjectionReplacement(first.contents, CANONICAL);
     expect(second.changed).toBe(false);
     expect(second.contents).toBe(first.contents);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// applyInjectionReplacement — CRLF preservation (#1281)
+//
+// The replace path must splice against the original bytes so a Windows
+// consumer's CRLF line endings OUTSIDE the marker block survive a drift/legacy
+// refresh. Only the canonical block itself is (re)written with LF.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('applyInjectionReplacement — CRLF preservation (#1281)', () => {
+  const staleBlock = `${MARKER_START}\nstale guidance with shipped/ refs\n${MARKER_END}`;
+
+  it('preserves CRLF outside the block when replacing a drifted block', () => {
+    const lf = `# Project\n\nUser line one.\nUser line two.\n\n${staleBlock}\n\n## My Section\n\nLocal content.\n`;
+    const crlf = lf.replace(/\n/g, '\r\n');
+
+    const result = applyInjectionReplacement(crlf, CANONICAL);
+    expect(result.changed).toBe(true);
+
+    // Surrounding user content keeps its CRLF — no wholesale flattening.
+    expect(result.contents).toContain('User line one.\r\nUser line two.');
+    expect(result.contents).toContain('## My Section\r\n');
+    expect(result.contents).toContain('Local content.\r\n');
+    // The canonical block is spliced in with LF (as the generator emits it).
+    expect(result.contents).toContain(CANONICAL_BLOCK);
+    expect(result.contents).not.toContain('stale guidance with shipped/ refs');
+    // Re-running settles to in-sync (offsets + normalised compare agree).
+    expect(computeInjectionDrift(result.contents, CANONICAL).state).toBe('in-sync');
+  });
+
+  it('preserves CRLF outside the block when replacing a legacy block', () => {
+    const legacyBlock = `${LEGACY_MARKER_STARTS[0]}\nold stuff\n${LEGACY_MARKER_ENDS[0]}`;
+    const lf = `# Project\n\nKeep me.\n\n${legacyBlock}\n\n## After\n\nAlso keep.\n`;
+    const crlf = lf.replace(/\n/g, '\r\n');
+
+    const result = applyInjectionReplacement(crlf, CANONICAL);
+    expect(result.changed).toBe(true);
+    expect(result.contents).toContain('Keep me.\r\n');
+    expect(result.contents).toContain('## After\r\n');
+    expect(result.contents).toContain('Also keep.\r\n');
+    expect(result.contents).not.toContain(LEGACY_MARKER_STARTS[0]);
+    expect(result.contents).toContain(CANONICAL_BLOCK);
+    expect(computeInjectionDrift(result.contents, CANONICAL).state).toBe('in-sync');
+  });
+
+  it('leaves an all-LF file with no CR bytes (no regression)', () => {
+    const lf = `# Project\n\n${staleBlock}\n\n## Section\n\nContent.\n`;
+    const result = applyInjectionReplacement(lf, CANONICAL);
+    expect(result.changed).toBe(true);
+    expect(result.contents!.includes('\r')).toBe(false);
+    expect(computeInjectionDrift(result.contents, CANONICAL).state).toBe('in-sync');
+  });
+
+  it('is a no-op on an in-sync CRLF file (does not flatten)', () => {
+    const crlf = `# Project\r\n\r\n${CANONICAL_BLOCK.replace(/\n/g, '\r\n')}\r\n\r\n## Notes\r\nKeep.\r\n`;
+    const result = applyInjectionReplacement(crlf, CANONICAL);
+    expect(result.changed).toBe(false);
+    expect(result.contents).toBe(crlf); // byte-identical — CRLF untouched
   });
 });
 
