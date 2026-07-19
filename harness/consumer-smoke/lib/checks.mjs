@@ -634,6 +634,7 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Gate Health',      // .claude/ not initialised in fresh fixture (warn since #784)
   'Hook Block Drift', // settings.json not found in fresh fixture (warn since #888)
   'CLAUDE.md Injection Drift', // CLAUDE.md not present in fresh fixture — same posture as Hook Block Drift (#1142)
+  'SDD + Verify Wiring', // .claude/ not initialised in fresh fixture — SDD/verify wiring legitimately absent (epic #1269)
   'Semantic Quality', // empty DB, no patterns yet
   'Disk Space',       // macOS GitHub runner is constantly >80% used (warn threshold)
   'TypeScript',       // a fresh consumer fixture in os.tmpdir() has no tsc on PATH

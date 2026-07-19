@@ -123,6 +123,8 @@ export function getReferenceHookBlock(): HooksTree {
         hooks: [
           gateHook('check-dangerous-command', 2000),
           gateHook('check-before-pr', 2000),
+          // Story #1274 (Epic #1269) — verify-before-done (inert unless opted in).
+          gateHook('check-before-done', 2000),
           // #1132 — moved from PostToolUse so process.exit(2) actually blocks.
           gateHook('check-bash-memory', 2000),
         ],
@@ -145,7 +147,7 @@ export function getReferenceHookBlock(): HooksTree {
         matcher: '^(Bash|PowerShell)$',
         hooks: [gateHook('record-test-run', 2000)],
       },
-      { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000)] },
+      { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000), gateHook('record-verify-run', 2000)] },
       { matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hooks: [gateHook('record-memory-searched', 3000)] },
       { matcher: '^TaskUpdate$',                  hooks: [gateCjs('check-task-transition', 2000)] },
       { matcher: '^mcp__moflo__memory_store$',    hooks: [gateCjs('record-learnings-stored', 2000)] },

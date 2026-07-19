@@ -218,6 +218,7 @@ See `.claude/guidance/moflo-memory-strategy.md` for memory-specific troubleshoot
 ## See Also
 
 - `.claude/guidance/moflo-skills-reference.md` — Slash-command skills catalog (`/flo`, `/commune`, `/meditate`, `/divine`, …) plus the automatic features (auto-meditate, session-continuity)
+- `.claude/guidance/moflo-sdd.md` — Spec-Driven Development (`/flo -sd`/`-v`, `flo sdd`, verify-before-done gate, `sdd.default` / `gates.verify_before_done`)
 - `.claude/guidance/moflo-cli-reference.md` — CLI commands, agents, hooks, hive-mind, RuVector
 - `.claude/guidance/moflo-yaml-reference.md` — `moflo.yaml` schema, environment variables, `.mcp.json` setup
 - `.claude/guidance/moflo-subagents.md` — Subagents memory-first protocol and store patterns

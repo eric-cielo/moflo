@@ -215,6 +215,7 @@ gates:
   memory_first: ${gates}
   task_create_first: ${gates}
   context_tracking: ${gates}
+  verify_before_done: false   # Epic #1269: require /verify before 'gh pr create' (opt-in; independent of the toggle above)
 
 # Auto-index on session start
 auto_index:
@@ -240,6 +241,11 @@ session_continuity:
 # Ships ON; set false to opt out.
 auto_meditate:
   enabled: true
+
+# Spec-Driven Development (Epic #1269) — spec -> plan -> implement -> verify.
+# When default is true, every /flo run uses the SDD cycle unless --no-sdd.
+sdd:
+  default: false
 
 # Memory backend
 memory:
@@ -352,6 +358,7 @@ export const REQUIRED_TOP_LEVEL_SECTIONS = [
   'auto_index',
   'session_continuity',
   'auto_meditate',
+  'sdd',
   'memory',
   'hooks',
   'mcp',

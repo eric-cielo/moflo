@@ -1666,6 +1666,78 @@ describe('end-to-end: spell lifecycle', () => {
     });
   });
 
+  // Story #1274 (Epic #1269) — verify-before-done gate. OPT-IN: off unless the
+  // consumer sets gates.verify_before_done: true, so the default path proves the
+  // zero-behavior-change guarantee for existing installs.
+  describe('verify-before-done gate (check-before-done)', () => {
+    function enableVerify(): void {
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  verify_before_done: true\n');
+    }
+
+    it('is a no-op by default (verify_before_done unset) even without a verify', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: false });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-done', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).not.toContain('BLOCKED');
+    });
+
+    it('blocks gh pr create when opted-in and not yet verified', () => {
+      enableVerify();
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: false });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-done', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('BLOCKED');
+      expect(r.stderr).toContain('has not been verified');
+    });
+
+    it('allows gh pr create when opted-in and verified', () => {
+      enableVerify();
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: true });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-done', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).not.toContain('BLOCKED');
+    });
+
+    it('does not block non-PR commands even when opted-in and unverified', () => {
+      enableVerify();
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: false });
+      env.TOOL_INPUT_command = 'npm test';
+      const r = runGate('check-before-done', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('record-verify-run credits the native /verify skill', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: false });
+      env.TOOL_INPUT_skill = 'verify';
+      runGate('record-verify-run', env);
+      expect(readState(tmpDir).verifyRun).toBe(true);
+    });
+
+    it('record-verify-run ignores unrelated skills', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: false });
+      env.TOOL_INPUT_skill = 'simplify';
+      runGate('record-verify-run', env);
+      expect(readState(tmpDir).verifyRun).toBe(false);
+    });
+
+    it('a source edit invalidates a prior verification (reset-edit-gates)', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: true });
+      env.TOOL_INPUT_file_path = 'src/foo.ts';
+      runGate('reset-edit-gates', env);
+      expect(readState(tmpDir).verifyRun).toBe(false);
+    });
+  });
+
   describe('record-test-run', () => {
     function expectTestsRecognised(cmd: string) {
       writeState(tmpDir, { testsRun: false });

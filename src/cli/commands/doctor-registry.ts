@@ -59,6 +59,7 @@ import {
 import { checkIntelligence } from './doctor-checks-intelligence.js';
 import { checkVersionFreshness } from './doctor-version.js';
 import { checkZombieProcesses } from './doctor-zombies.js';
+import { checkSddVerifyWiring } from './doctor-checks-sdd.js';
 import type { CheckFn, HealthCheck } from './doctor-types.js';
 
 export type { CheckFn, HealthCheck };
@@ -122,6 +123,8 @@ export const allChecks: CheckFn[] = [
   checkMcpSpellIntegration,
   checkHookExecution,
   checkGateHealth,
+  // Epic #1269 — SDD spine + verify-before-done gate wiring status.
+  checkSddVerifyWiring,
   checkHookBlockDrift,
   checkClaudeMdInjectionDrift,
   checkMofloDbBridge,
@@ -206,6 +209,8 @@ export const componentMap: Record<string, CheckFn> = {
   'hooks': checkHookExecution,
   'gates': checkGateHealth,
   'gate': checkGateHealth,
+  'sdd': checkSddVerifyWiring,
+  'verify': checkSddVerifyWiring,
   'hook-drift': checkHookBlockDrift,
   'drift': checkHookBlockDrift,
   'claudemd-drift': checkClaudeMdInjectionDrift,

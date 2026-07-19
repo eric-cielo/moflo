@@ -45,6 +45,8 @@ export interface MofloConfig {
     memory_first: boolean;
     task_create_first: boolean;
     context_tracking: boolean;
+    /** Verify-before-done gate (Epic #1269). Opt-in — default false. */
+    verify_before_done: boolean;
   };
 
   auto_index: {
@@ -211,6 +213,12 @@ export interface MofloConfig {
     default_strategy: 'single-branch' | 'auto-merge';
   };
 
+  /** Spec-Driven Development defaults (Epic #1269). */
+  sdd: {
+    /** true ⇒ every /flo run uses the spec→plan→implement→verify cycle unless --no-sdd. */
+    default: boolean;
+  };
+
   spells: {
     userDirs: string[];
     shippedDir?: string;
@@ -255,6 +263,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     memory_first: true,
     task_create_first: true,
     context_tracking: true,
+    verify_before_done: false,
   },
   auto_index: {
     guidance: true,
@@ -320,6 +329,9 @@ const DEFAULT_CONFIG: MofloConfig = {
   epic: {
     admin_merge: true,
     default_strategy: 'single-branch',
+  },
+  sdd: {
+    default: false,
   },
   spells: {
     userDirs: ['.claude/spells'],
@@ -429,6 +441,7 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       memory_first: raw.gates?.memory_first ?? DEFAULT_CONFIG.gates.memory_first,
       task_create_first: raw.gates?.task_create_first ?? DEFAULT_CONFIG.gates.task_create_first,
       context_tracking: raw.gates?.context_tracking ?? DEFAULT_CONFIG.gates.context_tracking,
+      verify_before_done: raw.gates?.verify_before_done ?? DEFAULT_CONFIG.gates.verify_before_done,
     },
     auto_index: {
       guidance: raw.auto_index?.guidance ?? raw.autoIndex?.guidance ?? DEFAULT_CONFIG.auto_index.guidance,
@@ -547,6 +560,9 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     epic: {
       admin_merge: raw.epic?.admin_merge ?? raw.epic?.adminMerge ?? DEFAULT_CONFIG.epic.admin_merge,
       default_strategy: raw.epic?.default_strategy ?? raw.epic?.defaultStrategy ?? DEFAULT_CONFIG.epic.default_strategy,
+    },
+    sdd: {
+      default: raw.sdd?.default ?? DEFAULT_CONFIG.sdd.default,
     },
     spells: {
       // Accept camelCase (`userDirs`) or snake_case (`user_dirs`) to match
@@ -688,6 +704,7 @@ gates:
   memory_first: true          # Search memory before Glob/Grep
   task_create_first: true     # TaskCreate before Agent tool
   context_tracking: true      # Track context bracket (FRESH/MODERATE/DEPLETED/CRITICAL)
+  verify_before_done: false   # Epic #1269: require /verify before 'gh pr create' (opt-in)
 
 # Auto-index on session start
 auto_index:
@@ -787,6 +804,10 @@ sandbox:
 epic:
   admin_merge: true              # Use --admin flag on gh pr merge (bypasses branch protection)
   default_strategy: single-branch  # single-branch (one PR) or auto-merge (per-story PRs)
+
+# Spec-Driven Development (Epic #1269)
+sdd:
+  default: false                 # true = every /flo run uses spec->plan->implement->verify unless --no-sdd
 
 # Spell engine discovery
 # userDirs: directories to scan for user-authored spells (YAML/JSON).

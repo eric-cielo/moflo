@@ -31,6 +31,10 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PreToolUse', pattern: 'check-before-read' },
   { event: 'PreToolUse', pattern: 'check-dangerous-command' },
   { event: 'PreToolUse', pattern: 'check-before-pr' },
+  // Story #1274 (Epic #1269) — verify-before-done gate on `gh pr create`. Wired
+  // for every consumer so opting in via `gates: verify_before_done: true` takes
+  // effect without a re-init; inert (breaks immediately) while the toggle is off.
+  { event: 'PreToolUse', pattern: 'check-before-done' },
   // #931 — TaskCreate REMINDER + namespace hint emit only at Agent spawn now,
   // not on every prompt. Saves ~90 tokens × every prompt × every consumer.
   { event: 'PreToolUse', pattern: 'check-before-agent' },
@@ -41,6 +45,8 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PostToolUse', pattern: 'check-bash-memory' },
   { event: 'PostToolUse', pattern: 'record-test-run' },
   { event: 'PostToolUse', pattern: 'record-skill-run' },
+  // Story #1274 — record the native /verify skill run so check-before-done is satisfied.
+  { event: 'PostToolUse', pattern: 'record-verify-run' },
   { event: 'PostToolUse', pattern: 'reset-edit-gates' },
   // First UserPromptSubmit hook (prompt-hook.mjs internally calls
   // `gate.cjs prompt-reminder`). Substring check tolerates either the
@@ -76,6 +82,8 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // always shell-agnostic but the matcher was Bash-anchored, leaving a bypass.
   'check-dangerous-command':  { event: 'PreToolUse',       matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-dangerous-command', timeout: 2000 } },
   'check-before-pr':          { event: 'PreToolUse',       matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-pr', timeout: 2000 } },
+  // Story #1274 — verify-before-done. Same matcher as check-before-pr (both gate `gh pr create`).
+  'check-before-done':        { event: 'PreToolUse',       matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-done', timeout: 2000 } },
   'record-task-created':      { event: 'PostToolUse',      matcher: '^TaskCreate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-task-created', timeout: 2000 } },
   // record-memory-searched MUST go through gate-hook.mjs (not gate.cjs directly)
   // — the wrapper forwards Claude Code's session_id as HOOK_SESSION_ID, which
@@ -92,6 +100,8 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   'check-bash-memory':        { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
   'record-test-run':          { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-test-run', timeout: 2000 } },
   'record-skill-run':         { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-skill-run', timeout: 2000 } },
+  // Story #1274 — record the native /verify skill run (same ^Skill$ matcher as record-skill-run).
+  'record-verify-run':        { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-verify-run', timeout: 2000 } },
   'reset-edit-gates':         { event: 'PostToolUse',      matcher: '^(Write|Edit|MultiEdit)$',   hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" reset-edit-gates', timeout: 2000 } },
   // #931 — Agent-time advisory; never blocks. Pulled the TaskCreate REMINDER
   // and namespace hint out of prompt-reminder so they fire only when Claude is

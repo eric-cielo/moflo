@@ -172,6 +172,25 @@ describe('CommandParser', () => {
       expect(result.command).toEqual(['agent', 'ls']);
     });
 
+    it('does not promote a later token to command when the leading token is unregistered', () => {
+      // Regression: `flo sdd status` — `sdd` is lazy (not yet registered here),
+      // `status` is an eager top-level command. The command must be the FIRST
+      // positional; a later eager-command token must NOT be hijacked into the
+      // command slot. Parser leaves command empty so index.ts's lazy fallback
+      // re-dispatches positional[0] (`sdd`).
+      parser.registerCommand({ name: 'status', description: 'Top-level status' });
+
+      const result = parser.parse(['sdd', 'status', 'my-slug']);
+      expect(result.command).toEqual([]);
+      expect(result.positional).toEqual(['sdd', 'status', 'my-slug']);
+    });
+
+    it('still resolves an eager command in the leading position', () => {
+      parser.registerCommand({ name: 'status', description: 'Top-level status' });
+      const result = parser.parse(['status', '--json']);
+      expect(result.command).toEqual(['status']);
+    });
+
     it('should treat unregistered words as positional args', () => {
       const result = parser.parse(['unknown', 'thing']);
       expect(result.command).toEqual([]);

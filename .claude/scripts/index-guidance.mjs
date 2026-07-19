@@ -133,6 +133,14 @@ function loadGuidanceDirs() {
     dirs.push({ path: bundledSkillsDir, prefix: 'skill-bundled', fileFilter: ['SKILL.md'], kind: 'skill', absolute: true });
   }
 
+  // 6. SDD spec/plan artifacts (Epic #1269) — index .moflo/specs/<slug>/{spec,plan}.md
+  //    so prior specs/plans are searchable across sessions. kind: 'spec' keys each
+  //    file by <slug>-<spec|plan> to avoid collisions between per-slug spec.md files.
+  const projectSpecsDir = resolve(projectRoot, '.moflo/specs');
+  if (existsSync(projectSpecsDir)) {
+    dirs.push({ path: '.moflo/specs', prefix: 'spec', fileFilter: ['spec.md', 'plan.md'], kind: 'spec' });
+  }
+
   return dirs;
 }
 
@@ -663,6 +671,17 @@ function indexDirectory(db, dirConfig) {
         nameOverride: skillName,
         extraMetadata: { kind: 'skill', skill_name: skillName },
         extraTags: ['skill', `skill-${skillName}`],
+      };
+    } else if (dirConfig.kind === 'spec') {
+      // kind: 'spec' (Epic #1269) — key by <slug>-<spec|plan> so a spec.md and
+      // plan.md under the same slug, and identically-named files across slugs,
+      // never collide on the doc key.
+      const slug = basename(dirname(filePath));
+      const artifact = basename(filePath, extname(filePath)); // 'spec' | 'plan'
+      options = {
+        nameOverride: `${slug}-${artifact}`,
+        extraMetadata: { kind: 'spec', spec_slug: slug, artifact },
+        extraTags: ['spec', `spec-${slug}`, artifact],
       };
     }
     const result = indexFile(db, filePath, dirConfig.prefix, options);

@@ -183,6 +183,9 @@ Closes #<issue-number>
 Co-Authored-By: moflo <noreply@motailz.com>"
 ```
 
+### 5.1b Verify-before-done (when `verifyMode` / `--sdd` / `gates.verify_before_done`)
+Run the native `/verify` skill to exercise the change end-to-end against the plan's (or ticket's) acceptance criteria, and store the outcome to memory. Under `--sdd` this always runs; independently, `-v`/`--verify` or `moflo.yaml gates.verify_before_done: true` triggers it. The `check-before-done` gate blocks `gh pr create` until a `/verify` run is recorded (a source edit invalidates a prior verification). Full mechanics: `./sdd.md`.
+
 ### 5.2 Store learnings
 Before opening the PR, call `mcp__moflo__memory_store` with what was learned. The `check-before-pr` gate blocks `gh pr create` until this has run.
 

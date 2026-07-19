@@ -75,6 +75,8 @@ const commandLoaders: Record<string, CommandLoader> = {
   gate: () => import('./gate.js'),
   // Feature Orchestrator
   epic: () => import('./epic.js'),
+  // Spec-Driven Development artifacts (Epic #1269)
+  sdd: () => import('./sdd.js'),
   // GitHub Repository Setup
   github: () => import('./github.js'),
 };

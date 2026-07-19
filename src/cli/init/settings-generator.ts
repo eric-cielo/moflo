@@ -274,6 +274,10 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [
           { type: 'command', command: gateHookCmd('check-dangerous-command'), timeout: 2000 },
           { type: 'command', command: gateHookCmd('check-before-pr'), timeout: 2000 },
+          // Story #1274 (Epic #1269) — verify-before-done. Inert unless the
+          // consumer sets `gates: verify_before_done: true`; gates `gh pr create`
+          // the same as check-before-pr, so both live on this Bash/PowerShell block.
+          { type: 'command', command: gateHookCmd('check-before-done'), timeout: 2000 },
           // #1132 — moved from PostToolUse so process.exit(2) actually blocks
           // read-like shell commands that bypass the Read/Glob/Grep gates.
           // Name kept for backwards compat; covers PowerShell readers too.
@@ -326,7 +330,11 @@ function generateHooksConfig(config: HooksConfig): object {
       },
       {
         matcher: '^Skill$',
-        hooks: [{ type: 'command', command: gateHookCmd('record-skill-run'), timeout: 2000 }],
+        hooks: [
+          { type: 'command', command: gateHookCmd('record-skill-run'), timeout: 2000 },
+          // Story #1274 — credit the native /verify skill run for the verify-before-done gate.
+          { type: 'command', command: gateHookCmd('record-verify-run'), timeout: 2000 },
+        ],
       },
       {
         // Anchored alternation — Claude Code anchors hook matchers (`^…$` semantics),
