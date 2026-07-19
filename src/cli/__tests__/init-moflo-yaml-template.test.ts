@@ -95,6 +95,11 @@ describe('renderMofloYaml', () => {
     expect(yaml).toMatch(/sandbox:\n\s+enabled: false/);
   });
 
+  it('emits merge.auto at false (opt-in, #1285)', () => {
+    const yaml = renderMofloYaml(baselineConfig);
+    expect(yaml).toMatch(/merge:\n\s+auto: false/);
+  });
+
   it('is byte-stable for the same config (no Date.now or randomness)', () => {
     const a = renderMofloYaml(baselineConfig);
     const b = renderMofloYaml(baselineConfig);

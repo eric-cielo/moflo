@@ -219,6 +219,16 @@ export interface MofloConfig {
     default: boolean;
   };
 
+  /** Auto-merge the PR at the end of a full /flo run (#1285). */
+  merge: {
+    /**
+     * true ⇒ a full /flo run awaits the PR's merge preconditions and merges it
+     * automatically once met, instead of stopping at "PR opened". Opt-in —
+     * default false; overridable per-run with --merge / --no-merge.
+     */
+    auto: boolean;
+  };
+
   spells: {
     userDirs: string[];
     shippedDir?: string;
@@ -332,6 +342,9 @@ const DEFAULT_CONFIG: MofloConfig = {
   },
   sdd: {
     default: false,
+  },
+  merge: {
+    auto: false,
   },
   spells: {
     userDirs: ['.claude/spells'],
@@ -563,6 +576,9 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     },
     sdd: {
       default: raw.sdd?.default ?? DEFAULT_CONFIG.sdd.default,
+    },
+    merge: {
+      auto: raw.merge?.auto ?? DEFAULT_CONFIG.merge.auto,
     },
     spells: {
       // Accept camelCase (`userDirs`) or snake_case (`user_dirs`) to match
@@ -808,6 +824,11 @@ epic:
 # Spec-Driven Development (Epic #1269)
 sdd:
   default: false                 # true = every /flo run uses spec->plan->implement->verify unless --no-sdd
+
+# Auto-merge the PR at the end of a full /flo run once preconditions are met (#1285).
+# Opt-in; default false. Override per-run with --merge / --no-merge.
+merge:
+  auto: false                    # true = a full /flo run merges its PR once required checks pass and it's MERGEABLE
 
 # Spell engine discovery
 # userDirs: directories to scan for user-authored spells (YAML/JSON).
