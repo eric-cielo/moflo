@@ -338,7 +338,7 @@ Inside Claude Code, the `/flo` (or `/fl`) slash command drives GitHub issue exec
 /flo -s <issue>               # Swarm mode (multi-agent coordination)
 /flo -h <issue>               # Hive-mind mode (consensus-based coordination)
 /flo -n <issue>               # Normal mode (default, single agent, no swarm)
-/flo -w <issue>               # Worktree: run the work in a fresh git worktree
+/flo -w <issue>               # Worktree: run the work in a fresh git worktree (aliases: -wt, --worktree)
 /flo -sd <issue>              # SDD: spec → plan → implement → verify (implies --verify)
 /flo -v <issue>               # Verify-before-done only (no spec/plan front-half)
 /flo -m <issue>               # Auto-merge the PR once required checks pass
@@ -583,7 +583,7 @@ Inside a Claude Code session in a moflo project, ask **`/luminarium`** — the s
 | **Schedules** | All registered spell schedules (cron / interval / one-time), with run-now and disable controls |
 | **Executions** | Recent spell runs — duration, exit code, step-by-step output |
 | **Memory** | Memory namespace breakdown, vector count, embedder backend, HNSW index health |
-| **Claude Stats** | Per-session Claude Code transcript stats — tokens, tools called, files touched (local primary sessions only) |
+| **Claude Stats** | Per-session Claude Code transcript stats — tokens (with a subagent-token subtotal that splits main-loop context from Task-tool-spawned subagent context), tools called, files touched (local primary sessions only) |
 
 ### Flags
 
@@ -907,6 +907,13 @@ gates:
   memory_first: true                 # Must search memory before file exploration
   task_create_first: true            # Must TaskCreate before Agent tool
   context_tracking: true             # Track context window depletion
+  verify_before_done: false          # Require /verify before `gh pr create` (unless --no-verify)
+
+sdd:
+  default: false                     # true → every /flo run uses the spec→plan→implement→verify cycle unless --no-sdd
+
+merge:
+  auto: false                        # true → every /flo run auto-merges its PR once preconditions pass, unless --no-merge
 
 auto_index:
   guidance: true                     # Auto-index docs on session start
