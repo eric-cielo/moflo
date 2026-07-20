@@ -1344,11 +1344,11 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       // view so the numbers aren't read as account-wide truth.
       const disclaimer =
         '<div style="background:#161b22;border:1px solid #30363d;border-left:3px solid #d29922;border-radius:6px;padding:10px 14px;margin-bottom:16px;color:#c9d1d9;font-size:0.85rem;line-height:1.5">' +
-        '<strong>Local primary-session stats only.</strong> Counts what Claude Code wrote to disk for THIS project on THIS machine. ' +
-        '<strong>Excludes sub-sessions spawned by Task-tool agents</strong> ' +
-        '(e.g. <code>/simplify</code>, <code>/ultrareview</code>, Explore) — their Sonnet/Haiku usage is stored in per-session ' +
-        '<code>subagents/</code> transcripts the dashboard doesn\\'t yet read, so totals here skew toward the primary model. ' +
-        'Also excludes claude.ai web sessions, other projects, other devices, and your account-level plan quota.' +
+        '<strong>Local project stats only.</strong> Counts what Claude Code wrote to disk for THIS project on THIS machine — ' +
+        'including sub-sessions spawned by Task-tool agents (e.g. <code>/flo</code> fan-out, <code>/simplify</code>, Explore), ' +
+        'whose Sonnet/Haiku usage is walked from per-session <code>subagents/</code> transcripts and broken out under ' +
+        '<strong>Context Split</strong> below. ' +
+        'Excludes claude.ai web sessions, other projects, other devices, and your account-level plan quota.' +
         '</div>';
 
       if (!cs.available) {
@@ -1360,6 +1360,22 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       }
 
       const w = cs.windows;
+
+      // Context split — main-loop vs subagent (Task-tool spawn) tokens (#1264).
+      // Subagent totals are included in the lifetime window, so main-loop is the
+      // remainder. Guard against an older server shape lacking a subagents field.
+      const sub = cs.subagents || { transcripts: 0, tokens: { total: 0, input: 0, output: 0, cacheCreate: 0, cacheRead: 0 } };
+      const lifeTotal = w.lifetime.tokens.total;
+      const subTotal = sub.tokens.total;
+      const mainTotal = Math.max(0, lifeTotal - subTotal);
+      const pct = (n) => lifeTotal > 0 ? (n / lifeTotal * 100).toFixed(1) + '%' : '—';
+      const splitTable =
+        '<h2>Context Split (lifetime)</h2>' +
+        '<table><thead><tr><th>Context</th><th>Total Tokens</th><th>Share</th></tr></thead><tbody>' +
+        '<tr><td style="font-weight:600">Main loop</td><td>' + fmtCount(mainTotal) + '</td><td>' + pct(mainTotal) + '</td></tr>' +
+        '<tr><td style="font-weight:600">Subagents <span class="dim">(' + fmtCount(sub.transcripts) + ' transcripts)</span></td>' +
+          '<td>' + fmtCount(subTotal) + '</td><td>' + pct(subTotal) + '</td></tr>' +
+        '</tbody></table>';
 
       // Summary windows (today / 7d / 30d / lifetime).
       const winRow = (label, win) => {
@@ -1390,7 +1406,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
             '<td>' + fmtCount(m.tokens) + '</td></tr>').join('')
         : '<tr><td colspan="3" class="empty">No model data</td></tr>';
       const modelsTable =
-        '<h2>Models Used (primary sessions)</h2>' +
+        '<h2>Models Used</h2>' +
         '<table><thead><tr><th>Model</th><th>Messages</th><th>Total Tokens</th></tr></thead>' +
         '<tbody>' + modelRows + '</tbody></table>';
 
@@ -1407,6 +1423,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       const cards =
         '<div class="grid">' +
         '<div class="stat-card"><div class="label">Total Sessions</div><div class="value">' + fmtCount(cs.totalSessions) + '</div></div>' +
+        '<div class="stat-card"><div class="label">Subagent Tokens</div><div class="value">' + fmtCount(subTotal) + '</div></div>' +
         '<div class="stat-card"><div class="label">Sessions w/ Errors</div><div class="value">' + fmtCount(cs.errorSessions) + '</div></div>' +
         '<div class="stat-card"><div class="label">Median Duration</div><div class="value">' + fmtDuration(cs.sessionDurationMs.median) + '</div></div>' +
         '<div class="stat-card"><div class="label">p95 Duration</div><div class="value">' + fmtDuration(cs.sessionDurationMs.p95) + '</div></div>' +
@@ -1418,7 +1435,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         (cs.parseErrors ? ' &middot; ' + cs.parseErrors + ' lines skipped (parse error)' : '') +
         '</div>';
 
-      el.innerHTML = disclaimer + cards + winTable + modelsTable + toolsTable + footer;
+      el.innerHTML = disclaimer + cards + winTable + splitTable + modelsTable + toolsTable + footer;
     }
 
     // Polling
