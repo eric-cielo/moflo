@@ -19,6 +19,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { locateMofloRootPath } from '../services/moflo-require.js';
@@ -225,7 +226,7 @@ function cmdPath(ctx: CommandContext): CommandResult {
 
 function cmdIndex(ctx: CommandContext): CommandResult {
   const root = projectRoot(ctx);
-  const indexer = locateMofloRootPath('bin/index-guidance.mjs');
+  const indexer = locateMofloRootPath(join('bin', 'index-guidance.mjs'));
   if (!indexer) {
     console.log('Guidance indexer not found; specs will be indexed at next session start.');
     return { success: true };
