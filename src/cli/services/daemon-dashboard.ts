@@ -1423,6 +1423,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       const cards =
         '<div class="grid">' +
         '<div class="stat-card"><div class="label">Total Sessions</div><div class="value">' + fmtCount(cs.totalSessions) + '</div></div>' +
+        '<div class="stat-card"><div class="label">Total Tokens</div><div class="value">' + fmtCount(lifeTotal) + '</div></div>' +
         '<div class="stat-card"><div class="label">Subagent Tokens</div><div class="value">' + fmtCount(subTotal) + '</div></div>' +
         '<div class="stat-card"><div class="label">Sessions w/ Errors</div><div class="value">' + fmtCount(cs.errorSessions) + '</div></div>' +
         '<div class="stat-card"><div class="label">Median Duration</div><div class="value">' + fmtDuration(cs.sessionDurationMs.median) + '</div></div>' +
