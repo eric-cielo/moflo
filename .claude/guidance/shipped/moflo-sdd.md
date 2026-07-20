@@ -35,6 +35,8 @@ Each artifact carries a `status` of `draft` or `reviewed` in its frontmatter. Th
 
 ## Driving the Cycle with `flo sdd`
 
+The `flo sdd` CLI is the single cross-platform entry point for every SDD artifact operation — scaffold, review, gate, and status. Drive the cycle through these commands; never hand-write a `.moflo/specs/...` path in a skill step.
+
 | Command | Does |
 |---------|------|
 | `flo sdd spec "<title>"` | Scaffold `spec.md` (or show an existing one). `--from <file\|->` seeds the body. |
@@ -58,7 +60,7 @@ When enforced, `gh pr create` is blocked until the change has been verified end-
 
 ---
 
-## Configuration Defaults
+## SDD & Verify moflo.yaml Defaults
 
 Both defaults are off; turn either on to make it the project standard, then override per run.
 

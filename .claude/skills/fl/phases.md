@@ -81,11 +81,13 @@ flo memory search --query "<domain keywords>" --namespace guidance
 
 Or via MCP: `mcp__moflo__memory_search`.
 
-### 1.4 Read guidance docs (only if memory was thin)
-If memory returned fewer than three relevant results, read guidance:
+### 1.4 Reach guidance via memory (only if memory was thin)
+If the §1.3 search above (the memory-first step named `SKILL.md` Step 0) returned fewer than three relevant results, widen the query — **still through `mcp__moflo__memory_search` (namespace `guidance`)**, not a direct `Read` of `.claude/guidance/*.md`. Guidance docs are indexed; search returns the relevant chunk, and `mcp__moflo__memory_get_neighbors` traverses adjacent context far more cheaply than reading the whole doc (this is the #1292 fix — don't bulk-read `.claude/guidance/moflo-sdd.md` et al.). Angle the query by change type:
 - Bug → testing patterns, error handling
 - Feature → domain model, architecture
 - UI → frontend patterns, components
+
+Only the skill's own `./*.md` companion files (`sdd.md`, `phases.md`, …) are `Read` directly — they live under `.claude/skills/` and are not indexed.
 
 ### 1.5 Survey the codebase
 Use the Task tool with the Explore agent to find:
