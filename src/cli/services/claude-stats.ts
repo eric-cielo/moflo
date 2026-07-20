@@ -5,11 +5,14 @@
  * the JSON shape consumed by The Luminarium's "Claude Stats" tab. Pure I/O
  * + reduce; no persistent storage, no network.
  *
- * Scope: primary-session transcripts only (top-level `*.jsonl`). Per-session
- * `<id>/subagents/agent-*.jsonl` files (Task-tool spawns) are NOT walked, so
- * Sonnet/Haiku usage from /simplify, /ultrareview, etc. is missing from the
- * model distribution. Tracked as a follow-up — when wiring it up, recurse
- * into `subagents/` and roll the subagent mtimes/sizes into the cache key.
+ * Scope: primary-session transcripts (top-level `*.jsonl`) AND per-session
+ * `<id>/subagents/agent-*.jsonl` files (Task-tool spawns). Subagent usage —
+ * the Sonnet/Haiku spend from /flo fan-out, /simplify, /ultrareview, etc. —
+ * rolls into the model distribution and token windows so totals are complete,
+ * and is ALSO tracked as a distinct `subagents` subtotal so callers can split
+ * main-loop context from subagent context (issue #1264). Subagent transcripts
+ * carry their PARENT sessionId, so they attribute to the right session without
+ * inflating the session count. Their mtimes/sizes fold into the cache key.
  *
  * Performance posture:
  *   - Streaming readline (not `readFileSync().split('\n')`) — transcripts
@@ -22,6 +25,7 @@
  */
 
 import { createReadStream } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { stat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -84,6 +88,21 @@ export interface ClaudeStatsShape {
   };
   readonly models: readonly ModelDistribution[];
   readonly tools: readonly ToolUsage[];
+  /**
+   * Subagent (`<id>/subagents/agent-*.jsonl`, Task-tool spawn) subtotal. These
+   * tokens are ALSO included in `windows`/`models` above — this breaks them out
+   * so callers can compute main-loop context (window total − subagent total).
+   */
+  readonly subagents: {
+    readonly transcripts: number;
+    readonly tokens: {
+      readonly input: number;
+      readonly output: number;
+      readonly cacheCreate: number;
+      readonly cacheRead: number;
+      readonly total: number;
+    };
+  };
   /** Sessions whose transcript contained at least one tool_result.is_error. */
   readonly errorSessions: number;
   /** Median + p95 of (last - first timestamp) per session, milliseconds. */
@@ -162,6 +181,8 @@ interface Aggregator {
   toolCounts: Map<string, number>;
   sessions: Map<string, SessionMeta>;
   parseErrors: number;
+  /** Subagent-only token subtotal (also folded into windows/models above). */
+  subagent: { input: number; output: number; cacheCreate: number; cacheRead: number };
 }
 
 function makeAggregator(): Aggregator {
@@ -175,6 +196,7 @@ function makeAggregator(): Aggregator {
     toolCounts: new Map(),
     sessions: new Map(),
     parseErrors: 0,
+    subagent: { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 },
   };
 }
 
@@ -195,8 +217,12 @@ interface JsonlLine {
   };
 }
 
-/** Walk one parsed JSONL line and update the aggregator. */
-function consumeLine(agg: Aggregator, line: JsonlLine, now: number): void {
+/**
+ * Walk one parsed JSONL line and update the aggregator. `isSubagent` marks
+ * lines from `<id>/subagents/agent-*.jsonl` so their usage is additionally
+ * booked to the subagent subtotal (it still counts toward windows/models).
+ */
+function consumeLine(agg: Aggregator, line: JsonlLine, now: number, isSubagent: boolean): void {
   const ts = line.timestamp ? Date.parse(line.timestamp) : NaN;
   const sessionId = line.sessionId;
 
@@ -242,6 +268,14 @@ function consumeLine(agg: Aggregator, line: JsonlLine, now: number): void {
   const modelKey = canonicalModelKey(line.message?.model);
   agg.modelMessages.set(modelKey, (agg.modelMessages.get(modelKey) ?? 0) + 1);
   agg.modelTokens.set(modelKey, (agg.modelTokens.get(modelKey) ?? 0) + totalThisLine);
+
+  // Subagent subtotal — booked in addition to (not instead of) the windows.
+  if (isSubagent) {
+    agg.subagent.input += input;
+    agg.subagent.output += output;
+    agg.subagent.cacheCreate += cc;
+    agg.subagent.cacheRead += cr;
+  }
 
   // Lifetime always.
   bump(agg.lifetime, sessionId, input, output, cc, cr);
@@ -303,7 +337,12 @@ async function listTranscripts(
   return stats.filter((s): s is { path: string; mtimeMs: number; size: number } => s !== null);
 }
 
-async function streamFile(agg: Aggregator, path: string, now: number): Promise<void> {
+async function streamFile(
+  agg: Aggregator,
+  path: string,
+  now: number,
+  isSubagent: boolean,
+): Promise<void> {
   const stream = createReadStream(path, { encoding: 'utf-8' });
   const rl = createInterface({ input: stream, crlfDelay: Infinity });
   for await (const raw of rl) {
@@ -315,8 +354,57 @@ async function streamFile(agg: Aggregator, path: string, now: number): Promise<v
       agg.parseErrors++;
       continue;
     }
-    consumeLine(agg, parsed, now);
+    consumeLine(agg, parsed, now, isSubagent);
   }
+}
+
+/**
+ * List `<id>/subagents/*.jsonl` transcripts (Task-tool spawns) across every
+ * session subdirectory in a project dir, returning [path, mtime, size]. Session
+ * dirs without a `subagents/` folder are skipped silently.
+ */
+async function listSubagentTranscripts(
+  dir: string,
+): Promise<Array<{ path: string; mtimeMs: number; size: number }>> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+
+  const perSession = await Promise.all(
+    entries
+      .filter((e) => e.isDirectory())
+      .map(async (e) => {
+        const subDir = join(dir, e.name, 'subagents');
+        let names: string[];
+        try {
+          names = await readdir(subDir);
+        } catch {
+          // No subagents/ dir for this session (the common case) — skip.
+          return [];
+        }
+        const jsonl = names.filter((n) => n.endsWith('.jsonl'));
+        const stats = await Promise.all(
+          jsonl.map(async (name) => {
+            const full = join(subDir, name);
+            try {
+              const s = await stat(full);
+              return s.isFile() ? { path: full, mtimeMs: s.mtimeMs, size: s.size } : null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        return stats.filter(
+          (s): s is { path: string; mtimeMs: number; size: number } => s !== null,
+        );
+      }),
+  );
+
+  return perSession.flat();
 }
 
 // ============================================================================
@@ -347,17 +435,21 @@ export async function aggregateClaudeStats(
   const dir = options.projectDir ?? claudeProjectDirFor(cwd);
   const now = options.now ?? Date.now();
 
-  const files = await listTranscripts(dir);
-  if (files.length === 0) {
+  const [files, subFiles] = await Promise.all([
+    listTranscripts(dir),
+    listSubagentTranscripts(dir),
+  ]);
+  if (files.length === 0 && subFiles.length === 0) {
     return emptyShape(dir, Date.now() - startedAt);
   }
 
-  // Cache key: max(mtime) + sum(size). If neither shifts, the prior
-  // aggregation is still valid. Also folds in the number of files so a
-  // delete invalidates correctly.
-  const maxMtime = files.reduce((m, f) => Math.max(m, f.mtimeMs), 0);
-  const totalSize = files.reduce((s, f) => s + f.size, 0);
-  const cacheKey = `${dir}|${files.length}|${maxMtime}|${totalSize}`;
+  // Cache key: per set, max(mtime) + sum(size) + file count. If none shifts,
+  // the prior aggregation is still valid; a delete in either set (count drops)
+  // invalidates correctly. Subagent transcripts are keyed alongside top-level.
+  const allFiles = [...files, ...subFiles];
+  const maxMtime = allFiles.reduce((m, f) => Math.max(m, f.mtimeMs), 0);
+  const totalSize = allFiles.reduce((s, f) => s + f.size, 0);
+  const cacheKey = `${dir}|${files.length}|${subFiles.length}|${maxMtime}|${totalSize}`;
 
   if (!options.skipCache && cache && cache.key === cacheKey && Date.now() - cache.cachedAt < CACHE_TTL_MS) {
     return cache.value;
@@ -366,14 +458,21 @@ export async function aggregateClaudeStats(
   const agg = makeAggregator();
   for (const f of files) {
     try {
-      await streamFile(agg, f.path, now);
+      await streamFile(agg, f.path, now, false);
     } catch (err) {
       // One bad file shouldn't blank the whole tab.
       console.warn(`[claude-stats] failed to read ${f.path}: ${(err as Error).message ?? err}`);
     }
   }
+  for (const f of subFiles) {
+    try {
+      await streamFile(agg, f.path, now, true);
+    } catch (err) {
+      console.warn(`[claude-stats] failed to read subagent ${f.path}: ${(err as Error).message ?? err}`);
+    }
+  }
 
-  const value = freezeAggregator(agg, dir, Date.now() - startedAt);
+  const value = freezeAggregator(agg, dir, subFiles.length, Date.now() - startedAt);
   cache = { key: cacheKey, value, cachedAt: Date.now() };
   return value;
 }
@@ -392,6 +491,7 @@ function emptyShape(dir: string | null, elapsedMs: number): ClaudeStatsShape {
     windows: { today: empty, last7d: empty, last30d: empty, lifetime: empty },
     models: [],
     tools: [],
+    subagents: { transcripts: 0, tokens: { input: 0, output: 0, cacheCreate: 0, cacheRead: 0, total: 0 } },
     errorSessions: 0,
     sessionDurationMs: { median: 0, p95: 0 },
     totalSessions: 0,
@@ -400,7 +500,12 @@ function emptyShape(dir: string | null, elapsedMs: number): ClaudeStatsShape {
   };
 }
 
-function freezeAggregator(agg: Aggregator, dir: string, elapsedMs: number): ClaudeStatsShape {
+function freezeAggregator(
+  agg: Aggregator,
+  dir: string,
+  subagentTranscripts: number,
+  elapsedMs: number,
+): ClaudeStatsShape {
   const models: ModelDistribution[] = [];
   for (const key of agg.modelMessages.keys()) {
     models.push({
@@ -437,6 +542,20 @@ function freezeAggregator(agg: Aggregator, dir: string, elapsedMs: number): Clau
     },
     models,
     tools,
+    subagents: {
+      transcripts: subagentTranscripts,
+      tokens: {
+        input: agg.subagent.input,
+        output: agg.subagent.output,
+        cacheCreate: agg.subagent.cacheCreate,
+        cacheRead: agg.subagent.cacheRead,
+        total:
+          agg.subagent.input +
+          agg.subagent.output +
+          agg.subagent.cacheCreate +
+          agg.subagent.cacheRead,
+      },
+    },
     errorSessions,
     sessionDurationMs: { median, p95 },
     totalSessions: agg.sessions.size,
