@@ -2,10 +2,10 @@
 
 Spec-Driven Development for `/flo` — Epic #1269. Two independent modifiers:
 
-- **`-sd` / `--sdd`** — run the full **spec → plan → (review) → implement → verify** cycle. Implies `--verify`.
-- **`-v` / `--verify`** — verify-before-done only: a normal run plus the completion gate, no spec/plan front-half.
+- **`-sd` / `--sdd`** — run the full **spec → plan → (review) → implement → verify** cycle. Opt-in (`sdd.default` defaults false). Implies verify.
+- **`-v` / `--verify`** — verify-before-done: a normal run plus the completion gate, no spec/plan front-half. **On by default** (`gates.verify_before_done` defaults true, #1294) — `-v` is explicit, `--no-verify` opts out for one run.
 
-Defaults seed from `moflo.yaml` (`sdd.default`, `gates.verify_before_done`); per-run flags and `--no-sdd` / `--no-verify` override. Both are orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`, so `--sdd -s -wt 42` runs the SDD cycle in a swarm inside a worktree.
+Defaults seed from `moflo.yaml` (`sdd.default` = false, `gates.verify_before_done` = true); per-run flags and `--no-sdd` / `--no-verify` override. Both are orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`, so `--sdd -s -wt 42` runs the SDD cycle in a swarm inside a worktree.
 
 The artifact model, paths, and CLI live in `src/cli/sdd/` (`flo sdd …`). The constitution layer (CLAUDE.md + `.claude/guidance/`) is referenced by every stage — never restated in a spec.
 
@@ -38,11 +38,9 @@ Specs/plans are indexed into memory on session start, so `mcp__moflo__memory_sea
 
 ## The `--verify` step (verify-before-done)
 
-Runs at step 8 of the full-mode flow, before the PR:
+Runs at step 8 of the full-mode flow, before the PR — **by default** and always under `--sdd`; `--no-verify` skips it for one run.
 
-1. **Invoke the `/verify` skill** via the Skill tool — `Skill({ skill: "verify" })` — passing the issue number or spec slug as its argument. It checks the change against the plan's acceptance criteria (or the ticket's, without a plan), stores the outcome to memory itself, and returns a per-criterion PASS/FAIL verdict. Actually calling the skill is the point — it is what records the run; describing verification in prose does not satisfy the gate. **It reuses the Tests-phase run — no double verify:** `/verify` cites the already-green suite as evidence and only runs checks for criteria nothing covered yet, plus the criterion→evidence mapping. Tests prove the code works; `/verify` proves it did what the ticket asked.
-2. `/verify` writes its own outcome record to memory (`namespace: "learnings", key: "verify:<slug-or-issue>"`), so no separate store step is needed here.
-3. Invoking `/verify` trips `record-verify-run`, satisfying the `check-before-done` gate — `gh pr create` unblocks. When `gates.verify_before_done: true`, this gate is enforced for every run whether or not `-v` was passed; `-v` makes the flow *actually call* `/verify` so the gate passes on a real verification, not an incidental skill run. A source edit after verifying invalidates it — re-run `/verify`.
+**Delegate to the `/verify` skill** — `Skill({ skill: "verify" })`, passing the issue number or spec slug. It owns the mechanics (single source of truth — don't restate them here): locate the acceptance criteria (plan, else ticket) → reuse the Tests-phase run (no double verify) → map each criterion to evidence → run only uncovered checks → record its own outcome to memory (`learnings`, `verify:<slug-or-issue>`) → return a per-criterion PASS/FAIL. *Invoking* it is the point — it trips `record-verify-run` and satisfies the `check-before-done` gate (describing verification in prose does not). A source edit after verifying invalidates it — re-run `/verify`. Full how-to: `.claude/skills/verify/SKILL.md`.
 
 `/ward` and `/quicken` stay targeted audits, not the completion gate.
 

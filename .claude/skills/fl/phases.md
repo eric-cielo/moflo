@@ -183,12 +183,10 @@ Closes #<issue-number>
 Co-Authored-By: moflo <noreply@motailz.com>"
 ```
 
-### 5.1b Verify-before-done (when `verifyMode` / `--sdd` / `gates.verify_before_done`)
-**Invoke the `/verify` skill** — `Skill({ skill: "verify" })` — to check the change against the plan's (or ticket's) acceptance criteria; it stores the outcome to memory itself. Invoking it is what records the run and satisfies the gate — do not just describe verification in prose. Pass the issue number or spec slug as its argument when the branch's target isn't obvious.
+### 5.1b Verify-before-done (default; skipped only with `--no-verify`)
+**Delegate to the `/verify` skill** — `Skill({ skill: "verify" })`, passing the issue number or spec slug. That skill owns the mechanics (locate acceptance criteria → reuse Phase 4's already-green tests, no double verify → map each criterion → run only uncovered checks → record the outcome). Don't restate them here or verify in prose — *invoking* `/verify` is what records the run and satisfies the `check-before-done` gate.
 
-**No double verify.** `/verify` does **not** re-run the Phase 4 suite. Phase 4 already executed the tests this session; `/verify` *reuses* that green result as evidence and adds only what Phase 4 doesn't do — mapping each acceptance criterion to the specific result that proves it, and running only checks for criteria nothing covered yet (a CLI-output or docs criterion, say). Tests prove the code works; `/verify` proves it did what the ticket asked. If a source edit lands after Phase 4, that edit invalidates both — re-run the affected tests, then `/verify`.
-
-Under `--sdd` this always runs; independently, `-v`/`--verify` or `moflo.yaml gates.verify_before_done: true` triggers it. The `check-before-done` gate blocks `gh pr create` until a `/verify` run is recorded. Full mechanics: `./sdd.md`.
+**When it runs:** by default (`verify_before_done` now defaults true, #1294) and always under `--sdd`; `--no-verify` skips it for one run. See `./sdd.md` for triggers and `.claude/skills/verify/SKILL.md` for how verification is performed.
 
 ### 5.2 Store learnings
 Before opening the PR, call `mcp__moflo__memory_store` with what was learned. The `check-before-pr` gate blocks `gh pr create` until this has run.

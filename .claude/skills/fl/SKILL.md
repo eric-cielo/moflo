@@ -49,10 +49,10 @@ Two **independent** modifiers, orthogonal to execution mode (`-n`/`-s`/`-h`) and
 | Flag | Long | Effect |
 |------|------|--------|
 | `-sd` | `--sdd` | Run the full **spec → plan → (review) → implement → verify** cycle. Short is `-sd`, **not** `-s` (swarm) — follows the two-letter convention (`-wf`, `-wt`). Implies `--verify`. |
-| `-v` | `--verify` | **Verify-before-done only** — a normal run plus the completion gate, no spec/plan front-half. |
-| `--no-sdd`, `--no-verify` | | Opt a single run out when a `moflo.yaml` default turned it on. |
+| `-v` | `--verify` | **Verify-before-done** — a normal run plus the `/verify` skill (the completion gate), no spec/plan front-half. **On by default** (#1294) — this flag only forces it back on for a project that set `gates.verify_before_done: false`. |
+| `--no-sdd`, `--no-verify` | | Opt a single run out. `--no-verify` skips the (default-on) verify step. |
 
-Defaults seed from `moflo.yaml` — `sdd.default` and `gates.verify_before_done` — so a project can make either the default; per-run flags override. `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). In `-t`/`-r` modes (no implementation) `--verify` is a no-op — emit the one-line ignored note; `--sdd` in `-t` writes the spec/plan **into the ticket** rather than scaffolding artifacts. Full mechanics in `./sdd.md`.
+Defaults seed from `moflo.yaml` — `sdd.default` (default **off**) and `gates.verify_before_done` (default **on** since #1294). So the SDD spec/plan ceremony is opt-in, but **verify-before-done runs by default**; per-run flags override (`--no-verify` to skip). `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). In `-t`/`-r` modes (no implementation) verify is a no-op — cleared silently, with the one-line ignored note only when the user explicitly passed `-v`/`--verify`; `--sdd` in `-t` writes the spec/plan **into the ticket** rather than scaffolding artifacts. Full mechanics in `./sdd.md`.
 
 ## Auto-merge (#1285)
 
@@ -115,13 +115,14 @@ let epicBranch = null;
 let issueNumber = null;
 let titleWords = [];
 
-// SDD/verify modifiers (Epic #1269). Seed from moflo.yaml BEFORE parsing so a
-// project default applies unless a per-run flag overrides it. Read the two keys
-// from moflo.yaml at the project root (absent ⇒ false):
-//   sddMode    ← `sdd.default: true`
-//   verifyMode ← `gates.verify_before_done: true`
+// SDD/verify modifiers (Epic #1269, #1294). Seed from moflo.yaml BEFORE parsing
+// so a project default applies unless a per-run flag overrides it. Read the two
+// keys from moflo.yaml at the project root — NOTE the different absent-defaults:
+//   sddMode    ← `sdd.default`            (absent ⇒ false — spec/plan is opt-in)
+//   verifyMode ← `gates.verify_before_done` (absent ⇒ TRUE — verify is on by default, #1294)
 let sddMode = false;          // -sd / --sdd  (full spec→plan→implement→verify)
-let verifyMode = false;       // -v  / --verify (verify-before-done only)
+let verifyMode = true;        // -v / --verify (on by default; --no-verify opts out)
+let verifyExplicit = false;   // did the user actually type -v/--verify? (drives the -t/-r note only, so it doesn't fire on the default)
 
 // Auto-merge modifier (#1285). Seed from moflo.yaml BEFORE parsing, same as
 // sddMode/verifyMode: read `merge.auto` at the project root (absent ⇒ false).
@@ -167,7 +168,7 @@ for (let i = 0; i < args.length; i++) {
   // (swarm) + `d`; the swarm case above only matches the exact string "-s".
   else if (arg === "-sd" || arg === "--sdd")    { sddMode = true; verifyMode = true; }
   else if (arg === "--no-sdd")                  sddMode = false;
-  else if (arg === "-v" || arg === "--verify")  verifyMode = true;
+  else if (arg === "-v" || arg === "--verify")  { verifyMode = true; verifyExplicit = true; }
   else if (arg === "--no-verify")               verifyMode = false;
   // Auto-merge modifier. `-m` is free (`-h` is hive, `-s` is swarm) — no collision.
   else if (arg === "-m" || arg === "--merge")   mergeMode = true;
@@ -187,10 +188,12 @@ if (useWorktree && (epicBranch || workflowMode !== "full")) {
 }
 
 // SDD/verify are implementation-time modifiers. -t (ticket) and -r (research)
-// never implement, so --verify is a no-op there — note and clear it. --sdd in
-// -t writes the spec/plan INTO the ticket (see ./sdd.md); in -r it's ignored.
-if (verifyMode && (workflowMode === "ticket" || workflowMode === "research")) {
-  console.log("Note: --verify ignored — " + workflowMode + " mode does not implement.");
+// never implement, so verify is a no-op there — clear it. Verify is on by
+// default now (#1294), so only surface the "ignored" note when the user
+// EXPLICITLY passed -v/--verify — otherwise clearing the default is silent.
+// --sdd in -t writes the spec/plan INTO the ticket (see ./sdd.md); in -r ignored.
+if (workflowMode === "ticket" || workflowMode === "research") {
+  if (verifyExplicit) console.log("Note: --verify ignored — " + workflowMode + " mode does not implement.");
   verifyMode = false;
 }
 if (sddMode && workflowMode === "research") {
@@ -225,7 +228,7 @@ Full mode runs end-to-end without further prompts.
 5. Create branch, implement, write tests — `./phases.md` Phases 3–4
 6. Run `/flo-simplify` on changed code; rerun tests if it edits — `./phases.md` Phase 4.5
 7. Commit — `./phases.md` Phase 5.1
-8. **If `verifyMode`** (always on under `sddMode`): invoke the `/verify` skill — `Skill({ skill: "verify" })` — to check the change against the plan's (or ticket's) acceptance criteria; it records its own outcome to memory. It **reuses** step 5's/Phase 4's already-green tests (no double verify) and adds only the criterion→evidence mapping plus any uncovered checks. Actually calling `/verify` is what satisfies the verify-before-done gate — `./sdd.md`.
+8. **Verify — default, unless `--no-verify`** (`verifyMode`, always on under `sddMode`): delegate to the `/verify` skill — `Skill({ skill: "verify" })`. It checks the change against the acceptance criteria, reusing Phase 4's tests (no double verify) and recording its own outcome; invoking it satisfies the verify-before-done gate. Mechanics live in `.claude/skills/verify/SKILL.md`; trigger/flow in `./phases.md` Phase 5.1b.
 9. Store learnings via `mcp__moflo__memory_store` — `./phases.md` Phase 5.2
 10. Open PR, update issue status — `./phases.md` Phases 5.3–5.4
 11. **If `mergeMode`:** await the PR's merge preconditions and merge it (native `--auto` preferred, else poll-then-merge) — `./phases.md` Phase 5.3b

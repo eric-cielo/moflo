@@ -1666,25 +1666,16 @@ describe('end-to-end: spell lifecycle', () => {
     });
   });
 
-  // Story #1274 (Epic #1269) — verify-before-done gate. OPT-IN: off unless the
-  // consumer sets gates.verify_before_done: true, so the default path proves the
-  // zero-behavior-change guarantee for existing installs.
+  // Story #1274 (Epic #1269) + #1294 — verify-before-done gate. ON by default:
+  // #1294 ships a real /verify skill and has /flo delegate to it, so the default
+  // path must ENFORCE (an unset toggle blocks an unverified `gh pr create`).
+  // Opt out with gates.verify_before_done: false (or per-run --no-verify).
   describe('verify-before-done gate (check-before-done)', () => {
-    function enableVerify(): void {
-      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  verify_before_done: true\n');
+    function disableVerify(): void {
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  verify_before_done: false\n');
     }
 
-    it('is a no-op by default (verify_before_done unset) even without a verify', () => {
-      const env = baseEnv(tmpDir);
-      writeState(tmpDir, { verifyRun: false });
-      env.TOOL_INPUT_command = 'gh pr create --title "test"';
-      const r = runGate('check-before-done', env);
-      expect(r.exitCode).toBe(0);
-      expect(r.stderr).not.toContain('BLOCKED');
-    });
-
-    it('blocks gh pr create when opted-in and not yet verified', () => {
-      enableVerify();
+    it('blocks gh pr create by default (toggle unset) when not yet verified', () => {
       const env = baseEnv(tmpDir);
       writeState(tmpDir, { verifyRun: false });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
@@ -1694,8 +1685,7 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.stderr).toContain('has not been verified');
     });
 
-    it('allows gh pr create when opted-in and verified', () => {
-      enableVerify();
+    it('allows gh pr create by default when verified', () => {
       const env = baseEnv(tmpDir);
       writeState(tmpDir, { verifyRun: true });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
@@ -1704,8 +1694,17 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.stderr).not.toContain('BLOCKED');
     });
 
-    it('does not block non-PR commands even when opted-in and unverified', () => {
-      enableVerify();
+    it('is a no-op when opted out (verify_before_done: false) even without a verify', () => {
+      disableVerify();
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: false });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-done', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).not.toContain('BLOCKED');
+    });
+
+    it('does not block non-PR commands even when unverified', () => {
       const env = baseEnv(tmpDir);
       writeState(tmpDir, { verifyRun: false });
       env.TOOL_INPUT_command = 'npm test';

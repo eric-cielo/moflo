@@ -281,7 +281,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     memory_first: true,
     task_create_first: true,
     context_tracking: true,
-    verify_before_done: false,
+    verify_before_done: true,
   },
   auto_index: {
     guidance: true,
@@ -736,7 +736,7 @@ gates:
   memory_first: true          # Search memory before Glob/Grep
   task_create_first: true     # TaskCreate before Agent tool
   context_tracking: true      # Track context bracket (FRESH/MODERATE/DEPLETED/CRITICAL)
-  verify_before_done: false   # Epic #1269: require /verify before 'gh pr create' (opt-in)
+  verify_before_done: true    # Epic #1269/#1294: run /verify before 'gh pr create'. On by default; opt out with false or per-run --no-verify
 
 # Auto-index on session start
 auto_index:
