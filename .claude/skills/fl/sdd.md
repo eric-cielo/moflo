@@ -11,7 +11,7 @@ The artifact model, paths, and CLI live in `src/cli/sdd/` (`flo sdd …`). The c
 
 ## The `--sdd` cycle
 
-Artifacts live at `.moflo/specs/<slug>/{spec,plan}.md` (git-tracked in consumer repos → reviewable). Drive them with the `flo sdd` CLI; never hand-write the paths.
+Artifacts live at `<specs_dir>/<slug>/{spec,plan}.md` — default `.moflo/specs`, which is **gitignored** (local, not in PRs). Set `moflo.yaml sdd.specs_dir` to a tracked path (e.g. `docs/specs`) to make them reviewable (#1294). Drive them with the `flo sdd` CLI; never hand-write the paths.
 
 1. **Spec** — capture the *what* + acceptance criteria:
    ```bash
@@ -40,12 +40,9 @@ Specs/plans are indexed into memory on session start, so `mcp__moflo__memory_sea
 
 Runs at step 8 of the full-mode flow, before the PR:
 
-1. Run the native **`/verify`** skill to exercise the change end-to-end. Under `--sdd`, verify against the plan's acceptance criteria; without a plan, verify against the ticket's Acceptance Criteria.
-2. Store the outcome to memory so it feeds routing/learning:
-   ```
-   mcp__moflo__memory_store { namespace: "learnings", key: "verify:<slug-or-issue>", value: "<what was verified, pass/fail>" }
-   ```
-3. The `/verify` run trips `record-verify-run`, satisfying the `check-before-done` gate — `gh pr create` unblocks. When `gates.verify_before_done: true`, this gate is enforced for every run whether or not `-v` was passed; `-v` makes the skill *do* the verification so the gate passes cleanly. A source edit after verifying invalidates it — re-run `/verify`.
+1. **Invoke the `/verify` skill** via the Skill tool — `Skill({ skill: "verify" })` — passing the issue number or spec slug as its argument. It exercises the change end-to-end against the plan's acceptance criteria (or the ticket's, without a plan), stores the outcome to memory itself, and returns a per-criterion PASS/FAIL verdict. Actually calling the skill is the point — it is what records the run; describing verification in prose does not satisfy the gate.
+2. `/verify` writes its own outcome record to memory (`namespace: "learnings", key: "verify:<slug-or-issue>"`), so no separate store step is needed here.
+3. Invoking `/verify` trips `record-verify-run`, satisfying the `check-before-done` gate — `gh pr create` unblocks. When `gates.verify_before_done: true`, this gate is enforced for every run whether or not `-v` was passed; `-v` makes the flow *actually call* `/verify` so the gate passes on a real verification, not an incidental skill run. A source edit after verifying invalidates it — re-run `/verify`.
 
 `/ward` and `/quicken` stay targeted audits, not the completion gate.
 

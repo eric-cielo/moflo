@@ -59,6 +59,7 @@ export const SKILLS_MAP: Record<string, string[]> = {
     'perf-audit', // alias for quicken (pointer skill); installed alongside it
     'ward', // ad-hoc test-gap audit (replaced the always-on `testgaps` daemon worker)
     'test-gaps', // alias for ward (pointer skill); installed alongside it
+    'verify', // SDD verify-before-done: exercises the change against acceptance criteria (#1294)
   ],
   memory: [
     'memory-patterns',

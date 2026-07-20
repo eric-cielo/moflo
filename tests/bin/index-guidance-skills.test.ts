@@ -273,3 +273,85 @@ describe('bin/index-guidance.mjs — skills (#942)', () => {
     }
   });
 });
+
+describe('bin/index-guidance.mjs — configurable sdd.specs_dir (#1294)', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = makeTempRoot();
+  });
+  afterEach(() => {
+    cleanTempRoot(root);
+  });
+
+  // Cross-platform: split the /-written relative dir, join with the OS separator.
+  function writeSpec(specsRel: string, slug: string) {
+    const dir = join(root, ...specsRel.split('/'), slug);
+    mkdirSync(dir, { recursive: true });
+    const padA = 'Acceptance criterion detail that clears the chunker floor. '.repeat(6);
+    const padB = 'Second section body padded past the minimum chunk size. '.repeat(6);
+    writeFileSync(
+      join(dir, 'spec.md'),
+      [
+        '---',
+        'kind: spec',
+        `slug: ${slug}`,
+        `title: "${slug}"`,
+        'status: draft',
+        'created: 2026-01-01T00:00:00.000Z',
+        'updated: 2026-01-01T00:00:00.000Z',
+        '---',
+        '',
+        `# ${slug}`,
+        '',
+        '## Acceptance Criteria',
+        '',
+        `- ${padA}`,
+        '',
+        '## Notes',
+        '',
+        padB,
+        '',
+      ].join('\n'),
+    );
+  }
+
+  it('indexes specs from a configured specs_dir with a BLANK LINE between sdd keys', { timeout: 30_000 }, async () => {
+    // Regression: the parser must tolerate natural whitespace inside the sdd
+    // block. A naive contiguous-line regex silently fell back to .moflo/specs,
+    // so specs written to the configured dir were never indexed (no error).
+    writeFileSync(join(root, 'moflo.yaml'), 'sdd:\n  default: false\n\n  specs_dir: sdd-artifacts\n');
+    writeSpec('sdd-artifacts', 'my-feature');
+
+    const result = runIndexer(root);
+    expect(result.status).toBe(0);
+
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    const rows = await readMemoryRows(dbPath, 'chunk-spec-%');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(JSON.parse(row.metadata || '{}').kind).toBe('spec');
+    }
+  });
+
+  it('does not double-index specs when specs_dir sits inside a guidance dir', { timeout: 30_000 }, async () => {
+    // docs/ is a guidance dir; specs under it are indexed once (as guidance),
+    // never a second time under the 'spec' prefix.
+    writeFileSync(
+      join(root, 'moflo.yaml'),
+      ['guidance:', '  directories:', '    - docs', 'sdd:', '  specs_dir: docs/specs', ''].join('\n'),
+    );
+    writeSpec('docs/specs', 'inside-guidance');
+
+    const result = runIndexer(root);
+    expect(result.status).toBe(0);
+
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    // No 'spec'-prefixed rows — the guidance scan owns these files.
+    const specRows = await readMemoryRows(dbPath, 'chunk-spec-%');
+    expect(specRows.length).toBe(0);
+    // But they ARE indexed under the guidance (docs) prefix.
+    const guidanceRows = await readMemoryRows(dbPath, 'chunk-docs-%');
+    expect(guidanceRows.length).toBeGreaterThan(0);
+  });
+});

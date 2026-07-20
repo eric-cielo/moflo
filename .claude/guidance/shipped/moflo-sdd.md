@@ -20,14 +20,23 @@ Two independent, opt-in modifiers on `/flo` — orthogonal to execution mode (`-
 
 ## The Artifact Convention
 
-Specs and plans persist as reviewable Markdown, one directory per unit of work:
+Specs and plans persist as Markdown, one directory per unit of work, under the configured specs directory (default `.moflo/specs`):
 
 ```
-.moflo/specs/<slug>/spec.md   # the "what" + acceptance criteria
-.moflo/specs/<slug>/plan.md   # the "steps" + how each criterion is verified
+<specs_dir>/<slug>/spec.md   # the "what" + acceptance criteria
+<specs_dir>/<slug>/plan.md   # the "steps" + how each criterion is verified
 ```
 
-They are git-tracked in consumer repos (so they are reviewable) and indexed into memory on session start, so `mcp__moflo__memory_search` surfaces prior specs across sessions. **Always create and mutate them through the `flo sdd` CLI** — never hand-write the `.moflo/specs/...` path in a skill step (cross-platform, Rule #1: the CLI builds every path with `path.join`).
+They are indexed into memory on session start, so `mcp__moflo__memory_search` surfaces prior specs across sessions. **Always create and mutate them through the `flo sdd` CLI** — never hand-write the path in a skill step (cross-platform, Rule #1: the CLI builds every path with `path.join`).
+
+**Where they live is configurable (`sdd.specs_dir`, #1294).** The default `.moflo/specs` is **gitignored** by `flo init` — specs stay local and do not bloat source control, but they also do **not** appear in PRs. To make specs reviewable, point `sdd.specs_dir` at a **tracked** path and commit them:
+
+| `sdd.specs_dir` | Committed? | Use when |
+|-----------------|------------|----------|
+| `.moflo/specs` (default) | No (gitignored) | You want the SDD workflow but not spec artifacts in history |
+| `docs/specs`, `.specs`, … (tracked) | Yes | You want specs reviewed in the PR alongside the code |
+
+Set it once in `moflo.yaml`; the `flo sdd` CLI and the session-start indexer both honor it. If the path sits inside a `guidance.directories` entry, specs are indexed once (as guidance), not twice.
 
 Each artifact carries a `status` of `draft` or `reviewed` in its frontmatter. The constitution layer (`CLAUDE.md` + `.claude/guidance/`) is referenced by every stage — never restate its invariants inside a spec.
 

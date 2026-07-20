@@ -217,6 +217,14 @@ export interface MofloConfig {
   sdd: {
     /** true ⇒ every /flo run uses the spec→plan→implement→verify cycle unless --no-sdd. */
     default: boolean;
+    /**
+     * Directory (relative to the project root) where `flo sdd` writes spec/plan
+     * artifacts. Default `.moflo/specs` — local and gitignored, so specs never
+     * bloat source control. Point it at a tracked path (e.g. `docs/specs`) to
+     * make specs reviewable in PRs. Written `/`-separated; resolved
+     * cross-platform via split+join (Rule #1), never string-concatenated (#1294).
+     */
+    specs_dir: string;
   };
 
   /** Auto-merge the PR at the end of a full /flo run (#1285). */
@@ -342,6 +350,7 @@ const DEFAULT_CONFIG: MofloConfig = {
   },
   sdd: {
     default: false,
+    specs_dir: '.moflo/specs',
   },
   merge: {
     auto: false,
@@ -576,6 +585,13 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     },
     sdd: {
       default: raw.sdd?.default ?? DEFAULT_CONFIG.sdd.default,
+      // Accept snake_case (`specs_dir`) or camelCase (`specsDir`). A blank/empty
+      // value falls back to the default so a consumer can't accidentally point
+      // specs at the project root with `specs_dir: ""`.
+      specs_dir: (typeof (raw.sdd?.specs_dir ?? raw.sdd?.specsDir) === 'string'
+        && (raw.sdd?.specs_dir ?? raw.sdd?.specsDir).trim())
+        ? (raw.sdd?.specs_dir ?? raw.sdd?.specsDir).trim()
+        : DEFAULT_CONFIG.sdd.specs_dir,
     },
     merge: {
       auto: raw.merge?.auto ?? DEFAULT_CONFIG.merge.auto,
@@ -824,6 +840,9 @@ epic:
 # Spec-Driven Development (Epic #1269)
 sdd:
   default: false                 # true = every /flo run uses spec->plan->implement->verify unless --no-sdd
+  specs_dir: .moflo/specs        # where flo sdd writes spec/plan artifacts. Default is local + gitignored
+                                 # (no source-control bloat). Set a tracked path (e.g. docs/specs) to make
+                                 # specs reviewable in PRs. Written with / — resolved cross-platform (#1294).
 
 # Auto-merge the PR at the end of a full /flo run once preconditions are met (#1285).
 # Opt-in; default false. Override per-run with --merge / --no-merge.

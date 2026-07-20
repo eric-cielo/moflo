@@ -76,7 +76,7 @@ MoFlo makes deliberate choices so you don't have to:
 | **Learned Routing** | Routes tasks to the right agent type. Learns from outcomes — gets better over time. |
 | **Spell Engine** | Define multi-step automations as YAML — shell commands, agent spawns, conditionals, loops, memory ops. [Full documentation →](docs/SPELLS.md) |
 | **`/flo` Skill** | Execute GitHub issues through a full process: research → enhance → implement → test → simplify → PR. (Also available as `/fl`.) |
-| **Spec-Driven Development** | `/flo -sd` runs a spec → plan → implement → verify cycle with reviewable, memory-indexed artifacts; `/flo -v` enforces verify-before-done on its own. Both opt-in. [Details →](#spec-driven-development-sdd) |
+| **Spec-Driven Development** | `/flo -sd` runs a spec → plan → implement → verify cycle with memory-indexed artifacts (local by default; set `sdd.specs_dir` to a tracked path to review them in PRs); `/flo -v` enforces verify-before-done on its own. Both opt-in. [Details →](#spec-driven-development-sdd) |
 | **Context Tracking** | Monitors context window usage (FRESH → MODERATE → DEPLETED → CRITICAL) and advises accordingly. |
 | **Cross-Platform** | Works on macOS, Linux, and Windows. |
 
@@ -350,17 +350,20 @@ Flags compose: e.g. `/flo -sd -m <issue>` runs the SDD cycle and auto-merges. Ea
 
 `/flo` can run the full **spec → plan → (review) → implement → verify** cycle — the 2026 agentic-coding pattern — with two independent, opt-in modifiers:
 
-- **`-sd` / `--sdd`** — author a **spec** (the *what* + acceptance criteria) and a **plan** (the *steps*), with a review checkpoint between each stage, before implementing. Artifacts persist as reviewable Markdown at `.moflo/specs/<slug>/{spec,plan}.md` and are indexed into memory, so prior specs are searchable across sessions. Implies `--verify`.
-- **`-v` / `--verify`** — the verify half on its own: a normal run plus the [verify-before-done gate](#the-gate-system). Separable from SDD so you can enforce "prove it works" without the spec ceremony.
+- **`-sd` / `--sdd`** — author a **spec** (the *what* + acceptance criteria) and a **plan** (the *steps*), with a review checkpoint between each stage, before implementing. Artifacts persist as Markdown at `<specs_dir>/<slug>/{spec,plan}.md` (default `.moflo/specs`) and are indexed into memory, so prior specs are searchable across sessions. Implies `--verify`.
+- **`-v` / `--verify`** — the verify half on its own: a normal run plus the [verify-before-done gate](#the-gate-system). It runs the **`/verify`** skill, which exercises the change end-to-end against its acceptance criteria and reports a per-criterion PASS/FAIL — separable from SDD so you can enforce "prove it works" without the spec ceremony.
 
 Both compose with execution mode (`-n`/`-s`/`-h`) and `--worktree`, and default from `moflo.yaml`:
 
 ```yaml
 sdd:
   default: false              # true → every /flo run uses the SDD cycle unless --no-sdd
+  specs_dir: .moflo/specs     # where spec/plan artifacts are written (see below)
 gates:
   verify_before_done: false   # true → require /verify before `gh pr create` unless --no-verify
 ```
+
+**Where specs live — and making them reviewable.** By default spec/plan artifacts are written under `.moflo/specs`, which `flo init` gitignores — so they stay **local and never bloat source control**. If you want specs to appear in PRs and be reviewed like any other file, point `sdd.specs_dir` at a **tracked** path (e.g. `docs/specs` or `.specs`) and commit them normally; no gitignore surgery required. The path is written with `/` and resolved cross-platform. If you set it to a directory already covered by `guidance.directories`, moflo indexes the specs once (as guidance) rather than twice.
 
 `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). Manage artifacts directly with `flo sdd` (`spec`, `plan`, `review`, `check`, `list`), and start from a fuzzy idea with **`/commune`**, which can hand its synthesized spec straight into the SDD spine. Wiring status is reported by **`/healer`** (and `/eldar`).
 
