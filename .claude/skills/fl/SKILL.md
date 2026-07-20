@@ -61,7 +61,7 @@ Defaults seed from `moflo.yaml` — `sdd.default` and `gates.verify_before_done`
 | `-m` | `--merge` | After the PR is opened, **await its merge preconditions and merge it** (Phase 5.3b) instead of stopping at "PR opened". |
 | `--no-merge` | | Opt a single run out when `moflo.yaml merge.auto: true` turned it on. |
 
-Default seeds from `moflo.yaml merge.auto` (absent ⇒ `false`); the per-run flag overrides. Auto-merge is **orthogonal** to exec mode (`-n`/`-s`/`-h`), `--worktree`, and `--sdd`/`--verify`, and happens strictly **after** the existing gates (tests, simplify, learnings, verify) have let `gh pr create` through — so `--merge` never bypasses a quality gate. It is a documented no-op in `-t`/`-r` (no PR) and under `--epic-branch` (the epic orchestrator owns merging). Merge mechanics — native `--auto` first, poll-then-merge fallback, admin-override caveat — live in `./phases.md` Phase 5.3b.
+Default seeds from `moflo.yaml merge.auto` (absent ⇒ `false`); the per-run flag overrides. Auto-merge is **orthogonal** to exec mode (`-n`/`-s`/`-h`), `--worktree`, and `--sdd`/`--verify`, and happens strictly **after** the existing gates (tests, simplify, learnings, verify) have let `gh pr create` through — so `--merge` never bypasses a quality gate. It is a documented no-op in `-t`/`-r` (no PR) and under `--epic-branch` (the epic orchestrator owns merging). Merge mechanics — native `--auto` first, poll-then-merge fallback, then an auto-attempted admin merge when review-required is the only blocker on an administered repo (with a manual-command hand-off if the permission classifier denies it) — live in `./phases.md` Phase 5.3b.
 
 ## Epic detection
 

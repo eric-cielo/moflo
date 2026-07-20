@@ -338,11 +338,13 @@ Inside Claude Code, the `/flo` (or `/fl`) slash command drives GitHub issue exec
 /flo -s <issue>               # Swarm mode (multi-agent coordination)
 /flo -h <issue>               # Hive-mind mode (consensus-based coordination)
 /flo -n <issue>               # Normal mode (default, single agent, no swarm)
+/flo -w <issue>               # Worktree: run the work in a fresh git worktree
 /flo -sd <issue>              # SDD: spec → plan → implement → verify (implies --verify)
 /flo -v <issue>               # Verify-before-done only (no spec/plan front-half)
+/flo -m <issue>               # Auto-merge the PR once required checks pass
 ```
 
-For full options and details, type `/flo` with no arguments — Claude Code will display the complete skill documentation. Also available as `/fl`.
+Flags compose: e.g. `/flo -sd -m <issue>` runs the SDD cycle and auto-merges. Each opt-in modifier has a `--no-*` form (`--no-sdd`, `--no-verify`, `--no-merge`) to override a `moflo.yaml` default for a single run. For full options and details, type `/flo` with no arguments — Claude Code will display the complete skill documentation. Also available as `/fl`.
 
 ### Spec-Driven Development (SDD)
 
@@ -361,6 +363,19 @@ gates:
 ```
 
 `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). Manage artifacts directly with `flo sdd` (`spec`, `plan`, `review`, `check`, `list`), and start from a fuzzy idea with **`/commune`**, which can hand its synthesized spec straight into the SDD spine. Wiring status is reported by **`/healer`** (and `/eldar`).
+
+### Auto-merge
+
+- **`-m` / `--merge`** — after the PR is opened, await its merge preconditions and merge it, instead of stopping at "PR opened". Orthogonal to execution mode (`-n`/`-s`/`-h`), `--worktree`, and `--sdd`/`--verify`, and always runs **after** the quality gates (tests, simplify, learnings, verify) have let `gh pr create` through — so `--merge` never bypasses a gate.
+
+It prefers GitHub-native auto-merge, falls back to poll-then-merge once required checks are green, and — when the *only* remaining blocker is review-required on a repo you administer (e.g. a solo repo where GitHub blocks self-approval) — auto-attempts an admin squash-merge. If an unattended admin merge is denied by Claude Code's permission classifier (headless/cron runs), it hands you a copy-paste command rather than looping. It re-confirms checks are green before any admin merge, and never `--admin` over a red or pending required check.
+
+Default seeds from `moflo.yaml`; the per-run flag overrides, and `--no-merge` opts a single run out:
+
+```yaml
+merge:
+  auto: false                 # true → every /flo run auto-merges its PR unless --no-merge
+```
 
 ### Epic handling
 

@@ -261,15 +261,15 @@ Merge only when: every **required** entry in `statusCheckRollup` is `SUCCESS` (o
 gh pr merge <n> --squash --delete-branch
 ```
 
-**3. Admin override (review-required fallback, opt-in).** If the *only* remaining blocker is `reviewDecision == "REVIEW_REQUIRED"` on a repo the actor administers (e.g. a solo repo where GitHub blocks self-approval), an admin squash-merge is the sole path:
+**3. Admin override (review-required — auto-attempt, then hand off).** If the *only* remaining blocker is `reviewDecision == "REVIEW_REQUIRED"` on a repo the actor administers (e.g. a solo repo where GitHub blocks self-approval), an admin squash-merge is the sole path to land the PR — so under `mergeMode` **attempt it automatically** rather than stopping at a manual command:
 ```bash
 gh pr merge <n> --squash --admin --delete-branch
 ```
-**Gotcha — the Claude Code auto-mode permission classifier reliably DENIES `gh pr merge --admin`.** When the call is denied, do **not** silently swallow it or retry in a loop. Surface a copy-paste command for the user to run themselves and stop:
+**Precondition — re-confirm green first.** Before the `--admin` call, re-confirm checks are affirmatively green per the (2) rollup rule — `--admin` bypasses branch protection, so never `--admin` over a red or unknown X (learning `ci-watch-exit-code-not-proof-of-green`). Admin-attempt is scoped to the review-required case only; never `--admin` to skip a failing or pending required check.
+
+**Fallback if denied — hand off, don't loop.** The Claude Code auto-mode permission classifier may DENY an unattended `gh pr merge --admin` (headless/cron runs especially). If the call is denied, do **not** silently swallow it or retry in a loop — surface a copy-paste command for the user and stop:
 > Admin merge is required (review-required on an administered repo) but was blocked by the permission classifier. Run it manually:
 > `! gh pr merge <n> --squash --admin --delete-branch`
-
-Before any `--admin` merge, re-confirm checks are affirmatively green per the (2) rollup rule — `--admin` bypasses branch protection, so never `--admin` over a red or unknown X (learning `ci-watch-exit-code-not-proof-of-green`).
 
 On a successful merge the branch is deleted (`--delete-branch`) and the `Closes #<n>` reference auto-closes the issue. If merge does not complete (timeout, denied admin, red checks), leave the PR open, report why, and continue to 5.5 — a stuck merge is not a failed run.
 
