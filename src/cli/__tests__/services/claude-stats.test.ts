@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -297,5 +297,113 @@ describe('aggregateClaudeStats', () => {
     // Fresh aggregation produces a structurally identical but distinct object.
     expect(fresh).not.toBe(first);
     expect(fresh.windows.lifetime.tokens.input).toBe(first.windows.lifetime.tokens.input);
+  });
+});
+
+// ============================================================================
+// Subagent transcript walking (#1264)
+// ============================================================================
+
+/** Write a `<sessionId>/subagents/agent-<agentId>.jsonl` transcript under dir. */
+function writeSubagentTranscript(sessionId: string, agentId: string, lines: string[]): void {
+  const subDir = join(dir, sessionId, 'subagents');
+  mkdirSync(subDir, { recursive: true });
+  writeFileSync(join(subDir, `agent-${agentId}.jsonl`), lines.join('\n'));
+}
+
+describe('subagent transcript walking (#1264)', () => {
+  const ts = '2026-05-09T12:00:00Z';
+
+  it('rolls subagent usage into windows + models AND tracks a distinct subtotal', async () => {
+    // Main-loop usage on the top-level transcript.
+    writeFileSync(
+      join(dir, 'main.jsonl'),
+      assistantLine({ ts, sessionId: 'S', model: 'opus', usage: { input_tokens: 100 } }),
+    );
+    // Two subagent transcripts under session S (carry the parent sessionId).
+    writeSubagentTranscript('S', 'a1', [
+      assistantLine({ ts, sessionId: 'S', model: 'sonnet', usage: { input_tokens: 10, output_tokens: 5 } }),
+    ]);
+    writeSubagentTranscript('S', 'a2', [
+      assistantLine({ ts, sessionId: 'S', model: 'haiku', usage: { input_tokens: 3 } }),
+    ]);
+
+    const stats = await aggregateClaudeStats('cwd', { projectDir: dir });
+
+    // Model distribution now includes subagent sonnet/haiku (the #1044 gap fix).
+    const byModel = Object.fromEntries(stats.models.map((m) => [m.model, m.tokens]));
+    expect(byModel.opus).toBe(100);
+    expect(byModel.sonnet).toBe(15);
+    expect(byModel.haiku).toBe(3);
+
+    // Windows reflect the complete total.
+    expect(stats.windows.lifetime.tokens.total).toBe(100 + 15 + 3);
+
+    // Distinct subagent subtotal + transcript count.
+    expect(stats.subagents.transcripts).toBe(2);
+    expect(stats.subagents.tokens.input).toBe(13);
+    expect(stats.subagents.tokens.output).toBe(5);
+    expect(stats.subagents.tokens.total).toBe(15 + 3);
+
+    // The #1264 split: main-loop = lifetime total − subagent total.
+    expect(stats.windows.lifetime.tokens.total - stats.subagents.tokens.total).toBe(100);
+  });
+
+  it('attributes subagent lines to the parent session, no phantom sessions', async () => {
+    writeFileSync(
+      join(dir, 'main.jsonl'),
+      assistantLine({ ts, sessionId: 'P', model: 'opus', usage: { input_tokens: 1 } }),
+    );
+    writeSubagentTranscript('P', 'a1', [
+      assistantLine({ ts, sessionId: 'P', model: 'sonnet', usage: { input_tokens: 1 } }),
+    ]);
+
+    const stats = await aggregateClaudeStats('cwd', { projectDir: dir });
+    expect(stats.totalSessions).toBe(1);
+  });
+
+  it('is available when only subagent transcripts exist', async () => {
+    writeSubagentTranscript('S', 'a1', [
+      assistantLine({ ts, sessionId: 'S', model: 'sonnet', usage: { input_tokens: 4 } }),
+    ]);
+    const stats = await aggregateClaudeStats('cwd', { projectDir: dir });
+    expect(stats.available).toBe(true);
+    expect(stats.subagents.transcripts).toBe(1);
+    expect(stats.subagents.tokens.total).toBe(4);
+  });
+
+  it('invalidates the cache when a new subagent transcript appears', async () => {
+    writeFileSync(
+      join(dir, 'main.jsonl'),
+      assistantLine({ ts, sessionId: 'S', model: 'opus', usage: { input_tokens: 1 } }),
+    );
+    writeSubagentTranscript('S', 'a1', [
+      assistantLine({ ts, sessionId: 'S', model: 'sonnet', usage: { input_tokens: 10 } }),
+    ]);
+    const first = await aggregateClaudeStats('cwd', { projectDir: dir });
+    expect(first.subagents.transcripts).toBe(1);
+
+    // Adding a second subagent transcript shifts the cache key (count + size).
+    writeSubagentTranscript('S', 'a2', [
+      assistantLine({ ts, sessionId: 'S', model: 'haiku', usage: { input_tokens: 20 } }),
+    ]);
+    const second = await aggregateClaudeStats('cwd', { projectDir: dir });
+    expect(second).not.toBe(first);
+    expect(second.subagents.transcripts).toBe(2);
+    expect(second.subagents.tokens.total).toBe(30);
+  });
+
+  it('ignores session subdirectories that have no subagents/ folder', async () => {
+    writeFileSync(
+      join(dir, 'main.jsonl'),
+      assistantLine({ ts, sessionId: 'S', model: 'opus', usage: { input_tokens: 1 } }),
+    );
+    // A session subdir with other ancillary data but no subagents/ folder.
+    mkdirSync(join(dir, 'S', 'other'), { recursive: true });
+    writeFileSync(join(dir, 'S', 'other', 'notes.jsonl'), 'ignored');
+
+    const stats = await aggregateClaudeStats('cwd', { projectDir: dir });
+    expect(stats.subagents.transcripts).toBe(0);
+    expect(stats.parseErrors).toBe(0); // the stray file was never opened
   });
 });
