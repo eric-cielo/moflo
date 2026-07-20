@@ -225,7 +225,7 @@ Full mode runs end-to-end without further prompts.
 5. Create branch, implement, write tests — `./phases.md` Phases 3–4
 6. Run `/flo-simplify` on changed code; rerun tests if it edits — `./phases.md` Phase 4.5
 7. Commit — `./phases.md` Phase 5.1
-8. **If `verifyMode`** (always on under `sddMode`): invoke the `/verify` skill — `Skill({ skill: "verify" })` — to verify the change end-to-end against the plan's (or ticket's) acceptance criteria; it records its own outcome to memory. Actually calling `/verify` is what satisfies the verify-before-done gate — `./sdd.md`.
+8. **If `verifyMode`** (always on under `sddMode`): invoke the `/verify` skill — `Skill({ skill: "verify" })` — to check the change against the plan's (or ticket's) acceptance criteria; it records its own outcome to memory. It **reuses** step 5's/Phase 4's already-green tests (no double verify) and adds only the criterion→evidence mapping plus any uncovered checks. Actually calling `/verify` is what satisfies the verify-before-done gate — `./sdd.md`.
 9. Store learnings via `mcp__moflo__memory_store` — `./phases.md` Phase 5.2
 10. Open PR, update issue status — `./phases.md` Phases 5.3–5.4
 11. **If `mergeMode`:** await the PR's merge preconditions and merge it (native `--auto` preferred, else poll-then-merge) — `./phases.md` Phase 5.3b

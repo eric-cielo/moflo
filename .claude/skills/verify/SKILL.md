@@ -43,17 +43,19 @@ For every acceptance criterion, pick the **cheapest evidence that actually prove
 
 | Criterion shape | Verification action |
 |-----------------|---------------------|
-| Logic / behavior / bug-fix | The project's test suite — prefer the **specific** test(s) that cover it; run the full suite once for regressions |
-| Build / types / packaging | The project's build or typecheck command |
+| Logic / behavior / bug-fix | A passing test that **specifically** exercises it — reuse the suite run already done this session (see below); run only a missing/targeted test |
+| Build / types / packaging | The project's build or typecheck command — reuse if already run since the last edit |
 | Integration / e2e | The project's e2e or integration runner |
 | User-facing / UI / CLI output | Run the real thing — use `/run` to launch the app/CLI and observe the actual output (a screenshot or captured stdout is the evidence) |
 | Config / docs / non-code | Inspect the artifact directly and confirm it says what the criterion requires |
 
-**Discover the commands from the project — never assume.** Read `package.json` scripts / `Makefile` / language toolchain; use what the repo already uses (`npm/yarn/pnpm test`, `vitest`, `jest`, `pytest`, `cargo test`, `go test`, …). Cross-platform (Rule #1): invoke the project's own scripts, don't shell out to `bash`-only constructs.
+**Reuse fresh evidence — do not re-run what this session already ran.** This is the key to avoiding a **double verify**. If the tests/build already ran green this session with no source edit since — which is exactly the case when `/flo` invokes `/verify` right after its Tests phase — that run **is** the evidence: cite it, don't execute it again. `/verify`'s job is the *mapping* (which criterion is proven by which existing result) and *gap-finding* (criteria no check covers), **not** re-running the suite. Only execute a check whose evidence doesn't already exist this session.
 
-## Step 3 — Execute and gather evidence
+**Discover the commands from the project — never assume.** When you *do* need to run something (a criterion nothing covered yet), read `package.json` scripts / `Makefile` / language toolchain and use what the repo already uses (`npm/yarn/pnpm test`, `vitest`, `jest`, `pytest`, `cargo test`, `go test`, …). Cross-platform (Rule #1): invoke the project's own scripts, don't shell out to `bash`-only constructs.
 
-Run the checks. Capture, per criterion, the **specific** evidence: the passing test name, the build exit, the observed output. "Tests pass" is not evidence for a criterion unless a test actually exercises that criterion — if none does, that is a **gap**, not a pass (consider `/ward` to fill it, in a separate step).
+## Step 3 — Execute the gaps and gather evidence
+
+Run **only the checks whose evidence doesn't already exist** this session; for everything else, cite the run that already happened. Capture, per criterion, the **specific** evidence: the passing test name, the build exit, the observed output. "The suite passed" is not evidence for a criterion unless a test actually exercises *that* criterion — if none does, that is a **gap**, not a pass (consider `/ward` to fill it, in a separate step). The distinction from a plain test run is the whole point: tests prove the code works; `/verify` proves the change did **what the ticket asked**.
 
 ## Step 4 — Verdict
 
