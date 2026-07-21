@@ -108,6 +108,20 @@ describe('yaml-upgrader', () => {
       ensureYamlSections(yamlPath);
       expect(verifyLine(yamlPath)).toMatch(/verify_before_done:\s*true/);
     });
+
+    it('preserves CRLF line endings on a Windows-style file (Rule #1 #4)', () => {
+      // Whole file is CRLF; the flipped line must stay CRLF, not become mixed.
+      writeFileSync(
+        yamlPath,
+        "gates:\r\n  verify_before_done: false   # Epic #1269: require /verify (opt-in)\r\n",
+      );
+      applyValueMigrations(yamlPath);
+      const out = readFileSync(yamlPath, 'utf-8');
+      expect(out).toMatch(/verify_before_done:\s*true/);
+      // No lone LF introduced — every newline is still preceded by \r.
+      expect(/[^\r]\n/.test(out)).toBe(false);
+      expect(out.includes('\r\n')).toBe(true);
+    });
   });
 
   describe('hasTopLevelSection', () => {

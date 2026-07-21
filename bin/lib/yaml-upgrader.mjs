@@ -114,7 +114,10 @@ export const VALUE_MIGRATIONS = [
     // verification is safe (a spurious extra gate is a mild `--no-verify` away);
     // dropping verification silently is the dangerous direction.
     id: 'verify_before_done-default-on-1294',
-    match: /^([ \t]*)verify_before_done:[ \t]*false\b[^\n]*\bopt-in\b[^\n]*$/m,
+    // Cross-platform (Rule #1, checklist #4): match line CONTENT only with
+    // [^\r\n] and do NOT anchor on `$` — so on a CRLF `moflo.yaml` the trailing
+    // \r\n is left intact by the replace and we never mix line endings.
+    match: /^([ \t]*)verify_before_done:[ \t]*false\b[^\r\n]*\bopt-in\b[^\r\n]*/m,
     replace: (_m, indent) =>
       `${indent}verify_before_done: true    # Epic #1269/#1294: on by default; opt out with false or per-run --no-verify`,
   },
