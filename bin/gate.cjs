@@ -3,6 +3,7 @@
 var fs = require('fs');
 var path = require('path');
 var cp = require('child_process');
+var os = require('os');
 
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
@@ -87,6 +88,28 @@ var config = loadGateConfig();
 var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
+
+// #1294 Finding 3 — reads/scans of EPHEMERAL files under the OS temp dir
+// (background-task output/transcripts, agent scratchpads) are transient tool
+// I/O and never carry indexable project knowledge, so they must not trip the
+// memory-first gate. Cross-platform (Rule #1): os.tmpdir() is correct on every
+// OS; we normalize a leading `/private` on both sides so macOS's
+// /var/folders (os.tmpdir) vs /private/var/folders (realpath) symlink pair
+// still matches (CLAUDE.md #1145). Never hardcode `/tmp`.
+function stripPrivate(p) { return p.indexOf('/private/') === 0 ? p.slice('/private'.length) : p; }
+function isEphemeralPath(fp) {
+  if (!fp) return false;
+  var tmp;
+  try { tmp = path.resolve(os.tmpdir()); } catch (e) { return false; }
+  var t = stripPrivate(tmp);
+  function under(p) { var n = stripPrivate(p); return n === t || n.indexOf(t + path.sep) === 0; }
+  var resolved = path.resolve(fp);
+  if (!under(resolved)) return false;
+  // Under tmp by literal path — confirm it isn't a symlink staged in tmp that
+  // dereferences to a real project file (realpath BOTH sides, CLAUDE.md Rule #2).
+  // On ENOENT (a not-yet-created tmp file) keep the verdict — still ephemeral.
+  try { return under(fs.realpathSync(resolved)); } catch (e) { return true; }
+}
 // #1171 — DANGEROUS gained PowerShell additions to match the matcher widening
 // that now routes the dedicated `PowerShell` tool through check-dangerous-command.
 // POSIX entries still apply because PS will execute them when invoked. Substring
@@ -531,6 +554,7 @@ switch (command) {
     var s = readState();
     if (!s.memoryRequired || isMemorySearchedFor(s)) break;
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
+    if (isEphemeralPath(process.env.TOOL_INPUT_path)) break;
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
     process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
     process.exit(2);
@@ -540,6 +564,9 @@ switch (command) {
     var s = readState();
     if (!s.memoryRequired || isMemorySearchedFor(s)) break;
     var fp = process.env.TOOL_INPUT_file_path || '';
+    // Ephemeral tmp/scratch reads are exempt even when they look like guidance
+    // (a temp copy is still transient tool I/O, not the indexed source).
+    if (isEphemeralPath(fp)) break;
     var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
     if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
     process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
