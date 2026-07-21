@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync, execFileSync, spawn, spawnSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { tmpdir } from 'os';
 
@@ -366,6 +366,15 @@ describe('gate.cjs: check-before-scan', () => {
     expect(r.exitCode).toBe(0);
   });
 
+  it('exempts scans under the OS temp dir (Finding 3, #1294)', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_path = join(tmpdir(), 'claude-1000', 'scratch');
+    const r = runGate('check-before-scan', env);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toContain('BLOCKED');
+  });
+
   it('allows when memoryRequired is false', () => {
     writeState(tmpDir, { memoryRequired: false, memorySearched: false });
     const env = baseEnv(tmpDir);
@@ -412,6 +421,54 @@ describe('gate.cjs: check-before-read', () => {
     env.TOOL_INPUT_file_path = '/project/.claude/settings.json';
     const r = runGate('check-before-read', env);
     expect(r.exitCode).toBe(0);
+  });
+
+  it('exempts ephemeral reads under the OS temp dir (Finding 3, #1294)', () => {
+    // Background-task output / scratchpad files are transient tool I/O — reading
+    // them must not demand a memory search. os.tmpdir() is the same in the gate
+    // subprocess as here, so a path under it is recognised as ephemeral.
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = join(tmpdir(), 'claude-1000', 'proj', 'sess', 'tasks', 'abc.output');
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toContain('BLOCKED');
+  });
+
+  it('still blocks a real project file whose name merely contains "tmp"', () => {
+    // Guard against an over-broad substring match — /project/tmp-notes.md is NOT
+    // under the OS temp dir, so it stays gated.
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/tmp-notes.md';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(2);
+  });
+
+  it('exempts a tmp path even when it contains ".claude/guidance/" (ephemeral check runs first)', () => {
+    // Ordering regression guard: isEphemeralPath must win over the guidance check.
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = join(tmpdir(), '.claude', 'guidance', 'foo.md');
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('still gates a symlink under tmp that dereferences to a real project file (Rule #2 realpath)', () => {
+    // A link staged in tmp pointing at a real file must NOT be exempted — realpath
+    // escapes tmp, so the gate still applies. (Symlink creation needs privileges
+    // on Windows; skip gracefully there rather than fail.)
+    const link = join(tmpDir, 'sneaky-link.ts');
+    try {
+      symlinkSync(__filename, link); // __filename is a real repo file, not under os.tmpdir()
+    } catch {
+      return; // no symlink privilege (Windows) — nothing to assert
+    }
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = link;
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(2);
   });
 
   it('does NOT exempt .claude/guidance/ from read gate', () => {
@@ -1666,25 +1723,16 @@ describe('end-to-end: spell lifecycle', () => {
     });
   });
 
-  // Story #1274 (Epic #1269) — verify-before-done gate. OPT-IN: off unless the
-  // consumer sets gates.verify_before_done: true, so the default path proves the
-  // zero-behavior-change guarantee for existing installs.
+  // Story #1274 (Epic #1269) + #1294 — verify-before-done gate. ON by default:
+  // #1294 ships a real /verify skill and has /flo delegate to it, so the default
+  // path must ENFORCE (an unset toggle blocks an unverified `gh pr create`).
+  // Opt out with gates.verify_before_done: false (or per-run --no-verify).
   describe('verify-before-done gate (check-before-done)', () => {
-    function enableVerify(): void {
-      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  verify_before_done: true\n');
+    function disableVerify(): void {
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  verify_before_done: false\n');
     }
 
-    it('is a no-op by default (verify_before_done unset) even without a verify', () => {
-      const env = baseEnv(tmpDir);
-      writeState(tmpDir, { verifyRun: false });
-      env.TOOL_INPUT_command = 'gh pr create --title "test"';
-      const r = runGate('check-before-done', env);
-      expect(r.exitCode).toBe(0);
-      expect(r.stderr).not.toContain('BLOCKED');
-    });
-
-    it('blocks gh pr create when opted-in and not yet verified', () => {
-      enableVerify();
+    it('blocks gh pr create by default (toggle unset) when not yet verified', () => {
       const env = baseEnv(tmpDir);
       writeState(tmpDir, { verifyRun: false });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
@@ -1694,8 +1742,7 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.stderr).toContain('has not been verified');
     });
 
-    it('allows gh pr create when opted-in and verified', () => {
-      enableVerify();
+    it('allows gh pr create by default when verified', () => {
       const env = baseEnv(tmpDir);
       writeState(tmpDir, { verifyRun: true });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
@@ -1704,8 +1751,17 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.stderr).not.toContain('BLOCKED');
     });
 
-    it('does not block non-PR commands even when opted-in and unverified', () => {
-      enableVerify();
+    it('is a no-op when opted out (verify_before_done: false) even without a verify', () => {
+      disableVerify();
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: false });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-done', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).not.toContain('BLOCKED');
+    });
+
+    it('does not block non-PR commands even when unverified', () => {
       const env = baseEnv(tmpDir);
       writeState(tmpDir, { verifyRun: false });
       env.TOOL_INPUT_command = 'npm test';

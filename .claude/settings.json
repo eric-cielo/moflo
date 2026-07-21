@@ -6,6 +6,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" check-before-implement",
+            "timeout": 3000
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" post-edit",
             "timeout": 5000
           }

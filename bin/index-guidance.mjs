@@ -23,7 +23,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSync } from 'fs';
-import { resolve, relative, dirname, basename, extname } from 'path';
+import { resolve, relative, dirname, basename, extname, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
 import { openBackend } from './lib/get-backend.mjs';
@@ -51,12 +51,25 @@ function loadGuidanceDirs() {
 
   // 1. Read moflo.yaml / moflo.config.json for user-configured directories
   let configDirs = null;
+  // #1294 — configurable SDD spec/plan location (default .moflo/specs). Parsed
+  // here alongside the guidance dirs so step 6 can honor it and skip a
+  // double-index when it sits inside a guidance dir.
+  let specsDirConfig = null;
   const yamlPath = resolve(projectRoot, 'moflo.yaml');
   const jsonPath = resolve(projectRoot, 'moflo.config.json');
 
   if (existsSync(yamlPath)) {
     try {
       const content = readFileSync(yamlPath, 'utf-8');
+      // sdd.specs_dir (snake_case or camelCase, quoted or bare). Two-step:
+      // isolate the top-level `sdd:` block (up to the next column-0 key, blank
+      // lines included — a naive contiguous-line regex would break on natural
+      // whitespace between keys, #1294 review), then find specs_dir within it.
+      const sddBlock = content.match(/(?:^|\n)[ \t]*sdd:[ \t]*\n([\s\S]*?)(?=\n\S|$)/);
+      if (sddBlock) {
+        const m = sddBlock[1].match(/(?:^|\n)[ \t]+specs_?[dD]ir:[ \t]*["']?([^"'\n#]+)/);
+        if (m && m[1].trim()) specsDirConfig = m[1].trim();
+      }
       // Simple YAML array extraction — avoids needing js-yaml at runtime
       // Matches:  guidance:\n    directories:\n      - .claude/guidance\n      - docs/guides
       const guidanceBlock = content.match(/guidance:\s*\n\s+directories:\s*\n((?:\s+-\s+.+\n?)+)/);
@@ -73,6 +86,8 @@ function loadGuidanceDirs() {
       if (raw.guidance?.directories && Array.isArray(raw.guidance.directories)) {
         configDirs = raw.guidance.directories;
       }
+      const sd = raw.sdd?.specs_dir ?? raw.sdd?.specsDir;
+      if (typeof sd === 'string' && sd.trim()) specsDirConfig = sd.trim();
     } catch { /* ignore parse errors */ }
   }
 
@@ -133,12 +148,32 @@ function loadGuidanceDirs() {
     dirs.push({ path: bundledSkillsDir, prefix: 'skill-bundled', fileFilter: ['SKILL.md'], kind: 'skill', absolute: true });
   }
 
-  // 6. SDD spec/plan artifacts (Epic #1269) — index .moflo/specs/<slug>/{spec,plan}.md
+  // 6. SDD spec/plan artifacts (Epic #1269) — index <specs_dir>/<slug>/{spec,plan}.md
   //    so prior specs/plans are searchable across sessions. kind: 'spec' keys each
   //    file by <slug>-<spec|plan> to avoid collisions between per-slug spec.md files.
-  const projectSpecsDir = resolve(projectRoot, '.moflo/specs');
-  if (existsSync(projectSpecsDir)) {
-    dirs.push({ path: '.moflo/specs', prefix: 'spec', fileFilter: ['spec.md', 'plan.md'], kind: 'spec' });
+  //    #1294 — the location is configurable (default .moflo/specs). Cross-platform
+  //    (Rule #1): split the /-written value and re-join, never hardcode a separator.
+  //    Validation MUST match specsRoot() in src/cli/sdd/artifacts.ts exactly, or
+  //    the indexer and the CLI would disagree on where specs live: reject
+  //    absolute / drive-letter / parent-escape values and fall back to the default.
+  const rawSpecs = specsDirConfig || '.moflo/specs';
+  let specsRel = rawSpecs.split(/[\\/]+/).filter(Boolean);
+  const specsEscapes = specsRel.length === 0
+    || specsRel.includes('..')
+    || /^([a-zA-Z]:|~)$/.test(specsRel[0])
+    || rawSpecs.startsWith('/')
+    || rawSpecs.startsWith('\\');
+  if (specsEscapes) specsRel = ['.moflo', 'specs'];
+  const projectSpecsDir = resolve(projectRoot, ...specsRel);
+  // Double-index guard: if specs_dir sits inside a guidance dir, the guidance
+  // scan (step 1) already indexes those .md files — skip the 'spec' entry so
+  // they aren't indexed twice under two prefixes.
+  const insideGuidance = userDirs.some(d => {
+    const gd = resolve(projectRoot, ...d.split(/[\\/]+/).filter(Boolean));
+    return projectSpecsDir === gd || projectSpecsDir.startsWith(gd + sep);
+  });
+  if (existsSync(projectSpecsDir) && !insideGuidance) {
+    dirs.push({ path: specsRel.join('/'), prefix: 'spec', fileFilter: ['spec.md', 'plan.md'], kind: 'spec' });
   }
 
   return dirs;

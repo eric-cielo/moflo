@@ -76,7 +76,7 @@ MoFlo makes deliberate choices so you don't have to:
 | **Learned Routing** | Routes tasks to the right agent type. Learns from outcomes — gets better over time. |
 | **Spell Engine** | Define multi-step automations as YAML — shell commands, agent spawns, conditionals, loops, memory ops. [Full documentation →](docs/SPELLS.md) |
 | **`/flo` Skill** | Execute GitHub issues through a full process: research → enhance → implement → test → simplify → PR. (Also available as `/fl`.) |
-| **Spec-Driven Development** | `/flo -sd` runs a spec → plan → implement → verify cycle with reviewable, memory-indexed artifacts; `/flo -v` enforces verify-before-done on its own. Both opt-in. [Details →](#spec-driven-development-sdd) |
+| **Spec-Driven Development** | `/flo -sd` runs a spec → plan → implement → verify cycle with memory-indexed artifacts. Opt-in, but once armed **both halves are enforced**: an implement gate blocks source edits until the plan is reviewed, and verify-before-done gates the PR. Human review is optional (`sdd.human_checkpoints`, off by default); spec+plan auto-embed into the PR body (`embed_in_pr`), or point `sdd.specs_dir` at a tracked path. [Details →](#spec-driven-development-sdd) |
 | **Context Tracking** | Monitors context window usage (FRESH → MODERATE → DEPLETED → CRITICAL) and advises accordingly. |
 | **Cross-Platform** | Works on macOS, Linux, and Windows. |
 
@@ -293,7 +293,8 @@ MoFlo installs Claude Code hooks that run on every tool call. Together, these ga
 | **TaskCreate-first** | Claude must call TaskCreate before spawning sub-agents via the Task tool | Before every Task (agent spawn) call | Ensures every piece of delegated work is tracked. Prevents runaway agent proliferation where Claude spawns agents without a clear plan. |
 | **Context tracking** | Tracks conversation length and warns about context depletion | On every user prompt (UserPromptSubmit hook) | As conversations grow, AI quality degrades. MoFlo tracks interaction count and assigns a bracket (FRESH → MODERATE → DEPLETED → CRITICAL), advising Claude to checkpoint progress or start a fresh session before quality drops. |
 | **Routing** | Analyzes each prompt and recommends the optimal agent type and model tier | On every user prompt (UserPromptSubmit hook) | Saves cost by suggesting haiku for simple tasks, sonnet for moderate ones, opus for complex reasoning — without you having to think about model selection. |
-| **Verify-before-done** *(opt-in)* | Claude must verify the change end-to-end (native `/verify`) before `gh pr create` | Before `gh pr create`, only when `gates.verify_before_done: true` | Enforces "prove it works before done." Off by default, so it never surprises an existing install. Pairs with the [Spec-Driven Development](#spec-driven-development-sdd) cycle, which gives verification its acceptance criteria. |
+| **Verify-before-done** *(on by default)* | Claude must verify the change end-to-end (the `/verify` skill) before `gh pr create` | Before `gh pr create` (docs-only diffs exempt) | Enforces "prove it works before done." On by default since #1294 (`/flo` delegates to `/verify` and reuses its test run — no double verify). Opt out with `verify_before_done: false` or `--no-verify`. Pairs with the [Spec-Driven Development](#spec-driven-development-sdd) cycle, which gives verification its acceptance criteria. |
+| **Implement gate (SDD front half)** | When a run is armed for SDD, Claude must author a spec and get its plan reviewed before editing source | Before every source `Write`/`Edit`, when `-sd`/`sdd.default` armed the run | Makes the SDD front half enforced, not advisory (#1297): a spec-gated run can't skip to implementation. No-op for non-SDD work. Opt out per-project with `sdd_gate: false`, per-run with `--no-sdd`. Pairs with verify-before-done to gate both ends of the cycle. |
 
 ### Smart classification
 
@@ -322,7 +323,7 @@ gates:
   memory_first: true          # Set to false to disable memory-first enforcement
   task_create_first: true     # Set to false to disable TaskCreate enforcement
   context_tracking: true      # Set to false to disable context bracket warnings
-  verify_before_done: false   # Set to true to require /verify before `gh pr create`
+  verify_before_done: true    # On by default (#1294); set false to skip /verify before `gh pr create`
 ```
 
 You can also disable individual hooks in `.claude/settings.json` by removing the corresponding hook entries.
@@ -344,25 +345,35 @@ Inside Claude Code, the `/flo` (or `/fl`) slash command drives GitHub issue exec
 /flo -m <issue>               # Auto-merge the PR once required checks pass
 ```
 
-Flags compose: e.g. `/flo -sd -m <issue>` runs the SDD cycle and auto-merges. Each opt-in modifier has a `--no-*` form (`--no-sdd`, `--no-verify`, `--no-merge`) to override a `moflo.yaml` default for a single run. For full options and details, type `/flo` with no arguments — Claude Code will display the complete skill documentation. Also available as `/fl`.
+Flags compose: e.g. `/flo -sd -m <issue>` runs the SDD cycle and auto-merges. Each modifier has a `--no-*` form (`--no-sdd`, `--no-verify`, `--no-merge`) to override a `moflo.yaml` default for a single run — including `--no-verify`, since verify-before-done is on by default. For full options and details, type `/flo` with no arguments — Claude Code will display the complete skill documentation. Also available as `/fl`.
 
 ### Spec-Driven Development (SDD)
 
-`/flo` can run the full **spec → plan → (review) → implement → verify** cycle — the 2026 agentic-coding pattern — with two independent, opt-in modifiers:
+`/flo` can run the full **spec → plan → (review) → implement → verify** cycle — the 2026 agentic-coding pattern — with two independent modifiers. Turning SDD on is opt-in, but once a run is armed for it (via `-sd` or `sdd.default`) **both halves are enforced**: the front half by an implement gate, the back half by verify-before-done.
 
-- **`-sd` / `--sdd`** — author a **spec** (the *what* + acceptance criteria) and a **plan** (the *steps*), with a review checkpoint between each stage, before implementing. Artifacts persist as reviewable Markdown at `.moflo/specs/<slug>/{spec,plan}.md` and are indexed into memory, so prior specs are searchable across sessions. Implies `--verify`.
-- **`-v` / `--verify`** — the verify half on its own: a normal run plus the [verify-before-done gate](#the-gate-system). Separable from SDD so you can enforce "prove it works" without the spec ceremony.
+- **`-sd` / `--sdd`** *(opt-in; enforced once on)* — author a **spec** (the *what* + acceptance criteria) and a **plan** (the *steps*) before implementing. When armed, the **`check-before-implement` gate blocks every source `Write`/`Edit`** until the spec exists and its plan is reviewed (#1297) — a run can't skip straight to code. Artifacts persist as Markdown at `<specs_dir>/<slug>/{spec,plan}.md` (default `.moflo/specs`) and are indexed into memory, so prior specs are searchable across sessions. Implies `--verify`.
+- **`-v` / `--verify`** *(on by default)* — the verify half: a normal run plus the [verify-before-done gate](#the-gate-system). It runs the **`/verify`** skill, which exercises the change end-to-end against its acceptance criteria and reports a per-criterion PASS/FAIL, reusing the run's own tests (no double verify). Runs by default; `--no-verify` skips it. Separable from SDD, so you get "prove it works" without the spec ceremony.
+
+**Human review is optional and off by default.** moflo stays autonomous: the front half self-advances its spec/plan review checkpoints without stopping. Set `sdd.human_checkpoints: true` to sit in the loop and approve each artifact by hand before the cycle proceeds.
 
 Both compose with execution mode (`-n`/`-s`/`-h`) and `--worktree`, and default from `moflo.yaml`:
 
 ```yaml
 sdd:
   default: false              # true → every /flo run uses the SDD cycle unless --no-sdd
+  specs_dir: .moflo/specs     # where spec/plan artifacts are written (see below)
+  human_checkpoints: false    # true → pause for human approval at spec & plan review (default: autonomous)
+  embed_in_pr: true           # true → append spec+plan to the PR body so reasoning is reviewable
 gates:
-  verify_before_done: false   # true → require /verify before `gh pr create` unless --no-verify
+  verify_before_done: true    # on by default (#1294); false → skip /verify unless -v. Per-run: --no-verify
+  sdd_gate: true              # on by default (#1297); false → don't enforce the spec→plan front half
 ```
 
-`--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). Manage artifacts directly with `flo sdd` (`spec`, `plan`, `review`, `check`, `list`), and start from a fuzzy idea with **`/commune`**, which can hand its synthesized spec straight into the SDD spine. Wiring status is reported by **`/healer`** (and `/eldar`).
+On upgrade, consumers with no `verify_before_done` key start enforcing verify-before-done; an explicit value is preserved. `sdd_gate` only bites when a run is actually armed for SDD, so non-SDD work is unaffected. Docs-only diffs are exempt, so a pure-docs PR is never blocked.
+
+**Where specs live — and making them reviewable.** By default spec/plan artifacts are written under `.moflo/specs`, which `flo init` gitignores — so they stay **local and never bloat source control** — and (with `embed_in_pr`, the default) the spec + plan are appended to the PR body, so the reasoning is reviewable in the PR **even while the files stay local**. If you'd rather source-control the artifacts, point `sdd.specs_dir` at a **tracked** path (e.g. `docs/specs` or `.specs`) and commit them normally; no gitignore surgery required — the two mechanisms compose. The path is written with `/` and resolved cross-platform. If you set it to a directory already covered by `guidance.directories`, moflo indexes the specs once (as guidance) rather than twice.
+
+`--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). Manage artifacts directly with `flo sdd` (`spec`, `plan`, `review`, `check`, `embed`, `list`), and start from a fuzzy idea with **`/commune`**, which can hand its synthesized spec straight into the SDD spine. Wiring status is reported by **`/healer`** (and `/eldar`).
 
 ### Auto-merge
 
@@ -907,7 +918,7 @@ gates:
   memory_first: true                 # Must search memory before file exploration
   task_create_first: true            # Must TaskCreate before Agent tool
   context_tracking: true             # Track context window depletion
-  verify_before_done: false          # Require /verify before `gh pr create` (unless --no-verify)
+  verify_before_done: true           # On by default (#1294); /verify before `gh pr create` (unless --no-verify). false to disable
 
 sdd:
   default: false                     # true → every /flo run uses the spec→plan→implement→verify cycle unless --no-sdd

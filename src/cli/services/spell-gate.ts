@@ -18,6 +18,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { atomicWriteFileSync } from './atomic-file-write.js';
 import { loadMofloConfig } from '../config/moflo-config.js';
 
@@ -111,6 +112,29 @@ const EXEMPT_PATTERNS = [
   'workflow-state',
   'node_modules',
 ];
+
+/**
+ * True when `fp` is an ephemeral file under the OS temp dir (background-task
+ * output/transcripts, agent scratchpads). Such transient tool I/O carries no
+ * indexable project knowledge, so it is exempt from the memory-first gate
+ * (#1294 Finding 3). Mirrors `bin/gate.cjs isEphemeralPath` — keep in sync.
+ * Cross-platform (Rule #1): os.tmpdir() is correct on every OS; a leading
+ * `/private` is normalized on both sides so macOS's /var-vs-/private/var
+ * tmpdir symlink pair still matches (CLAUDE.md #1145). Never hardcode `/tmp`.
+ */
+function isEphemeralPath(fp?: string): boolean {
+  if (!fp) return false;
+  const stripPrivate = (p: string) => (p.startsWith('/private/') ? p.slice('/private'.length) : p);
+  let tmp: string;
+  try { tmp = path.resolve(os.tmpdir()); } catch { return false; }
+  const t = stripPrivate(tmp);
+  const under = (p: string) => { const n = stripPrivate(p); return n === t || n.startsWith(t + path.sep); };
+  const resolved = path.resolve(fp);
+  if (!under(resolved)) return false;
+  // Symlink staged in tmp could point at a real project file — realpath BOTH
+  // sides (CLAUDE.md Rule #2). ENOENT (not-yet-created tmp file) stays ephemeral.
+  try { return under(fs.realpathSync(resolved)); } catch { return true; }
+}
 
 // ============================================================================
 // Service
@@ -211,9 +235,9 @@ export class GateService {
       return { allowed: true };
     }
 
-    // Exempt system paths
+    // Exempt system paths and ephemeral tmp/scratch targets (#1294 Finding 3)
     const target = `${pattern || ''} ${searchPath || ''}`;
-    if (EXEMPT_PATTERNS.some(p => target.includes(p))) {
+    if (isEphemeralPath(searchPath) || EXEMPT_PATTERNS.some(p => target.includes(p))) {
       return { allowed: true };
     }
 
@@ -248,6 +272,11 @@ export class GateService {
     const state = this.readState();
 
     if (state.memorySearched) {
+      return { allowed: true };
+    }
+
+    // Ephemeral tmp/scratch reads are exempt (#1294 Finding 3).
+    if (isEphemeralPath(filePath)) {
       return { allowed: true };
     }
 

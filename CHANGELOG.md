@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Verify-before-done is now ON by default (#1294)
+
+`gates.verify_before_done` now defaults to **true** (was opt-in/false). Every
+`/flo` run now runs the verify-before-done step, delegating to the new `/verify`
+skill, before `gh pr create`. `/flo` reuses its Tests phase rather than
+re-running it (no double verify), so the added cost is the acceptance-criteria
+mapping, not a second suite run. Docs-only diffs remain exempt, so a pure-docs
+PR is never blocked.
+
+- **Opt out** per project with `gates: verify_before_done: false` in
+  `moflo.yaml`, or per run with `--no-verify`.
+- **Migration (automatic, one-time):** on the first session-start after upgrade,
+  moflo carries existing projects onto the new default:
+  - No `gates.verify_before_done` key → enforces via the new default.
+  - The **auto-written template default** (`verify_before_done: false` still
+    carrying its generated `opt-in` comment — from the brief window when `flo
+    init` shipped it false) is flipped to `true` **once**, recorded in
+    `.moflo/migrations.json`. Erring toward *more* verification is safe; silently
+    dropping it is the dangerous direction.
+  - A **deliberately hand-set** `false` (bare, or with your own comment) is
+    **left untouched** — and because the flip is ledger-gated to run exactly
+    once, turning verify off later is never overwritten by a future upgrade.
+  - To keep verify off, set `gates: verify_before_done: false`.
+
+### Added — `/verify` skill + configurable SDD spec location (#1294)
+
+- New `/verify` skill exercises a change end-to-end against its acceptance
+  criteria (the SDD plan's, else the ticket's) and reports a per-criterion
+  PASS/FAIL. It is the concrete action that satisfies the verify-before-done
+  gate; `/flo` delegates to it (single source of truth for verify mechanics).
+- New `sdd.specs_dir` config (default `.moflo/specs`, local + gitignored). Point
+  it at a tracked path (e.g. `docs/specs`) to make spec/plan artifacts reviewable
+  in PRs. Resolved cross-platform; the session-start indexer honors it and skips
+  a double-index when it sits inside a guidance directory.
+
 ### Fixed — Daemon orphan-reap cross-kill across shared installs (#1249)
 
 When a project root's `node_modules/moflo` was a symlink sharing another

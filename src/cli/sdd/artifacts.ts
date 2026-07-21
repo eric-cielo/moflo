@@ -28,6 +28,7 @@ import {
   readdirSync,
   statSync,
 } from 'node:fs';
+import { loadMofloConfig } from '../config/moflo-config.js';
 
 export type SddArtifactKind = 'spec' | 'plan';
 
@@ -64,9 +65,28 @@ export interface SddValidationResult {
 // Paths — all via path.join (Rule #1)
 // ============================================================================
 
-/** Root directory holding every spec slug: `<projectRoot>/.moflo/specs`. */
+/**
+ * Root directory holding every spec slug. Defaults to `<projectRoot>/.moflo/specs`
+ * but is configurable via `moflo.yaml` `sdd.specs_dir` (#1294) — point it at a
+ * tracked path (e.g. `docs/specs`) to make specs reviewable in PRs.
+ *
+ * Cross-platform (Rule #1): the configured value is a `/`-written relative path;
+ * we split on either separator and `path.join` each segment, so a Windows repo
+ * with `docs/specs` in yaml still resolves correctly and no separator is ever
+ * hardcoded. An absolute or `..`-escaping value falls back to the default.
+ */
 export function specsRoot(projectRoot: string): string {
-  return join(projectRoot, '.moflo', 'specs');
+  const configured = loadMofloConfig(projectRoot).sdd.specs_dir;
+  const segments = configured.split(/[\\/]+/).filter(Boolean);
+  // Reject absolute paths and parent-directory escapes — specs live under the
+  // project root. Fall back to the default rather than resolving outside it.
+  const escapes = segments.length === 0
+    || segments.includes('..')
+    || /^([a-zA-Z]:|~)$/.test(segments[0])
+    || configured.startsWith('/')
+    || configured.startsWith('\\');
+  if (escapes) return join(projectRoot, '.moflo', 'specs');
+  return join(projectRoot, ...segments);
 }
 
 /** Per-unit directory: `<projectRoot>/.moflo/specs/<slug>`. */

@@ -20,8 +20,8 @@ import type { HealthCheck } from './doctor-types.js';
 const NAME = 'SDD + Verify Wiring';
 
 /** The gate cases + hook subcommands that must be present for the feature to work. */
-const REQUIRED_GATE_CASES = ['check-before-done', 'record-verify-run'];
-const REQUIRED_HOOK_TOKENS = ['check-before-done', 'record-verify-run'];
+const REQUIRED_GATE_CASES = ['check-before-done', 'record-verify-run', 'check-before-implement'];
+const REQUIRED_HOOK_TOKENS = ['check-before-done', 'record-verify-run', 'check-before-implement'];
 
 export async function checkSddVerifyWiring(): Promise<HealthCheck> {
   const projectDir = findProjectRoot();

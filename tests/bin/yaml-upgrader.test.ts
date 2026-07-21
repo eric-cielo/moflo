@@ -15,11 +15,20 @@ const upgraderUrl = 'file://' + resolve(__dirname, '../../bin/lib/yaml-upgrader.
 const {
   REQUIRED_SECTIONS,
   RENAMED_SECTIONS,
+  VALUE_MIGRATIONS,
   hasTopLevelSection,
   missingSections,
   ensureYamlSections,
   renameYamlSections,
+  applyValueMigrations,
 } = await import(upgraderUrl);
+
+const migrationsUrl = 'file://' + resolve(__dirname, '../../bin/lib/migrations.mjs').replace(/\\/g, '/');
+const { hasMigrationRun } = await import(migrationsUrl);
+
+const VERIFY_MIGRATION_ID = 'verify_before_done-default-on-1294';
+const verifyLine = (p: string) =>
+  (readFileSync(p, 'utf-8').split('\n').find((l) => l.includes('verify_before_done')) ?? '').trim();
 
 describe('yaml-upgrader', () => {
   let root: string;
@@ -45,6 +54,73 @@ describe('yaml-upgrader', () => {
         expect(section.block.trim().startsWith('#')).toBe(true);
         expect(section.block).toContain(`${section.key}:`);
       }
+    });
+  });
+
+  describe('VALUE_MIGRATIONS — verify_before_done default flip (#1294)', () => {
+    const TEMPLATE_DEFAULT =
+      "gates:\n  memory_first: true\n  verify_before_done: false   # Epic #1269: require /verify before 'gh pr create' (opt-in)\n";
+
+    it('registers the verify migration with a match + replace', () => {
+      const mig = VALUE_MIGRATIONS.find((m: any) => m.id === VERIFY_MIGRATION_ID);
+      expect(mig).toBeTruthy();
+      expect(mig.match).toBeInstanceOf(RegExp);
+      expect(typeof mig.replace).toBe('function');
+    });
+
+    it('flips the auto-written template default false → true, once', () => {
+      writeFileSync(yamlPath, TEMPLATE_DEFAULT);
+      const applied = applyValueMigrations(yamlPath);
+      expect(applied).toContain(VERIFY_MIGRATION_ID);
+      expect(verifyLine(yamlPath)).toMatch(/verify_before_done:\s*true/);
+      expect(hasMigrationRun(root, VERIFY_MIGRATION_ID)).toBe(true);
+    });
+
+    it('NEVER re-flips after the user later turns it back off (ledger-gated once)', () => {
+      writeFileSync(yamlPath, TEMPLATE_DEFAULT);
+      applyValueMigrations(yamlPath); // first run flips + records
+      // User deliberately opts back out:
+      writeFileSync(yamlPath, 'gates:\n  verify_before_done: false   # I turned it back off\n');
+      const applied = applyValueMigrations(yamlPath);
+      expect(applied).toEqual([]);
+      expect(verifyLine(yamlPath)).toMatch(/verify_before_done:\s*false/); // untouched
+    });
+
+    it('leaves a deliberate hand-typed bare false untouched (no opt-in comment) but records the attempt', () => {
+      writeFileSync(yamlPath, 'gates:\n  verify_before_done: false\n');
+      const applied = applyValueMigrations(yamlPath);
+      expect(applied).toEqual([]);
+      expect(verifyLine(yamlPath)).toMatch(/verify_before_done:\s*false/);
+      expect(hasMigrationRun(root, VERIFY_MIGRATION_ID)).toBe(true); // considered once, never again
+    });
+
+    it('is idempotent — a second run makes no further change', () => {
+      writeFileSync(yamlPath, TEMPLATE_DEFAULT);
+      applyValueMigrations(yamlPath);
+      const before = readFileSync(yamlPath, 'utf-8');
+      const applied = applyValueMigrations(yamlPath);
+      expect(applied).toEqual([]);
+      expect(readFileSync(yamlPath, 'utf-8')).toBe(before);
+    });
+
+    it('ensureYamlSections applies value migrations in the same pass', () => {
+      writeFileSync(yamlPath, TEMPLATE_DEFAULT);
+      ensureYamlSections(yamlPath);
+      expect(verifyLine(yamlPath)).toMatch(/verify_before_done:\s*true/);
+    });
+
+    it('preserves CRLF line endings on a Windows-style file (Rule #1 #4)', () => {
+      // Whole file is CRLF; the flipped line must stay CRLF, not become mixed.
+      writeFileSync(
+        yamlPath,
+        "gates:\r\n  verify_before_done: false   # Epic #1269: require /verify (opt-in)\r\n",
+      );
+      applyValueMigrations(yamlPath);
+      const out = readFileSync(yamlPath, 'utf-8');
+      expect(out).toMatch(/verify_before_done:\s*true/);
+      // No lone LF introduced — every newline is still preceded by \r.
+      expect(/[^\r]\n/.test(out)).toBe(false);
+      expect(out.includes('\r\n')).toBe(true);
     });
   });
 

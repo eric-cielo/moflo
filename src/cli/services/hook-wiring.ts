@@ -31,9 +31,9 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PreToolUse', pattern: 'check-before-read' },
   { event: 'PreToolUse', pattern: 'check-dangerous-command' },
   { event: 'PreToolUse', pattern: 'check-before-pr' },
-  // Story #1274 (Epic #1269) — verify-before-done gate on `gh pr create`. Wired
-  // for every consumer so opting in via `gates: verify_before_done: true` takes
-  // effect without a re-init; inert (breaks immediately) while the toggle is off.
+  // Story #1274 (Epic #1269) + #1294 — verify-before-done gate on `gh pr create`.
+  // Wired for every consumer; on by default (#1294) so a default /flo run does the
+  // acceptance check. Disable with `gates: verify_before_done: false`.
   { event: 'PreToolUse', pattern: 'check-before-done' },
   // #931 — TaskCreate REMINDER + namespace hint emit only at Agent spawn now,
   // not on every prompt. Saves ~90 tokens × every prompt × every consumer.

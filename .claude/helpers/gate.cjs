@@ -3,11 +3,12 @@
 var fs = require('fs');
 var path = require('path');
 var cp = require('child_process');
+var os = require('os');
 
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -60,32 +61,86 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  // Note: verify_before_done defaults to FALSE (opt-in) — the only gate that
-  // ships off, so existing consumers see zero behavior change on upgrade
-  // (Story #1274, Epic #1269). Every other gate is opt-out (default true).
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: false };
-  try {
-    var yamlPath = path.join(PROJECT_DIR, 'moflo.yaml');
-    if (fs.existsSync(yamlPath)) {
-      var content = fs.readFileSync(yamlPath, 'utf-8');
-      if (/memory_first:\s*false/i.test(content)) defaults.memory_first = false;
-      if (/task_create_first:\s*false/i.test(content)) defaults.task_create_first = false;
-      if (/context_tracking:\s*false/i.test(content)) defaults.context_tracking = false;
-      if (/testing_gate:\s*false/i.test(content)) defaults.testing_gate = false;
-      if (/simplify_gate:\s*false/i.test(content)) defaults.simplify_gate = false;
-      if (/learnings_gate:\s*false/i.test(content)) defaults.learnings_gate = false;
-      if (/swarm_invocation_gate:\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
-      // Opt-in: enable only when explicitly set true.
-      if (/verify_before_done:\s*true/i.test(content)) defaults.verify_before_done = true;
-    }
-  } catch (e) { /* use defaults */ }
+  // verify_before_done is opt-OUT (default true), like every other gate: #1294
+  // ships a real /verify skill and has /flo delegate to it, so leaving it off by
+  // default would make the default /flo run silently skip the acceptance check.
+  // Disable per-project with `verify_before_done: false` or per-run `--no-verify`.
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true };
+  var content = MOFLO_YAML;
+  if (content) {
+    if (/memory_first:\s*false/i.test(content)) defaults.memory_first = false;
+    if (/task_create_first:\s*false/i.test(content)) defaults.task_create_first = false;
+    if (/context_tracking:\s*false/i.test(content)) defaults.context_tracking = false;
+    if (/testing_gate:\s*false/i.test(content)) defaults.testing_gate = false;
+    if (/simplify_gate:\s*false/i.test(content)) defaults.simplify_gate = false;
+    if (/learnings_gate:\s*false/i.test(content)) defaults.learnings_gate = false;
+    if (/swarm_invocation_gate:\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
+    // Opt-out: on by default; disable only when explicitly set false.
+    if (/verify_before_done:\s*false/i.test(content)) defaults.verify_before_done = false;
+    // sdd_gate is the check-before-implement backstop (#1297). Opt-out; the
+    // gate only fires when a run is actually armed for SDD (sddMode), so
+    // leaving it on costs non-SDD work nothing.
+    if (/sdd_gate:\s*false/i.test(content)) defaults.sdd_gate = false;
+  }
   return defaults;
 }
 
+// Parse the top-level `sdd:` block from moflo.yaml (#1297). Scoped to the block
+// body so we never match a `default:` key from another section (epic, merge).
+// Cross-platform: tolerates CRLF; no path separators hardcoded.
+function loadSddConfig() {
+  var out = { default: false, specsDir: '.moflo/specs' };
+  var content = MOFLO_YAML;
+  if (!content) return out;
+  var block = content.match(/^sdd:[ \t]*\r?\n((?:[ \t]+.*(?:\r?\n|$))*)/m);
+  if (!block) return out;
+  var body = block[1];
+  if (/^\s*default:\s*true\b/im.test(body)) out.default = true;
+  var sd = body.match(/^\s*specs_dir:\s*(.+?)\s*$/im);
+  if (sd) {
+    var v = sd[1].replace(/\s+#.*$/, '').replace(/^["']|["']$/g, '').trim();
+    if (v) out.specsDir = v;
+  }
+  return out;
+}
+
+// Read moflo.yaml exactly once per gate process (#1297 review): loadGateConfig
+// and loadSddConfig both parse it, and the gate fires on every Write/Edit — a
+// second read is wasted syscalls. Single readFileSync in try/catch (no existsSync
+// double-stat); ENOENT/unreadable → '' → every parser falls back to defaults.
+function readMofloYaml() {
+  try { return fs.readFileSync(path.join(PROJECT_DIR, 'moflo.yaml'), 'utf-8'); }
+  catch (e) { return ''; }
+}
+var MOFLO_YAML = readMofloYaml();
+
 var config = loadGateConfig();
+var sddConf = loadSddConfig();
 var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
+
+// #1294 Finding 3 — reads/scans of EPHEMERAL files under the OS temp dir
+// (background-task output/transcripts, agent scratchpads) are transient tool
+// I/O and never carry indexable project knowledge, so they must not trip the
+// memory-first gate. Cross-platform (Rule #1): os.tmpdir() is correct on every
+// OS; we normalize a leading `/private` on both sides so macOS's
+// /var/folders (os.tmpdir) vs /private/var/folders (realpath) symlink pair
+// still matches (CLAUDE.md #1145). Never hardcode `/tmp`.
+function stripPrivate(p) { return p.indexOf('/private/') === 0 ? p.slice('/private'.length) : p; }
+function isEphemeralPath(fp) {
+  if (!fp) return false;
+  var tmp;
+  try { tmp = path.resolve(os.tmpdir()); } catch (e) { return false; }
+  var t = stripPrivate(tmp);
+  function under(p) { var n = stripPrivate(p); return n === t || n.indexOf(t + path.sep) === 0; }
+  var resolved = path.resolve(fp);
+  if (!under(resolved)) return false;
+  // Under tmp by literal path — confirm it isn't a symlink staged in tmp that
+  // dereferences to a real project file (realpath BOTH sides, CLAUDE.md Rule #2).
+  // On ENOENT (a not-yet-created tmp file) keep the verdict — still ephemeral.
+  try { return under(fs.realpathSync(resolved)); } catch (e) { return true; }
+}
 // #1171 — DANGEROUS gained PowerShell additions to match the matcher widening
 // that now routes the dedicated `PowerShell` tool through check-dangerous-command.
 // POSIX entries still apply because PS will execute them when invoked. Substring
@@ -233,6 +288,59 @@ function detectFlMode(promptText) {
   return null;
 }
 
+// #1297 — arm the SDD implement gate from the user prompt. Only /fl or /flo runs
+// can arm it. Explicit -sd/--sdd wins; --no-sdd disarms; otherwise honor the
+// sdd.default config. `-sd` is a distinct token from `-s` (swarm): the `d` sits
+// on the word boundary so `-s\b` never matches `-sd`.
+function detectSddMode(promptText) {
+  var p = promptText || '';
+  if (!/^\s*\/(?:fl|flo)\b/i.test(p)) return false;
+  if (/(?:^|\s)--no-sdd\b/.test(p)) return false;
+  if (/(?:^|\s)(?:-sd|--sdd)\b/.test(p)) return true;
+  return !!sddConf.default;
+}
+
+// Resolve the absolute specs root the same way TS specsRoot does (#1294): split
+// the /-written config value on either separator, reject absolute/`..`-escaping
+// values, and fall back to the gitignored default. Rule #1: no separator hardcoded.
+function sddSpecsRootAbs() {
+  var configured = (sddConf.specsDir || '.moflo/specs');
+  var segments = configured.split(/[\\/]+/).filter(Boolean);
+  var escapes = segments.length === 0
+    || segments.indexOf('..') >= 0
+    || /^([a-zA-Z]:|~)$/.test(segments[0])
+    || configured.charAt(0) === '/'
+    || configured.charAt(0) === '\\';
+  if (escapes) return path.join(PROJECT_DIR, '.moflo', 'specs');
+  return path.join.apply(path, [PROJECT_DIR].concat(segments));
+}
+
+// Is the edited path inside the specs dir? Editing spec.md/plan.md themselves must
+// never trip the implement gate. Compares resolved absolute paths (Rule #1: the
+// edit path may be relative or absolute; normalize both before the prefix test).
+function isInsideSpecsDir(filePath) {
+  try {
+    var root = sddSpecsRootAbs();
+    var abs = path.isAbsolute(filePath) ? filePath : path.resolve(PROJECT_DIR, filePath);
+    var rel = path.relative(root, abs);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  } catch (e) { return false; }
+}
+
+// Read plan.md frontmatter for the active slug and report whether it is reviewed.
+// Pure fs + regex (no spawn) so it stays cheap on every Write/Edit. Matches the
+// double-quoted scalar serializeArtifact emits (`status: "reviewed"`).
+function isPlanReviewed(slug) {
+  try {
+    var planPath = path.join(sddSpecsRootAbs(), slug, 'plan.md');
+    if (!fs.existsSync(planPath)) return false;
+    var content = fs.readFileSync(planPath, 'utf-8').replace(/\r\n/g, '\n');
+    var fm = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!fm) return false;
+    return /^\s*status:\s*["']?reviewed["']?\s*$/im.test(fm[1]);
+  } catch (e) { return false; }
+}
+
 function classifyNamespaceHint(promptText) {
   var lower = (promptText || '').toLowerCase();
   if (NS_TEST_RE.test(lower)) return 'Memory namespace hint: use "tests" for test inventory and coverage lookups.';
@@ -305,6 +413,10 @@ function applyPromptStateReset(state, promptText) {
   state.flMode = detectFlMode(promptText);
   state.swarmInitialized = false;
   state.hiveInitialized = false;
+  // #1297 — arm/disarm the SDD implement gate per prompt. A fresh /flo run starts
+  // with no active slug; `flo sdd spec` stamps activeSddSlug during the run.
+  state.sddMode = detectSddMode(promptText);
+  state.activeSddSlug = null;
 }
 // Match npm/yarn/pnpm/bun test, npx vitest|jest|..., bare runners at command-start only,
 // and language-native test commands. The bare-runner arm is anchored so that
@@ -530,6 +642,7 @@ switch (command) {
     var s = readState();
     if (!s.memoryRequired || isMemorySearchedFor(s)) break;
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
+    if (isEphemeralPath(process.env.TOOL_INPUT_path)) break;
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
     process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
     process.exit(2);
@@ -539,6 +652,9 @@ switch (command) {
     var s = readState();
     if (!s.memoryRequired || isMemorySearchedFor(s)) break;
     var fp = process.env.TOOL_INPUT_file_path || '';
+    // Ephemeral tmp/scratch reads are exempt even when they look like guidance
+    // (a temp copy is still transient tool I/O, not the indexed source).
+    if (isEphemeralPath(fp)) break;
     var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
     if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
     process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
@@ -703,6 +819,44 @@ switch (command) {
     writeState(s);
     break;
   }
+  case 'check-before-implement': {
+    // #1297 — the SDD front-half backstop. When a run is armed for SDD
+    // (sddMode, set from -sd/--sdd or sdd.default on a /flo run), block source
+    // Write/Edit until a spec exists and its plan is reviewed. Mirrors the
+    // memory_first gate shape. Disarmed runs (the default for non-SDD work)
+    // pass instantly. Opt out per-project with `gates: sdd_gate: false`.
+    if (!config.sdd_gate) break;
+    var si = readState();
+    if (!si.sddMode) break; // not an SDD run — no enforcement
+    var fpi = process.env.TOOL_INPUT_file_path || '';
+    if (!fpi) break;
+    // Only gate real source edits. Exempt the same inert files/paths the other
+    // gates skip, plus the spec/plan artifacts themselves.
+    if (EXEMPT.some(function (e) { return fpi.indexOf(e) >= 0; })) break;
+    if (!SOURCE_FILE_RE.test(fpi)) break;
+    if (EDIT_RESET_SKIP_PATH_RE.test(fpi)) break;
+    if (isInsideSpecsDir(fpi)) break;
+    if (!si.activeSddSlug) {
+      process.stderr.write(
+        'BLOCKED: SDD mode is on — author a spec before editing source.\n' +
+        'Run: flo sdd spec "<title>"   (then review it, and plan)\n' +
+        'This run is spec-gated (-sd / sdd.default). One-off skip: re-run with --no-sdd.\n' +
+        'Disable per-project via moflo.yaml: gates: sdd_gate: false\n'
+      );
+      process.exit(2);
+    }
+    if (!isPlanReviewed(si.activeSddSlug)) {
+      process.stderr.write(
+        'BLOCKED: SDD — the plan for "' + si.activeSddSlug + '" is not reviewed yet.\n' +
+        'Author + review the plan first:\n' +
+        '  flo sdd plan ' + si.activeSddSlug + '\n' +
+        '  flo sdd review ' + si.activeSddSlug + ' plan\n' +
+        'One-off skip: re-run with --no-sdd. Disable via moflo.yaml: gates: sdd_gate: false\n'
+      );
+      process.exit(2);
+    }
+    break;
+  }
   case 'check-before-pr': {
     // Anchored to command-start (or chained via && / || / ;) so heredoc bodies
     // and quoted strings that contain the literal "gh pr create" don't trip
@@ -763,12 +917,13 @@ switch (command) {
     process.exit(2);
   }
   case 'check-before-done': {
-    // Story #1274 (Epic #1269). Verify-before-done: block `gh pr create` until
-    // the change has been verified end-to-end (native /verify skill) against the
-    // plan's acceptance criteria. OFF by default — only enforced when the
-    // consumer opts in via moflo.yaml `gates: verify_before_done: true`, so
-    // existing installs see zero change on upgrade. Same trigger + no-source
-    // exemption as check-before-pr, so the two gates compose on one command.
+    // Story #1274 (Epic #1269) + #1294. Verify-before-done: block `gh pr create`
+    // until the change has been verified end-to-end (the /verify skill) against
+    // the plan's acceptance criteria. ON by default (#1294) — /flo delegates to
+    // /verify, so a default run does the acceptance check; disable per-project
+    // with `gates: verify_before_done: false` or per-run `--no-verify`. Same
+    // trigger + no-source exemption as check-before-pr, so they compose on one
+    // command (docs-only diffs are exempt, so this never blocks a docs PR).
     if (!config.verify_before_done) break;
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;

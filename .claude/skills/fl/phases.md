@@ -185,8 +185,10 @@ Closes #<issue-number>
 Co-Authored-By: moflo <noreply@motailz.com>"
 ```
 
-### 5.1b Verify-before-done (when `verifyMode` / `--sdd` / `gates.verify_before_done`)
-Run the native `/verify` skill to exercise the change end-to-end against the plan's (or ticket's) acceptance criteria, and store the outcome to memory. Under `--sdd` this always runs; independently, `-v`/`--verify` or `moflo.yaml gates.verify_before_done: true` triggers it. The `check-before-done` gate blocks `gh pr create` until a `/verify` run is recorded (a source edit invalidates a prior verification). Full mechanics: `./sdd.md`.
+### 5.1b Verify-before-done (default; skipped only with `--no-verify`)
+**Delegate to the `/verify` skill** — `Skill({ skill: "verify" })`, passing the issue number or spec slug. That skill owns the mechanics (locate acceptance criteria → reuse Phase 4's already-green tests, no double verify → map each criterion → run only uncovered checks → record the outcome). Don't restate them here or verify in prose — *invoking* `/verify` is what records the run and satisfies the `check-before-done` gate.
+
+**When it runs:** by default (`verify_before_done` now defaults true, #1294) and always under `--sdd`; `--no-verify` skips it for one run. See `./sdd.md` for triggers and `.claude/skills/verify/SKILL.md` for how verification is performed.
 
 ### 5.2 Store learnings
 Before opening the PR, call `mcp__moflo__memory_store` with what was learned. The `check-before-pr` gate blocks `gh pr create` until this has run.
@@ -222,6 +224,8 @@ gh pr create --title "type(scope): description" --body "## Summary
 
 Closes #<issue-number>"
 ```
+
+**Under `--sdd` (#1297):** when `sdd.embed_in_pr` is true (default), append the spec+plan to the PR body so the reasoning is reviewable in the PR even when specs stay local/gitignored. Run `flo sdd embed <slug>`, read its printed output from the tool result, and paste it as literal text at the end of the PR body — do **not** use shell command substitution (`$(...)`) or heredoc/`printf`, none of which are portable (Rule #1). The robust path on every OS: write the full body (summary + embed block) to a file with the Write tool, then `gh pr create --body-file <path>`. See `./sdd.md` step 7.
 
 ### 5.4 Update issue status
 ```bash

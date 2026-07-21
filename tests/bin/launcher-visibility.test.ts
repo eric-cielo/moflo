@@ -138,10 +138,14 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     // The launcher loads bin/lib/yaml-upgrader.mjs relative to projectRoot, so
     // we stage a copy under the temp root for the upgrader path to resolve.
     mkdirSync(join(root, 'bin', 'lib'), { recursive: true });
-    copyFileSync(
-      resolve(REPO_ROOT, 'bin/lib/yaml-upgrader.mjs'),
-      join(root, 'bin/lib/yaml-upgrader.mjs'),
-    );
+    // Stage yaml-upgrader.mjs AND its runtime dependency closure — it now imports
+    // the migrations ledger (migrations.mjs → moflo-paths.mjs) for #1294's
+    // one-time value migration. In a real install these are siblings under
+    // node_modules/moflo/bin/lib; the launcher resolves the upgrader relative to
+    // projectRoot, so the temp root needs the whole chain or the import ENOENTs.
+    for (const rel of ['bin/lib/yaml-upgrader.mjs', 'bin/lib/migrations.mjs', 'bin/lib/moflo-paths.mjs']) {
+      copyFileSync(resolve(REPO_ROOT, rel), join(root, rel));
+    }
     // moflo.yaml without `sandbox:` — yaml-upgrader will append it.
     writeFileSync(join(root, 'moflo.yaml'), 'project:\n  name: test\n');
 

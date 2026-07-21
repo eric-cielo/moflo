@@ -2,10 +2,10 @@
 
 Spec-Driven Development for `/flo` — Epic #1269. Two independent modifiers:
 
-- **`-sd` / `--sdd`** — run the full **spec → plan → (review) → implement → verify** cycle. Implies `--verify`.
-- **`-v` / `--verify`** — verify-before-done only: a normal run plus the completion gate, no spec/plan front-half.
+- **`-sd` / `--sdd`** — run the full **spec → plan → (review) → implement → verify** cycle. Opt-in (`sdd.default` defaults false). Implies verify.
+- **`-v` / `--verify`** — verify-before-done: a normal run plus the completion gate, no spec/plan front-half. **On by default** (`gates.verify_before_done` defaults true, #1294) — `-v` is explicit, `--no-verify` opts out for one run.
 
-Defaults seed from `moflo.yaml` (`sdd.default`, `gates.verify_before_done`); per-run flags and `--no-sdd` / `--no-verify` override. Both are orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`, so `--sdd -s -wt 42` runs the SDD cycle in a swarm inside a worktree.
+Defaults seed from `moflo.yaml` (`sdd.default` = false, `gates.verify_before_done` = true); per-run flags and `--no-sdd` / `--no-verify` override. Both are orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`, so `--sdd -s -wt 42` runs the SDD cycle in a swarm inside a worktree.
 
 The artifact model, paths, and CLI live in `src/cli/sdd/` (`flo sdd …`). The constitution layer (CLAUDE.md + `.claude/guidance/`) is referenced by every stage — never restated in a spec.
 
@@ -13,14 +13,18 @@ The artifact model, paths, and CLI live in `src/cli/sdd/` (`flo sdd …`). The c
 
 ## The `--sdd` cycle
 
-Artifacts live at `.moflo/specs/<slug>/{spec,plan}.md` (git-tracked in consumer repos → reviewable). Drive them with the `flo sdd` CLI; never hand-write the paths.
+Artifacts live at `<specs_dir>/<slug>/{spec,plan}.md` — default `.moflo/specs`, which is **gitignored** (local, not committed). By default (`sdd.embed_in_pr: true`) the spec + plan are appended to the PR body, so the reasoning is **reviewable in the PR even while specs stay local**. To source-control the artifacts instead (or as well), set `moflo.yaml sdd.specs_dir` to a tracked path (e.g. `docs/specs`) and commit them (#1294). Drive them with the `flo sdd` CLI; never hand-write the paths.
+
+**The front half is enforced, not advisory (#1297).** When a run is armed for SDD (`-sd`/`--sdd` or `sdd.default`), the `check-before-implement` gate **blocks every source `Write`/`Edit`** until a spec exists for the active slug and its plan is `reviewed`. Skipping straight to implementation is not possible — do the spec→plan steps first. `flo sdd spec` stamps the active slug so the gate knows which unit this run is building. One-off escape hatch: re-run with `--no-sdd`; per-project off-switch: `gates: sdd_gate: false`.
 
 1. **Spec** — capture the *what* + acceptance criteria:
    ```bash
-   flo sdd spec "<issue title>"          # scaffolds .moflo/specs/<slug>/spec.md
+   flo sdd spec "<issue title>"          # scaffolds .moflo/specs/<slug>/spec.md; arms the gate
    ```
    Fill Problem / Goal / Scope / **Acceptance Criteria** (the criteria verify checks against). For an issue, the ticket's Acceptance Criteria seed this section.
-2. **Review checkpoint (spec → plan)** — confirm the spec is right, then:
+2. **Review checkpoint (spec → plan)** — the behavior depends on `sdd.human_checkpoints` (default **false**):
+   - **false (autonomous, default):** self-advance — you author the spec, sanity-check it, then run `flo sdd review <slug>` yourself and continue. No stop.
+   - **true (human in the loop):** present the spec to the user and **wait for approval** before running `flo sdd review <slug>`.
    ```bash
    flo sdd review <slug>                 # marks spec reviewed; unlocks the plan
    ```
@@ -28,26 +32,25 @@ Artifacts live at `.moflo/specs/<slug>/{spec,plan}.md` (git-tracked in consumer 
    ```bash
    flo sdd plan <slug>                   # requires the spec be reviewed
    ```
-4. **Review checkpoint (plan → implement)**:
+4. **Review checkpoint (plan → implement)** — same `human_checkpoints` rule as step 2 (self-advance when false; pause for approval when true):
    ```bash
    flo sdd review <slug> plan            # marks plan reviewed; unlocks implementation
    flo sdd check <slug> implement        # gate — exit 2 until the plan is reviewed
    ```
-5. **Implement → test → simplify** — the normal `./phases.md` flow, honoring the plan.
+5. **Implement → test → simplify** — the normal `./phases.md` flow, honoring the plan. The implement gate now passes (spec + reviewed plan exist).
 6. **Verify** — see below (always runs under `--sdd`).
+7. **Embed in PR** — when `sdd.embed_in_pr` is true (default), append the spec+plan block to the PR body at `gh pr create` time:
+   ```bash
+   flo sdd embed <slug>                  # prints a collapsible spec+plan block; pipe into the PR body
+   ```
 
 **Search memory before authoring (see `SKILL.md` Step 0).** Specs/plans are indexed into memory on session start, so `mcp__moflo__memory_search { namespace: "guidance" }` surfaces prior specs across sessions — search before authoring a new one rather than starting cold, and reach any SDD rule you need the same way instead of reading `.claude/guidance/moflo-sdd.md` end-to-end.
 
 ## The `--verify` step (verify-before-done)
 
-Runs at step 8 of the full-mode flow, before the PR:
+Runs at step 8 of the full-mode flow, before the PR — **by default** and always under `--sdd`; `--no-verify` skips it for one run.
 
-1. Run the native **`/verify`** skill to exercise the change end-to-end. Under `--sdd`, verify against the plan's acceptance criteria; without a plan, verify against the ticket's Acceptance Criteria.
-2. Store the outcome to memory so it feeds routing/learning:
-   ```
-   mcp__moflo__memory_store { namespace: "learnings", key: "verify:<slug-or-issue>", value: "<what was verified, pass/fail>" }
-   ```
-3. The `/verify` run trips `record-verify-run`, satisfying the `check-before-done` gate — `gh pr create` unblocks. When `gates.verify_before_done: true`, this gate is enforced for every run whether or not `-v` was passed; `-v` makes the skill *do* the verification so the gate passes cleanly. A source edit after verifying invalidates it — re-run `/verify`.
+**Delegate to the `/verify` skill** — `Skill({ skill: "verify" })`, passing the issue number or spec slug. It owns the mechanics (single source of truth — don't restate them here): locate the acceptance criteria (plan, else ticket) → reuse the Tests-phase run (no double verify) → map each criterion to evidence → run only uncovered checks → record its own outcome to memory (`learnings`, `verify:<slug-or-issue>`) → return a per-criterion PASS/FAIL. *Invoking* it is the point — it trips `record-verify-run` and satisfies the `check-before-done` gate (describing verification in prose does not). A source edit after verifying invalidates it — re-run `/verify`. Full how-to: `.claude/skills/verify/SKILL.md`.
 
 `/ward` and `/quicken` stay targeted audits, not the completion gate.
 
