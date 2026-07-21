@@ -74,12 +74,53 @@ describe('checkSddVerifyWiring', () => {
     expect(r.message).toMatch(/ENFORCED/);
   });
 
-  it('warns on missing gate case when verify is opted out (not enforced)', async () => {
-    // Opted out → a missing case bites nobody yet, so warn (not fail).
-    wireProject({ gateCases: ['record-verify-run'], yaml: 'project:\n  name: t\ngates:\n  verify_before_done: false\n' });
+  it('passes when both toggles are off even if a gate case is absent (#1301 decoupled)', async () => {
+    // With SDD and verify both opted out there is nothing to enforce, so an
+    // absent case is not flagged — the wiring is checked per enabled feature.
+    wireProject({
+      gateCases: ['record-verify-run'],
+      yaml: 'project:\n  name: t\nsdd:\n  default: false\ngates:\n  verify_before_done: false\n',
+    });
+    const r = await checkSddVerifyWiring();
+    expect(r.status).toBe('pass');
+  });
+
+  it('does NOT require check-before-implement when sdd.default is off (#1301)', async () => {
+    // The core #1301 regression: verify_before_done defaults true, but with
+    // sdd.default=false the SDD implement-gate must not be required. Absent
+    // check-before-implement (gate case + hook token) while the verify wiring
+    // is present ⇒ still passes.
+    wireProject({
+      gateCases: ['check-before-done', 'record-verify-run'],
+      settingsTokens: ['check-before-done', 'record-verify-run'],
+      yaml: 'project:\n  name: t\nsdd:\n  default: false\n',
+    });
+    const r = await checkSddVerifyWiring();
+    expect(r.status).toBe('pass');
+    expect(r.message).toMatch(/ENFORCED/);
+  });
+
+  it('warns (not fails) with a lock-aware message when the hook block is locked (#1301)', async () => {
+    // sdd off + verify on (default). Verify hooks missing from settings.json,
+    // but the hook block is locked ⇒ moflo won't wire it. A hard fail would be
+    // permanently red since init --fix skips locked blocks — so warn + guide.
+    const helpers = join(root, '.claude', 'helpers');
+    mkdirSync(helpers, { recursive: true });
+    writeFileSync(
+      join(helpers, 'gate.cjs'),
+      ['check-before-done', 'record-verify-run'].map((c) => `case '${c}': { break; }`).join('\n'),
+    );
+    writeFileSync(
+      join(root, '.claude', 'settings.json'),
+      JSON.stringify({ moflo: { hooks: { locked: true } }, hooks: {} }),
+    );
+    writeFileSync(join(root, 'moflo.yaml'), 'project:\n  name: t\n');
+
     const r = await checkSddVerifyWiring();
     expect(r.status).toBe('warn');
-    expect(r.message).toMatch(/check-before-done/);
+    expect(r.message).toMatch(/LOCKED/);
+    expect(r.fix).toMatch(/verify_before_done: false/);
+    expect(r.fix).not.toMatch(/^npx moflo init --fix/);
   });
 
   it('fails on missing gate case when verify is enforced', async () => {
