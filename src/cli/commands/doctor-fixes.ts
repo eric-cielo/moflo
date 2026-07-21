@@ -611,6 +611,72 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     'Gate Health': async () => {
       return fixGateHealthHooks();
     },
+    // #1301 — SDD/verify hook wiring. The generic fall-through used to run
+    // `npx moflo init --fix` and report `applied: true` on its exit code alone,
+    // even when the hook block was LOCKED and init injected nothing — a false
+    // positive over a permanently-red check. This handler:
+    //   1. refuses (returns false) when the block is locked — moflo won't
+    //      rewrite it, so claiming a fix would be a lie;
+    //   2. grafts ONLY the missing SDD/verify reference entries additively
+    //      (`check-before-implement` lives in the reference block but NOT in
+    //      repairHookWiring's REQUIRED_HOOK_WIRING, so the generic repair could
+    //      never add it); and
+    //   3. re-verifies from disk and returns the honest result.
+    'SDD + Verify Wiring': async () => {
+      const projectDir = findProjectRoot();
+      const { computeSddVerifyRequirements } = await import('./doctor-checks-sdd.js');
+      const before = computeSddVerifyRequirements(projectDir);
+
+      if (before.missingHooks.length === 0 && before.missingGateCases.length === 0 && before.structural.length === 0) {
+        return true; // nothing outstanding
+      }
+
+      if (before.locked && before.missingHooks.length > 0) {
+        output.writeln(output.warning(
+          '  Hook block is LOCKED (moflo.hooks.locked=true) — moflo will not wire SDD/verify hooks. ' +
+          'Set the matching toggle to false in moflo.yaml, or remove the lock and re-run.',
+        ));
+        // If the locked hooks are the only gap, there is genuinely nothing we
+        // can do — report honestly rather than a false success.
+        if (before.missingGateCases.length === 0 && before.structural.length === 0) return false;
+      }
+
+      // settings.json hook wiring — additively graft the missing SDD/verify
+      // reference entries (skip when locked; the block above already reported it).
+      const settingsPath = join(projectDir, '.claude', 'settings.json');
+      if (!before.locked && before.missingHooks.length > 0 && existsSync(settingsPath)) {
+        try {
+          const { computeHookBlockDrift, applyAdditiveRegeneration } = await import('../services/hook-block-hash.js');
+          const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+          const report = computeHookBlockDrift((settings.hooks ?? {}) as Record<string, unknown>);
+          // Scope the graft to the tokens this check owns — leave unrelated
+          // drift to the Hook Block Drift check/fixer.
+          const wanted = before.requiredHookTokens;
+          const scoped = {
+            ...report,
+            missing: report.missing.filter((m) => wanted.some((t) => m.command.includes(t))),
+          };
+          if (scoped.missing.length > 0) {
+            applyAdditiveRegeneration(settings, scoped);
+            writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+          }
+        } catch (e) {
+          output.writeln(output.warning(`  settings.json hook repair failed: ${errorDetail(e)}`));
+          return false;
+        }
+      }
+
+      // gate.cjs case drift — reuse the gate-health repair (mirrors bin/helper).
+      if (before.missingGateCases.length > 0) {
+        await fixGateHealthHooks();
+      }
+
+      // Truth check — re-read from disk and confirm the required wiring landed.
+      const after = computeSddVerifyRequirements(projectDir);
+      return after.missingHooks.length === 0
+        && after.missingGateCases.length === 0
+        && after.structural.length === 0;
+    },
     // Refresh the consumer's CLAUDE.md MoFlo block in place using the
     // shared `applyInjectionReplacement` service. Idempotent: a re-run sees
     // `state === 'in-sync'` and the autoFix dispatcher skips this entry.
