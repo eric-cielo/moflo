@@ -247,7 +247,17 @@ function readInstallManifest(manifestPath) {
   return { entries, isLegacy };
 }
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n, word) => {
+  if (n === 1) return `${n} ${word}`;
+  // Pluralize the final word: consonant+y → -ies (entry → entries), sibilant
+  // endings → -es (box → boxes), otherwise → -s. Naive +s mangled every
+  // 'entry'-style word into 'entrys'.
+  let suffixed;
+  if (/[^aeiou]y$/i.test(word)) suffixed = `${word.slice(0, -1)}ies`;
+  else if (/(?:s|x|z|ch|sh)$/i.test(word)) suffixed = `${word}es`;
+  else suffixed = `${word}s`;
+  return `${n} ${suffixed}`;
+};
 
 // Captured inside the upgrade/drift branch so the post-spawn notice writer
 // can persist `.moflo/upgrade-notice.json` for the statusline (#636).
@@ -2037,6 +2047,52 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
+// ── 3e-1244. Hydrate a fresh workspace from a whole-DB snapshot BEFORE daemon ─
+// When `memory.hydrate_from` (or MOFLO_HYDRATE_FROM) points at a snapshot AND
+// the local .moflo/moflo.db is absent/empty, restore the whole DB (structural +
+// durable + embeddings) so the first session is searchable without a cold full
+// reindex (#1244, epic #1231). Runs BEFORE the daemon spawns so the restored
+// rows are present when the daemon builds its HNSW index, and BEFORE the purge/
+// sync blocks below so they operate on the hydrated DB. No-clobber: a no-op once
+// the local DB has content. Best-effort: a failure must never block session start.
+try {
+  // Cheap pre-gate so the overwhelming majority (no hydrate configured) pay
+  // nothing — no module load, no moflo.yaml parse. Live only when the env
+  // override is set or moflo.yaml has an UNcommented `hydrate_from:` line (the
+  // generated config ships a commented example, which this regex ignores).
+  const hydrateYamlPath = resolve(projectRoot, 'moflo.yaml');
+  let hydrateEnabled = Boolean(process.env.MOFLO_HYDRATE_FROM);
+  if (!hydrateEnabled && existsSync(hydrateYamlPath)) {
+    try {
+      hydrateEnabled = /^[ \t]*hydrate_from[ \t]*:/m.test(readFileSync(hydrateYamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const hydratePaths = hydrateEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/snapshot-restore.js'),
+        resolve(projectRoot, 'dist/src/cli/services/snapshot-restore.js'),
+      ]
+    : [];
+  const hydratePath = hydratePaths.find((p) => existsSync(p));
+  if (hydratePath) {
+    const { hydrateAtSessionStart } = await import(pathToFileURL(hydratePath).href);
+    const result = await hydrateAtSessionStart({ projectRoot });
+    if (result?.restored) {
+      const mb = ((result.bytes ?? 0) / (1024 * 1024)).toFixed(1);
+      emitMutation(
+        'hydrated workspace from snapshot',
+        `restored ${mb} MB whole-DB snapshot — search ready without a cold reindex`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — without a snapshot the workspace just cold-indexes as before.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`snapshot hydration skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
 // ── 3e-728. Hard-delete leftover soft-delete tombstones (#728) ─────────────
 // Soft-delete was retired in story #728 — `status='deleted'` rows are now
 // unrecoverable bloat from prior moflo versions. Purge any stragglers and
@@ -2103,6 +2159,89 @@ try {
   try {
     const msg = err && err.message ? err.message : String(err);
     process.stderr.write(`ephemeral-namespace purge skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
+// ── 3e-1232. Sync durable namespaces with the shared store BEFORE daemon ────
+// When `memory.durable_path` (or MOFLO_DURABLE_PATH) is set, flush this
+// worktree's learnings to the shared store and seed any sibling-workspace
+// learnings back into the local DB. Runs BEFORE the daemon spawns so the
+// freshly-seeded rows are present when the daemon builds its in-memory HNSW
+// index — that's what makes the cross-worktree repro (#1231) pass. No-op when
+// the feature is off. Best-effort: a sync failure must never block session start.
+try {
+  // Cheap pre-gate so solo users (the overwhelming majority) pay nothing here —
+  // no module load, no moflo.yaml parse. The feature is only live when the env
+  // override is set or moflo.yaml has an UNcommented `durable_path:` line (the
+  // generated config ships a commented example, which this regex ignores).
+  const durableYamlPath = resolve(projectRoot, 'moflo.yaml');
+  // Read moflo.yaml ONCE, then run every pre-gate regex against the one string —
+  // every consumer with a moflo.yaml pays a single read here, not one per key.
+  let durableYaml = '';
+  try {
+    if (existsSync(durableYamlPath)) durableYaml = readFileSync(durableYamlPath, 'utf-8');
+  } catch { /* unreadable yaml — treat as not-configured */ }
+  let durableEnabled = Boolean(process.env.MOFLO_DURABLE_PATH) || /^[ \t]*durable_path[ \t]*:/m.test(durableYaml);
+  // Auto-enable across git worktrees — moflo's core multi-worktree competency.
+  // When durable_path isn't explicitly configured, still run the sync IF this
+  // repo has worktrees in play (this checkout is a linked worktree, or the
+  // shared .git has a non-empty worktrees/ registry), unless the user opted out
+  // with `worktree_sharing: false`. A plain single checkout short-circuits on a
+  // cheap fs stat with no module import, so solo users pay ~nothing. The
+  // authoritative derivation lives in durable-sync.ts#resolveDurablePath.
+  if (!durableEnabled) {
+    const optedOut = /^[ \t]*(worktree_sharing|worktreeSharing)[ \t]*:[ \t]*false\b/m.test(durableYaml);
+    if (!optedOut) {
+      try {
+        const dotgit = join(projectRoot, '.git');
+        const st = statSync(dotgit);
+        if (st.isFile()) {
+          // Linked worktree — `.git` file's `gitdir:` points into `.git/worktrees/…`.
+          // A submodule's points into `.git/modules/…` (no worktrees segment) and
+          // must NOT auto-share with its superproject, so gate on the segment.
+          if (/[\\/]worktrees[\\/]/.test(readFileSync(dotgit, 'utf-8'))) durableEnabled = true;
+        } else if (st.isDirectory()) {
+          try {
+            if (readdirSync(join(dotgit, 'worktrees')).length > 0) durableEnabled = true;
+          } catch { /* no worktrees registry (ENOENT) — stay off */ }
+        }
+      } catch { /* no/unreadable .git — not a worktree, stay off */ }
+    }
+  }
+  const durablePaths = durableEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/durable-sync.js'),
+        resolve(projectRoot, 'dist/src/cli/services/durable-sync.js'),
+      ]
+    : [];
+  const durablePath = durablePaths.find((p) => existsSync(p));
+  if (durablePath) {
+    const { syncDurableAtSessionStart } = await import(pathToFileURL(durablePath).href);
+    const result = await syncDurableAtSessionStart({ projectRoot });
+    if (result?.autoWorktree && (result.seededToLocal > 0 || result.flushedToShared > 0)) {
+      emitMutation(
+        'auto-shared learnings across git worktrees',
+        'converging durable learnings for this repo — set memory.worktree_sharing: false to opt out',
+      );
+    }
+    if (result?.seededToLocal > 0) {
+      emitMutation(
+        'seeded shared learnings',
+        `${plural(result.seededToLocal, 'durable entry')} pulled from the shared store`,
+      );
+    }
+    if (result?.flushedToShared > 0) {
+      emitMutation(
+        'shared local learnings',
+        `${plural(result.flushedToShared, 'durable entry')} pushed to the shared store`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — durable sync reconciles on the next session start.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`durable-memory sync skipped: ${msg}\n`);
   } catch { /* writing the failure itself must not throw */ }
 }
 
@@ -2173,6 +2312,58 @@ function runMigrationsAndAnnounce(runnerPath) {
     const label = labels[migrationName] || `migration ${migrationName}`;
     emitMutation(label, detail);
   }
+}
+
+// ── 3e-1234. Import the git-tracked team learnings artifact BEFORE daemon spawn ─
+// Opt-in (#1234, epic #1231): when memory.team_artifact (or MOFLO_TEAM_ARTIFACT)
+// points at a committed JSONL file, merge it into the local durable namespaces
+// so teammates' learnings (pulled via git) are present when the daemon builds
+// its HNSW index in section 4. INSERT OR IGNORE → idempotent + first-write-wins.
+// Fully guarded: a disabled/absent artifact is a silent no-op, and any failure
+// is non-fatal (the next session-start retries). Runs every session (teammates
+// pull frequently without a moflo version bump), unlike the upgrade-gated
+// cherry-pick in section 3.
+try {
+  // Cheap pre-gate so solo users (the overwhelming majority) pay nothing here —
+  // no module load, no moflo.yaml parse. The feature is only live when an env
+  // override is set, the default artifact already exists, or moflo.yaml has an
+  // UNcommented `team_artifact:` line (the generated config ships a commented
+  // example, which this regex deliberately ignores). Only then import the service.
+  const defaultArtifact = resolve(projectRoot, '.moflo', 'shared', 'learnings.jsonl');
+  const yamlPath = resolve(projectRoot, 'moflo.yaml');
+  let teamEnabled = Boolean(process.env.MOFLO_TEAM_ARTIFACT) || existsSync(defaultArtifact);
+  if (!teamEnabled && existsSync(yamlPath)) {
+    try {
+      teamEnabled = /^[ \t]*team_artifact[ \t]*:/m.test(readFileSync(yamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const teamSyncPaths = teamEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/team-artifact-sync.js'),
+        resolve(projectRoot, 'dist/src/cli/services/team-artifact-sync.js'),
+      ]
+    : [];
+  const teamSyncPath = teamSyncPaths.find((p) => existsSync(p));
+  if (teamSyncPath) {
+    const mod = await import(pathToFileURL(teamSyncPath).href);
+    if (typeof mod.resolveTeamArtifactPath === 'function' && typeof mod.importTeamArtifact === 'function') {
+      const artifactPath = mod.resolveTeamArtifactPath(projectRoot);
+      if (artifactPath && existsSync(artifactPath)) {
+        const report = mod.importTeamArtifact({ projectRoot, artifactPath });
+        if (report?.imported > 0) {
+          emitMutation(
+            'merged team learnings',
+            `${plural(report.imported, 'shared learning')} imported from the git-tracked team artifact`,
+          );
+        }
+      }
+    }
+  }
+} catch (err) {
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`team-artifact import skipped: ${msg}\n`);
+  } catch { /* stderr write must not throw */ }
 }
 
 // ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
@@ -2312,6 +2503,53 @@ if (hooksScript) {
 }
 
 // Patches are now baked into moflo@4.0.0 source — no runtime patching needed.
+
+// ── 4b-1244. Auto-snapshot: refresh the hydrate seed (producer side) ────────
+// When `memory.snapshot_to` (or MOFLO_SNAPSHOT_TO) is set, the PRIMARY checkout
+// refreshes that whole-DB snapshot when its DB has advanced, so fresh git
+// worktrees / Conductor workspaces always hydrate (§3e-1244) from a current
+// seed. Linked worktrees never produce (they consume). Runs AFTER the daemon is
+// fired above on purpose: VACUUM INTO is concurrency-safe with the daemon, and
+// placing it post-spawn means even a slow/SIGKILLed backup can never delay the
+// daemon. No-op (a fast stat) when the snapshot is already current.
+try {
+  // Cheap pre-gate so the overwhelming majority (no snapshot_to configured) pay
+  // nothing — no module load, no moflo.yaml parse. Live only when the env
+  // override is set or moflo.yaml has an UNcommented `snapshot_to:` line (the
+  // generated config ships a commented example, which this regex ignores).
+  const snapshotYamlPath = resolve(projectRoot, 'moflo.yaml');
+  let snapshotEnabled = Boolean(process.env.MOFLO_SNAPSHOT_TO);
+  if (!snapshotEnabled && existsSync(snapshotYamlPath)) {
+    try {
+      snapshotEnabled = /^[ \t]*snapshot_to[ \t]*:/m.test(readFileSync(snapshotYamlPath, 'utf-8'));
+    } catch { /* unreadable yaml — treat as not-configured */ }
+  }
+  const snapshotPaths = snapshotEnabled
+    ? [
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/snapshot-restore.js'),
+        resolve(projectRoot, 'dist/src/cli/services/snapshot-restore.js'),
+      ]
+    : [];
+  const snapshotPath = snapshotPaths.find((p) => existsSync(p));
+  if (snapshotPath) {
+    const { autoSnapshotAtSessionStart } = await import(pathToFileURL(snapshotPath).href);
+    const result = await autoSnapshotAtSessionStart({ projectRoot });
+    if (result?.snapshotted) {
+      const mb = ((result.bytes ?? 0) / (1024 * 1024)).toFixed(1);
+      emitMutation(
+        'refreshed memory snapshot',
+        `wrote ${mb} MB whole-DB seed — fresh worktrees hydrate without a cold reindex`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — a missed snapshot just leaves the previous seed in place; the
+  // next session retries. A failure here must never block session start.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`memory auto-snapshot skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
 
 // ── 5. Done — exit immediately ──────────────────────────────────────────────
 process.exit(0);

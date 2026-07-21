@@ -186,3 +186,21 @@ hive-mind-prompt-*.txt
 
 # Local runtime cache
 local_cache/
+
+# MoFlo state (gitignored)
+/.claude/guidance/moflo-*.md
+/.claude/scripts/hooks.mjs
+/.claude/scripts/session-start-launcher.mjs
+/.claude/scripts/index-guidance.mjs
+/.claude/scripts/build-embeddings.mjs
+/.claude/scripts/generate-code-map.mjs
+/.claude/scripts/semantic-search.mjs
+/.claude/scripts/index-tests.mjs
+/.claude/scripts/index-patterns.mjs
+/.claude/scripts/index-reference.mjs
+/.claude/scripts/index-all.mjs
+/.claude/scripts/setup-project.mjs
+/.claude/scripts/run-migrations.mjs
+/.claude/scripts/session-continuity.mjs
+/.claude/scripts/meditate-capture.mjs
+/.claude/scripts/meditate-distill.mjs
