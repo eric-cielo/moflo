@@ -218,7 +218,7 @@ var os = require('os');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
 
 function readState() {
   try {
@@ -266,26 +266,53 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true };
-  try {
-    var yamlPath = path.join(PROJECT_DIR, 'moflo.yaml');
-    if (fs.existsSync(yamlPath)) {
-      var content = fs.readFileSync(yamlPath, 'utf-8');
-      if (/memory_first:\\s*false/i.test(content)) defaults.memory_first = false;
-      if (/task_create_first:\\s*false/i.test(content)) defaults.task_create_first = false;
-      if (/context_tracking:\\s*false/i.test(content)) defaults.context_tracking = false;
-      if (/testing_gate:\\s*false/i.test(content)) defaults.testing_gate = false;
-      if (/simplify_gate:\\s*false/i.test(content)) defaults.simplify_gate = false;
-      if (/learnings_gate:\\s*false/i.test(content)) defaults.learnings_gate = false;
-      if (/swarm_invocation_gate:\\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
-      // Opt-out: on by default (#1294); disable only when explicitly set false.
-      if (/verify_before_done:\\s*false/i.test(content)) defaults.verify_before_done = false;
-    }
-  } catch (e) { /* use defaults */ }
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true };
+  var content = MOFLO_YAML;
+  if (content) {
+    if (/memory_first:\\s*false/i.test(content)) defaults.memory_first = false;
+    if (/task_create_first:\\s*false/i.test(content)) defaults.task_create_first = false;
+    if (/context_tracking:\\s*false/i.test(content)) defaults.context_tracking = false;
+    if (/testing_gate:\\s*false/i.test(content)) defaults.testing_gate = false;
+    if (/simplify_gate:\\s*false/i.test(content)) defaults.simplify_gate = false;
+    if (/learnings_gate:\\s*false/i.test(content)) defaults.learnings_gate = false;
+    if (/swarm_invocation_gate:\\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
+    // Opt-out: on by default (#1294); disable only when explicitly set false.
+    if (/verify_before_done:\\s*false/i.test(content)) defaults.verify_before_done = false;
+    // #1297 — check-before-implement backstop; opt-out. Only fires when armed.
+    if (/sdd_gate:\\s*false/i.test(content)) defaults.sdd_gate = false;
+  }
   return defaults;
 }
 
+// #1297 — parse the top-level sdd: block (default + specs_dir), scoped so we
+// never match a default: key from another section. Tolerates CRLF. SYNC: mirrors
+// bin/gate.cjs loadSddConfig.
+function loadSddConfig() {
+  var out = { default: false, specsDir: '.moflo/specs' };
+  var content = MOFLO_YAML;
+  if (!content) return out;
+  var block = content.match(/^sdd:[ \\t]*\\r?\\n((?:[ \\t]+.*(?:\\r?\\n|$))*)/m);
+  if (!block) return out;
+  var body = block[1];
+  if (/^\\s*default:\\s*true\\b/im.test(body)) out.default = true;
+  var sd = body.match(/^\\s*specs_dir:\\s*(.+?)\\s*$/im);
+  if (sd) {
+    var v = sd[1].replace(/\\s+#.*$/, '').replace(/^["']|["']$/g, '').trim();
+    if (v) out.specsDir = v;
+  }
+  return out;
+}
+
+// #1297 — read moflo.yaml once (both loaders parse it; gate fires on every
+// Write/Edit). SYNC: mirrors bin/gate.cjs readMofloYaml.
+function readMofloYaml() {
+  try { return fs.readFileSync(path.join(PROJECT_DIR, 'moflo.yaml'), 'utf-8'); }
+  catch (e) { return ''; }
+}
+var MOFLO_YAML = readMofloYaml();
+
 var config = loadGateConfig();
+var sddConf = loadSddConfig();
 var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
@@ -371,6 +398,48 @@ function detectFlMode(promptText) {
   return null;
 }
 
+// #1297 — arm the SDD implement gate from a /flo prompt. SYNC: mirrors bin/gate.cjs.
+function detectSddMode(promptText) {
+  var p = promptText || '';
+  if (!/^\\s*\\/(?:fl|flo)\\b/i.test(p)) return false;
+  if (/(?:^|\\s)--no-sdd\\b/.test(p)) return false;
+  if (/(?:^|\\s)(?:-sd|--sdd)\\b/.test(p)) return true;
+  return !!sddConf.default;
+}
+
+// SDD specs-root resolution + artifact helpers for check-before-implement.
+// SYNC: mirrors bin/gate.cjs. Rule #1: no separator hardcoded; CRLF-tolerant.
+var SOURCE_FILE_RE = /\\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|java|kt|swift|c|cc|cpp|h|hpp|sh|bash|ps1)$/i;
+function sddSpecsRootAbs() {
+  var configured = (sddConf.specsDir || '.moflo/specs');
+  var segments = configured.split(/[\\\\/]+/).filter(Boolean);
+  var escapes = segments.length === 0
+    || segments.indexOf('..') >= 0
+    || /^([a-zA-Z]:|~)$/.test(segments[0])
+    || configured.charAt(0) === '/'
+    || configured.charAt(0) === '\\\\';
+  if (escapes) return path.join(PROJECT_DIR, '.moflo', 'specs');
+  return path.join.apply(path, [PROJECT_DIR].concat(segments));
+}
+function isInsideSpecsDir(filePath) {
+  try {
+    var root = sddSpecsRootAbs();
+    var abs = path.isAbsolute(filePath) ? filePath : path.resolve(PROJECT_DIR, filePath);
+    var rel = path.relative(root, abs);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  } catch (e) { return false; }
+}
+function isPlanReviewed(slug) {
+  try {
+    var planPath = path.join(sddSpecsRootAbs(), slug, 'plan.md');
+    if (!fs.existsSync(planPath)) return false;
+    var content = fs.readFileSync(planPath, 'utf-8').replace(/\\r\\n/g, '\\n');
+    var fm = content.match(/^---\\n([\\s\\S]*?)\\n---/);
+    if (!fm) return false;
+    return /^\\s*status:\\s*["']?reviewed["']?\\s*$/im.test(fm[1]);
+  } catch (e) { return false; }
+}
+
 function classifyNamespaceHint(promptText) {
   var lower = (promptText || '').toLowerCase();
   if (NS_TEST_RE.test(lower)) return 'Memory namespace hint: use "tests" for test inventory and coverage lookups.';
@@ -418,9 +487,14 @@ function applyPromptStateReset(state, promptText) {
   state.flMode = detectFlMode(promptText);
   state.swarmInitialized = false;
   state.hiveInitialized = false;
+  // #1297 — arm/disarm SDD implement gate per prompt; fresh run has no active slug.
+  state.sddMode = detectSddMode(promptText);
+  state.activeSddSlug = null;
 }
 var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\\s+(?:run\\s+)?(?:test|t)(?:[:\\s]|$)|\\b(?:npx|pnpx)\\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\\b|(?:^|;|&&|\\|\\|)\\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\\s|\\b(?:cargo|go|deno|dotnet|mvn)\\s+test\\b|\\bgradle\\w*\\s+test\\b/i;
 var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
+// #1297 — path-inert dirs (.github/workflows etc.); SYNC: mirrors bin/gate.cjs EDIT_RESET_SKIP_PATH_RE.
+var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\\\\/])\\.github[\\\\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\\\\/.]|$)/i;
 // Test files: invalidate testsRun but preserve simplifyRun (#908) — /simplify
 // already reviewed the production code, touching tests/fixtures doesn't expose
 // new untested surface for code review.
@@ -625,6 +699,34 @@ switch (command) {
       s.lastResetBy = { file: fp, at: new Date().toISOString(), gates: gates };
     }
     writeState(s);
+    break;
+  }
+  case 'check-before-implement': {
+    // #1297 — SDD front-half backstop. Block source Write/Edit until a spec
+    // exists and its plan is reviewed, when the run is armed for SDD. SYNC:
+    // mirrors bin/gate.cjs. Disarmed (non-SDD) runs pass instantly.
+    if (!config.sdd_gate) break;
+    var si = readState();
+    if (!si.sddMode) break;
+    var fpi = process.env.TOOL_INPUT_file_path || '';
+    if (!fpi) break;
+    if (EXEMPT.some(function (e) { return fpi.indexOf(e) >= 0; })) break;
+    if (!SOURCE_FILE_RE.test(fpi)) break;
+    if (EDIT_RESET_SKIP_PATH_RE.test(fpi)) break;
+    if (isInsideSpecsDir(fpi)) break;
+    if (!si.activeSddSlug) {
+      process.stderr.write('BLOCKED: SDD mode is on — author a spec before editing source.\\n' +
+        'Run: flo sdd spec "<title>"   (then review it, and plan)\\n' +
+        'One-off skip: re-run with --no-sdd. Disable via moflo.yaml: gates: sdd_gate: false\\n');
+      process.exit(2);
+    }
+    if (!isPlanReviewed(si.activeSddSlug)) {
+      process.stderr.write('BLOCKED: SDD — the plan for "' + si.activeSddSlug + '" is not reviewed yet.\\n' +
+        '  flo sdd plan ' + si.activeSddSlug + '\\n' +
+        '  flo sdd review ' + si.activeSddSlug + ' plan\\n' +
+        'One-off skip: re-run with --no-sdd. Disable via moflo.yaml: gates: sdd_gate: false\\n');
+      process.exit(2);
+    }
     break;
   }
   case 'check-before-pr': {

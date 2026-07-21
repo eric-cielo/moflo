@@ -225,6 +225,21 @@ export interface MofloConfig {
      * cross-platform via split+join (Rule #1), never string-concatenated (#1294).
      */
     specs_dir: string;
+    /**
+     * true ⇒ the SDD cycle pauses for human approval at the spec and plan
+     * review checkpoints. Default false — moflo stays autonomous; the front
+     * half self-advances its review checkpoints. Flip to true to sit in the
+     * loop and approve each artifact by hand (#1297).
+     */
+    human_checkpoints: boolean;
+    /**
+     * true ⇒ /flo appends the spec + plan (as a collapsible section) to the
+     * PR body, so the reasoning is reviewable even when specs stay local and
+     * gitignored. Default true — costs nothing and keeps `specs_dir` free to
+     * remain out of source control (#1297). Orthogonal to `specs_dir`: point
+     * that at a tracked path AND embed, or leave specs local and embed only.
+     */
+    embed_in_pr: boolean;
   };
 
   /** Auto-merge the PR at the end of a full /flo run (#1285). */
@@ -351,6 +366,8 @@ const DEFAULT_CONFIG: MofloConfig = {
   sdd: {
     default: false,
     specs_dir: '.moflo/specs',
+    human_checkpoints: false,
+    embed_in_pr: true,
   },
   merge: {
     auto: false,
@@ -592,6 +609,11 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
         && (raw.sdd?.specs_dir ?? raw.sdd?.specsDir).trim())
         ? (raw.sdd?.specs_dir ?? raw.sdd?.specsDir).trim()
         : DEFAULT_CONFIG.sdd.specs_dir,
+      // Accept snake_case or camelCase; default false (autonomous) / true (embed).
+      human_checkpoints: (raw.sdd?.human_checkpoints ?? raw.sdd?.humanCheckpoints)
+        ?? DEFAULT_CONFIG.sdd.human_checkpoints,
+      embed_in_pr: (raw.sdd?.embed_in_pr ?? raw.sdd?.embedInPr)
+        ?? DEFAULT_CONFIG.sdd.embed_in_pr,
     },
     merge: {
       auto: raw.merge?.auto ?? DEFAULT_CONFIG.merge.auto,
@@ -843,6 +865,10 @@ sdd:
   specs_dir: .moflo/specs        # where flo sdd writes spec/plan artifacts. Default is local + gitignored
                                  # (no source-control bloat). Set a tracked path (e.g. docs/specs) to make
                                  # specs reviewable in PRs. Written with / — resolved cross-platform (#1294).
+  human_checkpoints: false       # true = pause for human approval at spec & plan review. Default false =
+                                 # autonomous; the front half self-advances its review checkpoints (#1297).
+  embed_in_pr: true              # true = append spec+plan to the PR body so reasoning is reviewable even
+                                 # when specs stay local/gitignored. Orthogonal to specs_dir (#1297).
 
 # Auto-merge the PR at the end of a full /flo run once preconditions are met (#1285).
 # Opt-in; default false. Override per-run with --merge / --no-merge.

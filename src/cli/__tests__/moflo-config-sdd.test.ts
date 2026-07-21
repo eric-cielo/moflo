@@ -62,3 +62,38 @@ describe('moflo-config: sdd.specs_dir', () => {
     expect(config.merge.auto).toBe(true);
   });
 });
+
+describe('moflo-config: sdd.human_checkpoints + embed_in_pr (#1297)', () => {
+  let root: string;
+  beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'moflo-config-sdd2-')); });
+  afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('defaults human_checkpoints=false, embed_in_pr=true', () => {
+    const cfg = loadMofloConfig(root).sdd;
+    expect(cfg.human_checkpoints).toBe(false);
+    expect(cfg.embed_in_pr).toBe(true);
+  });
+
+  it('honors explicit snake_case values', async () => {
+    await writeFile(join(root, 'moflo.yaml'), 'sdd:\n  human_checkpoints: true\n  embed_in_pr: false\n');
+    const cfg = loadMofloConfig(root).sdd;
+    expect(cfg.human_checkpoints).toBe(true);
+    expect(cfg.embed_in_pr).toBe(false);
+  });
+
+  it('accepts camelCase aliases', async () => {
+    await writeFile(join(root, 'moflo.yaml'), 'sdd:\n  humanCheckpoints: true\n  embedInPr: false\n');
+    const cfg = loadMofloConfig(root).sdd;
+    expect(cfg.human_checkpoints).toBe(true);
+    expect(cfg.embed_in_pr).toBe(false);
+  });
+
+  it('leaves specs_dir + default intact', async () => {
+    await writeFile(join(root, 'moflo.yaml'), 'sdd:\n  default: true\n  human_checkpoints: true\n');
+    const cfg = loadMofloConfig(root).sdd;
+    expect(cfg.default).toBe(true);
+    expect(cfg.specs_dir).toBe('.moflo/specs');
+    expect(cfg.human_checkpoints).toBe(true);
+    expect(cfg.embed_in_pr).toBe(true);
+  });
+});

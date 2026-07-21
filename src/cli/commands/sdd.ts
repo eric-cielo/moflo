@@ -14,12 +14,14 @@
  *   flo sdd status <slug>            Show one unit's spec/plan status
  *   flo sdd list                     List every spec slug
  *   flo sdd path <slug> [spec|plan]  Print the artifact path (for skill shell-out)
+ *   flo sdd embed <slug>             Print spec+plan as a PR-body block (#1297)
  *   flo sdd index                    Re-index specs into memory now (also runs at session start)
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { locateMofloRootPath } from '../services/moflo-require.js';
@@ -39,6 +41,35 @@ import { defaultPlanBody, defaultSpecBody } from '../sdd/templates.js';
 
 function projectRoot(ctx: CommandContext): string {
   return findProjectRoot({ cwd: ctx.cwd });
+}
+
+/**
+ * Stamp the active SDD slug into `.claude/workflow-state.json` so the
+ * `check-before-implement` gate (#1297) knows which unit this run is building.
+ * Read-merge-write to preserve every other gate flag. Best-effort: a failure
+ * here must never block spec authoring, so errors are swallowed. Cross-platform:
+ * path via `join`, dir created recursively (Rule #1).
+ */
+function stampActiveSlug(root: string, slug: string): void {
+  try {
+    const statePath = join(root, '.claude', 'workflow-state.json');
+    let state: Record<string, unknown> = {};
+    if (existsSync(statePath)) {
+      try {
+        state = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
+      } catch {
+        state = {};
+      }
+    }
+    state.sddMode = true;
+    state.activeSddSlug = slug;
+    mkdirSync(dirname(statePath), { recursive: true });
+    // Atomic write — the gate hook writes this same file; a plain writeFileSync
+    // racing it can leave torn JSON the gate then fails to parse (reuse #1297).
+    atomicWriteFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch {
+    /* stamping is best-effort — never block the spec on it */
+  }
 }
 
 function parseKindArg(raw: string | undefined, fallback: SddArtifactKind): SddArtifactKind {
@@ -68,6 +99,10 @@ function cmdSpec(ctx: CommandContext): CommandResult {
     return { success: false, exitCode: 1 };
   }
   const slug = typeof ctx.flags.slug === 'string' ? slugify(ctx.flags.slug) : slugify(title);
+
+  // Arm the implement gate for this unit (#1297) — whether we (re)author the
+  // spec or it already exists, this run is now building `slug`.
+  stampActiveSlug(root, slug);
 
   const existing = readArtifact(root, slug, 'spec');
   if (existing && !ctx.flags.force) {
@@ -224,6 +259,42 @@ function cmdPath(ctx: CommandContext): CommandResult {
   return { success: true };
 }
 
+/**
+ * Print a collapsible Markdown block containing the spec + plan for a slug, for
+ * `/flo` to append to the PR body (#1297, option B). This makes the SDD
+ * reasoning reviewable in the PR even when `specs_dir` stays local/gitignored —
+ * orthogonal to pointing `specs_dir` at a tracked path. Emits nothing (exit 0)
+ * when no spec exists, so the skill can pipe it unconditionally.
+ */
+function cmdEmbed(ctx: CommandContext): CommandResult {
+  const root = projectRoot(ctx);
+  const slug = slugify(ctx.args[1] || '');
+  if (!slug || slug === 'untitled') {
+    console.log('Usage: flo sdd embed <slug>');
+    return { success: false, exitCode: 1 };
+  }
+  const spec = readArtifact(root, slug, 'spec');
+  if (!spec) {
+    // No spec — nothing to embed. Silent success so `/flo` can call it blindly.
+    return { success: true, data: { slug, embedded: false } };
+  }
+  const plan = readArtifact(root, slug, 'plan');
+  const parts: string[] = [
+    '<details>',
+    '<summary>📋 SDD spec &amp; plan</summary>',
+    '',
+    `### Spec — ${spec.title} (${spec.status})`,
+    '',
+    spec.body.trim(),
+  ];
+  if (plan) {
+    parts.push('', `### Plan (${plan.status})`, '', plan.body.trim());
+  }
+  parts.push('', '</details>');
+  console.log(parts.join('\n'));
+  return { success: true, data: { slug, embedded: true, hasPlan: !!plan } };
+}
+
 function cmdIndex(ctx: CommandContext): CommandResult {
   const root = projectRoot(ctx);
   const indexer = locateMofloRootPath(join('bin', 'index-guidance.mjs'));
@@ -250,6 +321,7 @@ Spec-Driven Development artifacts (.moflo/specs/<slug>/{spec,plan}.md):
   status <slug>            Show one unit's spec/plan status
   list                     List every spec slug
   path <slug> [spec|plan]  Print the artifact path
+  embed <slug>             Print spec+plan as a collapsible block for the PR body
   index                    Re-index specs into memory now`;
 
 const sddCommand: Command = {
@@ -281,6 +353,8 @@ const sddCommand: Command = {
         return cmdList(ctx);
       case 'path':
         return cmdPath(ctx);
+      case 'embed':
+        return cmdEmbed(ctx);
       case 'index':
         return cmdIndex(ctx);
       default:

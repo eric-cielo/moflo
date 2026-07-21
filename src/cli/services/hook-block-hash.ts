@@ -113,7 +113,7 @@ const autoMemory = (sub: string, timeout: number) => helperHook('auto-memory-hoo
 export function getReferenceHookBlock(): HooksTree {
   return {
     PreToolUse: [
-      { matcher: '^(Write|Edit|MultiEdit)$', hooks: [handler('post-edit', 5000)] },
+      { matcher: '^(Write|Edit|MultiEdit)$', hooks: [gateHook('check-before-implement', 3000), handler('post-edit', 5000)] },
       { matcher: '^(Glob|Grep)$',             hooks: [gateHook('check-before-scan', 3000)] },
       { matcher: '^Read$',                    hooks: [gateHook('check-before-read', 3000)] },
       {

@@ -11,14 +11,18 @@ The artifact model, paths, and CLI live in `src/cli/sdd/` (`flo sdd …`). The c
 
 ## The `--sdd` cycle
 
-Artifacts live at `<specs_dir>/<slug>/{spec,plan}.md` — default `.moflo/specs`, which is **gitignored** (local, not in PRs). Set `moflo.yaml sdd.specs_dir` to a tracked path (e.g. `docs/specs`) to make them reviewable (#1294). Drive them with the `flo sdd` CLI; never hand-write the paths.
+Artifacts live at `<specs_dir>/<slug>/{spec,plan}.md` — default `.moflo/specs`, which is **gitignored** (local, not committed). By default (`sdd.embed_in_pr: true`) the spec + plan are appended to the PR body, so the reasoning is **reviewable in the PR even while specs stay local**. To source-control the artifacts instead (or as well), set `moflo.yaml sdd.specs_dir` to a tracked path (e.g. `docs/specs`) and commit them (#1294). Drive them with the `flo sdd` CLI; never hand-write the paths.
+
+**The front half is enforced, not advisory (#1297).** When a run is armed for SDD (`-sd`/`--sdd` or `sdd.default`), the `check-before-implement` gate **blocks every source `Write`/`Edit`** until a spec exists for the active slug and its plan is `reviewed`. Skipping straight to implementation is not possible — do the spec→plan steps first. `flo sdd spec` stamps the active slug so the gate knows which unit this run is building. One-off escape hatch: re-run with `--no-sdd`; per-project off-switch: `gates: sdd_gate: false`.
 
 1. **Spec** — capture the *what* + acceptance criteria:
    ```bash
-   flo sdd spec "<issue title>"          # scaffolds .moflo/specs/<slug>/spec.md
+   flo sdd spec "<issue title>"          # scaffolds .moflo/specs/<slug>/spec.md; arms the gate
    ```
    Fill Problem / Goal / Scope / **Acceptance Criteria** (the criteria verify checks against). For an issue, the ticket's Acceptance Criteria seed this section.
-2. **Review checkpoint (spec → plan)** — confirm the spec is right, then:
+2. **Review checkpoint (spec → plan)** — the behavior depends on `sdd.human_checkpoints` (default **false**):
+   - **false (autonomous, default):** self-advance — you author the spec, sanity-check it, then run `flo sdd review <slug>` yourself and continue. No stop.
+   - **true (human in the loop):** present the spec to the user and **wait for approval** before running `flo sdd review <slug>`.
    ```bash
    flo sdd review <slug>                 # marks spec reviewed; unlocks the plan
    ```
@@ -26,13 +30,17 @@ Artifacts live at `<specs_dir>/<slug>/{spec,plan}.md` — default `.moflo/specs`
    ```bash
    flo sdd plan <slug>                   # requires the spec be reviewed
    ```
-4. **Review checkpoint (plan → implement)**:
+4. **Review checkpoint (plan → implement)** — same `human_checkpoints` rule as step 2 (self-advance when false; pause for approval when true):
    ```bash
    flo sdd review <slug> plan            # marks plan reviewed; unlocks implementation
    flo sdd check <slug> implement        # gate — exit 2 until the plan is reviewed
    ```
-5. **Implement → test → simplify** — the normal `./phases.md` flow, honoring the plan.
+5. **Implement → test → simplify** — the normal `./phases.md` flow, honoring the plan. The implement gate now passes (spec + reviewed plan exist).
 6. **Verify** — see below (always runs under `--sdd`).
+7. **Embed in PR** — when `sdd.embed_in_pr` is true (default), append the spec+plan block to the PR body at `gh pr create` time:
+   ```bash
+   flo sdd embed <slug>                  # prints a collapsible spec+plan block; pipe into the PR body
+   ```
 
 Specs/plans are indexed into memory on session start, so `mcp__moflo__memory_search` surfaces prior specs across sessions — search before authoring a new one.
 
