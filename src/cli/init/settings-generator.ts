@@ -256,7 +256,12 @@ function generateHooksConfig(config: HooksConfig): object {
     hooks.PreToolUse = [
       {
         matcher: '^(Write|Edit|MultiEdit)$',
-        hooks: [{ type: 'command', command: hookHandlerCmd('post-edit'), timeout: 5000 }],
+        hooks: [
+          // #1297 — SDD implement gate: block source edits until spec+plan are
+          // reviewed, when the run is armed for SDD. No-op for non-SDD runs.
+          { type: 'command', command: gateHookCmd('check-before-implement'), timeout: 3000 },
+          { type: 'command', command: hookHandlerCmd('post-edit'), timeout: 5000 },
+        ],
       },
       {
         matcher: '^(Glob|Grep)$',

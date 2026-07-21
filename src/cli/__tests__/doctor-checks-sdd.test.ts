@@ -18,12 +18,12 @@ function wireProject(opts: {
 } = {}): void {
   const helpers = join(root, '.claude', 'helpers');
   mkdirSync(helpers, { recursive: true });
-  const cases = opts.gateCases ?? ['check-before-done', 'record-verify-run'];
+  const cases = opts.gateCases ?? ['check-before-done', 'record-verify-run', 'check-before-implement'];
   writeFileSync(
     join(helpers, 'gate.cjs'),
     cases.map((c) => `case '${c}': { break; }`).join('\n'),
   );
-  const tokens = opts.settingsTokens ?? ['check-before-done', 'record-verify-run'];
+  const tokens = opts.settingsTokens ?? ['check-before-done', 'record-verify-run', 'check-before-implement'];
   writeFileSync(
     join(root, '.claude', 'settings.json'),
     JSON.stringify({ hooks: { note: tokens.join(' ') } }),
