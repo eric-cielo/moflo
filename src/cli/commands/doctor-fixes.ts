@@ -627,6 +627,15 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       const { computeSddVerifyRequirements } = await import('./doctor-checks-sdd.js');
       const before = computeSddVerifyRequirements(projectDir);
 
+      // Uninitialised `.claude/` — the graft path below assumes settings.json +
+      // gate.cjs already exist, and every `missing*` array is empty when nothing
+      // is on disk. Run the check's own remediation (`npx moflo init`) instead,
+      // preserving the pre-#1301 generic-fallthrough behavior this named handler
+      // now intercepts.
+      if (before.uninitialised) {
+        return runFixCommand('npx moflo init');
+      }
+
       if (before.missingHooks.length === 0 && before.missingGateCases.length === 0 && before.structural.length === 0) {
         return true; // nothing outstanding
       }
@@ -658,7 +667,9 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
           };
           if (scoped.missing.length > 0) {
             applyAdditiveRegeneration(settings, scoped);
-            writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+            // Atomic swap — settings.json is actively re-read by Claude Code, so
+            // a concurrent reader must never see a truncated file (#1015).
+            atomicWriteFileSync(settingsPath, JSON.stringify(settings, null, 2));
           }
         } catch (e) {
           output.writeln(output.warning(`  settings.json hook repair failed: ${errorDetail(e)}`));

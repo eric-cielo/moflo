@@ -9,10 +9,23 @@
  *   - actually graft the missing SDD/verify reference entries + re-verify from
  *     disk on an unlocked block, returning TRUE only when the wiring landed.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+// Stub the subprocess runner so the uninitialised path delegates to a mock
+// instead of spawning a real `npx moflo init` (slow/networked/flaky in CI).
+// vi.hoisted so the fn exists when the hoisted vi.mock factory references it.
+const { runCommandMock } = vi.hoisted(() => ({
+  runCommandMock: vi.fn(async () => {
+    throw new Error('init blocked in test');
+  }),
+}));
+vi.mock('../../commands/doctor-checks-runtime.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../commands/doctor-checks-runtime.js')>();
+  return { ...actual, runCommand: runCommandMock };
+});
 
 import { autoFixCheck } from '../../commands/doctor-fixes.js';
 
@@ -66,6 +79,23 @@ describe('SDD + Verify Wiring auto-fix (#1301)', () => {
     expect(ok).toBe(false);
     // The locked block is left byte-for-byte untouched.
     expect(readFileSync(join(tmpDir, '.claude', 'settings.json'), 'utf8')).toBe(before);
+  });
+
+  it('does not falsely report success on an uninitialised project (#1301 review)', async () => {
+    // No .claude/ at all. The named handler must NOT short-circuit to true —
+    // every missing* array is empty when nothing is on disk. It must delegate to
+    // `npx moflo init` (the check's own remediation), not silently claim "Fixed".
+    writeFileSync(join(tmpDir, 'moflo.yaml'), 'project:\n  name: t\n');
+    runCommandMock.mockClear();
+
+    const ok = await autoFixCheck(CHECK);
+
+    // The mocked init throws → runFixCommand returns false → honest result.
+    expect(ok).toBe(false);
+    expect(runCommandMock).toHaveBeenCalledTimes(1);
+    expect(runCommandMock.mock.calls[0][0]).toBe('npx moflo init');
+    // settings.json was never conjured by a short-circuit.
+    expect(existsSync(join(tmpDir, '.claude', 'settings.json'))).toBe(false);
   });
 
   it('wires the missing verify hooks and reports true on an unlocked block', async () => {
