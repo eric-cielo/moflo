@@ -60,10 +60,11 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  // Note: verify_before_done defaults to FALSE (opt-in) — the only gate that
-  // ships off, so existing consumers see zero behavior change on upgrade
-  // (Story #1274, Epic #1269). Every other gate is opt-out (default true).
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: false };
+  // verify_before_done is opt-OUT (default true), like every other gate: #1294
+  // ships a real /verify skill and has /flo delegate to it, so leaving it off by
+  // default would make the default /flo run silently skip the acceptance check.
+  // Disable per-project with `verify_before_done: false` or per-run `--no-verify`.
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true };
   try {
     var yamlPath = path.join(PROJECT_DIR, 'moflo.yaml');
     if (fs.existsSync(yamlPath)) {
@@ -75,8 +76,8 @@ function loadGateConfig() {
       if (/simplify_gate:\s*false/i.test(content)) defaults.simplify_gate = false;
       if (/learnings_gate:\s*false/i.test(content)) defaults.learnings_gate = false;
       if (/swarm_invocation_gate:\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
-      // Opt-in: enable only when explicitly set true.
-      if (/verify_before_done:\s*true/i.test(content)) defaults.verify_before_done = true;
+      // Opt-out: on by default; disable only when explicitly set false.
+      if (/verify_before_done:\s*false/i.test(content)) defaults.verify_before_done = false;
     }
   } catch (e) { /* use defaults */ }
   return defaults;
@@ -763,12 +764,13 @@ switch (command) {
     process.exit(2);
   }
   case 'check-before-done': {
-    // Story #1274 (Epic #1269). Verify-before-done: block `gh pr create` until
-    // the change has been verified end-to-end (native /verify skill) against the
-    // plan's acceptance criteria. OFF by default — only enforced when the
-    // consumer opts in via moflo.yaml `gates: verify_before_done: true`, so
-    // existing installs see zero change on upgrade. Same trigger + no-source
-    // exemption as check-before-pr, so the two gates compose on one command.
+    // Story #1274 (Epic #1269) + #1294. Verify-before-done: block `gh pr create`
+    // until the change has been verified end-to-end (the /verify skill) against
+    // the plan's acceptance criteria. ON by default (#1294) — /flo delegates to
+    // /verify, so a default run does the acceptance check; disable per-project
+    // with `gates: verify_before_done: false` or per-run `--no-verify`. Same
+    // trigger + no-source exemption as check-before-pr, so they compose on one
+    // command (docs-only diffs are exempt, so this never blocks a docs PR).
     if (!config.verify_before_done) break;
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;

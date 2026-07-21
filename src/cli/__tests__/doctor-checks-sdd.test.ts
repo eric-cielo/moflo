@@ -49,12 +49,22 @@ describe('checkSddVerifyWiring', () => {
     expect(r.message).toMatch(/not initialised/);
   });
 
-  it('passes when gate cases + settings hooks are present (toggles off)', async () => {
+  it('passes with verify ENFORCED by default when wiring is present (no gates block)', async () => {
+    // #1294 — verify_before_done defaults true, so an absent gates block still enforces.
     wireProject({ yaml: 'project:\n  name: t\n' });
     const r = await checkSddVerifyWiring();
     expect(r.status).toBe('pass');
     expect(r.message).toMatch(/sdd\.default=false/);
+    expect(r.message).toMatch(/gates\.verify_before_done=true/);
+    expect(r.message).toMatch(/ENFORCED/);
+  });
+
+  it('passes without ENFORCED when verify is opted out (verify_before_done: false)', async () => {
+    wireProject({ yaml: 'project:\n  name: t\ngates:\n  verify_before_done: false\n' });
+    const r = await checkSddVerifyWiring();
+    expect(r.status).toBe('pass');
     expect(r.message).toMatch(/gates\.verify_before_done=false/);
+    expect(r.message).not.toMatch(/ENFORCED/);
   });
 
   it('reports ENFORCED when verify_before_done is on', async () => {
@@ -64,8 +74,9 @@ describe('checkSddVerifyWiring', () => {
     expect(r.message).toMatch(/ENFORCED/);
   });
 
-  it('warns on missing gate case when nobody opted in', async () => {
-    wireProject({ gateCases: ['record-verify-run'], yaml: 'project:\n  name: t\n' });
+  it('warns on missing gate case when verify is opted out (not enforced)', async () => {
+    // Opted out → a missing case bites nobody yet, so warn (not fail).
+    wireProject({ gateCases: ['record-verify-run'], yaml: 'project:\n  name: t\ngates:\n  verify_before_done: false\n' });
     const r = await checkSddVerifyWiring();
     expect(r.status).toBe('warn');
     expect(r.message).toMatch(/check-before-done/);

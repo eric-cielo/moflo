@@ -265,7 +265,7 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: false };
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true };
   try {
     var yamlPath = path.join(PROJECT_DIR, 'moflo.yaml');
     if (fs.existsSync(yamlPath)) {
@@ -277,7 +277,8 @@ function loadGateConfig() {
       if (/simplify_gate:\\s*false/i.test(content)) defaults.simplify_gate = false;
       if (/learnings_gate:\\s*false/i.test(content)) defaults.learnings_gate = false;
       if (/swarm_invocation_gate:\\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
-      if (/verify_before_done:\\s*true/i.test(content)) defaults.verify_before_done = true;
+      // Opt-out: on by default (#1294); disable only when explicitly set false.
+      if (/verify_before_done:\\s*false/i.test(content)) defaults.verify_before_done = false;
     }
   } catch (e) { /* use defaults */ }
   return defaults;
@@ -628,9 +629,9 @@ switch (command) {
     process.exit(2);
   }
   case 'check-before-done': {
-    // Story #1274 (Epic #1269) — verify-before-done. OFF unless the consumer
-    // opts in via moflo.yaml gates.verify_before_done: true, so existing installs
-    // see zero change. Same 'gh pr create' trigger as check-before-pr. This
+    // Story #1274 (Epic #1269) + #1294 — verify-before-done. ON by default
+    // (#1294); disable via moflo.yaml gates.verify_before_done: false or per-run
+    // --no-verify. Same 'gh pr create' trigger as check-before-pr. This
     // template variant intentionally omits the no-source (docs-only) exemption to
     // stay consistent with THIS file's simpler check-before-pr; the full exemption
     // lives in the source bin/gate.cjs that the launcher syncs over this fallback.

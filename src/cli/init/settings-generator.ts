@@ -274,9 +274,9 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [
           { type: 'command', command: gateHookCmd('check-dangerous-command'), timeout: 2000 },
           { type: 'command', command: gateHookCmd('check-before-pr'), timeout: 2000 },
-          // Story #1274 (Epic #1269) — verify-before-done. Inert unless the
-          // consumer sets `gates: verify_before_done: true`; gates `gh pr create`
-          // the same as check-before-pr, so both live on this Bash/PowerShell block.
+          // Story #1274 (Epic #1269) + #1294 — verify-before-done. On by default
+          // (#1294); disable with `gates: verify_before_done: false`. Gates
+          // `gh pr create` like check-before-pr, so both live on this Bash/PowerShell block.
           { type: 'command', command: gateHookCmd('check-before-done'), timeout: 2000 },
           // #1132 — moved from PostToolUse so process.exit(2) actually blocks
           // read-like shell commands that bypass the Read/Glob/Grep gates.

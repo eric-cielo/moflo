@@ -61,6 +61,46 @@ describe('paths (cross-platform)', () => {
   });
 });
 
+describe('specsRoot honors sdd.specs_dir (#1294)', () => {
+  const writeYaml = (body: string) => writeFileSync(join(root, 'moflo.yaml'), body);
+
+  it('defaults to .moflo/specs with no config', () => {
+    expect(specsRoot(root)).toBe(join(root, '.moflo', 'specs'));
+  });
+
+  it('honors a configured tracked path', () => {
+    writeYaml('sdd:\n  specs_dir: docs/specs\n');
+    expect(specsRoot(root)).toBe(join(root, 'docs', 'specs'));
+  });
+
+  it('resolves a /-written value cross-platform (split + join, never concatenate)', () => {
+    writeYaml('sdd:\n  specs_dir: a/b/c\n');
+    // Tail uses the OS separator — the yaml slash never leaks into the path.
+    expect(specsRoot(root)).toBe(join(root, 'a', 'b', 'c'));
+    expect(specsRoot(root).endsWith(join('a', 'b', 'c'))).toBe(true);
+  });
+
+  it('accepts camelCase specsDir', () => {
+    writeYaml('sdd:\n  specsDir: .specs\n');
+    expect(specsRoot(root)).toBe(join(root, '.specs'));
+  });
+
+  it('falls back to the default on a parent-escaping value', () => {
+    writeYaml('sdd:\n  specs_dir: ../outside\n');
+    expect(specsRoot(root)).toBe(join(root, '.moflo', 'specs'));
+  });
+
+  it('falls back to the default on an absolute value', () => {
+    writeYaml('sdd:\n  specs_dir: /etc/moflo\n');
+    expect(specsRoot(root)).toBe(join(root, '.moflo', 'specs'));
+  });
+
+  it('falls back to the default on an empty value', () => {
+    writeYaml('sdd:\n  specs_dir: ""\n');
+    expect(specsRoot(root)).toBe(join(root, '.moflo', 'specs'));
+  });
+});
+
 describe('serialize / parse round-trip', () => {
   it('round-trips an artifact with a title containing a colon', () => {
     const artifact = newArtifact('spec', 'Feature: X', defaultSpecBody('Feature: X'), {
