@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync, execFileSync, spawn, spawnSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { tmpdir } from 'os';
 
@@ -366,6 +366,15 @@ describe('gate.cjs: check-before-scan', () => {
     expect(r.exitCode).toBe(0);
   });
 
+  it('exempts scans under the OS temp dir (Finding 3, #1294)', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_path = join(tmpdir(), 'claude-1000', 'scratch');
+    const r = runGate('check-before-scan', env);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toContain('BLOCKED');
+  });
+
   it('allows when memoryRequired is false', () => {
     writeState(tmpDir, { memoryRequired: false, memorySearched: false });
     const env = baseEnv(tmpDir);
@@ -412,6 +421,54 @@ describe('gate.cjs: check-before-read', () => {
     env.TOOL_INPUT_file_path = '/project/.claude/settings.json';
     const r = runGate('check-before-read', env);
     expect(r.exitCode).toBe(0);
+  });
+
+  it('exempts ephemeral reads under the OS temp dir (Finding 3, #1294)', () => {
+    // Background-task output / scratchpad files are transient tool I/O — reading
+    // them must not demand a memory search. os.tmpdir() is the same in the gate
+    // subprocess as here, so a path under it is recognised as ephemeral.
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = join(tmpdir(), 'claude-1000', 'proj', 'sess', 'tasks', 'abc.output');
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toContain('BLOCKED');
+  });
+
+  it('still blocks a real project file whose name merely contains "tmp"', () => {
+    // Guard against an over-broad substring match — /project/tmp-notes.md is NOT
+    // under the OS temp dir, so it stays gated.
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/tmp-notes.md';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(2);
+  });
+
+  it('exempts a tmp path even when it contains ".claude/guidance/" (ephemeral check runs first)', () => {
+    // Ordering regression guard: isEphemeralPath must win over the guidance check.
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = join(tmpdir(), '.claude', 'guidance', 'foo.md');
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('still gates a symlink under tmp that dereferences to a real project file (Rule #2 realpath)', () => {
+    // A link staged in tmp pointing at a real file must NOT be exempted — realpath
+    // escapes tmp, so the gate still applies. (Symlink creation needs privileges
+    // on Windows; skip gracefully there rather than fail.)
+    const link = join(tmpDir, 'sneaky-link.ts');
+    try {
+      symlinkSync(__filename, link); // __filename is a real repo file, not under os.tmpdir()
+    } catch {
+      return; // no symlink privilege (Windows) — nothing to assert
+    }
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = link;
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(2);
   });
 
   it('does NOT exempt .claude/guidance/ from read gate', () => {
