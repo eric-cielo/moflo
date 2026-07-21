@@ -223,7 +223,7 @@ gh pr create --title "type(scope): description" --body "## Summary
 Closes #<issue-number>"
 ```
 
-**Under `--sdd` (#1297):** when `sdd.embed_in_pr` is true (default), append the spec+plan to the PR body so the reasoning is reviewable in the PR even when specs stay local/gitignored. Run `flo sdd embed <slug>` and include its output at the end of the `--body`. For large specs, write the combined body to a file and use `--body-file <path>` (Rule #1 — no heredoc/`printf`). See `./sdd.md` step 7.
+**Under `--sdd` (#1297):** when `sdd.embed_in_pr` is true (default), append the spec+plan to the PR body so the reasoning is reviewable in the PR even when specs stay local/gitignored. Run `flo sdd embed <slug>`, read its printed output from the tool result, and paste it as literal text at the end of the PR body — do **not** use shell command substitution (`$(...)`) or heredoc/`printf`, none of which are portable (Rule #1). The robust path on every OS: write the full body (summary + embed block) to a file with the Write tool, then `gh pr create --body-file <path>`. See `./sdd.md` step 7.
 
 ### 5.4 Update issue status
 ```bash
