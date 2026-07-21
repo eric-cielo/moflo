@@ -302,7 +302,7 @@
       "MultiEdit(*)",
       "Glob(*)",
       "Grep(*)",
-      "mcp__moflo__:*"
+      "mcp__moflo"
     ],
     "deny": [
       "Read(./.env)",

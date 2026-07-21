@@ -32,7 +32,11 @@ export function generateSettings(options: InitOptions): object {
       'MultiEdit(*)',
       'Glob(*)',
       'Grep(*)',
-      'mcp__moflo__:*',
+      // Approve every moflo MCP tool. Claude Code does NOT support wildcards in
+      // MCP permission rules — the bare `mcp__<server>` prefix is the canonical
+      // "all tools from this server" form. The prior `mcp__moflo__:*` matched no
+      // real tool name, so every mcp__moflo__ call fell through to a prompt.
+      'mcp__moflo',
     ],
     deny: [
       'Read(./.env)',
