@@ -640,6 +640,17 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'TypeScript',       // a fresh consumer fixture in os.tmpdir() has no tsc on PATH
                       // (pre-#1088 the fixture lived inside the moflo repo and
                       // inherited the repo's node_modules/.bin/tsc via npx walk-up)
+  // Write-through propagation-race checks (#1111/#1120/#1206): on a cold,
+  // resource-starved CI runner an immediate get after a successful set can
+  // return exists=false, then land on a bounded retry. The check classifies
+  // that lagged-but-landed case as a WARN by design ("write-through works,
+  // propagation just lagged") — not a regression. A genuine write-through
+  // break stays a hard FAIL, which --allow-warn does NOT suppress, so
+  // allowlisting these warns cannot hide a real swarm/hive-mind regression.
+  // Without these, a stressed Ubuntu leg flakes the release-smoke gate
+  // (observed: 4.11.10-rc.8 publish, consumer/ubuntu-latest).
+  'Hive-Mind Functional',
+  'Memory Access Functional',
 ];
 
 export function doctor(consumerDir) {
