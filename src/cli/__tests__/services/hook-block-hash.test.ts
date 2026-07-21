@@ -31,6 +31,21 @@ describe('hook-block-hash — reference parity with settings-generator', () => {
     const reference = getReferenceHookBlock();
     expect(computeHookBlockHash(reference)).toBe(computeHookBlockHash(settings.hooks));
   });
+
+  // Regression: the generated permissions must auto-approve every moflo MCP
+  // tool. Claude Code does NOT support wildcards in MCP permission rules, so the
+  // bare `mcp__moflo` server prefix is the ONLY correct "all tools" form. The
+  // prior `mcp__moflo__:*` matched no real tool name and silently prompted the
+  // user for every mcp__moflo__ call in every consumer install.
+  it('permissions.allow auto-approves all moflo MCP tools via the bare server prefix', () => {
+    const settings = generateSettings(DEFAULT_INIT_OPTIONS) as {
+      permissions?: { allow?: string[] };
+    };
+    const allow = settings.permissions?.allow ?? [];
+    expect(allow).toContain('mcp__moflo');
+    // No malformed pattern-style MCP rule (wildcards are unsupported for MCP).
+    expect(allow.some(rule => /^mcp__moflo__.*[:*]/.test(rule))).toBe(false);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
