@@ -19,8 +19,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { locateMofloRootPath } from '../services/moflo-require.js';
@@ -63,7 +64,9 @@ function stampActiveSlug(root: string, slug: string): void {
     state.sddMode = true;
     state.activeSddSlug = slug;
     mkdirSync(dirname(statePath), { recursive: true });
-    writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf-8');
+    // Atomic write — the gate hook writes this same file; a plain writeFileSync
+    // racing it can leave torn JSON the gate then fails to parse (reuse #1297).
+    atomicWriteFileSync(statePath, JSON.stringify(state, null, 2));
   } catch {
     /* stamping is best-effort — never block the spec on it */
   }
