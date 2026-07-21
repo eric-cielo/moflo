@@ -9,6 +9,8 @@ Defaults seed from `moflo.yaml` (`sdd.default` = false, `gates.verify_before_don
 
 The artifact model, paths, and CLI live in `src/cli/sdd/` (`flo sdd …`). The constitution layer (CLAUDE.md + `.claude/guidance/`) is referenced by every stage — never restated in a spec.
 
+> **Memory-first for SDD mechanics (do not bulk-read the guidance doc).** The authoritative SDD rules live in the **indexed** guidance doc `.claude/guidance/moflo-sdd.md`. Reach the slice you need via `mcp__moflo__memory_search { namespace: "guidance", query: "sdd <topic>" }` and traverse chunks with `mcp__moflo__memory_get_neighbors` — do **not** `Read` the whole `moflo-sdd.md` to find a rule (that is the anti-pattern #1292 fixes: with `-sd` enabled the operator read the entire doc instead of searching for the part it needed). **This file** (`./sdd.md`) is the skill's own companion runbook — it lives under `.claude/skills/`, is *not* indexed, and so is `Read` directly. See `SKILL.md` Step 0.
+
 ## The `--sdd` cycle
 
 Artifacts live at `<specs_dir>/<slug>/{spec,plan}.md` — default `.moflo/specs`, which is **gitignored** (local, not committed). By default (`sdd.embed_in_pr: true`) the spec + plan are appended to the PR body, so the reasoning is **reviewable in the PR even while specs stay local**. To source-control the artifacts instead (or as well), set `moflo.yaml sdd.specs_dir` to a tracked path (e.g. `docs/specs`) and commit them (#1294). Drive them with the `flo sdd` CLI; never hand-write the paths.
@@ -42,7 +44,7 @@ Artifacts live at `<specs_dir>/<slug>/{spec,plan}.md` — default `.moflo/specs`
    flo sdd embed <slug>                  # prints a collapsible spec+plan block; pipe into the PR body
    ```
 
-Specs/plans are indexed into memory on session start, so `mcp__moflo__memory_search` surfaces prior specs across sessions — search before authoring a new one.
+**Search memory before authoring (see `SKILL.md` Step 0).** Specs/plans are indexed into memory on session start, so `mcp__moflo__memory_search { namespace: "guidance" }` surfaces prior specs across sessions — search before authoring a new one rather than starting cold, and reach any SDD rule you need the same way instead of reading `.claude/guidance/moflo-sdd.md` end-to-end.
 
 ## The `--verify` step (verify-before-done)
 
