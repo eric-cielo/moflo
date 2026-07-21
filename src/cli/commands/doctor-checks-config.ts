@@ -91,6 +91,65 @@ export async function checkStatusLine(): Promise<HealthCheck> {
   }
 }
 
+/**
+ * #1300 — the generated `.claude/settings.json` must auto-approve every moflo
+ * MCP tool via the bare `mcp__moflo` server prefix.
+ *
+ * Claude Code does NOT support wildcards in MCP permission rules. The bare
+ * `mcp__<server>` prefix is the only "all tools from this server" form;
+ * `mcp__server__tool` names a single tool. The settings-generator historically
+ * emitted `mcp__moflo__:*`, a wildcard attempt that matches no real tool name,
+ * so every `mcp__moflo__…` call fell through to a permission prompt in every
+ * consumer install (the generator is fixed going forward, but already-generated
+ * settings.json files still carry the stale rule until repaired).
+ *
+ * Detection is deliberately narrow — it fires ONLY on a malformed pattern-style
+ * rule (`mcp__moflo__` followed by a `:` or `*` wildcard), never on a valid
+ * exact-tool rule like `mcp__moflo__memory_store` (which a consumer may list
+ * intentionally). The companion auto-fix (`fixMcpToolPermissions` in
+ * doctor-fixes.ts) drops the malformed rule(s) and ensures the bare prefix.
+ *
+ * Status semantics:
+ *   - pass — no `.claude/settings.json` (fresh fixture; nothing we own to
+ *     assert), OR the file carries no malformed `mcp__moflo__*` pattern rule.
+ *   - warn — a malformed `mcp__moflo__…` wildcard rule is present. Auto-fixable.
+ */
+const MALFORMED_MOFLO_MCP_RULE = /^mcp__moflo__.*[:*]/;
+
+export async function checkMcpToolPermissions(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const name = 'MCP Tool Permissions';
+  const settingsPath = join(cwd, '.claude', 'settings.json');
+  if (!existsSync(settingsPath)) {
+    return { name, status: 'pass', message: 'No .claude/settings.json (nothing to verify)' };
+  }
+
+  let allow: string[];
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      permissions?: { allow?: unknown };
+    };
+    const raw = settings.permissions?.allow;
+    allow = Array.isArray(raw) ? raw.filter((r): r is string => typeof r === 'string') : [];
+  } catch {
+    // Malformed settings.json is owned by checkStatusLine — don't double-report.
+    return { name, status: 'pass', message: 'settings.json unreadable (reported by Status Line)' };
+  }
+
+  const malformed = allow.filter(rule => MALFORMED_MOFLO_MCP_RULE.test(rule));
+  if (malformed.length > 0) {
+    return {
+      name,
+      status: 'warn',
+      message:
+        `Malformed moflo MCP permission rule (Claude Code has no MCP wildcards): ${malformed.join(', ')} — ` +
+        `matches no real tool name, so every moflo MCP call prompts. Use the bare \`mcp__moflo\` prefix.`,
+      fix: 'flo healer --fix -c mcp-permissions',
+    };
+  }
+
+  return { name, status: 'pass', message: 'moflo MCP tools auto-approved (no malformed rule)' };
+}
+
 // Delegates to daemon-lock module for proper PID + command-line verification
 // (avoids Windows PID-recycling false positives).
 export async function checkDaemonStatus(): Promise<HealthCheck> {

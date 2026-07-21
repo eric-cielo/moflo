@@ -42,6 +42,7 @@ import {
   checkDaemonStatus,
   checkDaemonWriteRouting,
   checkMcpServers,
+  checkMcpToolPermissions,
   checkMemoryDatabase,
   checkMemoryDbIntegrity,
   checkMemoryFirstGate,
@@ -83,6 +84,10 @@ export const allChecks: CheckFn[] = [
   // #1229 — loud tripwire for a silently-disabled memory_first gate.
   checkMemoryFirstGate,
   checkStatusLine,
+  // #1300 — standing detector for a malformed moflo MCP permission rule in
+  // .claude/settings.json (the `mcp__moflo__:*` wildcard that Claude Code can't
+  // match, so every moflo MCP call prompts). Cheap: one settings.json read.
+  checkMcpToolPermissions,
   checkDaemonStatus,
   checkDaemonVersionSkew,
   checkDaemonIdentity,
@@ -192,6 +197,9 @@ export const componentMap: Record<string, CheckFn> = {
   'hygiene': checkEmbeddingHygiene,
   'git': checkGit,
   'mcp': checkMcpServers,
+  'mcp-permissions': checkMcpToolPermissions,
+  'mcp-perms': checkMcpToolPermissions,
+  'mcp-tool-permissions': checkMcpToolPermissions,
   'disk': checkDiskSpace,
   'typescript': checkBuildTools,
   'tests': checkTestDirs,

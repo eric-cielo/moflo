@@ -745,6 +745,36 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     'Nested .moflo/ Islands': async () => {
       return fixNestedMofloIslands();
     },
+    // #1300 — rewrite a malformed moflo MCP permission rule in
+    // .claude/settings.json. Claude Code has no MCP wildcards, so the stale
+    // `mcp__moflo__:*` (and any `mcp__moflo__…[:*]` pattern) matched no tool and
+    // every moflo MCP call prompted. Drop the malformed rule(s), ensure the bare
+    // `mcp__moflo` prefix (approves all tools), and preserve any valid exact-tool
+    // rules the consumer added. Atomic swap so Claude Code re-reading settings
+    // mid-fix never sees a truncated file.
+    'MCP Tool Permissions': async () => {
+      const settingsPath = join(process.cwd(), '.claude', 'settings.json');
+      if (!existsSync(settingsPath)) return false;
+      try {
+        const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+          permissions?: { allow?: unknown };
+        };
+        const perms = (settings.permissions ??= {});
+        const rawAllow = Array.isArray(perms.allow) ? perms.allow : [];
+        const malformed = /^mcp__moflo__.*[:*]/;
+        const cleaned = rawAllow.filter(
+          (r): r is string => typeof r === 'string' && !malformed.test(r),
+        );
+        if (!cleaned.includes('mcp__moflo')) cleaned.push('mcp__moflo');
+        perms.allow = cleaned;
+        atomicWriteFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+        output.writeln(output.dim('  Rewrote moflo MCP permission to the bare `mcp__moflo` prefix.'));
+        return true;
+      } catch (e) {
+        output.writeln(output.warning(`  MCP permission repair failed: ${errorDetail(e)}`));
+        return false;
+      }
+    },
     'Status Line': async () => {
       const settingsPath = join(process.cwd(), '.claude', 'settings.json');
       if (!existsSync(settingsPath)) return false;
