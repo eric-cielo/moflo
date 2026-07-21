@@ -18,9 +18,18 @@ PR is never blocked.
 
 - **Opt out** per project with `gates: verify_before_done: false` in
   `moflo.yaml`, or per run with `--no-verify`.
-- **Migration:** consumers whose `moflo.yaml` has no `gates.verify_before_done`
-  key start enforcing on upgrade. Consumers with an explicit value keep it (we
-  never rewrite user config). To keep the old behavior, set it to `false`.
+- **Migration (automatic, one-time):** on the first session-start after upgrade,
+  moflo carries existing projects onto the new default:
+  - No `gates.verify_before_done` key → enforces via the new default.
+  - The **auto-written template default** (`verify_before_done: false` still
+    carrying its generated `opt-in` comment — from the brief window when `flo
+    init` shipped it false) is flipped to `true` **once**, recorded in
+    `.moflo/migrations.json`. Erring toward *more* verification is safe; silently
+    dropping it is the dangerous direction.
+  - A **deliberately hand-set** `false` (bare, or with your own comment) is
+    **left untouched** — and because the flip is ledger-gated to run exactly
+    once, turning verify off later is never overwritten by a future upgrade.
+  - To keep verify off, set `gates: verify_before_done: false`.
 
 ### Added — `/verify` skill + configurable SDD spec location (#1294)
 
