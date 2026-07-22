@@ -32,16 +32,15 @@ import {
 import { MIGRATED_FROM_KNOWLEDGE } from '../../../bin/migrations/lib/markers.mjs';
 
 /**
- * Kill every background process the launcher spawned so byte-stability
- * assertions don't race the indexer chain's `saveDb` writes. The launcher
- * tracks daemon + indexer PIDs in `.moflo/background-pids.json`; this
- * walks the registry and tree-kills each entry, then waits for them to
- * actually exit.
+ * Kill every background process the launcher spawned so row-count assertions
+ * don't race the indexer chain's `saveDb` writes. The launcher tracks daemon +
+ * indexer PIDs in `.moflo/background-pids.json`; this walks the registry and
+ * tree-kills each entry, then waits for them to actually exit.
  *
- * Without this, `populated:active-rows-preserved` and
- * `populated:clobber-mofloDb-untouched` are timing flakes — the indexer's
- * orphan cleanup deletes seeded rows mid-assertion, and pretrain /
- * build-embeddings rewrite `.moflo/moflo.db` between the byte captures.
+ * Without this, `populated:active-rows-preserved` is a timing flake — the
+ * indexer's orphan cleanup deletes seeded rows mid-assertion. (The MCP-clobber
+ * check no longer needs strict quiescence: it asserts on LOGICAL content, not
+ * raw bytes, so a straggler indexer rewriting pages cannot flip its verdict.)
  */
 function quiesceLauncherBackground(consumerDir) {
   const registry = join(consumerDir, MOFLO_DIR, 'background-pids.json');
@@ -71,44 +70,6 @@ function quiesceLauncherBackground(consumerDir) {
   // dead entries and skip themselves.
   try { writeFileSync(registry, '[]'); } catch { /* non-fatal */ }
   return killed;
-}
-
-/**
- * Drain the launcher's fire-and-forget background writers to TRUE quiescence
- * before capturing a byte-stability baseline for `.moflo/moflo.db`.
- *
- * `quiesceLauncherBackground` alone has a TOCTOU hole: the daemon can spawn an
- * indexer child (pretrain / build-embeddings → `saveDb`) AFTER quiesce has
- * already read `background-pids.json`, so that child survives the kill and
- * rewrites `.moflo/moflo.db` mid-assertion. Because it rewrites SQLite pages in
- * place, the file length is unchanged — producing the same-length,
- * different-content mismatch that made `populated:clobber-mofloDb-untouched` a
- * documented timing flake (`880640 → 880640 bytes`).
- *
- * This loops quiesce until it kills nothing AND `moflo.db` stays byte-identical
- * across a settle interval for two consecutive rounds, proving no live writer
- * remains. Returns the settled bytes (or the last read on timeout). It only
- * kills processes — it never rewrites the DB — so it cannot mask the real
- * hazard the caller then measures (the long-lived legacy flush's effect).
- */
-async function drainBackgroundWriters(consumerDir, mofloDb, { settleMs = 400, maxRounds = 15 } = {}) {
-  const readDb = () => { try { return readFileSync(mofloDb); } catch { return null; } };
-  let prev = readDb();
-  let quietRounds = 0;
-  for (let round = 0; round < maxRounds; round++) {
-    const killed = quiesceLauncherBackground(consumerDir);
-    await new Promise(r => setTimeout(r, settleMs));
-    const cur = readDb();
-    const bytesStable = prev && cur && prev.equals(cur);
-    if (killed === 0 && bytesStable) {
-      // Two consecutive quiet rounds (no kills, no byte drift) = quiesced.
-      if (++quietRounds >= 2) return cur;
-    } else {
-      quietRounds = 0;
-    }
-    prev = cur;
-  }
-  return prev;
 }
 
 const ACTIVE_NAMESPACES = ['guidance', 'patterns', 'code-map', 'tests', 'knowledge', 'learnings', 'default'];
@@ -966,44 +927,29 @@ try {
   const launcherResult = runNode(launcher, [], { cwd: consumerDir, timeout: 60_000 });
   recordExit('populated:clobber-launcher', launcherResult);
 
-  // Quiesce the launcher's fire-and-forget daemon/indexer/pretrain tasks —
-  // otherwise their concurrent writes to .moflo/moflo.db would race with the
-  // long-lived flush and produce false-positive byte mismatches.
-  // `flo daemon stop` only kills the daemon process; the index-all chain
-  // (pretrain → build-embeddings → hnsw-rebuild) is a separate process
-  // tree, so we drain everything in `.moflo/background-pids.json` too.
+  // Quiesce the launcher's fire-and-forget daemon/indexer/pretrain tasks
+  // before inspecting `.moflo/moflo.db`. `flo daemon stop` only kills the
+  // daemon process; the index-all chain (pretrain → build-embeddings →
+  // hnsw-rebuild) is a separate process tree, so we also kill everything in
+  // `.moflo/background-pids.json`. This is best-effort — the assertion below
+  // reads LOGICAL content, not raw bytes, so a straggler indexer that rewrites
+  // SQLite pages (or appends embeddings) cannot flip the verdict.
   flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
+  quiesceLauncherBackground(consumerDir);
 
   const mofloDb = memoryDbPath(consumerDir);
-  // A single quiesce pass races late-spawned indexer children (TOCTOU on the
-  // pid registry); drain to settled byte-stability so the baseline can't be
-  // rewritten out from under us mid-assertion. See drainBackgroundWriters.
-  const postLauncherBytes = await drainBackgroundWriters(consumerDir, mofloDb);
-  if (!postLauncherBytes) {
-    record('populated:clobber-mofloDb-untouched', 'fail',
-      `${MOFLO_DIR}/${MEMORY_DB_FILE} unreadable post-launcher`);
-  }
 
-  // 'close' fires after all stdio streams are drained — 'exit' fires when
-  // the process terminates but stdout chunks may still be in flight. We need
-  // every byte of stdout to land before reading `stdout` for assertions.
+  // The hazard is only exercised once the long-lived's whole-file writeback to
+  // the legacy path completes, so wait for it before inspecting moflo.db.
+  // 'close' fires after all stdio streams are drained — 'exit' fires when the
+  // process terminates but stdout chunks may still be in flight. We need every
+  // byte of stdout to land before reading `stdout` for the FLUSHED guard.
   await new Promise(resolve => {
     const timer = setTimeout(() => { forceKill(longLived); resolve(); }, 15_000);
     longLived.on('close', () => { clearTimeout(timer); resolve(); });
   });
   rmSync(longLivedPath, { force: true });
-  rmSync(markerPath, { force: true });
   recordSample('mcp-clobber-longlived', stderr);
-
-  if (!postLauncherBytes) return;
-
-  let postFlushBytes;
-  try { postFlushBytes = readFileSync(mofloDb); }
-  catch (err) {
-    record('populated:clobber-mofloDb-untouched', 'fail',
-      `cannot reread ${MOFLO_DIR}/${MEMORY_DB_FILE}: ${err.message}`);
-    return;
-  }
 
   // The long-lived MUST have actually attempted its write — otherwise the
   // assertion is a no-op. Only the FLUSHED branch exercises the hazard.
@@ -1012,21 +958,64 @@ try {
     const stderrTail = stderr ? `; stderr: ${stderr.trim().slice(0, 300)}` : '';
     let markerTail = '';
     try { markerTail = `; marker: ${readFileSync(markerPath, 'utf8').trim().replace(/\n/g, '|')}`; } catch { /* no marker */ }
+    rmSync(markerPath, { force: true });
     record('populated:clobber-mofloDb-untouched', 'fail',
       `long-lived never flushed (exit=${exitCode}; stdout: ${stdout.trim().slice(0, 200)}${stderrTail}${markerTail})`);
     return;
   }
+  rmSync(markerPath, { force: true });
 
-  // The launcher's relocated file should be byte-stable. The long-lived's
-  // legacy snapshot would have ~640KB of pre-#728 schema rows — if the
-  // assertion ever flips, that snapshot has overwritten the launcher's
-  // post-purge content.
-  if (postLauncherBytes.equals(postFlushBytes)) {
+  if (!existsSync(mofloDb)) {
+    record('populated:clobber-mofloDb-untouched', 'fail',
+      `${MOFLO_DIR}/${MEMORY_DB_FILE} missing post-flush`);
+    return;
+  }
+
+  // Assert on LOGICAL content, not raw bytes. A clobber — the legacy snapshot's
+  // whole-file writeback overwriting the launcher's relocated moflo.db — is
+  // unambiguous logically: the legacy `.swarm/memory.db` carries pre-purge rows
+  // the launcher removes on relocation, namely `knowledge`-namespace rows
+  // (migrated away, #750) and soft-deleted tombstones (purged, #728). If either
+  // reappears, moflo.db was overwritten with legacy content.
+  //
+  // A raw byte-identity check false-positived here: the launcher's background
+  // embedder legitimately rewrites moflo.db pages (appending embeddings,
+  // cleaning orphans) after relocation, so any indexer straggler touching the
+  // file mid-assertion flipped the verdict (same-length page rewrites AND
+  // length-changing embedding appends both observed in CI). A background
+  // indexer can never REINTRODUCE legacy `knowledge`/`deleted` rows, so the
+  // logical signature is immune to that race. The probe force-checkpoints WAL →
+  // main before reading so the snapshot is coherent (see inspectPostStateDb).
+  const sig = runSqliteProbe(consumerDir, 'clobber-signature', `
+{
+  const { DatabaseSync: _Sync } = await import('node:sqlite');
+  const _db = new _Sync(${JSON.stringify(mofloDb)});
+  try { _db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* DELETE mode → no-op */ }
+  _db.close();
+}
+const SQL = await sqlInit();
+const db = new SQL.Database(readFileSync(${JSON.stringify(mofloDb)}));
+const scalar = (q) => { const r = db.exec(q); return r[0] ? r[0].values[0][0] : 0; };
+const out = {
+  knowledgeRows: scalar("SELECT COUNT(*) FROM memory_entries WHERE namespace='knowledge'"),
+  deletedRows: scalar("SELECT COUNT(*) FROM memory_entries WHERE status='deleted'"),
+  totalRows: scalar("SELECT COUNT(*) FROM memory_entries"),
+};
+db.close();
+emit(out);
+`);
+  if (!sig) {
+    // runSqliteProbe already recorded `clobber-signature:probe` fail with detail.
+    record('populated:clobber-mofloDb-untouched', 'fail',
+      `could not read ${MOFLO_DIR}/${MEMORY_DB_FILE} logical state post-flush`);
+    return;
+  }
+  if (sig.knowledgeRows === 0 && sig.deletedRows === 0) {
     record('populated:clobber-mofloDb-untouched', 'pass',
-      `${MOFLO_DIR}/${MEMORY_DB_FILE} unchanged after legacy-snapshot flush`);
+      `launcher post-purge content survived legacy-snapshot flush (${sig.totalRows} rows; no knowledge/deleted resurfaced)`);
   } else {
     record('populated:clobber-mofloDb-untouched', 'fail',
-      `${MOFLO_DIR}/${MEMORY_DB_FILE} mutated by legacy flush (${postLauncherBytes.length} → ${postFlushBytes.length} bytes)`);
+      `${MOFLO_DIR}/${MEMORY_DB_FILE} clobbered by legacy flush — legacy rows resurfaced (knowledge=${sig.knowledgeRows}, deleted=${sig.deletedRows})`);
   }
 }
 
