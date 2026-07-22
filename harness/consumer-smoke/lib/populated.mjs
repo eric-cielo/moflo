@@ -73,6 +73,44 @@ function quiesceLauncherBackground(consumerDir) {
   return killed;
 }
 
+/**
+ * Drain the launcher's fire-and-forget background writers to TRUE quiescence
+ * before capturing a byte-stability baseline for `.moflo/moflo.db`.
+ *
+ * `quiesceLauncherBackground` alone has a TOCTOU hole: the daemon can spawn an
+ * indexer child (pretrain / build-embeddings → `saveDb`) AFTER quiesce has
+ * already read `background-pids.json`, so that child survives the kill and
+ * rewrites `.moflo/moflo.db` mid-assertion. Because it rewrites SQLite pages in
+ * place, the file length is unchanged — producing the same-length,
+ * different-content mismatch that made `populated:clobber-mofloDb-untouched` a
+ * documented timing flake (`880640 → 880640 bytes`).
+ *
+ * This loops quiesce until it kills nothing AND `moflo.db` stays byte-identical
+ * across a settle interval for two consecutive rounds, proving no live writer
+ * remains. Returns the settled bytes (or the last read on timeout). It only
+ * kills processes — it never rewrites the DB — so it cannot mask the real
+ * hazard the caller then measures (the long-lived legacy flush's effect).
+ */
+async function drainBackgroundWriters(consumerDir, mofloDb, { settleMs = 400, maxRounds = 15 } = {}) {
+  const readDb = () => { try { return readFileSync(mofloDb); } catch { return null; } };
+  let prev = readDb();
+  let quietRounds = 0;
+  for (let round = 0; round < maxRounds; round++) {
+    const killed = quiesceLauncherBackground(consumerDir);
+    await new Promise(r => setTimeout(r, settleMs));
+    const cur = readDb();
+    const bytesStable = prev && cur && prev.equals(cur);
+    if (killed === 0 && bytesStable) {
+      // Two consecutive quiet rounds (no kills, no byte drift) = quiesced.
+      if (++quietRounds >= 2) return cur;
+    } else {
+      quietRounds = 0;
+    }
+    prev = cur;
+  }
+  return prev;
+}
+
 const ACTIVE_NAMESPACES = ['guidance', 'patterns', 'code-map', 'tests', 'knowledge', 'learnings', 'default'];
 // Skip-embedding set (matches EPHEMERAL_NAMESPACES in src/cli/memory/bridge-embedder.ts).
 const EPHEMERAL_NAMESPACES = ['hive-mind', 'tasklist', 'epic-state', 'test-bridge-fix'];
@@ -933,16 +971,17 @@ try {
   // long-lived flush and produce false-positive byte mismatches.
   // `flo daemon stop` only kills the daemon process; the index-all chain
   // (pretrain → build-embeddings → hnsw-rebuild) is a separate process
-  // tree, so we tree-kill everything in `.moflo/background-pids.json` too.
+  // tree, so we drain everything in `.moflo/background-pids.json` too.
   flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
-  quiesceLauncherBackground(consumerDir);
 
   const mofloDb = memoryDbPath(consumerDir);
-  let postLauncherBytes;
-  try { postLauncherBytes = readFileSync(mofloDb); }
-  catch (err) {
+  // A single quiesce pass races late-spawned indexer children (TOCTOU on the
+  // pid registry); drain to settled byte-stability so the baseline can't be
+  // rewritten out from under us mid-assertion. See drainBackgroundWriters.
+  const postLauncherBytes = await drainBackgroundWriters(consumerDir, mofloDb);
+  if (!postLauncherBytes) {
     record('populated:clobber-mofloDb-untouched', 'fail',
-      `${MOFLO_DIR}/${MEMORY_DB_FILE} unreadable post-launcher: ${err.message}`);
+      `${MOFLO_DIR}/${MEMORY_DB_FILE} unreadable post-launcher`);
   }
 
   // 'close' fires after all stdio streams are drained — 'exit' fires when
