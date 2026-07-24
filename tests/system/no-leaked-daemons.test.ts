@@ -47,11 +47,12 @@ function sourceTreeDaemons(): number {
   } catch {
     return -1; // ps unavailable — caller skips
   }
+  // Match `daemon start` as a contiguous phrase, not two independent
+  // substrings — `l.includes('daemon') && l.includes('start')` would also match
+  // an unrelated command that happened to mention both words.
   return out
     .split(/\r?\n/)
-    .filter((l) => l.includes(needle) && l.includes('daemon') && l.includes('start'))
-    // Exclude our own `ps` pipeline / shell, whose argv contains the needle.
-    .filter((l) => !l.includes('-eo') && !l.includes('ps '))
+    .filter((l) => l.includes(needle) && /\bdaemon\s+start\b/.test(l))
     .length;
 }
 
@@ -85,7 +86,10 @@ describe('no leaked daemons from CLI subprocesses', () => {
         }
       }
 
-      // Autostart is fire-and-forget; give a spawn time to appear if it happened.
+      // Autostart is fire-and-forget, so a spawn needs a moment to become
+      // visible to `ps`. Sleep via a node subprocess rather than `sleep` — the
+      // latter does not exist on Windows, and this file's other assertions are
+      // POSIX-gated but the delay should not be the reason why (Rule #1).
       execFileSync(process.execPath, ['-e', 'setTimeout(()=>{},1500)'], { timeout: 10_000 });
 
       expect(
