@@ -113,6 +113,20 @@ describe('computeExcludedSkills', () => {
     for (const skill of ALWAYS_INSTALLED_SKILLS) expect(excluded).not.toContain(skill);
   });
 
+  it('an EXPLICIT empty list excludes every category — not the same as unconfigured', () => {
+    // `categories: []` is a real "bare minimum" selection; omitting the block
+    // is "no restriction". Conflating them would either strip every skill from
+    // consumers who never opted in, or silently ignore an explicit request.
+    const explicitlyEmpty = computeExcludedSkills([], INTERNAL_SKILLS);
+    const unconfigured = computeExcludedSkills(null, INTERNAL_SKILLS);
+
+    for (const skills of Object.values(SKILLS_MAP)) {
+      for (const s of skills) expect(explicitlyEmpty).toContain(s);
+    }
+    expect([...unconfigured].sort()).toEqual([...INTERNAL_SKILLS].sort());
+    expect(explicitlyEmpty.size).toBeGreaterThan(unconfigured.size);
+  });
+
   it('selecting every category excludes nothing beyond INTERNAL_SKILLS', () => {
     const excluded = computeExcludedSkills([...SKILL_CATEGORY_NAMES], INTERNAL_SKILLS);
     expect([...excluded].sort()).toEqual([...INTERNAL_SKILLS].sort());
