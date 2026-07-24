@@ -50,6 +50,19 @@ process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 // surviving load. Production never sets this env var.
 process.env.MOFLO_TEST_TRUST_DAEMON_PID = '1';
 
+// Skip the CLI's daemon autostart. Tests that shell out to `bin/cli.js` inside
+// a throwaway tmp project hit `maybeAutoStartDaemon` with DEFAULT_CONFIG
+// (`daemon.auto_start: true`), which spawns a detached + unref'd daemon. The
+// test then removes its tmp dir and the daemon survives with a deleted cwd —
+// permanently orphaned, since there is no lockfile left to contend for and no
+// project root to match it to. These accumulated across suite runs into dozens
+// of ~87MB processes that only `doctor --fix` reaped.
+//
+// Subprocesses inherit this via `{ ...process.env }`, which is what makes it
+// reach the spawned CLI. A test that genuinely wants autostart deletes it in
+// its own `beforeEach`, same as the two vars below.
+process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART = '1';
+
 // #1150 — skip the same-project orphan scan in `acquireDaemonLock` for the
 // same reasons as TRUST_DAEMON_PID above: the PowerShell/CIM enumeration on
 // Windows is expensive and tests using synthetic tempDir-rooted "daemons"
@@ -72,5 +85,8 @@ beforeEach(() => {
   }
   if (process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN !== '1') {
     process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = '1';
+  }
+  if (process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART !== '1') {
+    process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART = '1';
   }
 });

@@ -529,6 +529,21 @@ export class CLI {
    * Non-blocking — fires and forgets. Errors are silently swallowed.
    */
   private async maybeAutoStartDaemon(): Promise<void> {
+    // Test-only kill switch. A test that shells the CLI into a throwaway tmp
+    // project gets `daemon.auto_start: true` from DEFAULT_CONFIG (no moflo.yaml
+    // there to say otherwise), so EVERY such invocation spawned a detached,
+    // unref'd daemon. When the test then removed its tmp dir, the daemon
+    // survived holding a deleted cwd — no lockfile left to contend for, no
+    // project root to match, so nothing ever reclaimed it. One full suite run
+    // leaked several; they accumulated across runs into dozens of ~87MB
+    // processes that only `doctor --fix` could reap.
+    //
+    // Set in vitest.setup.ts alongside MOFLO_TEST_TRUST_DAEMON_PID and
+    // MOFLO_TEST_SKIP_ORPHAN_SCAN. Subprocesses inherit it, which is what makes
+    // it reach the spawned CLI. Production never sets it; a test that genuinely
+    // wants autostart can delete it in its own beforeEach, same as the others.
+    if (process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART === '1') return;
+
     const config = loadMofloConfig(process.cwd());
     if (!config.daemon.auto_start) return;
 
