@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
-import { applyRetiredPrune } from './lib/retired-files.mjs';
+import { applyRetiredPrune, writeRetainedRecord, reconcileRetainedRecord, RETAINED_RECORD_REL } from './lib/retired-files.mjs';
 import { makeSyncer, contentEqual, syncDirRecursive } from './lib/file-sync.mjs';
 import { INTERNAL_SKILLS } from './lib/internal-skills.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
@@ -1292,17 +1292,51 @@ try {
             `${plural(report.pruned.length, 'file')} matching known-shipped content removed`,
           );
         }
+        // Always reconcile the retained record — including writing none when
+        // nothing is retained, so a record from a previous run doesn't outlive
+        // the files it names (#1307 finding 3).
+        //
+        // The version is only read when there is actually something to record.
+        // Nothing-retained is the overwhelmingly common case, and this runs on
+        // every session start in every consumer — an unconditional read +
+        // JSON.parse here would be pure hot-path waste.
+        //
+        // Read locally rather than reusing §2's `installedVersion`: that
+        // binding is scoped to the auto-update branch, and an out-of-scope
+        // reference would be swallowed by the surrounding catch as a bogus
+        // "prune skipped" warning.
+        let recordVersion;
+        if (report.preservedDetails.length > 0) {
+          try {
+            recordVersion = JSON.parse(readFileSync(
+              resolve(projectRoot, 'node_modules/moflo/package.json'), 'utf-8',
+            )).version;
+          } catch { /* record just omits the version */ }
+        }
+        const retainedRecordPath = writeRetainedRecord(
+          projectRoot,
+          report.preservedDetails,
+          recordVersion,
+        );
         if (report.preserved.length > 0) {
           // stdout (not stderr) so Claude sees this in `additionalContext`
           // and can surface to the user — these aren't failures, just
           // consumer-customized files we deliberately left alone.
+          //
+          // The banner samples; the full list goes to the record file. Before
+          // the record existed the truncated banner was the ONLY place these
+          // paths appeared, and it scrolls away — so "delete manually" wasn't
+          // actionable past the 5th entry.
           const sample = report.preserved.slice(0, 5).map((p) => `  - ${p}`).join('\n');
           const more = report.preserved.length > 5
             ? `\n  …and ${report.preserved.length - 5} more`
             : '';
+          const where = retainedRecordPath
+            ? `\n  full list: ${RETAINED_RECORD_REL}`
+            : '';
           try {
             process.stdout.write(
-              `moflo: retained ${plural(report.preserved.length, 'customized retired file')} (delete manually if unwanted):\n${sample}${more}\n`,
+              `moflo: retained ${plural(report.preserved.length, 'customized retired file')} (delete manually if unwanted):\n${sample}${more}${where}\n`,
             );
           } catch { /* non-fatal */ }
         }
@@ -2389,6 +2423,26 @@ if (upgradeNoticeContext) {
 // moment this version's files are in place (see commitVersionStamp). #730 is
 // preserved because that commit is gated on sync success; every stage after the
 // sync block runs unconditionally + idempotently each session.
+
+// ── 3g-1307. Keep the retained-retired record honest every session ──────────
+// The record is WRITTEN in §3's upgrade branch (that is where the retired-file
+// prune runs), but it must not survive the files it names — a user who reads
+// it and deletes those files would otherwise keep a record listing them until
+// their next moflo upgrade. Reconciling here, unconditionally, closes that.
+// Costs one existsSync when no record is present, which is the normal state.
+try {
+  const rec = reconcileRetainedRecord(projectRoot);
+  if (rec.changed) {
+    emitMutation(
+      'reconciled retained-retired record',
+      rec.remaining === 0
+        ? 'all retained files removed by the user — record dropped'
+        : `${plural(rec.removed.length, 'entry')} dropped, ${rec.remaining} still retained`,
+    );
+  }
+} catch (err) {
+  emitWarning(`retained-record reconcile skipped (${errMessage(err)})`);
+}
 
 // ── 3h. Clear bootstrap sentinel if section-3 sync resolved it (#975) ───────
 // Section 3 above re-attempts the same file copies the bootstrap was supposed
