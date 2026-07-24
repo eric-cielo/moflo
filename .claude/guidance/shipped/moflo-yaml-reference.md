@@ -123,14 +123,54 @@ auto_update:
   helpers: true                          # Sync .claude/helpers/ from moflo source
   hook_block_drift: regenerate           # warn | regenerate | off (default: regenerate since #1227)
   claudemd_injection_drift: regenerate   # warn | regenerate | off
+
+# Which skill categories to install (OPTIONAL — omit to get every skill)
+skills:
+  categories: [core, memory, spells]     # core | memory | spells
 ```
 
 If your `moflo.yaml` predates the `sandbox:` or `auto_update:` blocks, they are auto-appended on the next session start — you never need to re-run `moflo init` after a version bump.
+
+### Narrowing Installed Skills with `skills.categories`
+
+**Omit the `skills:` block entirely to receive every moflo skill — that is the default and the recommended setting.** Add `skills.categories` only when you want a smaller always-resident skill listing, and expect to lose the commands in the categories you drop.
+
+Every installed skill's name and description sit in Claude's context in every session, so a project that will never author a spell can reclaim that space. The cost is real but small — the full set is roughly 2,000 tokens.
+
+| Category | Skills | Drop it when |
+|----------|--------|--------------|
+| `core` | `/fl`, `/healer`, `/verify`, `/flo-simplify`, `/eldar`, `/quicken`, `/ward`, `/divine`, `/meditate`, `/guidance`, `/commune`, `/luminarium` | Never — these are the everyday commands |
+| `memory` | `/memory-patterns`, `/vector-search`, `/memory-optimization`, `/memory-team`, `/memory-worktree` | You are not building on moflo's memory stack and have finished any team/worktree sharing setup |
+| `spells` | `/spell-builder`, `/spell-schedule`, `/connector-builder` | You do not author or schedule spells in this project |
+
+Both YAML list styles work:
+
+```yaml
+skills:
+  categories: [core, memory]
+```
+
+```yaml
+skills:
+  categories:
+    - core
+    - memory
+```
+
+**Key behaviors:**
+
+- **Omitting `skills:` means no restriction.** Every shipped skill syncs on every session start, exactly as before this option existed.
+- **`/flo` and `/fl` are never gated.** The ticket spell is the primary entry point and installs regardless of selection.
+- **An unknown category name is ignored, not fatal.** A typo narrows nothing rather than silently stripping your skills.
+- **Narrowing stops future syncing; it does not delete.** Skills already on disk stay until you remove them — moflo will not re-add them once excluded, so delete the directories under `.claude/skills/` to reclaim the context.
+- **Re-widening is instant.** Add the category back and the next session start restores its skills.
 
 ### Key Behaviors
 
 | Config | Effect |
 |--------|--------|
+| `skills.categories` omitted | Install every skill (default) |
+| `skills.categories: [core]` | Install only core skills; `memory` + `spells` stop syncing |
 | `auto_index.guidance: false` | Skip guidance indexing on session start |
 | `auto_index.code_map: false` | Skip code map generation on session start |
 | `auto_meditate.enabled: false` | Opt out of automatic session-lesson distillation (`/meditate` still works manually) |

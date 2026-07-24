@@ -10,6 +10,8 @@ export {
   type InitResult,
   type HooksConfig,
   type SkillsConfig,
+  type SkillCategory,
+  SKILL_CATEGORIES,
   type CommandsConfig,
   type AgentsConfig,
   type StatuslineConfig,

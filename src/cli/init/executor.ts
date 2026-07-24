@@ -13,8 +13,8 @@ import { dirname } from 'path';
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import type { InitOptions, InitResult, PlatformInfo } from './types.js';
-import { detectPlatform, DEFAULT_INIT_OPTIONS } from './types.js';
+import type { InitOptions, InitResult, PlatformInfo, SkillCategory } from './types.js';
+import { detectPlatform, DEFAULT_INIT_OPTIONS, SKILL_CATEGORIES } from './types.js';
 import { generateSettingsJson, generateSettings } from './settings-generator.js';
 import { generateMCPJson } from './mcp-generator.js';
 import {
@@ -43,7 +43,9 @@ import { readMofloEnv } from '../services/env-compat.js';
 // cruft). New additions MUST pass the same audit, otherwise the drift-guard
 // test (skills-classification-drift.test.ts) fails. See INTERNAL_SKILLS for
 // skills that ship in the tarball but are deliberately NOT installed.
-export const SKILLS_MAP: Record<string, string[]> = {
+// Typed by SkillCategory (not `string`) so this map and `SkillsConfig` cannot
+// drift apart again — see SKILL_CATEGORIES in types.ts for what that drift cost.
+export const SKILLS_MAP: Record<SkillCategory, string[]> = {
   core: [
     'commune',
     'eldar',
@@ -1013,8 +1015,13 @@ async function copySkills(
     // Copy all available skills
     Object.values(SKILLS_MAP).forEach(skills => skillsToCopy.push(...skills));
   } else {
-    for (const [key, skills] of Object.entries(SKILLS_MAP)) {
-      if (skillsConfig[key as keyof typeof skillsConfig]) skillsToCopy.push(...skills);
+    // Iterate SKILL_CATEGORIES rather than Object.entries + a cast. The cast
+    // was what let `SKILLS_MAP`'s keys drift away from `SkillsConfig`'s without
+    // a type error, silently disabling the `memory` and `spells` categories
+    // (#1308). Indexing a typed Record by the category union needs no cast, so
+    // the compiler now enforces that every category is selectable.
+    for (const category of SKILL_CATEGORIES) {
+      if (skillsConfig[category]) skillsToCopy.push(...SKILLS_MAP[category]);
     }
   }
 

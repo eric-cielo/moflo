@@ -109,6 +109,10 @@ export const isolationTests = [
   // real subsystem; reliably fits in 10 s alone, can drift past full-suite
   // per-test ceilings under fork contention.
   'src/cli/__tests__/doctor-checks-memory-access.test.ts',
+  // #1308 — spawns the real launcher three times and copies the shipped skills
+  // tree per fixture. Same spawn-the-launcher profile #1310 showed exceeds its
+  // spawnSync timeout under parallel fork contention.
+  'tests/bin/launcher-1308-skill-selection.test.ts',
   // Issue #1310 — tests that `spawnSync` the REAL session-start launcher.
   //
   // Confirmed mechanism, not a guess: under full-suite fork contention

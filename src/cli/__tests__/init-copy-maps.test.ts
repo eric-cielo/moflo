@@ -119,11 +119,36 @@ describe('init copy maps — no hardcoded property access (structural regression
     expect(hardcodedAccess).toEqual([]);
   });
 
-  it('copy functions use Object.entries() for iteration', () => {
-    // Verify the pattern: for (const [key, ...] of Object.entries(COMMANDS_MAP))
+  it('copy functions iterate their map generically, never category by category', () => {
+    // The invariant is "adding a category requires no edit to the copy
+    // function" — the #690/#694 orphan class. `Object.entries(...)` is one way
+    // to satisfy it, not the invariant itself.
     expect(source).toContain('Object.entries(COMMANDS_MAP)');
-    expect(source).toContain('Object.entries(SKILLS_MAP)');
     expect(source).toContain('Object.entries(AGENTS_MAP)');
+
+    // copySkills iterates SKILL_CATEGORIES — the declared single source of
+    // truth — and indexes SKILLS_MAP dynamically (#1308). That is strictly
+    // stronger than Object.entries here: SKILLS_MAP is typed
+    // `Record<SkillCategory, string[]>`, so adding a category to
+    // SKILL_CATEGORIES makes a missing SKILLS_MAP key a COMPILE error, and
+    // vice versa. Object.entries could not catch that — and its inverse, a
+    // SKILLS_MAP key with no matching config key, is exactly the drift that
+    // silently disabled the `memory` and `spells` categories.
+    const iteratesGenerically =
+      source.includes('Object.entries(SKILLS_MAP)') ||
+      (source.includes('of SKILL_CATEGORIES') && source.includes('SKILLS_MAP[category]'));
+    expect(
+      iteratesGenerically,
+      'copySkills must iterate SKILLS_MAP generically (Object.entries, or SKILL_CATEGORIES + dynamic index)',
+    ).toBe(true);
+  });
+
+  it('SKILLS_MAP is typed by the category union so it cannot drift from the config', () => {
+    // Guards the #1308 root cause directly: a `Record<string, string[]>`
+    // annotation is what allowed SKILLS_MAP to hold keys the config never
+    // declared, with an `as keyof typeof` cast hiding the mismatch.
+    expect(source).toContain('Record<SkillCategory, string[]>');
+    expect(source).not.toContain('skillsConfig[key as keyof typeof skillsConfig]');
   });
 });
 

@@ -17,6 +17,7 @@ import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune, writeRetainedRecord, reconcileRetainedRecord, RETAINED_RECORD_REL } from './lib/retired-files.mjs';
 import { makeSyncer, contentEqual, syncDirRecursive } from './lib/file-sync.mjs';
 import { INTERNAL_SKILLS } from './lib/internal-skills.mjs';
+import { parseSkillCategories, computeExcludedSkills } from './lib/skill-categories.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
 import {
   readContinuityConfig,
@@ -839,6 +840,9 @@ let autoUpdateConfig = {
   // refresh CLAUDE.md on their own — there is no other auto-refresh path.
   claudemdInjectionDrift: 'regenerate',
 };
+// #1308 — skill categories the consumer opted into via moflo.yaml. `null` =
+// unconfigured = no restriction (every shipped skill syncs, as before).
+let selectedSkillCategories = null;
 try {
   const mofloYaml = resolve(projectRoot, 'moflo.yaml');
   if (existsSync(mofloYaml)) {
@@ -859,6 +863,10 @@ try {
     if (helpersMatch) autoUpdateConfig.helpers = helpersMatch[1] === 'true';
     if (driftMatch) autoUpdateConfig.hookBlockDrift = driftMatch[1];
     if (claudemdMatch) autoUpdateConfig.claudemdInjectionDrift = claudemdMatch[1];
+    // #1308 — optional `skills: categories: [...]` selection. null means
+    // unconfigured, which must keep meaning "sync everything" so no existing
+    // consumer loses skills on upgrade.
+    selectedSkillCategories = parseSkillCategories(yamlContent);
   }
 } catch (err) {
   // Defaults (all true) keep the upgrade flow alive but the user should
@@ -1216,10 +1224,24 @@ try {
         '.claude/agents',
         { projectRoot, syncFile, onWarn: emitWarning },
       );
+      // #1308 — excludeTopLevel is INTERNAL_SKILLS plus, when the consumer has
+      // opted into a `skills: categories: [...]` selection in moflo.yaml, every
+      // skill belonging to an unselected category. With no selection the set is
+      // just INTERNAL_SKILLS, i.e. byte-for-byte the pre-#1308 behaviour — a
+      // silent narrowing on upgrade would strip capability from every existing
+      // consumer (Rule #2), so "unconfigured" must always mean "everything".
+      const excludedSkills = computeExcludedSkills(selectedSkillCategories, INTERNAL_SKILLS);
+      if (selectedSkillCategories) {
+        emitMutation(
+          'applied skills selection',
+          `categories [${selectedSkillCategories.join(', ')}] — ` +
+          `${plural(excludedSkills.size - INTERNAL_SKILLS.length, 'skill')} not synced`,
+        );
+      }
       await syncDirRecursive(
         resolve(projectRoot, 'node_modules/moflo/.claude/skills'),
         '.claude/skills',
-        { projectRoot, syncFile, excludeTopLevel: new Set(INTERNAL_SKILLS), onWarn: emitWarning },
+        { projectRoot, syncFile, excludeTopLevel: excludedSkills, onWarn: emitWarning },
       );
 
       // Sync all shipped guidance files from node_modules/moflo/.claude/guidance/shipped/
