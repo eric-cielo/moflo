@@ -75,7 +75,14 @@ function initRepo(prefix: string): string {
 function flo(cwd: string, ...args: string[]): string {
   const env = { ...process.env, CLAUDE_PROJECT_DIR: cwd };
   // Force direct-DB writes: a closed daemon port makes the routing health-probe
-  // fail fast, so the store never depends on (or spawns) a daemon.
+  // fail fast, so the store never depends on a daemon.
+  //
+  // This does NOT stop one being spawned — the port only steers write ROUTING,
+  // while autostart is gated on `daemon.auto_start` (true in DEFAULT_CONFIG,
+  // and these tmp repos have no moflo.yaml to override it). That gap leaked a
+  // detached daemon per invocation, orphaned the moment the tmp dir was
+  // removed. MOFLO_TEST_SKIP_DAEMON_AUTOSTART (vitest.setup.ts, inherited here
+  // through process.env) is what actually prevents the spawn.
   env.MOFLO_DAEMON_PORT = '44571';
   delete env.MOFLO_DURABLE_PATH; // exercise auto-derivation, not an override
   return execFileSync(process.execPath, [CLI, ...args], {
