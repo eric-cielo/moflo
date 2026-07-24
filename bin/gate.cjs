@@ -134,6 +134,13 @@ var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
 
+// Appended to every memory-first denial. Without it, a context audit of Claude
+// Code's denial telemetry reads moflo's gate enforcements as permission-setup
+// failures and "fixes" them with allow rules — which cannot override a hook
+// block at all (#1307 finding 5). Naming the gate makes the cause self-evident.
+var GATE_ORIGIN_NOTE = 'This is a moflo hook, not a Claude Code permission rule — allow-rules cannot override it.';
+var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: false';
+
 // #1294 Finding 3 — reads/scans of EPHEMERAL files under the OS temp dir
 // (background-task output/transcripts, agent scratchpads) are transient tool
 // I/O and never carry indexable project knowledge, so they must not trip the
@@ -713,7 +720,7 @@ switch (command) {
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (isEphemeralPath(process.env.TOOL_INPUT_path)) break;
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before exploring files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' + GATE_ORIGIN_NOTE + '\n' + GATE_DISABLE_NOTE + '\n');
     process.exit(2);
   }
   case 'check-before-read': {
@@ -726,7 +733,7 @@ switch (command) {
     if (isEphemeralPath(fp)) break;
     var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
     if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before reading files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' + GATE_ORIGIN_NOTE + '\n' + GATE_DISABLE_NOTE + '\n');
     process.exit(2);
   }
   case 'record-task-created': {
@@ -775,11 +782,12 @@ switch (command) {
     // "Memory namespace hint: ..." sentence so the BLOCK message stays uniform.
     var hint = s2.lastNamespaceHint || classifyBashNamespaceHint(cmd) || '';
     process.stderr.write(
-      'BLOCKED: Search memory before reading files via Bash.\n' +
+      'BLOCKED [moflo memory_first gate]: Search memory before reading files via Bash.\n' +
       'Example: mcp__moflo__memory_search { query: "<topic>", namespace: "<one of: guidance | code-map | patterns | learnings | tests>" }\n' +
       (hint ? hint + '\n' : '') +
       'On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' +
-      'Disable per-gate via moflo.yaml: gates: memory_first: false\n'
+      GATE_ORIGIN_NOTE + '\n' +
+      GATE_DISABLE_NOTE + '\n'
     );
     process.exit(2);
     break;

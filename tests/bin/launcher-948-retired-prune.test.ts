@@ -22,6 +22,9 @@ import {
   loadRetiredManifest,
   classifyRetiredFile,
   applyRetiredPrune,
+  writeRetainedRecord,
+  reconcileRetainedRecord,
+  RETAINED_RECORD_REL,
 } from '../../bin/lib/retired-files.mjs';
 
 function makeTempRoot(label: string): string {
@@ -405,6 +408,171 @@ describe('retired-files helper (#948)', () => {
       const report = applyRetiredPrune(root, manifestPath);
       expect(report.pruned).toContain('.claude/agents/v3/perf.md');
       expect(existsSync(join(root, '.claude/agents/v3/perf.md'))).toBe(false);
+    });
+  });
+
+  // ── Retained record (#1307 finding 3) ──────────────────────────────────
+  //
+  // Before this, the retained set appeared ONLY in a launcher stdout banner
+  // truncated to 5 entries, and nothing on disk let you reconstruct it — so
+  // "delete manually if unwanted" was not actionable past the 5th file.
+  describe('writeRetainedRecord', () => {
+    let root: string;
+    beforeEach(() => { root = makeTempRoot('retained'); });
+    afterEach(() => { cleanTempRoot(root); });
+
+    const recordPath = () => join(root, RETAINED_RECORD_REL);
+
+    it('writes the FULL retained set, not a truncated sample', () => {
+      // 10 entries — the exact case the 5-entry banner sample hides.
+      const details = Array.from({ length: 10 }, (_, i) => ({
+        path: `.claude/agents/group/agent-${i}.md`,
+        retiredIn: '4.12.1',
+        retiredBy: '#932',
+      }));
+
+      const written = writeRetainedRecord(root, details, '4.12.1');
+
+      expect(written).toBe(recordPath());
+      const parsed = JSON.parse(readFileSync(recordPath(), 'utf-8'));
+      expect(parsed.version).toBe(1);
+      expect(parsed.mofloVersion).toBe('4.12.1');
+      expect(parsed.retained).toHaveLength(10);
+      expect(parsed.retained.map((r: { path: string }) => r.path))
+        .toContain('.claude/agents/group/agent-9.md');
+      // Provenance from the manifest rides along so the user can see WHY.
+      expect(parsed.retained[0]).toMatchObject({ retiredIn: '4.12.1', retiredBy: '#932' });
+    });
+
+    it('omits optional fields that the manifest did not carry', () => {
+      writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }]);
+      const parsed = JSON.parse(readFileSync(recordPath(), 'utf-8'));
+      expect(parsed.retained[0]).toEqual({ path: '.claude/agents/a.md' });
+      expect(parsed.mofloVersion).toBeUndefined();
+    });
+
+    it('deletes a stale record when nothing is retained any more', () => {
+      // User deletes the retained files after reading the record; the next
+      // launcher run must not leave a record claiming paths that are gone.
+      writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }]);
+      expect(existsSync(recordPath())).toBe(true);
+
+      const written = writeRetainedRecord(root, []);
+      expect(written).toBeNull();
+      expect(existsSync(recordPath())).toBe(false);
+    });
+
+    it('is a no-op (not a throw) when there is nothing to write and no record exists', () => {
+      expect(writeRetainedRecord(root, [])).toBeNull();
+      expect(existsSync(recordPath())).toBe(false);
+    });
+
+    it('never throws on an unwritable target — session start must not break', () => {
+      // `.moflo` occupied by a FILE, so mkdirSync of the parent dir fails.
+      // A consumer hitting this must still get a session, not a crash.
+      writeFileSync(join(root, '.moflo'), 'not a directory');
+      expect(() => writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }])).not.toThrow();
+      expect(writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }])).toBeNull();
+    });
+
+    it('creates .moflo/ when the project has none yet', () => {
+      expect(existsSync(join(root, '.moflo'))).toBe(false);
+      writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }]);
+      expect(existsSync(recordPath())).toBe(true);
+    });
+
+    // reconcileRetainedRecord runs on EVERY session start, unlike
+    // writeRetainedRecord which only runs in the launcher's upgrade branch.
+    // Without it a user who reads the record and deletes the files keeps a
+    // record naming them until their next moflo upgrade — caught by end-to-end
+    // launcher verification, not by the writeRetainedRecord unit tests.
+    describe('reconcileRetainedRecord', () => {
+      it('is a cheap no-op when no record exists', () => {
+        const r = reconcileRetainedRecord(root);
+        expect(r).toEqual({ changed: false, removed: [], remaining: 0 });
+        expect(existsSync(recordPath())).toBe(false);
+      });
+
+      it('leaves the record untouched while every named file still exists', () => {
+        writeAt(root, '.claude/agents/a.md', 'customized\n');
+        writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }], '4.12.1');
+        const before = readFileSync(recordPath(), 'utf-8');
+
+        const r = reconcileRetainedRecord(root);
+
+        expect(r.changed).toBe(false);
+        expect(readFileSync(recordPath(), 'utf-8')).toBe(before);
+      });
+
+      it('drops only the entries whose files the user deleted', () => {
+        writeAt(root, '.claude/agents/kept.md', 'still here\n');
+        writeRetainedRecord(root, [
+          { path: '.claude/agents/kept.md', retiredIn: '4.12.1' },
+          { path: '.claude/agents/deleted.md', retiredIn: '4.12.1' },
+        ], '4.12.1');
+
+        const r = reconcileRetainedRecord(root);
+
+        expect(r.changed).toBe(true);
+        expect(r.removed).toEqual(['.claude/agents/deleted.md']);
+        expect(r.remaining).toBe(1);
+        const rec = JSON.parse(readFileSync(recordPath(), 'utf-8'));
+        expect(rec.retained.map((e: { path: string }) => e.path)).toEqual(['.claude/agents/kept.md']);
+        // Unrelated top-level fields survive the rewrite.
+        expect(rec.mofloVersion).toBe('4.12.1');
+        expect(rec.version).toBe(1);
+      });
+
+      it('deletes the record once the user has removed every retained file', () => {
+        writeRetainedRecord(root, [{ path: '.claude/agents/gone.md' }], '4.12.1');
+        expect(existsSync(recordPath())).toBe(true);
+
+        const r = reconcileRetainedRecord(root);
+
+        expect(r.changed).toBe(true);
+        expect(r.remaining).toBe(0);
+        expect(existsSync(recordPath())).toBe(false);
+      });
+
+      it('drops a corrupt or hand-edited record rather than reasoning about it', () => {
+        mkdirSync(join(root, '.moflo'), { recursive: true });
+        writeFileSync(recordPath(), '{ not json');
+        expect(reconcileRetainedRecord(root).changed).toBe(true);
+        expect(existsSync(recordPath())).toBe(false);
+
+        writeFileSync(recordPath(), JSON.stringify({ version: 1, retained: 'not-an-array' }));
+        expect(reconcileRetainedRecord(root).changed).toBe(true);
+        expect(existsSync(recordPath())).toBe(false);
+      });
+
+      it('never throws on an unreadable record — session start must not break', () => {
+        mkdirSync(recordPath(), { recursive: true }); // a DIRECTORY where the file goes
+        expect(() => reconcileRetainedRecord(root)).not.toThrow();
+      });
+    });
+
+    it('applyRetiredPrune surfaces preservedDetails aligned with preserved', () => {
+      const customized = '# my customized version\n';
+      writeAt(root, '.claude/agents/consensus/raft-manager.md', customized);
+      const manifestPath = join(root, 'retired-files.json');
+      writeFileSync(manifestPath, JSON.stringify({
+        version: 1,
+        retired: [{
+          path: '.claude/agents/consensus/raft-manager.md',
+          retiredIn: '4.12.0',
+          retiredBy: '#932',
+          knownContentHashes: [sha256Of('different shipped content\n')],
+        }],
+      }));
+
+      const report = applyRetiredPrune(root, manifestPath);
+
+      expect(report.preserved).toEqual(['.claude/agents/consensus/raft-manager.md']);
+      expect(report.preservedDetails).toEqual([{
+        path: '.claude/agents/consensus/raft-manager.md',
+        retiredIn: '4.12.0',
+        retiredBy: '#932',
+      }]);
     });
   });
 });

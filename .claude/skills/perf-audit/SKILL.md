@@ -1,6 +1,6 @@
 ---
 name: perf-audit
-description: Alias for /quicken. Ad-hoc performance audit — reveals N+1 queries, needless re-renders, missing caching, memory leaks, and redundant computation in your diff (or a named path), and prescribes the fix inline.
+description: Alias for /quicken — see that skill's description.
 arguments: "[path or area | --all]"
 ---
 

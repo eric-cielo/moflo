@@ -33,9 +33,16 @@
  * @module bin/lib/retired-files
  */
 
-import { existsSync, readFileSync, unlinkSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 import { createHash } from 'crypto';
+
+/**
+ * Consumer-relative path of the retained-files record written by
+ * `writeRetainedRecord`. Exported so tests and `flo healer` resolve the same
+ * location instead of re-deriving the string.
+ */
+export const RETAINED_RECORD_REL = join('.moflo', 'retired-retained.json');
 
 /**
  * Compute sha256 of file content. Returns null on read errors so the caller
@@ -156,17 +163,29 @@ export function classifyRetiredFile(projectRoot, entry) {
  * Failures are non-fatal — a single un-deletable file (Windows AV hold,
  * EBUSY) must not stop pruning the rest. The caller surfaces the report.
  *
+ * `preserved` is the flat path list the launcher banner samples from;
+ * `preservedDetails` carries the same set with the manifest's retirement
+ * provenance attached, for the machine-readable record (#1307 finding 3).
+ *
  * @param {string} projectRoot
  * @param {string} manifestPath
- * @returns {{ pruned: string[], preserved: string[], unknown: string[], failed: Array<{path:string, message:string}> }}
+ * @returns {{ pruned: string[], preserved: string[], preservedDetails: Array<{path:string, retiredIn?:string, retiredBy?:string}>, unknown: string[], failed: Array<{path:string, message:string}> }}
  */
 export function applyRetiredPrune(projectRoot, manifestPath) {
   const { entries } = loadRetiredManifest(manifestPath);
-  const report = { pruned: [], preserved: [], unknown: [], failed: [] };
+  const report = { pruned: [], preserved: [], preservedDetails: [], unknown: [], failed: [] };
   for (const entry of entries) {
     const { action } = classifyRetiredFile(projectRoot, entry);
     if (action === 'absent') continue;
-    if (action === 'preserve') { report.preserved.push(entry.path); continue; }
+    if (action === 'preserve') {
+      report.preserved.push(entry.path);
+      report.preservedDetails.push({
+        path: entry.path,
+        ...(entry.retiredIn ? { retiredIn: entry.retiredIn } : {}),
+        ...(entry.retiredBy ? { retiredBy: entry.retiredBy } : {}),
+      });
+      continue;
+    }
     if (action === 'unknown') { report.unknown.push(entry.path); continue; }
     // action === 'prune'
     try {
@@ -180,4 +199,105 @@ export function applyRetiredPrune(projectRoot, manifestPath) {
     }
   }
   return report;
+}
+
+/**
+ * Reconcile an existing retained record against what is actually on disk.
+ *
+ * `writeRetainedRecord` only runs inside the launcher's UPGRADE branch (that
+ * is where `applyRetiredPrune` lives), so on its own it cannot keep the record
+ * honest: a user who reads the record and deletes the files would keep a
+ * record naming those files until their next moflo upgrade — the record would
+ * outlive what it describes, which is the same "not actionable" complaint
+ * #1307 raised about the truncated banner.
+ *
+ * This runs on EVERY session start instead, and is written to cost nothing in
+ * the common case: one `existsSync` when no record is present (overwhelmingly
+ * the norm), and only then a stat per retained entry.
+ *
+ * Never throws — advisory bookkeeping must not break session start.
+ *
+ * @param {string} projectRoot
+ * @returns {{ changed: boolean, removed: string[], remaining: number }}
+ */
+export function reconcileRetainedRecord(projectRoot) {
+  const result = { changed: false, removed: [], remaining: 0 };
+  const abs = resolve(projectRoot, RETAINED_RECORD_REL);
+  try {
+    if (!existsSync(abs)) return result;               // fast path — no record
+    // Corrupt/hand-edited record: drop it rather than reason about it. Parsed
+    // in its own try so a JSON error lands here and the bad file is actually
+    // removed, instead of falling to the outer catch and lingering forever.
+    let parsed = null;
+    try {
+      parsed = JSON.parse(readFileSync(abs, 'utf-8'));
+    } catch { /* handled below */ }
+    if (!parsed || !Array.isArray(parsed.retained)) {
+      unlinkSync(abs);
+      result.changed = true;
+      return result;
+    }
+    const stillPresent = [];
+    for (const entry of parsed.retained) {
+      if (entry && typeof entry.path === 'string' && existsSync(resolve(projectRoot, entry.path))) {
+        stillPresent.push(entry);
+      } else if (entry && typeof entry.path === 'string') {
+        result.removed.push(entry.path);
+      }
+    }
+    result.remaining = stillPresent.length;
+    if (result.removed.length === 0) return result;    // nothing to do
+    result.changed = true;
+    if (stillPresent.length === 0) {
+      unlinkSync(abs);
+      return result;
+    }
+    writeFileSync(abs, JSON.stringify({ ...parsed, retained: stillPresent }, null, 2) + '\n', 'utf-8');
+    return result;
+  } catch {
+    return result;
+  }
+}
+
+/**
+ * Persist the retained (customized-and-therefore-preserved) retired files to
+ * `.moflo/retired-retained.json` (#1307 finding 3).
+ *
+ * Before this, the only place the retained set appeared was a launcher stdout
+ * banner truncated to 5 entries — so "delete manually if unwanted" was not
+ * actionable for the remainder, and nothing on disk let you reconstruct the
+ * set (`installed-files.json` doesn't track pre-#948 agents/skills).
+ *
+ * The record is advisory state, not a manifest: it is rewritten from scratch
+ * on every launcher run, and deleted when nothing is retained so a stale file
+ * never claims paths the consumer has since removed.
+ *
+ * Never throws — a failure to write an advisory record must not break session
+ * start on any consumer. Returns the absolute path written, or null.
+ *
+ * @param {string} projectRoot
+ * @param {Array<{path:string, retiredIn?:string, retiredBy?:string}>} preservedDetails
+ * @param {string} [mofloVersion] - version that produced this record, if known
+ * @returns {string|null} absolute path written, or null if nothing was written
+ */
+export function writeRetainedRecord(projectRoot, preservedDetails, mofloVersion) {
+  const abs = resolve(projectRoot, RETAINED_RECORD_REL);
+  try {
+    if (!Array.isArray(preservedDetails) || preservedDetails.length === 0) {
+      // Nothing retained — drop any record from a previous run.
+      if (existsSync(abs)) unlinkSync(abs);
+      return null;
+    }
+    mkdirSync(dirname(abs), { recursive: true });
+    const payload = {
+      version: 1,
+      note: 'Retired moflo files preserved because they were customized locally. Safe to delete manually if unwanted; moflo will not remove them.',
+      ...(mofloVersion ? { mofloVersion } : {}),
+      retained: preservedDetails,
+    };
+    writeFileSync(abs, JSON.stringify(payload, null, 2) + '\n', 'utf-8');
+    return abs;
+  } catch {
+    return null;
+  }
 }
