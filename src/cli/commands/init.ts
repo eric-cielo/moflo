@@ -17,6 +17,7 @@ import {
   DEFAULT_INIT_OPTIONS,
   MINIMAL_INIT_OPTIONS,
   FULL_INIT_OPTIONS,
+  SKILL_CATEGORIES,
   type InitOptions,
 } from '../init/index.js';
 
@@ -419,18 +420,39 @@ const wizardCommand: Command = {
         options.components.mcp = components.includes('mcp');
         options.components.runtime = components.includes('runtime');
 
-        // Skills selection
+        // Skills selection.
+        //
+        // #1308: this used to offer 'Core' and 'GitHub'. 'GitHub' mapped to
+        // `options.skills.github`, which has no matching SKILLS_MAP category —
+        // so ticking it did nothing at all, and the `memory` / `spells`
+        // categories were never offered. The options now mirror
+        // SKILL_CATEGORIES, so every choice here selects real skills.
         if (options.components.skills) {
           const skillSets = await multiSelect({
             message: 'Select skill sets:',
             options: [
-              { value: 'core', label: 'Core', hint: 'Swarm, memory, SPARC, ReasoningBank skills', selected: true },
-              { value: 'github', label: 'GitHub', hint: 'GitHub integration skills', selected: true },
+              { value: 'core', label: 'Core', hint: '/fl, /healer, /verify, /flo-simplify, /eldar …', selected: true },
+              { value: 'memory', label: 'Memory', hint: 'Memory patterns, vector search, team/worktree sharing', selected: true },
+              { value: 'spells', label: 'Spells', hint: 'Spell authoring, scheduling, connectors', selected: true },
             ],
           });
 
-          options.skills.core = skillSets.includes('core');
-          options.skills.github = skillSets.includes('github');
+          for (const category of SKILL_CATEGORIES) {
+            options.skills[category] = skillSets.includes(category);
+          }
+
+          // A selection made here governs what init COPIES, but the
+          // session-start launcher re-syncs shipped skills on every run and
+          // reads its own selection from moflo.yaml. Without that block the
+          // narrowing silently reverts on the next session — the #1308 trap.
+          // Say so rather than let the user discover it.
+          const narrowed = SKILL_CATEGORIES.filter((c) => !skillSets.includes(c));
+          if (narrowed.length > 0) {
+            output.printInfo(
+              `To keep ${narrowed.join(' + ')} skills from returning on the next session, add to moflo.yaml:\n` +
+              `  skills:\n    categories: [${skillSets.join(', ')}]`,
+            );
+          }
         }
 
         // Hooks selection
@@ -655,10 +677,13 @@ const checkCommand: Command = {
 const skillsCommand: Command = {
   name: 'skills',
   description: 'Initialize only skills',
+  // Flags mirror SKILL_CATEGORIES. `--github` used to be offered here and
+  // installed nothing — there is no GitHub skill category (#1308).
   options: [
-    { name: 'all', description: 'Install all skills', type: 'boolean', default: false },
-    { name: 'core', description: 'Install core skills', type: 'boolean', default: true },
-    { name: 'github', description: 'Install GitHub skills', type: 'boolean', default: false },
+    { name: 'all', description: 'Install every skill category', type: 'boolean', default: false },
+    { name: 'core', description: 'Install core skills (/fl, /healer, /verify, …)', type: 'boolean', default: true },
+    { name: 'memory', description: 'Install memory skills (patterns, vector search, sharing)', type: 'boolean', default: false },
+    { name: 'spells', description: 'Install spell skills (authoring, scheduling, connectors)', type: 'boolean', default: false },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const options: InitOptions = {
@@ -680,8 +705,8 @@ const skillsCommand: Command = {
       skills: {
         all: ctx.flags.all as boolean,
         core: ctx.flags.core as boolean,
-        github: ctx.flags.github as boolean,
-        browser: false,
+        memory: ctx.flags.memory as boolean,
+        spells: ctx.flags.spells as boolean,
       },
     };
 

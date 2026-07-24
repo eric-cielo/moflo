@@ -59,18 +59,32 @@ export interface HooksConfig {
 }
 
 /**
- * Skills configuration
+ * The skill categories `SKILLS_MAP` partitions shipped skills into.
+ *
+ * This list is the single source of truth (#1308). `SkillsConfig` is DERIVED
+ * from it and `SKILLS_MAP` is TYPED by it, so the two can never drift again.
+ *
+ * They did drift, silently, and it disabled the whole selection mechanism:
+ * `SkillsConfig` declared `core`/`github`/`browser` while `SKILLS_MAP` keyed on
+ * `core`/`memory`/`spells`. `copySkills` joins them by key, so `memory` and
+ * `spells` resolved to `undefined` → falsy → never installed, while
+ * `github`/`browser` selected nothing at all. An `as keyof typeof` cast in the
+ * lookup suppressed the type error that would otherwise have caught it. Adding
+ * a category to one side without the other is now a compile error.
  */
-export interface SkillsConfig {
-  /** Include core skills (swarm, memory, sparc, reasoningbank) */
-  core: boolean;
-  /** Include GitHub integration skills */
-  github: boolean;
-  /** Include browser automation skills (agent-browser) */
-  browser: boolean;
-  /** Include all available skills */
+export const SKILL_CATEGORIES = ['core', 'memory', 'spells'] as const;
+
+/** A key of `SKILLS_MAP` — see {@link SKILL_CATEGORIES}. */
+export type SkillCategory = (typeof SKILL_CATEGORIES)[number];
+
+/**
+ * Skills configuration — one boolean per {@link SKILL_CATEGORIES} entry, plus
+ * `all` as an override that selects every category regardless of the flags.
+ */
+export type SkillsConfig = Record<SkillCategory, boolean> & {
+  /** Include every category, ignoring the individual flags */
   all: boolean;
-}
+};
 
 /**
  * Commands configuration
@@ -328,10 +342,15 @@ export const DEFAULT_INIT_OPTIONS: InitOptions = {
     timeout: 5000,
     continueOnError: true,
   },
+  // Every category. This is not a behaviour change: the session-start launcher
+  // syncs all shipped skills on every run regardless of what init selected, so
+  // consumers already end up with all of them. Pre-#1308 this said
+  // `core/github/browser`, which resolved to core-only — meaning `flo init` and
+  // the launcher disagreed, and init's answer simply lost. Now they agree.
   skills: {
     core: true,
-    github: true,
-    browser: true,
+    memory: true,
+    spells: true,
     all: false,
   },
   commands: {
@@ -419,10 +438,11 @@ export const MINIMAL_INIT_OPTIONS: InitOptions = {
     stop: false,
     notification: false,
   },
+  // Minimal deliberately stays core-only — that is the point of the preset.
   skills: {
     core: true,
-    github: false,
-    browser: false,
+    memory: false,
+    spells: false,
     all: false,
   },
   agents: {
@@ -478,8 +498,8 @@ export const FULL_INIT_OPTIONS: InitOptions = {
   },
   skills: {
     core: true,
-    github: true,
-    browser: true,
+    memory: true,
+    spells: true,
     all: true,
   },
   commands: {
