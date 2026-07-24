@@ -2,10 +2,12 @@
 
 Spec-Driven Development for `/flo` — Epic #1269. Two independent modifiers:
 
-- **`-sd` / `--sdd`** — run the full **spec → plan → (review) → implement → verify** cycle. Opt-in (`sdd.default` defaults false). Implies verify.
+- **`-sd` / `--sdd`** — run the full **spec → plan → (review) → implement → verify** cycle. Opt-in *by built-in default* (`sdd.default` = false), but **a project can set `sdd.default: true` and turn it on for every run**. Implies verify.
 - **`-v` / `--verify`** — verify-before-done: a normal run plus the completion gate, no spec/plan front-half. **On by default** (`gates.verify_before_done` defaults true, #1294) — `-v` is explicit, `--no-verify` opts out for one run.
 
-Defaults seed from `moflo.yaml` (`sdd.default` = false, `gates.verify_before_done` = true); per-run flags and `--no-sdd` / `--no-verify` override. Both are orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`, so `--sdd -s -wt 42` runs the SDD cycle in a swarm inside a worktree.
+⚠ **Never infer whether SDD is on from these built-in defaults.** They are project-configurable, so the effective value is only knowable at run time. Resolve it as `SKILL.md` § "Resolved run modes" describes — the `[moflo] /flo run modes` line injected into context, or `flo sdd mode --args="$ARGUMENTS"`. Assuming `sdd=off` on a project with `sdd.default: true` silently skips the whole spec/plan cycle and is invisible to the user until the PR lands without a spec.
+
+Precedence: per-run flags and `--no-sdd` / `--no-verify` override `moflo.yaml`, which overrides the built-ins. Both are orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`, so `--sdd -s -wt 42` runs the SDD cycle in a swarm inside a worktree.
 
 The artifact model, paths, and CLI live in `src/cli/sdd/` (`flo sdd …`). The constitution layer (CLAUDE.md + `.claude/guidance/`) is referenced by every stage — never restated in a spec.
 

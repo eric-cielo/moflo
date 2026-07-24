@@ -72,7 +72,7 @@ Two **independent** modifiers, orthogonal to execution mode (`-n`/`-s`/`-h`) and
 | `-v` | `--verify` | **Verify-before-done** — a normal run plus the `/verify` skill (the completion gate), no spec/plan front-half. **On by default** (#1294) — this flag only forces it back on for a project that set `gates.verify_before_done: false`. |
 | `--no-sdd`, `--no-verify` | | Opt a single run out. `--no-verify` skips the (default-on) verify step. |
 
-Defaults seed from `moflo.yaml` — `sdd.default` (default **off**) and `gates.verify_before_done` (default **on** since #1294). So the SDD spec/plan ceremony is opt-in, but **verify-before-done runs by default**; per-run flags override (`--no-verify` to skip). `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). In `-t`/`-r` modes (no implementation) verify is a no-op — cleared silently, with the one-line ignored note only when the user explicitly passed `-v`/`--verify`; `--sdd` in `-t` writes the spec/plan **into the ticket** rather than scaffolding artifacts. Full mechanics in `./sdd.md`.
+Defaults seed from `moflo.yaml` — `sdd.default` (built-in **off**) and `gates.verify_before_done` (built-in **on** since #1294). So the SDD spec/plan ceremony is opt-in *by default*, but **a project can turn it on for every run** — never assume it is off; resolve it per the "Resolved run modes" section below. Verify-before-done runs by default; per-run flags override (`--no-verify` to skip). `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). In `-t`/`-r` modes (no implementation) verify is a no-op — cleared silently, with the one-line ignored note only when the user explicitly passed `-v`/`--verify`; `--sdd` in `-t` writes the spec/plan **into the ticket** rather than scaffolding artifacts. Full mechanics in `./sdd.md`.
 
 ## Auto-merge (#1285)
 
@@ -124,6 +124,35 @@ Read the relevant file before executing that part of the run.
 | `./spell-engine.md` | `-wf` invocations (list, info, execute) |
 | `./sdd.md` | `-sd`/`--sdd` and `-v`/`--verify` — the spec→plan→implement→verify cycle |
 
+## Resolved run modes — read this BEFORE parsing arguments
+
+`sddMode`, `verifyMode`, and `mergeMode` are **config-derived**. Their project defaults live in `moflo.yaml` (`sdd.default`, `gates.verify_before_done`, `merge.auto`), so they cannot be known from this document — you MUST obtain them, never assume them. A run that assumes `sdd=off` on a project with `sdd.default: true` silently skips the entire spec→plan cycle, which is the exact failure this step exists to prevent.
+
+**Primary source — the injected resolution line.** moflo's `prompt-reminder` hook resolves all three from `moflo.yaml` on every `/flo` prompt (fresh process per prompt, so a `git pull` or a mid-session edit to `moflo.yaml` is picked up automatically) and emits them into your context immediately above the user's message:
+
+```
+[moflo] /flo run modes (AUTHORITATIVE — use verbatim; do NOT re-derive from the skill defaults): sdd=ON verify=ON merge=off [workflow=full]
+```
+
+Scan for that `[moflo] /flo run modes` line and assign `sddMode` / `verifyMode` / `mergeMode` from it **verbatim**. It already accounts for flags the user typed, `moflo.yaml` defaults, `--sdd` implying `--verify`, and mode applicability — do not second-guess it.
+
+**Fallback — no such line in context** (hooks disabled, or a consumer on a gate.cjs predating this). Shell out once; the CLI resolves from the same precedence rules:
+
+```bash
+flo sdd mode --args="$ARGUMENTS"
+```
+
+Use `--args=` (with the `=`), **not** `--args <value>` — a value starting with `-` would otherwise be parsed as flags and you would silently get the bare config default back.
+
+```json
+{ "workflow": "full", "sdd": true, "verify": true, "merge": false,
+  "sddSrc": "moflo.yaml sdd.default", "verifySrc": "default", "mergeSrc": "default" }
+```
+
+**Never skip both.** If the injected line is absent and the CLI call fails, say so explicitly to the user and stop rather than proceeding on a guessed mode — a wrongly-assumed `sdd=off` is invisible to the user until the PR lands without a spec.
+
+When `sdd` resolved ON from config rather than a typed flag, state that in your first message (e.g. *"SDD is on via `moflo.yaml sdd.default` — running the spec→plan→implement→verify cycle."*) so the user can `--no-sdd` out before work starts.
+
 ## Argument parsing
 
 ```javascript
@@ -135,20 +164,12 @@ let epicBranch = null;
 let issueNumber = null;
 let titleWords = [];
 
-// SDD/verify modifiers (Epic #1269, #1294). Seed from moflo.yaml BEFORE parsing
-// so a project default applies unless a per-run flag overrides it. Read the two
-// keys from moflo.yaml at the project root — NOTE the different absent-defaults:
-//   sddMode    ← `sdd.default`            (absent ⇒ false — spec/plan is opt-in)
-//   verifyMode ← `gates.verify_before_done` (absent ⇒ TRUE — verify is on by default, #1294)
-let sddMode = false;          // -sd / --sdd  (full spec→plan→implement→verify)
-let verifyMode = true;        // -v / --verify (on by default; --no-verify opts out)
+// SDD / verify / merge modifiers (Epic #1269, #1294, #1285) — DO NOT resolve
+// these here. They are config-derived, and the values below are placeholders,
+// NOT defaults. Take them from the "Resolved run modes" step above; the loop
+// below only applies what the user typed on top of that resolution.
+let sddMode, verifyMode, mergeMode;   // ← assigned from the resolution, never guessed
 let verifyExplicit = false;   // did the user actually type -v/--verify? (drives the -t/-r note only, so it doesn't fire on the default)
-
-// Auto-merge modifier (#1285). Seed from moflo.yaml BEFORE parsing, same as
-// sddMode/verifyMode: read `merge.auto` at the project root (absent ⇒ false).
-// When true, a full run awaits the PR's merge preconditions and merges it
-// (Phase 5.3b) instead of stopping at "PR opened".
-let mergeMode = false;        // -m / --merge  ← moflo.yaml merge.auto
 
 let wfName = null, wfSubcommand = null;
 let wfArgs = [], wfNamedArgs = {};
