@@ -16,6 +16,7 @@
  *   flo sdd path <slug> [spec|plan]  Print the artifact path (for skill shell-out)
  *   flo sdd embed <slug>             Print spec+plan as a PR-body block (#1297)
  *   flo sdd index                    Re-index specs into memory now (also runs at session start)
+ *   flo sdd mode --args "<flo args>" Resolve sdd/verify/merge for a /flo run as JSON
  */
 
 import { spawnSync } from 'node:child_process';
@@ -24,6 +25,7 @@ import { dirname, join } from 'node:path';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { loadMofloConfig } from '../config/moflo-config.js';
 import { locateMofloRootPath } from '../services/moflo-require.js';
 import {
   type SddArtifactKind,
@@ -251,6 +253,91 @@ function cmdList(ctx: CommandContext): CommandResult {
   return { success: true, data: specs };
 }
 
+/**
+ * Resolve the effective `/flo` run modifiers from an argument string + moflo.yaml
+ * and print them as JSON. This is the FALLBACK path for the authoritative
+ * announcement that `bin/gate.cjs prompt-reminder` normally injects on every
+ * `/flo` prompt — consumers with hooks disabled (or a gate.cjs predating this
+ * change) still get a deterministic answer by shelling out to this.
+ *
+ * Exists because the `/flo` skill used to carry `let sddMode = false` as a
+ * literal beside a comment saying "seed from moflo.yaml"; the model executed the
+ * literal and `sdd.default: true` was silently ignored. Config-derived run modes
+ * must be COMPUTED, never described in prose next to a contradicting default.
+ *
+ * Precedence per key: `--no-X` > `-x`/`--X` > moflo.yaml > built-in. Built-in
+ * defaults differ deliberately: sdd is opt-in (false), verify is opt-out (true,
+ * #1294), merge is opt-in (false, #1285).
+ *
+ * SYNC: mirrors `resolveFloRun` in bin/gate.cjs (and its copy in
+ * init/helpers-generator.ts). Any precedence change MUST land in all three.
+ */
+function cmdMode(ctx: CommandContext): CommandResult {
+  // MUST be passed as `--args=<value>`, not `--args <value>`: the flag parser
+  // only consumes a following token as a value when it does not start with `-`,
+  // so `--args "-sd 42"` would silently degrade to `args=true` and resolve every
+  // run to the bare config default. The `=` form bypasses that lookahead.
+  // parseValue may coerce a bare numeric ("42") to a number — coerce back.
+  const flagArgs = ctx.flags?.args;
+  const raw = (typeof flagArgs === 'string' || typeof flagArgs === 'number')
+    ? String(flagArgs)
+    : (ctx.args ?? []).slice(1).join(' ');
+  // Tokenize on whitespace so `-sd` is matched as a whole token — it is NOT
+  // `-s` (swarm) + `d`.
+  const tokens = raw.trim().split(/\s+/).filter(Boolean);
+  const has = (...names: string[]): boolean => names.some((n) => tokens.includes(n));
+
+  const cfg = loadMofloConfig(projectRoot(ctx));
+
+  let workflow: 'full' | 'ticket' | 'research' | 'spell-engine' = 'full';
+  if (has('-wf', '--workflow')) workflow = 'spell-engine';
+  else if (has('-r', '--research')) workflow = 'research';
+  else if (has('-t', '--ticket')) workflow = 'ticket';
+  const epicBranch = has('--epic-branch');
+
+  let sdd = false;
+  let sddSrc = 'default';
+  if (has('--no-sdd')) { sdd = false; sddSrc = 'flag'; }
+  else if (has('-sd', '--sdd')) { sdd = true; sddSrc = 'flag'; }
+  else if (cfg.sdd.default) { sdd = true; sddSrc = 'moflo.yaml sdd.default'; }
+
+  let verify: boolean;
+  let verifySrc = 'default';
+  if (has('--no-verify')) { verify = false; verifySrc = 'flag'; }
+  else if (has('-v', '--verify')) { verify = true; verifySrc = 'flag'; }
+  else if (!cfg.gates.verify_before_done) { verify = false; verifySrc = 'moflo.yaml gates.verify_before_done'; }
+  else { verify = true; }
+  // --sdd implies --verify: a spec/plan without an enforced verify step drifts.
+  if (sdd && !verify && verifySrc !== 'flag') verify = true;
+
+  let merge = false;
+  let mergeSrc = 'default';
+  if (has('--no-merge')) { merge = false; mergeSrc = 'flag'; }
+  else if (has('-m', '--merge')) { merge = true; mergeSrc = 'flag'; }
+  else if (cfg.merge.auto) { merge = true; mergeSrc = 'moflo.yaml merge.auto'; }
+
+  // Applicability: -t/-r never implement, so verify is a no-op there; -r and -wf
+  // produce no spec artifacts (in -t the spec/plan goes INTO the ticket, so sdd
+  // stays on). Only a full, non-epic-branch run opens a PR to merge.
+  // Re-attribute anything applicability turned off — a false must never carry the
+  // source of the value it no longer has. SYNC: mirrors bin/gate.cjs.
+  if (workflow === 'ticket' || workflow === 'research') {
+    if (verify) verifySrc = `${workflow} mode does not implement`;
+    verify = false;
+  }
+  if (workflow === 'research' || workflow === 'spell-engine') {
+    if (sdd) sddSrc = `${workflow} mode produces no spec artifacts`;
+    sdd = false;
+  }
+  if (workflow !== 'full' || epicBranch) {
+    if (merge) mergeSrc = epicBranch ? '--epic-branch owns merging' : `${workflow} mode opens no PR`;
+    merge = false;
+  }
+
+  console.log(JSON.stringify({ workflow, sdd, verify, merge, sddSrc, verifySrc, mergeSrc }, null, 2));
+  return { success: true };
+}
+
 function cmdPath(ctx: CommandContext): CommandResult {
   const root = projectRoot(ctx);
   const slug = slugify(ctx.args[1] || '');
@@ -322,7 +409,8 @@ Spec-Driven Development artifacts (.moflo/specs/<slug>/{spec,plan}.md):
   list                     List every spec slug
   path <slug> [spec|plan]  Print the artifact path
   embed <slug>             Print spec+plan as a collapsible block for the PR body
-  index                    Re-index specs into memory now`;
+  index                    Re-index specs into memory now
+  mode --args "<flo args>" Resolve sdd/verify/merge for a /flo run as JSON (moflo.yaml + flags)`;
 
 const sddCommand: Command = {
   name: 'sdd',
@@ -351,6 +439,8 @@ const sddCommand: Command = {
         return cmdStatus(ctx);
       case 'list':
         return cmdList(ctx);
+      case 'mode':
+        return cmdMode(ctx);
       case 'path':
         return cmdPath(ctx);
       case 'embed':

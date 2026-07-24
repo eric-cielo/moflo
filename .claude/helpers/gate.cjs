@@ -104,6 +104,19 @@ function loadSddConfig() {
   return out;
 }
 
+// Parse the top-level `merge:` block from moflo.yaml (#1285). Block-scoped for
+// the same reason as loadSddConfig: a bare `auto:` key can appear under other
+// sections. Cross-platform: tolerates CRLF.
+function loadMergeConfig() {
+  var out = { auto: false };
+  var content = MOFLO_YAML;
+  if (!content) return out;
+  var block = content.match(/^merge:[ \t]*\r?\n((?:[ \t]+.*(?:\r?\n|$))*)/m);
+  if (!block) return out;
+  if (/^\s*auto:\s*true\b/im.test(block[1])) out.auto = true;
+  return out;
+}
+
 // Read moflo.yaml exactly once per gate process (#1297 review): loadGateConfig
 // and loadSddConfig both parse it, and the gate fires on every Write/Edit — a
 // second read is wasted syscalls. Single readFileSync in try/catch (no existsSync
@@ -116,6 +129,7 @@ var MOFLO_YAML = readMofloYaml();
 
 var config = loadGateConfig();
 var sddConf = loadSddConfig();
+var mergeConf = loadMergeConfig();
 var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
@@ -288,16 +302,71 @@ function detectFlMode(promptText) {
   return null;
 }
 
-// #1297 — arm the SDD implement gate from the user prompt. Only /fl or /flo runs
-// can arm it. Explicit -sd/--sdd wins; --no-sdd disarms; otherwise honor the
-// sdd.default config. `-sd` is a distinct token from `-s` (swarm): the `d` sits
-// on the word boundary so `-s\b` never matches `-sd`.
-function detectSddMode(promptText) {
+// Resolve the FULL set of /flo run modifiers from the prompt + moflo.yaml — the
+// single source of truth for both gate arming (#1297) and the authoritative
+// announcement emitted by prompt-reminder. Two consumers, one resolver: a second
+// implementation is exactly how `sdd.default: true` got silently ignored (the
+// skill's prompt carried `let sddMode = false` and the model executed the literal).
+//
+// Precedence per key: explicit --no-X > explicit -x/--X > moflo.yaml > built-in.
+// NOTE the differing built-in defaults: sdd is opt-IN (false), verify is opt-OUT
+// (true, #1294), merge is opt-IN (false, #1285).
+//
+// `-sd` is a distinct token from `-s` (swarm): the `d` sits on the word boundary
+// so `-s\b` never matches `-sd`.
+function resolveFloRun(promptText) {
   var p = promptText || '';
-  if (!/^\s*\/(?:fl|flo)\b/i.test(p)) return false;
-  if (/(?:^|\s)--no-sdd\b/.test(p)) return false;
-  if (/(?:^|\s)(?:-sd|--sdd)\b/.test(p)) return true;
-  return !!sddConf.default;
+  var out = { isFlo: false, workflow: 'full', sdd: false, verify: false, merge: false,
+              sddSrc: 'default', verifySrc: 'default', mergeSrc: 'default' };
+  if (!/^\s*\/(?:fl|flo)\b/i.test(p)) return out;
+  out.isFlo = true;
+
+  // Workflow mode — decides which modifiers are even applicable.
+  if (/(?:^|\s)(?:-wf|--workflow)\b/.test(p)) out.workflow = 'spell-engine';
+  else if (/(?:^|\s)(?:-r|--research)\b/.test(p)) out.workflow = 'research';
+  else if (/(?:^|\s)(?:-t|--ticket)\b/.test(p)) out.workflow = 'ticket';
+  var epicBranch = /(?:^|\s)--epic-branch\b/.test(p);
+
+  if (/(?:^|\s)--no-sdd\b/.test(p)) { out.sdd = false; out.sddSrc = 'flag'; }
+  else if (/(?:^|\s)(?:-sd|--sdd)\b/.test(p)) { out.sdd = true; out.sddSrc = 'flag'; }
+  else if (sddConf.default) { out.sdd = true; out.sddSrc = 'moflo.yaml sdd.default'; }
+
+  if (/(?:^|\s)--no-verify\b/.test(p)) { out.verify = false; out.verifySrc = 'flag'; }
+  else if (/(?:^|\s)(?:-v|--verify)\b/.test(p)) { out.verify = true; out.verifySrc = 'flag'; }
+  else if (!config.verify_before_done) { out.verify = false; out.verifySrc = 'moflo.yaml gates.verify_before_done'; }
+  else { out.verify = true; out.verifySrc = 'default'; }
+  // --sdd implies --verify: a spec/plan without an enforced verify step drifts.
+  if (out.sdd && !out.verify && out.verifySrc !== 'flag') out.verify = true;
+
+  if (/(?:^|\s)--no-merge\b/.test(p)) { out.merge = false; out.mergeSrc = 'flag'; }
+  else if (/(?:^|\s)(?:-m|--merge)\b/.test(p)) { out.merge = true; out.mergeSrc = 'flag'; }
+  else if (mergeConf.auto) { out.merge = true; out.mergeSrc = 'moflo.yaml merge.auto'; }
+
+  // Applicability: -t/-r never implement, so verify is a no-op there; -r produces
+  // no artifacts, so sdd is a no-op too (in -t the spec/plan goes INTO the ticket,
+  // so sdd stays on). Only a full non-epic-branch run opens a PR to merge.
+  // Re-attribute anything applicability turned off, so a false never carries the
+  // source of the value it no longer has. This whole change exists to stop modes
+  // being reported inaccurately — the attribution has to be honest too.
+  if (out.workflow === 'ticket' || out.workflow === 'research') {
+    if (out.verify) out.verifySrc = out.workflow + ' mode does not implement';
+    out.verify = false;
+  }
+  if (out.workflow === 'research' || out.workflow === 'spell-engine') {
+    if (out.sdd) out.sddSrc = out.workflow + ' mode produces no spec artifacts';
+    out.sdd = false;
+  }
+  if (out.workflow !== 'full' || epicBranch) {
+    if (out.merge) out.mergeSrc = epicBranch ? '--epic-branch owns merging' : out.workflow + ' mode opens no PR';
+    out.merge = false;
+  }
+  return out;
+}
+
+// #1297 — arm the SDD implement gate from the user prompt. Thin wrapper so the
+// arming decision and the announced decision can never disagree.
+function detectSddMode(promptText) {
+  return resolveFloRun(promptText).sdd;
 }
 
 // Resolve the absolute specs root the same way TS specsRoot does (#1294): split
@@ -981,6 +1050,33 @@ switch (command) {
     applyPromptStateReset(s, prompt);
     s.interactionCount = (s.interactionCount || 0) + 1;
     writeState(s);
+    // Announce the resolved /flo run modifiers. The gate already parsed
+    // moflo.yaml in THIS process (fresh per prompt — a git pull or a mid-session
+    // yaml edit is picked up automatically, no cache to invalidate), so this
+    // costs no extra read. Emitting it is what closes the loop: the skill used
+    // to carry `let sddMode = false` as a literal and the model executed it,
+    // silently ignoring `sdd.default: true`. Only fires on /fl|/flo prompts.
+    var floRun = resolveFloRun(prompt);
+    if (floRun.isFlo) {
+      console.log(
+        '[moflo] /flo run modes (AUTHORITATIVE — use verbatim; do NOT re-derive from the skill defaults): ' +
+        'sdd=' + (floRun.sdd ? 'ON' : 'off') +
+        ' verify=' + (floRun.verify ? 'ON' : 'off') +
+        ' merge=' + (floRun.merge ? 'ON' : 'off') +
+        ' [workflow=' + floRun.workflow + ']'
+      );
+      // Spell out the surprising case: a project default the user did not type.
+      if (floRun.sdd && floRun.sddSrc !== 'flag') {
+        console.log(
+          '[moflo] sdd is ON via ' + floRun.sddSrc + ' — the spec→plan→implement→verify cycle is ' +
+          'MANDATORY this run. Author the spec before editing source (the sdd_gate blocks source ' +
+          'Write/Edit until a reviewed plan exists). One-off opt out: re-run with --no-sdd.'
+        );
+      }
+      if (floRun.merge && floRun.mergeSrc !== 'flag') {
+        console.log('[moflo] merge is ON via ' + floRun.mergeSrc + ' — the PR will be auto-merged. Opt out: --no-merge.');
+      }
+    }
     if (config.context_tracking) {
       var ic = s.interactionCount;
       if (ic > 30) console.log('Context: CRITICAL. Commit, store learnings, suggest new session.');
