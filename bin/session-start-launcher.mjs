@@ -1295,16 +1295,24 @@ try {
         // Always reconcile the retained record — including writing none when
         // nothing is retained, so a record from a previous run doesn't outlive
         // the files it names (#1307 finding 3).
-        // Version read locally rather than reusing §2's `installedVersion` —
-        // that binding is scoped to the auto-update branch and this block must
-        // not depend on it (an out-of-scope reference would be swallowed by
-        // the surrounding catch as a bogus "prune skipped" warning).
+        //
+        // The version is only read when there is actually something to record.
+        // Nothing-retained is the overwhelmingly common case, and this runs on
+        // every session start in every consumer — an unconditional read +
+        // JSON.parse here would be pure hot-path waste.
+        //
+        // Read locally rather than reusing §2's `installedVersion`: that
+        // binding is scoped to the auto-update branch, and an out-of-scope
+        // reference would be swallowed by the surrounding catch as a bogus
+        // "prune skipped" warning.
         let recordVersion;
-        try {
-          recordVersion = JSON.parse(readFileSync(
-            resolve(projectRoot, 'node_modules/moflo/package.json'), 'utf-8',
-          )).version;
-        } catch { /* record just omits the version */ }
+        if (report.preservedDetails.length > 0) {
+          try {
+            recordVersion = JSON.parse(readFileSync(
+              resolve(projectRoot, 'node_modules/moflo/package.json'), 'utf-8',
+            )).version;
+          } catch { /* record just omits the version */ }
+        }
         const retainedRecordPath = writeRetainedRecord(
           projectRoot,
           report.preservedDetails,
