@@ -93,4 +93,66 @@ describe('flo sdd mode', () => {
   it('handles an empty argument string', () => {
     expect(resolveModes('', SDD_ON)).toMatchObject({ workflow: 'full', sdd: true });
   });
+
+  it('re-attributes a mode that applicability turned off', () => {
+    // A false must never carry the source of the value it no longer has.
+    expect(resolveModes('-r 42', SDD_ON)).toMatchObject({
+      sdd: false, sddSrc: 'research mode produces no spec artifacts',
+    });
+    expect(resolveModes('--epic-branch foo 42', 'merge:\n  auto: true\n')).toMatchObject({
+      merge: false, mergeSrc: '--epic-branch owns merging',
+    });
+  });
+});
+
+/**
+ * The CLI fallback and bin/gate.cjs are separate implementations of the same
+ * precedence rules — exactly the shape that let `sdd.default: true` be enforced
+ * by one and ignored by the other. Assert they agree on every axis, so a change
+ * to one that is not mirrored into the other fails here rather than in a
+ * consumer's silently-non-SDD run.
+ */
+describe('flo sdd mode agrees with bin/gate.cjs', () => {
+  const GATE = resolve(__dirname, '../../../../bin/gate.cjs');
+
+  function gateModes(floArgs: string, moflo: string): Record<string, boolean | string> {
+    writeFileSync(join(tmpDir, 'moflo.yaml'), moflo);
+    const out = execFileSync('node', [GATE, 'prompt-reminder'], {
+      env: {
+        ...(process.env as Record<string, string>),
+        CLAUDE_PROJECT_DIR: tmpDir,
+        CLAUDE_USER_PROMPT: `/flo ${floArgs}`,
+        TOOL_INPUT_command: '', TOOL_INPUT_file_path: '', TOOL_INPUT_skill: '', HOOK_SESSION_ID: '',
+      },
+      encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const line = out.split(/\r?\n/).find((l) => l.includes('/flo run modes')) ?? '';
+    const grab = (k: string) => (line.match(new RegExp(`${k}=(ON|off)`)) || [])[1] === 'ON';
+    return {
+      sdd: grab('sdd'), verify: grab('verify'), merge: grab('merge'),
+      workflow: (line.match(/workflow=(\w[\w-]*)/) || [])[1] ?? '',
+    };
+  }
+
+  const CASES: Array<[string, string]> = [
+    ['42', SDD_ON],
+    ['42', ''],
+    ['-sd 42', ''],
+    ['--no-sdd 42', SDD_ON],
+    ['-s 42', SDD_ON],
+    ['-r 42', SDD_ON],
+    ['-t 42', SDD_ON],
+    ['-sd --no-verify 42', ''],
+    ['42', 'merge:\n  auto: true\n'],
+    ['--no-merge 42', 'merge:\n  auto: true\n'],
+    ['42', 'gates:\n  verify_before_done: false\n'],
+    ['--epic-branch foo 42', 'merge:\n  auto: true\n'],
+  ];
+
+  it.each(CASES)('resolves %j (config %j) the same way', (floArgs, moflo) => {
+    const cli = resolveModes(floArgs, moflo);
+    expect({
+      sdd: cli.sdd, verify: cli.verify, merge: cli.merge, workflow: cli.workflow,
+    }).toEqual(gateModes(floArgs, moflo));
+  });
 });

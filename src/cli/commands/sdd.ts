@@ -319,9 +319,20 @@ function cmdMode(ctx: CommandContext): CommandResult {
   // Applicability: -t/-r never implement, so verify is a no-op there; -r and -wf
   // produce no spec artifacts (in -t the spec/plan goes INTO the ticket, so sdd
   // stays on). Only a full, non-epic-branch run opens a PR to merge.
-  if (workflow === 'ticket' || workflow === 'research') verify = false;
-  if (workflow === 'research' || workflow === 'spell-engine') sdd = false;
-  if (workflow !== 'full' || epicBranch) merge = false;
+  // Re-attribute anything applicability turned off — a false must never carry the
+  // source of the value it no longer has. SYNC: mirrors bin/gate.cjs.
+  if (workflow === 'ticket' || workflow === 'research') {
+    if (verify) verifySrc = `${workflow} mode does not implement`;
+    verify = false;
+  }
+  if (workflow === 'research' || workflow === 'spell-engine') {
+    if (sdd) sddSrc = `${workflow} mode produces no spec artifacts`;
+    sdd = false;
+  }
+  if (workflow !== 'full' || epicBranch) {
+    if (merge) mergeSrc = epicBranch ? '--epic-branch owns merging' : `${workflow} mode opens no PR`;
+    merge = false;
+  }
 
   console.log(JSON.stringify({ workflow, sdd, verify, merge, sddSrc, verifySrc, mergeSrc }, null, 2));
   return { success: true };

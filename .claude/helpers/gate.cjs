@@ -345,9 +345,21 @@ function resolveFloRun(promptText) {
   // Applicability: -t/-r never implement, so verify is a no-op there; -r produces
   // no artifacts, so sdd is a no-op too (in -t the spec/plan goes INTO the ticket,
   // so sdd stays on). Only a full non-epic-branch run opens a PR to merge.
-  if (out.workflow === 'ticket' || out.workflow === 'research') out.verify = false;
-  if (out.workflow === 'research' || out.workflow === 'spell-engine') out.sdd = false;
-  if (out.workflow !== 'full' || epicBranch) out.merge = false;
+  // Re-attribute anything applicability turned off, so a false never carries the
+  // source of the value it no longer has. This whole change exists to stop modes
+  // being reported inaccurately — the attribution has to be honest too.
+  if (out.workflow === 'ticket' || out.workflow === 'research') {
+    if (out.verify) out.verifySrc = out.workflow + ' mode does not implement';
+    out.verify = false;
+  }
+  if (out.workflow === 'research' || out.workflow === 'spell-engine') {
+    if (out.sdd) out.sddSrc = out.workflow + ' mode produces no spec artifacts';
+    out.sdd = false;
+  }
+  if (out.workflow !== 'full' || epicBranch) {
+    if (out.merge) out.mergeSrc = epicBranch ? '--epic-branch owns merging' : out.workflow + ' mode opens no PR';
+    out.merge = false;
+  }
   return out;
 }
 

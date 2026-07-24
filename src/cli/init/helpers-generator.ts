@@ -442,9 +442,20 @@ function resolveFloRun(promptText) {
   else if (/(?:^|\\s)(?:-m|--merge)\\b/.test(p)) { out.merge = true; out.mergeSrc = 'flag'; }
   else if (mergeConf.auto) { out.merge = true; out.mergeSrc = 'moflo.yaml merge.auto'; }
 
-  if (out.workflow === 'ticket' || out.workflow === 'research') out.verify = false;
-  if (out.workflow === 'research' || out.workflow === 'spell-engine') out.sdd = false;
-  if (out.workflow !== 'full' || epicBranch) out.merge = false;
+  // Re-attribute anything applicability turned off — a false must never carry
+  // the source of the value it no longer has. SYNC: mirrors bin/gate.cjs.
+  if (out.workflow === 'ticket' || out.workflow === 'research') {
+    if (out.verify) out.verifySrc = out.workflow + ' mode does not implement';
+    out.verify = false;
+  }
+  if (out.workflow === 'research' || out.workflow === 'spell-engine') {
+    if (out.sdd) out.sddSrc = out.workflow + ' mode produces no spec artifacts';
+    out.sdd = false;
+  }
+  if (out.workflow !== 'full' || epicBranch) {
+    if (out.merge) out.mergeSrc = epicBranch ? '--epic-branch owns merging' : out.workflow + ' mode opens no PR';
+    out.merge = false;
+  }
   return out;
 }
 
