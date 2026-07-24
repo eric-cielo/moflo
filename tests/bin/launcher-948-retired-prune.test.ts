@@ -23,6 +23,7 @@ import {
   classifyRetiredFile,
   applyRetiredPrune,
   writeRetainedRecord,
+  reconcileRetainedRecord,
   RETAINED_RECORD_REL,
 } from '../../bin/lib/retired-files.mjs';
 
@@ -478,6 +479,76 @@ describe('retired-files helper (#948)', () => {
       expect(existsSync(join(root, '.moflo'))).toBe(false);
       writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }]);
       expect(existsSync(recordPath())).toBe(true);
+    });
+
+    // reconcileRetainedRecord runs on EVERY session start, unlike
+    // writeRetainedRecord which only runs in the launcher's upgrade branch.
+    // Without it a user who reads the record and deletes the files keeps a
+    // record naming them until their next moflo upgrade — caught by end-to-end
+    // launcher verification, not by the writeRetainedRecord unit tests.
+    describe('reconcileRetainedRecord', () => {
+      it('is a cheap no-op when no record exists', () => {
+        const r = reconcileRetainedRecord(root);
+        expect(r).toEqual({ changed: false, removed: [], remaining: 0 });
+        expect(existsSync(recordPath())).toBe(false);
+      });
+
+      it('leaves the record untouched while every named file still exists', () => {
+        writeAt(root, '.claude/agents/a.md', 'customized\n');
+        writeRetainedRecord(root, [{ path: '.claude/agents/a.md' }], '4.12.1');
+        const before = readFileSync(recordPath(), 'utf-8');
+
+        const r = reconcileRetainedRecord(root);
+
+        expect(r.changed).toBe(false);
+        expect(readFileSync(recordPath(), 'utf-8')).toBe(before);
+      });
+
+      it('drops only the entries whose files the user deleted', () => {
+        writeAt(root, '.claude/agents/kept.md', 'still here\n');
+        writeRetainedRecord(root, [
+          { path: '.claude/agents/kept.md', retiredIn: '4.12.1' },
+          { path: '.claude/agents/deleted.md', retiredIn: '4.12.1' },
+        ], '4.12.1');
+
+        const r = reconcileRetainedRecord(root);
+
+        expect(r.changed).toBe(true);
+        expect(r.removed).toEqual(['.claude/agents/deleted.md']);
+        expect(r.remaining).toBe(1);
+        const rec = JSON.parse(readFileSync(recordPath(), 'utf-8'));
+        expect(rec.retained.map((e: { path: string }) => e.path)).toEqual(['.claude/agents/kept.md']);
+        // Unrelated top-level fields survive the rewrite.
+        expect(rec.mofloVersion).toBe('4.12.1');
+        expect(rec.version).toBe(1);
+      });
+
+      it('deletes the record once the user has removed every retained file', () => {
+        writeRetainedRecord(root, [{ path: '.claude/agents/gone.md' }], '4.12.1');
+        expect(existsSync(recordPath())).toBe(true);
+
+        const r = reconcileRetainedRecord(root);
+
+        expect(r.changed).toBe(true);
+        expect(r.remaining).toBe(0);
+        expect(existsSync(recordPath())).toBe(false);
+      });
+
+      it('drops a corrupt or hand-edited record rather than reasoning about it', () => {
+        mkdirSync(join(root, '.moflo'), { recursive: true });
+        writeFileSync(recordPath(), '{ not json');
+        expect(reconcileRetainedRecord(root).changed).toBe(true);
+        expect(existsSync(recordPath())).toBe(false);
+
+        writeFileSync(recordPath(), JSON.stringify({ version: 1, retained: 'not-an-array' }));
+        expect(reconcileRetainedRecord(root).changed).toBe(true);
+        expect(existsSync(recordPath())).toBe(false);
+      });
+
+      it('never throws on an unreadable record — session start must not break', () => {
+        mkdirSync(recordPath(), { recursive: true }); // a DIRECTORY where the file goes
+        expect(() => reconcileRetainedRecord(root)).not.toThrow();
+      });
     });
 
     it('applyRetiredPrune surfaces preservedDetails aligned with preserved', () => {

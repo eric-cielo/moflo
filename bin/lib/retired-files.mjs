@@ -202,6 +202,64 @@ export function applyRetiredPrune(projectRoot, manifestPath) {
 }
 
 /**
+ * Reconcile an existing retained record against what is actually on disk.
+ *
+ * `writeRetainedRecord` only runs inside the launcher's UPGRADE branch (that
+ * is where `applyRetiredPrune` lives), so on its own it cannot keep the record
+ * honest: a user who reads the record and deletes the files would keep a
+ * record naming those files until their next moflo upgrade — the record would
+ * outlive what it describes, which is the same "not actionable" complaint
+ * #1307 raised about the truncated banner.
+ *
+ * This runs on EVERY session start instead, and is written to cost nothing in
+ * the common case: one `existsSync` when no record is present (overwhelmingly
+ * the norm), and only then a stat per retained entry.
+ *
+ * Never throws — advisory bookkeeping must not break session start.
+ *
+ * @param {string} projectRoot
+ * @returns {{ changed: boolean, removed: string[], remaining: number }}
+ */
+export function reconcileRetainedRecord(projectRoot) {
+  const result = { changed: false, removed: [], remaining: 0 };
+  const abs = resolve(projectRoot, RETAINED_RECORD_REL);
+  try {
+    if (!existsSync(abs)) return result;               // fast path — no record
+    // Corrupt/hand-edited record: drop it rather than reason about it. Parsed
+    // in its own try so a JSON error lands here and the bad file is actually
+    // removed, instead of falling to the outer catch and lingering forever.
+    let parsed = null;
+    try {
+      parsed = JSON.parse(readFileSync(abs, 'utf-8'));
+    } catch { /* handled below */ }
+    if (!parsed || !Array.isArray(parsed.retained)) {
+      unlinkSync(abs);
+      result.changed = true;
+      return result;
+    }
+    const stillPresent = [];
+    for (const entry of parsed.retained) {
+      if (entry && typeof entry.path === 'string' && existsSync(resolve(projectRoot, entry.path))) {
+        stillPresent.push(entry);
+      } else if (entry && typeof entry.path === 'string') {
+        result.removed.push(entry.path);
+      }
+    }
+    result.remaining = stillPresent.length;
+    if (result.removed.length === 0) return result;    // nothing to do
+    result.changed = true;
+    if (stillPresent.length === 0) {
+      unlinkSync(abs);
+      return result;
+    }
+    writeFileSync(abs, JSON.stringify({ ...parsed, retained: stillPresent }, null, 2) + '\n', 'utf-8');
+    return result;
+  } catch {
+    return result;
+  }
+}
+
+/**
  * Persist the retained (customized-and-therefore-preserved) retired files to
  * `.moflo/retired-retained.json` (#1307 finding 3).
  *

@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
-import { applyRetiredPrune, writeRetainedRecord, RETAINED_RECORD_REL } from './lib/retired-files.mjs';
+import { applyRetiredPrune, writeRetainedRecord, reconcileRetainedRecord, RETAINED_RECORD_REL } from './lib/retired-files.mjs';
 import { makeSyncer, contentEqual, syncDirRecursive } from './lib/file-sync.mjs';
 import { INTERNAL_SKILLS } from './lib/internal-skills.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
@@ -2423,6 +2423,26 @@ if (upgradeNoticeContext) {
 // moment this version's files are in place (see commitVersionStamp). #730 is
 // preserved because that commit is gated on sync success; every stage after the
 // sync block runs unconditionally + idempotently each session.
+
+// ── 3g-1307. Keep the retained-retired record honest every session ──────────
+// The record is WRITTEN in §3's upgrade branch (that is where the retired-file
+// prune runs), but it must not survive the files it names — a user who reads
+// it and deletes those files would otherwise keep a record listing them until
+// their next moflo upgrade. Reconciling here, unconditionally, closes that.
+// Costs one existsSync when no record is present, which is the normal state.
+try {
+  const rec = reconcileRetainedRecord(projectRoot);
+  if (rec.changed) {
+    emitMutation(
+      'reconciled retained-retired record',
+      rec.remaining === 0
+        ? 'all retained files removed by the user — record dropped'
+        : `${plural(rec.removed.length, 'entry')} dropped, ${rec.remaining} still retained`,
+    );
+  }
+} catch (err) {
+  emitWarning(`retained-record reconcile skipped (${errMessage(err)})`);
+}
 
 // ── 3h. Clear bootstrap sentinel if section-3 sync resolved it (#975) ───────
 // Section 3 above re-attempts the same file copies the bootstrap was supposed
