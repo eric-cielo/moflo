@@ -109,6 +109,33 @@ export const isolationTests = [
   // real subsystem; reliably fits in 10 s alone, can drift past full-suite
   // per-test ceilings under fork contention.
   'src/cli/__tests__/doctor-checks-memory-access.test.ts',
+  // Issue #1310 — tests that `spawnSync` the REAL session-start launcher.
+  //
+  // Confirmed mechanism, not a guess: under full-suite fork contention
+  // `session-start-launcher-daemon-behind.test.ts` failed with
+  // `expected null to be +0` and an EMPTY stderr — that is the spawnSync
+  // TIMEOUT signature (the child is killed, so `status` is null and nothing
+  // was written), not an assertion about launcher behavior. It passes 5/5
+  // alone. Same story as `daemon-lock-orphan.test.ts` above.
+  //
+  // The whole family is listed rather than only the file that happened to
+  // flake: each one boots the launcher end-to-end against a temp consumer
+  // (fs sync, manifest walks, fire-and-forget child spawns) on a fixed
+  // per-call timeout, so which one loses the race is arbitrary. Same
+  // reasoning as the four `prerequisites-*` files above.
+  //
+  // Files that merely READ or import from the launcher (lib-sync,
+  // launcher-948-retired-prune, install-manifest, …) are deliberately NOT
+  // here — they carry none of the subprocess cost and belong in the fast pass.
+  'src/cli/__tests__/session-start-launcher-daemon-behind.test.ts',
+  'src/cli/__tests__/session-start-launcher-stamp-loop-recovery.test.ts',
+  'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts',
+  'tests/bin/launcher-854-fixes.test.ts',
+  'tests/bin/launcher-928-dogfood-skip.test.ts',
+  'tests/bin/launcher-headless-skip.test.ts',
+  'tests/bin/launcher-visibility.test.ts',
+  'tests/bin/prompt-hook-restart-notice.test.ts',
+  'tests/system/launcher-version-skew-upgrade-boundary.test.ts',
 ];
 
 export default defineConfig({
