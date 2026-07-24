@@ -91,8 +91,13 @@ export const ALWAYS_INSTALLED_SKILLS = ['flo', 'fl'];
  *
  * @param {string} yamlContent
  * @returns {string[]|null} selected categories, or null when unconfigured
- *   (meaning "no restriction" — sync everything). An explicitly EMPTY list
- *   returns `[]`, which is a real selection meaning "core-and-always only".
+ *   (meaning "no restriction" — sync everything).
+ *
+ *   An explicitly empty list returns `[]`, which is a REAL selection and is not
+ *   the same as `null`: it excludes every category, leaving only
+ *   {@link ALWAYS_INSTALLED_SKILLS} (`/flo` + `/fl`). That is a legitimate
+ *   "bare minimum" choice, but it is a much stronger statement than omitting
+ *   the block, so the two must never be conflated.
  */
 export function parseSkillCategories(yamlContent) {
   if (typeof yamlContent !== 'string' || yamlContent.length === 0) return null;
