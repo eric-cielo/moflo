@@ -1,6 +1,6 @@
 ---
 name: distill
-description: Alias for /flo-simplify. Review changed code for reuse, quality, and efficiency, then fix any issues found — effort scales to the diff size.
+description: Alias for /flo-simplify — see that skill's description.
 ---
 
 # /distill is an alias for /flo-simplify

@@ -1,6 +1,6 @@
 ---
 name: test-gaps
-description: Alias for /ward. Ad-hoc test-gap audit — reveals untested functions, uncovered edge cases, and missing error-handling/integration tests in your diff (or a named path), and conjures ready-to-paste test skeletons inline.
+description: Alias for /ward — see that skill's description.
 arguments: "[path or area | --all]"
 ---
 

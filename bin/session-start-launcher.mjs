@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
-import { applyRetiredPrune } from './lib/retired-files.mjs';
+import { applyRetiredPrune, writeRetainedRecord, RETAINED_RECORD_REL } from './lib/retired-files.mjs';
 import { makeSyncer, contentEqual, syncDirRecursive } from './lib/file-sync.mjs';
 import { INTERNAL_SKILLS } from './lib/internal-skills.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
@@ -1292,17 +1292,43 @@ try {
             `${plural(report.pruned.length, 'file')} matching known-shipped content removed`,
           );
         }
+        // Always reconcile the retained record — including writing none when
+        // nothing is retained, so a record from a previous run doesn't outlive
+        // the files it names (#1307 finding 3).
+        // Version read locally rather than reusing §2's `installedVersion` —
+        // that binding is scoped to the auto-update branch and this block must
+        // not depend on it (an out-of-scope reference would be swallowed by
+        // the surrounding catch as a bogus "prune skipped" warning).
+        let recordVersion;
+        try {
+          recordVersion = JSON.parse(readFileSync(
+            resolve(projectRoot, 'node_modules/moflo/package.json'), 'utf-8',
+          )).version;
+        } catch { /* record just omits the version */ }
+        const retainedRecordPath = writeRetainedRecord(
+          projectRoot,
+          report.preservedDetails,
+          recordVersion,
+        );
         if (report.preserved.length > 0) {
           // stdout (not stderr) so Claude sees this in `additionalContext`
           // and can surface to the user — these aren't failures, just
           // consumer-customized files we deliberately left alone.
+          //
+          // The banner samples; the full list goes to the record file. Before
+          // the record existed the truncated banner was the ONLY place these
+          // paths appeared, and it scrolls away — so "delete manually" wasn't
+          // actionable past the 5th entry.
           const sample = report.preserved.slice(0, 5).map((p) => `  - ${p}`).join('\n');
           const more = report.preserved.length > 5
             ? `\n  …and ${report.preserved.length - 5} more`
             : '';
+          const where = retainedRecordPath
+            ? `\n  full list: ${RETAINED_RECORD_REL}`
+            : '';
           try {
             process.stdout.write(
-              `moflo: retained ${plural(report.preserved.length, 'customized retired file')} (delete manually if unwanted):\n${sample}${more}\n`,
+              `moflo: retained ${plural(report.preserved.length, 'customized retired file')} (delete manually if unwanted):\n${sample}${more}${where}\n`,
             );
           } catch { /* non-fatal */ }
         }

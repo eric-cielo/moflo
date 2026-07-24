@@ -638,7 +638,7 @@ switch (command) {
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (isEphemeralPath(process.env.TOOL_INPUT_path)) break;
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search.\\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before exploring files. Use mcp__moflo__memory_search.\\nThis is a moflo hook, not a Claude Code permission rule — allow-rules cannot override it. Disable via moflo.yaml: gates: memory_first: false\\n');
     process.exit(2);
   }
   case 'check-before-read': {
@@ -648,7 +648,7 @@ switch (command) {
     var fp = process.env.TOOL_INPUT_file_path || '';
     if (isEphemeralPath(fp)) break;
     if (fp.indexOf('.claude/guidance/') < 0 && fp.indexOf('.claude\\\\guidance\\\\') < 0) break;
-    process.stderr.write('BLOCKED: Search memory before reading guidance files. Use mcp__moflo__memory_search.\\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before reading guidance files. Use mcp__moflo__memory_search.\\nThis is a moflo hook, not a Claude Code permission rule — allow-rules cannot override it. Disable via moflo.yaml: gates: memory_first: false\\n');
     process.exit(2);
   }
   case 'record-task-created': {
@@ -680,10 +680,11 @@ switch (command) {
     // See bin/gate.cjs check-bash-memory for full rationale.
     var hint = s2.lastNamespaceHint || classifyBashNamespaceHint(cmd) || '';
     process.stderr.write(
-      'BLOCKED: Search memory before reading files via Bash.\\n' +
+      'BLOCKED [moflo memory_first gate]: Search memory before reading files via Bash.\\n' +
       'Example: mcp__moflo__memory_search { query: "<topic>", namespace: "<one of: guidance | code-map | patterns | learnings | tests>" }\\n' +
       (hint ? hint + '\\n' : '') +
       'On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\\n' +
+      'This is a moflo hook, not a Claude Code permission rule — allow-rules cannot override it.\\n' +
       'Disable per-gate via moflo.yaml: gates: memory_first: false\\n'
     );
     process.exit(2);
