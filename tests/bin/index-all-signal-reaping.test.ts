@@ -168,6 +168,59 @@ describe.skipIf(isWindows)('index-all.mjs reaps the in-flight step on SIGTERM (#
     expect(stepDead, `step ${stepPid} was orphaned by session-end SIGTERM`).toBe(true);
   }, 45000);
 
+  /**
+   * The literal acceptance criterion from #1317: the chain is mid-flight, the
+   * session-end hook calls pm.killAll(), and no step process survives. The two
+   * tests either side of this one cover the halves (index-all's own signal
+   * reaping; killAll's group-kill); this one composes them through the real
+   * session-end entry point, which is what consumers actually hit.
+   */
+  it('leaves no surviving step when pm.killAll() reaps a mid-flight chain', async () => {
+    const pidFile = join(root, 'step.pid');
+    plantProject(pidFile);
+
+    const mod = await import(pathToFileURL(PM_PATH).href);
+    const pm = mod.createProcessManager(root);
+
+    // pm.spawn passes no env, so the chain would inherit this worker's
+    // CLAUDE_PROJECT_DIR (the real repo). Point it at the temp root for the
+    // duration of the spawn, exactly as the session-end hook's environment
+    // would be pointed at the consumer's project.
+    const prevRoot = process.env.CLAUDE_PROJECT_DIR;
+    const prevForce = process.env.FLO_FORCE_INDEX;
+    process.env.CLAUDE_PROJECT_DIR = root;
+    process.env.FLO_FORCE_INDEX = '1';
+    let spawned: { pid: number | null };
+    try {
+      spawned = pm.spawn(process.execPath, [INDEX_ALL], 'sequential indexing chain');
+    } finally {
+      if (prevRoot === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = prevRoot;
+      if (prevForce === undefined) delete process.env.FLO_FORCE_INDEX;
+      else process.env.FLO_FORCE_INDEX = prevForce;
+    }
+
+    const chainPid = spawned.pid!;
+    expect(chainPid).toBeGreaterThan(0);
+
+    expect(await waitFor(() => existsSync(pidFile)), 'chain never reached a step').toBe(true);
+    const stepPid = Number(readFileSync(pidFile, 'utf-8').trim());
+    expect(isAlive(stepPid)).toBe(true);
+
+    // The session-end call itself — bin/hooks.mjs:353.
+    const result = pm.killAll();
+    expect(result.killed).toBe(1);
+
+    expect(await waitFor(() => !isAlive(chainPid)), 'chain survived killAll').toBe(true);
+
+    const stepDead = await waitFor(() => !isAlive(stepPid));
+    if (!stepDead) {
+      try { process.kill(-stepPid, 'SIGKILL'); } catch { /* best effort */ }
+      try { process.kill(stepPid, 'SIGKILL'); } catch { /* best effort */ }
+    }
+    expect(stepDead, `step ${stepPid} survived pm.killAll() — orphaned`).toBe(true);
+  }, 45000);
+
   it('logs the reap so an orphan report is diagnosable', async () => {
     const pidFile = join(root, 'step.pid');
     plantProject(pidFile);
