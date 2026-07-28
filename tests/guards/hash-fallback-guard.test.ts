@@ -3,7 +3,7 @@
  * goes GREEN, the guard regressed — fix the config, don't mute the test.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   existsSync,
   mkdirSync,
@@ -15,70 +15,47 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
-import { ESLint } from 'eslint';
-
 import {
   BANNED_EMBEDDING_IDENTIFIERS,
   BANNED_EMBEDDING_LITERAL_RE,
 } from '../../harness/consumer-smoke/lib/checks.mjs';
+import { REPO_ROOT, violates } from './_helpers/eslint-harness.js';
 
-const REPO_ROOT = resolve(__dirname, '../..');
-
-// `filePath` drives ESLint's override resolution; the file is never written.
 const SRC_FIXTURE_PATH = join(REPO_ROOT, 'src', '__guard_fixture__.ts');
 
-let eslint: ESLint;
-
-beforeAll(() => {
-  // One ESLint instance reused across cases — constructing ESLint parses the
-  // full config cascade (~300-700ms on Windows).
-  eslint = new ESLint({ cwd: REPO_ROOT });
-});
-
-async function lintSource(source: string): Promise<ESLint.LintResult[]> {
-  return eslint.lintText(source, { filePath: SRC_FIXTURE_PATH });
-}
-
-function hasRuleViolation(
-  results: ESLint.LintResult[],
-  ruleId: string,
-): boolean {
-  return results.some(r =>
-    r.messages.some(m => m.ruleId === ruleId && m.severity === 2),
-  );
+/** Lint `source` as a plain `src/**.ts` file and report whether `ruleId` fired. */
+async function srcViolates(source: string, ruleId?: string): Promise<boolean> {
+  return violates(source, SRC_FIXTURE_PATH, ruleId);
 }
 
 describe('hash-fallback regression guard — ESLint', () => {
   it('rejects a standalone hashEmbed function', async () => {
-    const results = await lintSource(`
+    expect(await srcViolates(`
       export function hashEmbed(text: string): number[] {
         return [text.length];
       }
-    `);
-    expect(hasRuleViolation(results, 'no-restricted-syntax')).toBe(true);
+    `)).toBe(true);
   });
 
   it('rejects an embedWithFallback helper', async () => {
-    const results = await lintSource(`
+    expect(await srcViolates(`
       export async function embedWithFallback(text: string) {
         return [text];
       }
-    `);
-    expect(hasRuleViolation(results, 'no-restricted-syntax')).toBe(true);
+    `)).toBe(true);
   });
 
   it('rejects the domain-aware-hash model literal', async () => {
-    const results = await lintSource(`
+    expect(await srcViolates(`
       export const MODEL = 'domain-aware-hash-v2';
-    `);
-    expect(hasRuleViolation(results, 'no-restricted-syntax')).toBe(true);
+    `)).toBe(true);
   });
 
   it('rejects a renamed function that builds Float32Array + charCodeAt', async () => {
     // The point of the structural rule: no matter what you call the function,
     // if it constructs a Float32Array AND calls charCodeAt in the same body,
     // it is a hash embedding.
-    const results = await lintSource(`
+    expect(await srcViolates(`
       export function totallyLegit(text: string, dim = 8): Float32Array {
         const out = new Float32Array(dim);
         for (let i = 0; i < dim; i++) {
@@ -86,27 +63,24 @@ describe('hash-fallback regression guard — ESLint', () => {
         }
         return out;
       }
-    `);
-    expect(hasRuleViolation(results, 'no-restricted-syntax')).toBe(true);
+    `)).toBe(true);
   });
 
   it('rejects an @xenova/transformers import', async () => {
-    const results = await lintSource(`
+    expect(await srcViolates(`
       import { pipeline } from '@xenova/transformers';
       export const p = pipeline;
-    `);
-    expect(hasRuleViolation(results, 'no-restricted-imports')).toBe(true);
+    `, 'no-restricted-imports')).toBe(true);
   });
 
   it('allows the legitimate generateEmbedding public API', async () => {
-    const results = await lintSource(`
+    expect(await srcViolates(`
       import { generateEmbedding } from './memory/memory-initializer.js';
       export async function run(text: string) {
         const r = await generateEmbedding(text);
         return r.embedding;
       }
-    `);
-    expect(hasRuleViolation(results, 'no-restricted-syntax')).toBe(false);
+    `)).toBe(false);
   });
 });
 

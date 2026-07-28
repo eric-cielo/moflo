@@ -74,6 +74,11 @@ export const isolationTests = [
   'src/cli/__tests__/spells/tool-registry.test.ts',
   'tests/bin/bin-scripts.test.ts',
   'tests/guards/hash-fallback-guard.test.ts',
+  // Same profile as its sibling above: constructing ESLint parses the whole
+  // flat-config cascade, and each case runs a real `lintText`. Both guard
+  // suites belong on the sequential pass for the #617 reason, not because
+  // they are flaky (#1319).
+  'tests/guards/source-guards.test.ts',
   'tests/hive-mind-messagebus.test.ts',
   'tests/issue-fixes.test.ts',
   // process.chdir + bridge singleton reset per test — racy under parallel

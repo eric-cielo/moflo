@@ -1,7 +1,7 @@
 // Regression guard for issue #560 — `moflo benchmark pretrain` must measure
 // the real fastembed embedder, never an inline charCodeAt+Math.sin hash.
 //
-// The repo-wide ESLint structural rule in .eslintrc.cjs deliberately exempts
+// The repo-wide ESLint structural rule in eslint.config.js deliberately exempts
 // benchmarks/ paths (benchmarks legitimately compute synthetic vectors for
 // math throughput). That exemption is how the hash implementations originally
 // landed in benchmarkEmbeddingGeneration + benchmarkPretrainPipeline and

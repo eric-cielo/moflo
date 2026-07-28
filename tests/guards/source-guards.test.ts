@@ -20,17 +20,14 @@
  * `hash-fallback-guard.test.ts`; this file covers everything else.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
-import { join, resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { join } from 'node:path';
 
-import { ESLint } from 'eslint';
-
-const REPO_ROOT = resolve(__dirname, '../..');
+import { REPO_ROOT, violates } from './_helpers/eslint-harness.js';
 
 /**
- * `filePath` drives config/override resolution; the file itself is never
- * written or read. The real paths below are deliberate — the exemption
- * overrides key off those exact names.
+ * The real paths below are deliberate — the per-file exemption configs key
+ * off those exact names, and `filePath` is what drives their resolution.
  */
 const FIXTURES = {
   srcTs: join(REPO_ROOT, 'src', '__guard_fixture__.ts'),
@@ -41,30 +38,6 @@ const FIXTURES = {
   srcTest: join(REPO_ROOT, 'src', 'cli', '__tests__', '__guard_fixture__.test.ts'),
   ignoredDocs: join(REPO_ROOT, 'docs', '__guard_fixture__.js'),
 } as const;
-
-let eslint: ESLint;
-
-beforeAll(() => {
-  // One instance reused across cases — constructing ESLint parses the full
-  // config cascade (~300-700ms on Windows).
-  eslint = new ESLint({ cwd: REPO_ROOT });
-});
-
-/**
- * True when linting `source` as `filePath` produces at least one error from
- * `ruleId`. An ignored path yields no results (eslint 8) or an ignore warning
- * (eslint 9+) — both correctly read as "no violation" here.
- */
-async function violates(
-  source: string,
-  filePath: string,
-  ruleId = 'no-restricted-syntax',
-): Promise<boolean> {
-  const results = await eslint.lintText(source, { filePath });
-  return results.some(r =>
-    r.messages.some(m => m.ruleId === ruleId && m.severity === 2),
-  );
-}
 
 describe('raw non-atomic DB write guard (#564)', () => {
   it('rejects fs.writeFileSync(path, db.export())', async () => {
