@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@anush008/tokenizers": "^0.6.0",
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "js-yaml": "^5.2.0",
     "lru-cache": "^11.3.5",
     "onnxruntime-node": "^1.27.0",
