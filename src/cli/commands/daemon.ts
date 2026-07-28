@@ -19,6 +19,7 @@ import { join, resolve, isAbsolute } from 'path';
 import * as fs from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { readMofloEnv } from '../services/env-compat.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /**
  * Resolve the dashboard port from CLI flag and env, in that precedence order.
@@ -76,7 +77,13 @@ const startCommand: Command = {
     const foreground = ctx.flags.foreground as boolean;
     const noDashboard = ctx.flags.noDashboard as boolean;
     const rawDashboardPort = ctx.flags.dashboardPort as string | undefined;
-    const projectRoot = process.cwd();
+    // #1315 — the shared chokepoint. Every daemon-start path lands here:
+    // `maybeAutoStartDaemon`, the session-start launcher, bin/hooks.mjs, the
+    // daemon recycler, the scheduler, and the OS service definitions. Each one
+    // spawns with a cwd it inherited from the caller, so anchoring on
+    // `process.cwd()` let ANY of them mint a `.moflo/` island in a
+    // sub-workspace while resolving its own binary from the root install.
+    const projectRoot = resolveStateRoot();
     const isDaemonProcess = readMofloEnv('DAEMON') === '1';
 
     // Resolve dashboard port; see `resolveDashboardPort` for precedence.
@@ -368,12 +375,35 @@ function validatePath(path: string, label: string): void {
 }
 
 /**
+ * Validate the resolved project root (#1315).
+ *
+ * Separate from `validatePath` because containment is meaningless for the root
+ * itself — it IS the boundary every other path is checked against. Passing it
+ * to `validatePath` would either compare it against `process.cwd()` (which now
+ * fails legitimately, since the root is an ANCESTOR of cwd for any
+ * sub-workspace invocation) or against itself (a tautology that silently
+ * retires the check). Assert the properties that actually matter instead:
+ * injection-free and absolute.
+ */
+function validateProjectRoot(root: string): void {
+  if (root.includes('\0')) {
+    throw new Error('Project root contains null bytes');
+  }
+  if (/[;&|`$<>]/.test(root)) {
+    throw new Error('Project root contains shell metacharacters');
+  }
+  if (!isAbsolute(root)) {
+    throw new Error(`Project root is not absolute: ${root}`);
+  }
+}
+
+/**
  * Start daemon as a detached background process
  */
 async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpuLoad?: string, minFreeMemory?: string, dashboardPort?: number, noDashboard?: boolean): Promise<CommandResult> {
   // Validate and resolve project root
   const resolvedRoot = resolve(projectRoot);
-  validatePath(resolvedRoot, 'Project root');
+  validateProjectRoot(resolvedRoot);
 
   const stateDir = join(resolvedRoot, '.moflo');
   const logFile = join(stateDir, 'daemon.log');
@@ -434,6 +464,13 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
 
   const daemonEnv = {
     ...process.env,
+    // #1315 — PIN the child's project dir to the root we just resolved.
+    // Without this the daemon inherited the SESSION's `CLAUDE_PROJECT_DIR`
+    // (a sub-workspace), and so did everything it spawns — headless Claude,
+    // hooks, MCP — all of which resolve through `findProjectRoot()` and would
+    // anchor back on the sub-workspace, re-minting the island this fix
+    // removes. Pinning it closes the whole inherited-env class in one place.
+    CLAUDE_PROJECT_DIR: resolvedRoot,
     MOFLO_DAEMON: '1',
     // #981 — daemon process must skip its own write-routing client.
     MOFLO_IS_DAEMON: '1',
@@ -521,7 +558,10 @@ const stopCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
-    const projectRoot = process.cwd();
+    // #1315 — must match `start`'s anchor. Anchoring on cwd here would look for
+    // the lock in a sub-workspace, miss the root daemon, and report "not
+    // running" while it kept going.
+    const projectRoot = resolveStateRoot();
 
     try {
       if (!quiet) {
@@ -653,7 +693,12 @@ const statusCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const verbose = ctx.flags.verbose as boolean;
     const showModes = ctx.flags.showModes as boolean;
-    const projectRoot = process.cwd();
+    // #1315 — `getDaemon` constructs a WorkerDaemon, and that constructor
+    // unconditionally mkdirs `<root>/.moflo` and `<root>/.moflo/logs`
+    // (`worker-daemon.ts`). Anchoring on cwd meant a read-only-looking
+    // `flo daemon status` MINTED a state-dir island in whatever directory it
+    // was run from — a creation path entirely separate from `start`.
+    const projectRoot = resolveStateRoot();
 
     try {
       const daemon = getDaemon(projectRoot);
@@ -815,7 +860,9 @@ const triggerCommand: Command = {
     }
 
     try {
-      const daemon = getDaemon(process.cwd());
+      // #1315 — resolved root, not cwd: the WorkerDaemon constructor creates
+      // the state dir it is pointed at.
+      const daemon = getDaemon(resolveStateRoot());
 
       const spinner = output.createSpinner({ text: `Running ${workerType} worker...`, spinner: 'dots' });
       spinner.start();
@@ -864,7 +911,9 @@ const enableCommand: Command = {
     }
 
     try {
-      const daemon = getDaemon(process.cwd());
+      // #1315 — resolved root, not cwd (see `trigger`). Enabling a worker on a
+      // cwd-anchored daemon also wrote its state to the wrong `.moflo`.
+      const daemon = getDaemon(resolveStateRoot());
       daemon.setWorkerEnabled(workerType, !disable);
 
       output.printSuccess(`Worker ${workerType} ${disable ? 'disabled' : 'enabled'}`);
@@ -889,7 +938,11 @@ const installCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
-    const projectRoot = process.cwd();
+    // #1315 — the highest-stakes anchor of the family. `installDaemonService`
+    // BAKES this path into a launchd plist / systemd unit / schtasks entry
+    // (`daemon-service.ts`), so a cwd-anchored install persisted an island
+    // across reboots — the one variant that outlives `flo doctor --fix`.
+    const projectRoot = resolveStateRoot();
 
     try {
       const result = installDaemonService(projectRoot);
@@ -925,10 +978,30 @@ const uninstallCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
-    const projectRoot = process.cwd();
+    // #1315 — must match `install`'s anchor, or uninstall looks for a service
+    // registered under a different root and silently leaves it in place.
+    const projectRoot = resolveStateRoot();
 
     try {
       const result = uninstallDaemonService(projectRoot);
+
+      // #1315 — also sweep the LEGACY cwd-anchored registration. The service
+      // name is `sha256(resolvedRoot)`, so a consumer who ran `flo daemon
+      // install` from a sub-directory before this fix has a plist/unit/task
+      // named for THAT path. Resolving correctly now makes it unreachable:
+      // uninstall would report success while the old service stayed enabled
+      // and re-spawned a sub-root daemon at every login, with no supported way
+      // to remove it. Best-effort and silent — on the overwhelmingly common
+      // path cwd IS the root and this is a no-op.
+      const legacyRoot = resolve(process.cwd());
+      if (legacyRoot !== projectRoot) {
+        try {
+          const legacy = uninstallDaemonService(legacyRoot);
+          if (legacy.success && !quiet) {
+            output.printSuccess(`Also removed a legacy service registered at ${legacyRoot}`);
+          }
+        } catch { /* nothing registered there — expected */ }
+      }
 
       if (!quiet) {
         if (result.success) {

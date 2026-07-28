@@ -26,6 +26,7 @@ import { toFloat32 } from './controllers/_shared.js';
 import { serialiseMetadata } from './bridge-entries.js';
 import { logRoutingFault, writeVectorStatsCache } from './entries-shared.js';
 import { writeThroughDurable } from '../services/durable-sync.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /**
  * Propagate a just-persisted durable write to the shared store (#1232). The
@@ -170,7 +171,7 @@ export async function storeEntry(options: {
     upsert = false
   } = options;
 
-  const dbPath = customPath || memoryDbPath(process.cwd());
+  const dbPath = customPath || memoryDbPath(resolveStateRoot());
 
   try {
     if (!fs.existsSync(dbPath)) {
@@ -440,7 +441,7 @@ export async function deleteEntry(options: {
     dbPath: customPath
   } = options;
 
-  const dbPath = customPath || memoryDbPath(process.cwd());
+  const dbPath = customPath || memoryDbPath(resolveStateRoot());
 
   try {
     if (!fs.existsSync(dbPath)) {

@@ -31,7 +31,7 @@ import {
 import { aggregateClaudeStats, emptyClaudeStatsShape } from './claude-stats.js';
 import { serverPortCandidates, LEGACY_DEFAULT_PORT } from './daemon-port.js';
 import { writeLockPort } from './daemon-lock.js';
-import { findProjectRoot } from './project-root.js';
+import { resolveStateRoot } from './project-root.js';
 import { readOwnMofloVersion } from './daemon-lock.js';
 
 // ============================================================================
@@ -57,7 +57,7 @@ export interface DashboardOptions {
   /**
    * Absolute project root the daemon is serving. Stamped into
    * `/api/health` so clients can verify they're hitting their own
-   * project's daemon (#1145). Defaults to `findProjectRoot()`.
+   * project's daemon (#1145). Defaults to `resolveStateRoot()`.
    */
   projectRoot?: string;
 }
@@ -192,7 +192,7 @@ function tryParseSafe(s: string): unknown {
  * Build the `/api/health` response (#1145).
  *
  * Identity payload — clients compare `projectRoot` against their own
- * `findProjectRoot()` and refuse to route to this daemon on mismatch.
+ * `resolveStateRoot()` and refuse to route to this daemon on mismatch.
  * Also surfaces `pid`, `version`, and `uptimeMs` for healer-class
  * diagnostics and orphan-daemon detection.
  *
@@ -203,7 +203,7 @@ function handleHealth(daemon: WorkerDaemon, opts: DashboardOptions): object {
   const startedAt = status.startedAt instanceof Date ? status.startedAt : null;
   return {
     status: 'ok',
-    projectRoot: opts.projectRoot ?? findProjectRoot(),
+    projectRoot: opts.projectRoot ?? resolveStateRoot(),
     pid: status.pid ?? process.pid,
     version: readOwnMofloVersion() ?? null,
     uptimeMs: startedAt ? Date.now() - startedAt.getTime() : 0,
@@ -729,7 +729,7 @@ export async function startDashboard(
   daemon: WorkerDaemon,
   opts: DashboardOptions,
 ): Promise<DashboardHandle> {
-  const projectRoot = opts.projectRoot ?? findProjectRoot();
+  const projectRoot = opts.projectRoot ?? resolveStateRoot();
   const candidates = buildBindCandidates(opts.port, projectRoot, MAX_PORT_ATTEMPTS);
 
   let lastErr: unknown = null;

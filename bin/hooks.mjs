@@ -26,7 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { createProcessManager } from './lib/process-manager.mjs';
 import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
-import { findProjectRoot } from './lib/moflo-paths.mjs';
+import { resolveStateRoot } from './lib/moflo-paths.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,7 +35,10 @@ const __dirname = dirname(__filename);
 // in bin/ during development but gets synced to .claude/scripts/ in consumer
 // projects, so __dirname-relative paths break. findProjectRoot() works
 // everywhere and resolves identically to the TS bridge (see lib/moflo-paths.mjs).
-const projectRoot = findProjectRoot();
+// #1315 — resolveStateRoot, NOT findProjectRoot: this layer mkdirs
+// `.moflo/` state, and findProjectRoot honors CLAUDE_PROJECT_DIR verbatim,
+// so a sub-workspace-rooted session minted an island here every start.
+const projectRoot = resolveStateRoot();
 const logFile = resolve(projectRoot, '.moflo', 'logs', 'hooks.log');
 try { mkdirSync(dirname(logFile), { recursive: true }); } catch { /* best effort */ }
 const pm = createProcessManager(projectRoot);

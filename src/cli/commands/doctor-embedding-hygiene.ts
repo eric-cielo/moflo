@@ -39,6 +39,7 @@ import {
   EPHEMERAL_NAMESPACES,
   EPHEMERAL_NAMESPACE_PREFIXES,
 } from '../memory/bridge-embedder.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 export interface HealthCheck {
   name: string;
@@ -166,7 +167,7 @@ export async function checkEmbeddingHygiene(): Promise<HealthCheck> {
 }
 
 function resolveMemoryDb(): string | null {
-  return memoryDbCandidatePaths(process.cwd()).find((p) => existsSync(p)) ?? null;
+  return memoryDbCandidatePaths(resolveStateRoot()).find((p) => existsSync(p)) ?? null;
 }
 
 async function loadModelGroups(dbPath: string): Promise<ModelGroup[] | null> {

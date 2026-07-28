@@ -26,6 +26,7 @@ import { join } from 'path';
 import { getDaemonLockHolder } from '../services/daemon-lock.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 const SCAN_TIMEOUT_MS_WIN = 10_000;
 const SCAN_TIMEOUT_MS_POSIX = 5_000;
@@ -139,7 +140,10 @@ export function findForeignWriters(
  * running a known cross-process writer. Lists every offender so the user can
  * SIGKILL them by PID.
  */
-export async function checkWritersAudit(cwd: string = process.cwd()): Promise<HealthCheck> {
+// #1315 — the default anchor is the RESOLVED root, not cwd. Running the healer
+// from a sub-workspace previously audited whatever `.moflo` happened to sit
+// under that directory (often a stray) while reporting on "the project".
+export async function checkWritersAudit(cwd: string = resolveStateRoot()): Promise<HealthCheck> {
   const name = 'Writers Audit';
   try {
     const daemonPid = getDaemonLockHolder(cwd);

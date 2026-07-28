@@ -13,6 +13,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getDaemonLockHolder, isDaemonProcess, releaseDaemonLock } from '../services/daemon-lock.js';
 import type { HealthCheck } from './doctor-types.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 // Cmdline capture/display caps + scan timeouts. Hoisted so the values
 // used to size buffers and format messages are visible in one place.
@@ -58,8 +59,8 @@ function isProcessAlive(pid: number): boolean {
 // Fast path: kill processes tracked in the shared ProcessManager registry.
 // This avoids the expensive OS-level process scan for known background tasks.
 export function killTrackedProcesses(): number {
-  const registryFile = join(process.cwd(), '.moflo', 'background-pids.json');
-  const lockFile = join(process.cwd(), '.moflo', 'spawn.lock');
+  const registryFile = join(resolveStateRoot(), '.moflo', 'background-pids.json');
+  const lockFile = join(resolveStateRoot(), '.moflo', 'spawn.lock');
   let killed = 0;
   try {
     if (existsSync(registryFile)) {
@@ -92,7 +93,7 @@ export function killTrackedProcesses(): number {
 // findZombieProcesses() flags every running indexer step as a zombie.
 function readTrackedBackgroundPids(): Set<number> {
   const result = new Set<number>();
-  const registryFile = join(process.cwd(), '.moflo', 'background-pids.json');
+  const registryFile = join(resolveStateRoot(), '.moflo', 'background-pids.json');
   try {
     if (!existsSync(registryFile)) return result;
     const entries = JSON.parse(readFileSync(registryFile, 'utf-8'));

@@ -11,6 +11,7 @@ import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import type { HealthCheck } from './doctor-types.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /** Skew (cached / live count delta) above which the cache is treated as stale. */
 const VECTOR_STATS_SKEW_WARN_THRESHOLD = 0.2;
@@ -40,10 +41,10 @@ async function countEmbeddedRowsFromDb(dbPath: string): Promise<number | null> {
 }
 
 export async function checkEmbeddings(): Promise<HealthCheck> {
-  const liveDbPath = memoryDbCandidatePaths(process.cwd()).find((p) => existsSync(p));
+  const liveDbPath = memoryDbCandidatePaths(resolveStateRoot()).find((p) => existsSync(p));
 
   // 1. Fast path: read cached vector-stats.json if available
-  const statsPath = join(process.cwd(), '.moflo', 'vector-stats.json');
+  const statsPath = join(resolveStateRoot(), '.moflo', 'vector-stats.json');
   try {
     if (existsSync(statsPath)) {
       const stats = JSON.parse(readFileSync(statsPath, 'utf8'));

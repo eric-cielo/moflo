@@ -13,7 +13,7 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { findProjectDaemonPids, getDaemonLockHolder } from '../services/daemon-lock.js';
-import { findProjectRoot } from '../services/project-root.js';
+import { findProjectRoot, resolveStateRoot } from '../services/project-root.js';
 import { legacyMemoryDbPath, legacyMemoryDbBakPath, memoryDbPath, mofloDir } from '../services/moflo-paths.js';
 import { findZombieProcesses } from './doctor-zombies.js';
 import { inspectMcpConfigs } from './doctor-checks-config.js';
@@ -278,7 +278,19 @@ async function stopNestedDaemons(subRoot: string): Promise<{ stopped: number[]; 
   let pids: number[] = [];
   try {
     pids = findProjectDaemonPids(subRoot);
-  } catch { return { stopped: [], remaining: [], denied: [] }; }
+  } catch { /* cmdline scan unavailable — the lock-file probe below still runs */ }
+
+  // #1315 — the cmdline scan alone cannot see a HUSK daemon. `projectCliCandidates`
+  // matches processes whose command line invokes `<subRoot>/node_modules/moflo/bin/cli.js`,
+  // but a husk daemon resolved its binary from the ROOT install and only its
+  // CWD was the sub-directory — so nothing matches, nothing is reaped, and the
+  // archive that follows either fails EBUSY on Windows (open daemon.log fd) or
+  // succeeds on POSIX only for the daemon's next tick to recreate the dir.
+  // The lock file is the dependable handle: a husk always contains one.
+  try {
+    const holder = getDaemonLockHolder(subRoot);
+    if (holder !== null && !pids.includes(holder)) pids.push(holder);
+  } catch { /* no lock or unreadable — nothing more we can do */ }
 
   if (pids.length === 0) return { stopped: [], remaining: [], denied: [] };
 
@@ -347,7 +359,11 @@ async function stopNestedDaemons(subRoot: string): Promise<{ stopped: number[]; 
  *     inode; the daemon keeps writing to a now-archived path until it exits.
  */
 async function fixNestedMofloIslands(): Promise<boolean> {
-  const root = findProjectRoot();
+  // #1315 — `resolveStateRoot`, not `findProjectRoot`. The latter returns
+  // `CLAUDE_PROJECT_DIR` unconditionally, so running the healer from a
+  // sub-workspace session would scan for islands starting AT a sub-workspace —
+  // missing the real ones above it, and treating that directory as canonical.
+  const root = resolveStateRoot();
   let islands: string[];
   try {
     const { findNestedMofloDirsForFix } = await import('./doctor-checks-config.js');
@@ -439,7 +455,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     },
     'Config File': async () => {
       try {
-        const cfDir = join(process.cwd(), '.moflo');
+        const cfDir = join(resolveStateRoot(), '.moflo');
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
         return runFixCommand('npx moflo config init');
       } catch {

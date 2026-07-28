@@ -117,11 +117,32 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
     });
   });
 
-  const port = 30000 + Math.floor(Math.random() * 10000);
+  // Bind an OS-assigned ephemeral port (0) rather than guessing a random one.
+  //
+  // This used to be `30000 + Math.floor(Math.random() * 10000)` with
+  // `server.on('error', reject)` and no retry, so any EADDRINUSE failed the
+  // test outright. Nearly every `it` in this file starts a fake daemon, and a
+  // full parallel suite has many workers binding in the same range — so the
+  // collisions were rare individually but near-certain across a whole run.
+  // That is one of the intermittent failures behind the non-deterministic
+  // suite result; it passes every time in isolation because nothing else is
+  // competing for ports. Port 0 makes collision structurally impossible.
+  //
+  // Cross-platform note (CLAUDE.md Rule #1 §8): the "use 40000-44999, avoid
+  // 49152-65535" guidance is about HARDCODING a port — Windows reserves ranges
+  // (Hyper-V/WinNAT) inside the dynamic block and an explicit bind there gets
+  // EACCES. Port 0 is the opposite: the OS picks, and it never hands out a port
+  // it has excluded. So this is strictly safer on Windows than any fixed range,
+  // not an exception to that rule. Do not "fix" it back to a literal port.
   await new Promise<void>((resolve, reject) => {
     server.on('error', reject);
-    server.listen(port, '127.0.0.1', () => resolve());
+    server.listen(0, '127.0.0.1', () => resolve());
   });
+  const address = server.address();
+  if (typeof address !== 'object' || address === null) {
+    throw new Error('fake daemon: server.address() did not return an AddressInfo');
+  }
+  const port = address.port;
 
   return {
     port,

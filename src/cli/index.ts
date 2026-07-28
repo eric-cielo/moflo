@@ -15,6 +15,7 @@ import { runStartupUpdateCheck } from './update/index.js';
 import { loadMofloConfig } from './config/moflo-config.js';
 import { getDaemonLockHolder } from './services/daemon-lock.js';
 import { registerBackgroundPid } from './services/process-registry.js';
+import { resolveStateRoot } from './services/project-root.js';
 import { VERSION } from './version.js';
 
 export { VERSION };
@@ -544,25 +545,37 @@ export class CLI {
     // wants autostart can delete it in its own beforeEach, same as the others.
     if (process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART === '1') return;
 
-    const config = loadMofloConfig(process.cwd());
+    // #1315 — anchor on the resolved project root, NOT cwd. Pre-fix, a `flo`
+    // invocation from a sub-workspace read the config from there, looked for a
+    // lock there (never finding the root daemon's, so the "already running?"
+    // check below always passed), and then spawned a second daemon bound to a
+    // freshly-minted `.moflo/` island.
+    const projectRoot = resolveStateRoot();
+
+    const config = loadMofloConfig(projectRoot);
     if (!config.daemon.auto_start) return;
 
-    // Already running?
-    const holder = getDaemonLockHolder(process.cwd());
+    // Already running? Checked at the resolved root so a subdirectory
+    // invocation sees the root daemon instead of spawning a rival.
+    const holder = getDaemonLockHolder(projectRoot);
     if (holder) return;
 
     // Dynamically import to avoid circular deps and keep CLI startup fast
     const { spawn } = await import('child_process');
     const { join } = await import('path');
-    const { existsSync, openSync, mkdirSync } = await import('fs');
+    const { existsSync, openSync } = await import('fs');
     const { locateMofloCliBin } = await import('./services/moflo-require.js');
 
     const cliPath = locateMofloCliBin();
     if (!cliPath) return;
 
-    const projectRoot = process.cwd();
     const stateDir = join(projectRoot, '.moflo');
-    if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
+    // #1315 — an implicit auto-start must never MINT state. If there's no
+    // `.moflo/` at the resolved root this isn't an initialized moflo project,
+    // and creating one here is what produced stray islands seven levels deep
+    // inside consumer source trees. `flo init` and the explicit `daemon start`
+    // path still create it; auto-start only ever attaches to what exists.
+    if (!existsSync(stateDir)) return;
     const logFile = join(stateDir, 'daemon.log');
 
     const isWin = process.platform === 'win32';

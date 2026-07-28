@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { LEGACY_SWARM_DIR, memoryDbCandidatePaths, mofloDir } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 // Get dynamic swarm status from memory/session files
 function getSwarmStatus(swarmId?: string) {
@@ -24,7 +25,7 @@ function getSwarmStatus(swarmId?: string) {
   const canonicalSwarmDir = path.join(mofloDir(projectRoot), 'swarm');
   const legacySwarmDir = path.join(projectRoot, LEGACY_SWARM_DIR);
   const sessionDir = path.join(process.cwd(), '.claude', 'sessions');
-  const memoryPaths = memoryDbCandidatePaths(process.cwd());
+  const memoryPaths = memoryDbCandidatePaths(resolveStateRoot());
 
   // Check for active swarm state file — canonical first, then legacy.
   let swarmStateFile = path.join(canonicalSwarmDir, 'state.json');

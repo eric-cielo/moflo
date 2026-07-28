@@ -11,7 +11,7 @@ import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { mofloDir, findProjectRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
+import { mofloDir, resolveStateRoot, findAncestorMofloRoot, COMMON_WALK_SKIP_NAMES } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
@@ -61,7 +61,10 @@ function sessionStartMirrorHeader(file) {
 // first, then walk up for .moflo/moflo.db / .swarm/memory.db / CLAUDE.md+pkg /
 // package.json / .git. Inline walks here have caused N writers to land on
 // different DBs than the bridge reads from — never reintroduce one.
-const projectRoot = findProjectRoot();
+// #1315 — resolveStateRoot, NOT findProjectRoot: this layer mkdirs
+// `.moflo/` state, and findProjectRoot honors CLAUDE_PROJECT_DIR verbatim,
+// so a sub-workspace-rooted session minted an island here every start.
+const projectRoot = resolveStateRoot();
 
 // Monorepo nested-.moflo guard (#1174). After the resolver fix, findProjectRoot
 // returns the topmost ancestor with .moflo/moflo.db, so an ancestor still

@@ -6,7 +6,7 @@
  * permissions, so users know they need to manually cast once first.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -26,6 +26,24 @@ describe('checkScheduleAcceptance (#1037)', () => {
   let projectRoot: string;
   let userSpellDir: string;
   let mofloYaml: string;
+
+  // Warm the spell engine before any `it` runs.
+  //
+  // `checkScheduleAcceptance` → `buildGrimoire` → `loadSpellEngine`, which
+  // dynamically imports the entire `spells/index.js` module graph and caches it
+  // (`engine-loader.ts`). Whichever test triggered it first paid that cold
+  // import inside its own 5 s budget — fine in isolation (~700 ms for the whole
+  // file), but under a full parallel suite the same import took >5 s and the
+  // FIRST test in the file timed out. That is the intermittent failure this
+  // file contributed to the non-deterministic suite result: not a logic bug, a
+  // one-time setup cost charged to a test-sized timeout.
+  //
+  // Paying it in `beforeAll` with room to breathe makes every `it` fast and
+  // keeps the cost where it belongs — setup, not assertion.
+  beforeAll(async () => {
+    const { loadSpellEngine } = await import('../../services/engine-loader.js');
+    await loadSpellEngine();
+  }, 60_000);
 
   beforeEach(() => {
     // OS-assigned unique temp dir — `Date.now()+Math.random()` name-building

@@ -26,7 +26,7 @@ import {
   memoryDbPath,
 } from '../services/moflo-paths.js';
 import { probeDbIntegrity } from '../services/memory-db-integrity-repair.js';
-import { findProjectRoot } from '../services/project-root.js';
+import { findProjectRoot, resolveStateRoot } from '../services/project-root.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
 
@@ -440,7 +440,16 @@ export async function checkSwarmResidue(): Promise<HealthCheck> {
  * `/repo/packages/api/.moflo`), aligned with `findProjectRoot()` semantics.
  */
 interface NestedScanResult {
+  /** Nested roots holding real state (`.moflo/moflo.db`) — classic #1174 islands. */
   islands: string[];
+  /**
+   * Nested `.moflo/` directories with NO `moflo.db` (#1315). These are minted
+   * by the daemon and by cwd-anchored commands, never by `flo init`, so they
+   * hold only `daemon.lock` / `daemon-state.json` / `metrics/`. The pre-#1315
+   * scan keyed exclusively on `moflo.db` and was therefore blind to exactly
+   * the residue the #1315 bug produces.
+   */
+  husks: string[];
   truncated: boolean;
 }
 
@@ -454,12 +463,25 @@ interface NestedScanResult {
  */
 const NESTED_BFS_MAX_FOUND = 50;
 
-function scanNestedMofloDirs(root: string, maxDepth: number = 5): NestedScanResult {
-  const found: string[] = [];
+/**
+ * Depth bound for the nested-`.moflo/` walk.
+ *
+ * #1315 raised this from 5 to 8. The waxstak report found a stray seven levels
+ * deep (`back-office/ui/src/layout/Dashboard/Header/HeaderContent/.moflo`) —
+ * inside a React component folder, because ANY cwd could mint one. At depth 5
+ * the healer silently walked past it and reported a clean tree. The walk skips
+ * `node_modules`/`.git`/build output via `COMMON_WALK_SKIP_NAMES`, so the extra
+ * three levels cost little on a real repo.
+ */
+const NESTED_SCAN_MAX_DEPTH = 8;
+
+function scanNestedMofloDirs(root: string, maxDepth: number = NESTED_SCAN_MAX_DEPTH): NestedScanResult {
+  const islands: string[] = [];
+  const husks: string[] = [];
   let truncated = false;
 
   function walk(dir: string, depth: number): void {
-    if (found.length >= NESTED_BFS_MAX_FOUND) {
+    if (islands.length + husks.length >= NESTED_BFS_MAX_FOUND) {
       truncated = true;
       return;
     }
@@ -475,9 +497,16 @@ function scanNestedMofloDirs(root: string, maxDepth: number = 5): NestedScanResu
       if (lower.startsWith('.moflo')) continue;
       if (entry.name.startsWith('.') && depth > 0) continue;
       const childDir = join(dir, entry.name);
-      if (existsSync(join(childDir, '.moflo', 'moflo.db'))) {
-        found.push(childDir);
-        if (found.length >= NESTED_BFS_MAX_FOUND) {
+      // #1315 — key on the `.moflo/` DIRECTORY, then classify by whether it
+      // holds `moflo.db`. Keying on `moflo.db` alone (the pre-#1315 predicate)
+      // made every daemon-minted husk invisible.
+      if (existsSync(join(childDir, '.moflo'))) {
+        if (existsSync(join(childDir, '.moflo', 'moflo.db'))) {
+          islands.push(childDir);
+        } else {
+          husks.push(childDir);
+        }
+        if (islands.length + husks.length >= NESTED_BFS_MAX_FOUND) {
           truncated = true;
           return;
         }
@@ -490,15 +519,11 @@ function scanNestedMofloDirs(root: string, maxDepth: number = 5): NestedScanResu
         continue;
       }
       walk(childDir, depth + 1);
-      if (found.length >= NESTED_BFS_MAX_FOUND) return;
+      if (islands.length + husks.length >= NESTED_BFS_MAX_FOUND) return;
     }
   }
   walk(root, 0);
-  return { islands: found, truncated };
-}
-
-function findNestedMofloDirs(root: string, maxDepth: number = 5): string[] {
-  return scanNestedMofloDirs(root, maxDepth).islands;
+  return { islands, husks, truncated };
 }
 
 /**
@@ -508,7 +533,11 @@ function findNestedMofloDirs(root: string, maxDepth: number = 5): string[] {
  * (the consumer joins `.moflo` itself).
  */
 export function findNestedMofloDirsForFix(root: string): string[] {
-  return findNestedMofloDirs(root);
+  // #1315 — husks are archived alongside stateful islands. Archiving is a
+  // rename to `.moflo-archived-<ISO>/`, so it is non-destructive either way,
+  // and leaving husks in place lets the daemons bound to them keep running.
+  const { islands, husks } = scanNestedMofloDirs(root);
+  return [...islands, ...husks];
 }
 
 /**
@@ -529,7 +558,9 @@ export function findNestedMofloDirsForFix(root: string): string[] {
  * first.
  */
 export async function checkNestedMofloIslands(cwd?: string): Promise<HealthCheck> {
-  const root = cwd ?? findProjectRoot();
+  // #1315 — must match the anchor `fixNestedMofloIslands` uses, or the check
+  // and its own auto-fix disagree about which tree they are talking about.
+  const root = cwd ?? resolveStateRoot();
   let scan: NestedScanResult;
   try {
     scan = scanNestedMofloDirs(root);
@@ -540,20 +571,33 @@ export async function checkNestedMofloIslands(cwd?: string): Promise<HealthCheck
       message: `Walk failed: ${errorDetail(e, { firstLineOnly: true })}`,
     };
   }
-  const { islands, truncated } = scan;
-  if (islands.length === 0) {
+  const { islands, husks, truncated } = scan;
+  if (islands.length === 0 && husks.length === 0) {
     return {
       name: 'Nested .moflo/ Islands',
       status: 'pass',
       message: 'No nested .moflo/ directories detected',
     };
   }
-  const rels = islands.map(p => relative(root, p) || '.');
-  const truncNote = truncated ? ' (walk truncated at depth 5 — deeper islands may exist)' : '';
+  const rel = (p: string) => relative(root, p) || '.';
+  const parts: string[] = [];
+  if (islands.length) {
+    // Stateful: created by `flo init` in a sub-workspace (#1174).
+    parts.push(`${islands.length} with state (#1174): ${islands.map(rel).join(', ')}`);
+  }
+  if (husks.length) {
+    // Stateless: minted by the daemon or a cwd-anchored command (#1315). Worth
+    // naming separately because the remedy differs — these mean something is
+    // still resolving its root from cwd, not that someone ran `flo init` wrong.
+    parts.push(`${husks.length} daemon-minted, no moflo.db (#1315): ${husks.map(rel).join(', ')}`);
+  }
+  const truncNote = truncated
+    ? ` (walk truncated at depth ${NESTED_SCAN_MAX_DEPTH} or ${NESTED_BFS_MAX_FOUND} results — more may exist)`
+    : '';
   return {
     name: 'Nested .moflo/ Islands',
     status: 'warn',
-    message: `${islands.length} nested .moflo/ ${islands.length === 1 ? 'directory' : 'directories'} (#1174): ${rels.join(', ')}${truncNote}`,
+    message: `${parts.join('; ')}${truncNote}`,
     fix: 'flo healer --fix -c nested-moflo',
   };
 }

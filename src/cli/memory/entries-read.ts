@@ -20,6 +20,7 @@ import { getBridge } from './bridge-loader.js';
 import { tryDaemonGet, tryDaemonSearch, tryDaemonList } from './daemon-write-client.js';
 import { searchCandidateCap } from './bridge-core.js';
 import { cosineSim, logRoutingFault } from './entries-shared.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /**
  * Search entries via node:sqlite with vector similarity.
@@ -94,7 +95,7 @@ export async function searchEntries(options: {
     dbPath: customPath
   } = options;
 
-  const dbPath = customPath || memoryDbPath(process.cwd());
+  const dbPath = customPath || memoryDbPath(resolveStateRoot());
   const startTime = Date.now();
 
   try {
@@ -258,7 +259,7 @@ export async function listEntries(options: {
     dbPath: customPath
   } = options;
 
-  const dbPath = customPath || memoryDbPath(process.cwd());
+  const dbPath = customPath || memoryDbPath(resolveStateRoot());
 
   try {
     if (!fs.existsSync(dbPath)) {
@@ -392,7 +393,7 @@ export async function getEntry(options: {
     dbPath: customPath
   } = options;
 
-  const dbPath = customPath || memoryDbPath(process.cwd());
+  const dbPath = customPath || memoryDbPath(resolveStateRoot());
 
   try {
     if (!fs.existsSync(dbPath)) {
@@ -485,7 +486,7 @@ export async function getNamespaceCounts(dbPath?: string): Promise<{
   total: number;
   withEmbeddings: number;
 }> {
-  const resolvedPath = dbPath || memoryDbPath(process.cwd());
+  const resolvedPath = dbPath || memoryDbPath(resolveStateRoot());
 
   if (!fs.existsSync(resolvedPath)) {
     return { namespaces: {}, total: 0, withEmbeddings: 0 };

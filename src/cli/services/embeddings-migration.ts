@@ -26,9 +26,10 @@ import {
   CANONICAL_EMBEDDING_MODEL,
   EMBEDDINGS_VERSION,
 } from '../embeddings/migration/types.js';
+import { resolveStateRoot } from './project-root.js';
 
 export interface RunEmbeddingsMigrationOptions {
-  /** Path to the memory DB. Defaults to `<cwd>/.moflo/moflo.db`. */
+  /** Path to the memory DB. Defaults to `<resolved project root>/.moflo/moflo.db` (#1315). */
   dbPath?: string;
   /** Output stream for the renderer. Defaults to `process.stderr`. */
   out?: NodeJS.WritableStream & { isTTY?: boolean };
@@ -65,7 +66,7 @@ export async function runEmbeddingsMigrationIfNeeded(
   const fs = await import('fs');
   const path = await import('path');
 
-  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
+  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(resolveStateRoot()));
   if (!fs.existsSync(dbPath)) return false;
 
   // node:sqlite via the unified factory (Phase 5 / #1084). The migration

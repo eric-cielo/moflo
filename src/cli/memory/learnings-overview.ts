@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { openDaemonDatabase } from './daemon-backend.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /** The namespace this overview is scoped to. */
 const LEARNINGS_NAMESPACE = 'learnings';
@@ -124,7 +125,7 @@ export async function getLearningsOverview(options?: {
   // finite positive integer so a stray float/NaN/≤0 can't produce bad SQL.
   const recentLimit = toPositiveInt(options?.recentLimit, DEFAULT_RECENT_LIMIT);
   const bodyCap = toPositiveInt(options?.bodyCap, DEFAULT_BODY_CAP);
-  const resolvedPath = options?.dbPath || memoryDbPath(process.cwd());
+  const resolvedPath = options?.dbPath || memoryDbPath(resolveStateRoot());
 
   if (!fs.existsSync(resolvedPath)) {
     return { ...EMPTY };

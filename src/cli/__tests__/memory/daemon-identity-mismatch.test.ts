@@ -33,7 +33,6 @@ interface FakeDaemon {
 async function spawnFakeDaemon(opts: {
   projectRoot?: string;
   healthStatus?: number; // 200 (with body) / 404 (legacy)
-  port: number;
 }): Promise<FakeDaemon> {
   const server = http.createServer((req, res) => {
     const url = req.url ?? '';
@@ -67,13 +66,25 @@ async function spawnFakeDaemon(opts: {
     res.end();
   });
 
+  // Ephemeral port (0), not a guessed one. The previous
+  // `40000 + random(1000)` scheme bound a caller-picked port with
+  // `on('error', reject)` and no retry, so an EADDRINUSE from any concurrently
+  // running test failed the run outright — a real contributor to the
+  // non-deterministic full-suite result. Port 0 cannot collide, and it is also
+  // the Windows-safest choice: Rule #1 §8's "avoid 49152-65535" applies to
+  // HARDCODED binds (Windows reserves ranges in there), whereas letting the OS
+  // assign never returns an excluded port.
   await new Promise<void>((resolve, reject) => {
     server.on('error', reject);
-    server.listen(opts.port, '127.0.0.1', () => resolve());
+    server.listen(0, '127.0.0.1', () => resolve());
   });
+  const address = server.address();
+  if (typeof address !== 'object' || address === null) {
+    throw new Error('fake daemon: server.address() did not return an AddressInfo');
+  }
 
   return {
-    port: opts.port,
+    port: address.port,
     stop: () => new Promise<void>((r) => server.close(() => r())),
   };
 }
@@ -122,10 +133,8 @@ describe('isDaemonAvailable with identity check (#1145)', () => {
   it('returns true when daemon reports matching projectRoot', async () => {
     const root = makeProjectRoot();
     setProjectRoot(root);
-    const port = 40000 + Math.floor(Math.random() * 1000);
-    process.env.MOFLO_DAEMON_PORT = String(port);
-
-    const daemon = await spawnFakeDaemon({ port, projectRoot: root });
+    const daemon = await spawnFakeDaemon({ projectRoot: root });
+    process.env.MOFLO_DAEMON_PORT = String(daemon.port);
     cleanup.push(daemon.stop);
 
     expect(await isDaemonAvailable()).toBe(true);
@@ -134,13 +143,10 @@ describe('isDaemonAvailable with identity check (#1145)', () => {
   it('returns false on projectRoot mismatch + emits stderr warn for the mismatched port', async () => {
     const root = makeProjectRoot();
     setProjectRoot(root);
-    const port = 41000 + Math.floor(Math.random() * 1000);
-    process.env.MOFLO_DAEMON_PORT = String(port);
-
     const daemon = await spawnFakeDaemon({
-      port,
       projectRoot: '/some/foreign/project',
     });
+    process.env.MOFLO_DAEMON_PORT = String(daemon.port);
     cleanup.push(daemon.stop);
 
     expect(await isDaemonAvailable()).toBe(false);
@@ -149,7 +155,7 @@ describe('isDaemonAvailable with identity check (#1145)', () => {
     // Filter to warns for OUR port so a parallel test pointing at a
     // different fake daemon can't leak in.
     const portWarns = writes.filter(
-      (s) => typeof s === 'string' && new RegExp(`daemon at 127\\.0\\.0\\.1:${port}\\b`).test(s),
+      (s) => typeof s === 'string' && new RegExp(`daemon at 127\\.0\\.0\\.1:${daemon.port}\\b`).test(s),
     );
     expect(portWarns.length).toBe(1);
     expect(portWarns[0]).toMatch(/claims project '\/some\/foreign\/project'/);
@@ -162,7 +168,7 @@ describe('isDaemonAvailable with identity check (#1145)', () => {
     expect(await isDaemonAvailable()).toBe(false);
     const writes2 = stderrSpy.mock.calls.flatMap((c) => [c[0] as string]);
     const portWarns2 = writes2.filter(
-      (s) => typeof s === 'string' && new RegExp(`daemon at 127\\.0\\.0\\.1:${port}\\b`).test(s),
+      (s) => typeof s === 'string' && new RegExp(`daemon at 127\\.0\\.0\\.1:${daemon.port}\\b`).test(s),
     );
     expect(portWarns2.length).toBe(1);
   });
@@ -170,13 +176,10 @@ describe('isDaemonAvailable with identity check (#1145)', () => {
   it('treats 404 on /api/health as a legacy daemon (routes)', async () => {
     const root = makeProjectRoot();
     setProjectRoot(root);
-    const port = 42000 + Math.floor(Math.random() * 1000);
-    process.env.MOFLO_DAEMON_PORT = String(port);
-
     const daemon = await spawnFakeDaemon({
-      port,
       healthStatus: 404,
     });
+    process.env.MOFLO_DAEMON_PORT = String(daemon.port);
     cleanup.push(daemon.stop);
 
     // Legacy daemon — port-discovery is the primary defence; identity
@@ -189,10 +192,8 @@ describe('isDaemonAvailable with identity check (#1145)', () => {
   it('tryDaemonList routes through identity-matched daemon', async () => {
     const root = makeProjectRoot();
     setProjectRoot(root);
-    const port = 43000 + Math.floor(Math.random() * 1000);
-    process.env.MOFLO_DAEMON_PORT = String(port);
-
-    const daemon = await spawnFakeDaemon({ port, projectRoot: root });
+    const daemon = await spawnFakeDaemon({ projectRoot: root });
+    process.env.MOFLO_DAEMON_PORT = String(daemon.port);
     cleanup.push(daemon.stop);
 
     const result = await tryDaemonList({ limit: 10 });
@@ -203,10 +204,8 @@ describe('isDaemonAvailable with identity check (#1145)', () => {
   it('tryDaemonList refuses to route through identity-mismatched daemon', async () => {
     const root = makeProjectRoot();
     setProjectRoot(root);
-    const port = 44000 + Math.floor(Math.random() * 1000);
-    process.env.MOFLO_DAEMON_PORT = String(port);
-
-    const daemon = await spawnFakeDaemon({ port, projectRoot: '/elsewhere' });
+    const daemon = await spawnFakeDaemon({ projectRoot: '/elsewhere' });
+    process.env.MOFLO_DAEMON_PORT = String(daemon.port);
     cleanup.push(daemon.stop);
 
     const result = await tryDaemonList({ limit: 10 });
