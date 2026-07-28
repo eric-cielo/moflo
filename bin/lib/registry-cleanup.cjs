@@ -32,7 +32,15 @@ function killTrackedSync(projectDir) {
           if (process.platform === 'win32') {
             childProcess.execFileSync('taskkill', ['/T', '/F', '/PID', String(entries[i].pid)], { windowsHide: true, timeout: 5000 });
           } else {
-            process.kill(entries[i].pid, 'SIGTERM');
+            // POSIX tree-kill — mirrors process-manager.mjs killAll (#1317).
+            // This is the second reaper over the same registry (session-end via
+            // hook-handler.cjs), so it must not be left behind on the bare-PID
+            // kill or session-end orphans depend on which path ran.
+            try {
+              process.kill(-entries[i].pid, 'SIGTERM');
+            } catch (groupErr) {
+              process.kill(entries[i].pid, 'SIGTERM');
+            }
           }
           killed++;
         } catch (e) { /* ok */ }

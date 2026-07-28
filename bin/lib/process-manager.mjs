@@ -219,7 +219,22 @@ export function createProcessManager(root) {
           if (process.platform === 'win32') {
             execFileSync('taskkill', ['/T', '/F', '/PID', String(entry.pid)], { windowsHide: true, timeout: 10000 });
           } else {
-            process.kill(entry.pid, 'SIGTERM');
+            // POSIX tree-kill (#1317). Windows walks the tree via taskkill /T;
+            // a bare SIGTERM here only hit the one PID, so anything the tracked
+            // process left in its group survived session-end. Everything spawn()
+            // launches is detached (setsid), so the tracked PID leads its own
+            // group and the negative PID reaches those children.
+            //
+            // NOTE this does NOT reach grandchildren that called setsid again —
+            // index-all's steps do exactly that, which is why index-all reaps
+            // them itself on SIGTERM. This is defence in depth, not the whole fix.
+            try {
+              process.kill(-entry.pid, 'SIGTERM');
+            } catch {
+              // No such process group — e.g. an entry registered by
+              // registerBackgroundPid() whose process doesn't lead one.
+              process.kill(entry.pid, 'SIGTERM');
+            }
           }
           killed++;
         } catch {

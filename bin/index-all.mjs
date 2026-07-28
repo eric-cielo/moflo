@@ -111,6 +111,41 @@ function killProcessTree(child) {
   }
 }
 
+// The step currently in flight, so a termination signal can reap it (#1317).
+let currentChild = null;
+let shuttingDown = false;
+
+// Reap on SIGTERM/SIGINT (#1317). hooks.mjs session-end calls pm.killAll(),
+// which SIGTERMs THIS process. Without a handler Node's default action kills us
+// instantly and the in-flight step is orphaned: it lives in its OWN process
+// group (detached:true in runStep, below), so the signal aimed at us never
+// reaches it, and no group-kill of our group can either. It reparents to init
+// and keeps burning CPU and writing .moflo/moflo.db after the session is gone —
+// build-embeddings most often, the same ~2 GB fastembed process as #744.
+// killProcessTree is the teardown primitive #744 already built; it was simply
+// never wired to the signal path.
+function handleTerminationSignal(signal) {
+  if (shuttingDown) return; // second signal while tearing down — ignore
+  shuttingDown = true;
+  log(`SIGNAL ${signal} — reaping in-flight step before exit`);
+  // Synchronous on both platforms: process.kill delivers before returning,
+  // spawnSync('taskkill') blocks. Safe to process.exit() immediately after.
+  killProcessTree(currentChild);
+  currentChild = null;
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+}
+
+// 'SIGTERM' is never delivered on Windows — Node permits the listener but it
+// cannot fire, and Windows is already correct via taskkill /T. Registering it
+// unconditionally is therefore harmless, not a portability assumption.
+// 'SIGBREAK' is the Windows-only console-termination signal.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  try { process.on(sig, () => handleTerminationSignal(sig)); } catch { /* signal unsupported here */ }
+}
+if (platform() === 'win32') {
+  try { process.on('SIGBREAK', () => handleTerminationSignal('SIGBREAK')); } catch { /* ignore */ }
+}
+
 function runStep(label, cmd, args, timeoutMs = 120_000, extraEnv = null) {
   return new Promise((resolveStep) => {
     const start = Date.now();
@@ -122,6 +157,7 @@ function runStep(label, cmd, args, timeoutMs = 120_000, extraEnv = null) {
       detached: platform() !== 'win32', // POSIX: own process group for tree-kill
       env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     });
+    currentChild = child;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -129,6 +165,7 @@ function runStep(label, cmd, args, timeoutMs = 120_000, extraEnv = null) {
     }, timeoutMs);
     child.once('exit', (code, signal) => {
       clearTimeout(timer);
+      if (currentChild === child) currentChild = null;
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
       if (timedOut) {
         log(`FAIL  ${label} (${elapsed}s): timed out after ${timeoutMs}ms, child killed`);
@@ -143,6 +180,7 @@ function runStep(label, cmd, args, timeoutMs = 120_000, extraEnv = null) {
     });
     child.once('error', (err) => {
       clearTimeout(timer);
+      if (currentChild === child) currentChild = null;
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
       log(`FAIL  ${label} (${elapsed}s): ${err.message?.split('\n')[0] || 'unknown'}`);
       resolveStep(false);
