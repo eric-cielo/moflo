@@ -36,6 +36,7 @@ const FIXTURES = {
   doctorHygiene: join(REPO_ROOT, 'src', 'cli', 'commands', 'doctor-embedding-hygiene.ts'),
   packageRoot: join(REPO_ROOT, 'src', 'cli', 'shared', 'core', 'moflo-package-root.ts'),
   srcTest: join(REPO_ROOT, 'src', 'cli', '__tests__', '__guard_fixture__.test.ts'),
+  srcSpells: join(REPO_ROOT, 'src', 'cli', 'spells', '__guard_fixture__.ts'),
   ignoredDocs: join(REPO_ROOT, 'docs', '__guard_fixture__.js'),
 } as const;
 
@@ -277,7 +278,18 @@ describe('lint file-set coverage', () => {
     ).toBe(true);
   });
 
-  it('does not lint ignored trees such as docs/', async () => {
+  it('guards source trees whose basename matches a top-level ignore', async () => {
+    // `src/cli/spells/` is real product code. Under eslintrc the bare
+    // `spells/` ignore matched at every level and silently excluded it — the
+    // same accident hid `src/cli/data/`, `src/cli/scripts/` and
+    // `src/helpers/docs/`. Flat config anchors those at the top level; this
+    // case pins that so the ignore can't drift back to any-level (#1319).
+    expect(
+      await violates(`export const P = path.resolve(d, '..', '..');`, FIXTURES.srcSpells),
+    ).toBe(true);
+  });
+
+  it('does not lint the top-level docs/ tree', async () => {
     expect(
       await violates(`export const P = path.resolve(d, '..', '..');`, FIXTURES.ignoredDocs),
     ).toBe(false);

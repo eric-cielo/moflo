@@ -307,25 +307,21 @@ export default [
       '.claude-flow/**',
       '.swarm/**',
       'harness/**/.work/**',
-      // These five were written as bare `spells/`, `scripts/`, … under
-      // eslintrc, where an unanchored pattern matched at EVERY level — so
-      // `src/cli/spells/`, `src/cli/data/`, `src/cli/scripts/` and friends
-      // were excluded too. Preserved verbatim here via the `**/` prefix so
-      // the migration is behaviour-neutral; narrowing it is a scope change
-      // that belongs in its own commit (#1319).
-      '**/spells/**',
-      '**/scripts/**',
-      '**/examples/**',
-      '**/data/**',
-      '**/docs/**',
+      // These five are the repo's top-level non-source trees. Under eslintrc
+      // they were written bare (`spells/`, `data/`, …), where an unanchored
+      // pattern matched at EVERY level — so `src/cli/spells/`,
+      // `src/cli/data/`, `src/cli/scripts/`, `src/cli/guidance/scripts/` and
+      // `src/helpers/docs/` were swept out of the guard too, almost certainly
+      // by accident. Flat config makes the anchoring explicit, so these are
+      // now top-level only: 171 source files come back under the guard, all
+      // of them already clean (#1319).
+      'spells/**',
+      'scripts/**',
+      'examples/**',
+      'data/**',
+      'docs/**',
       'tests/fixtures/**',
       '**/*.d.ts',
-      // …except the shipped helper scripts, which ride into consumer installs
-      // via the scriptFiles sync list and need the same protection as src/ +
-      // bin/ (#545). Un-ignored after `**/scripts/**` because ignores are
-      // evaluated in order. Note flat config, unlike eslintrc, does NOT ignore
-      // dot-prefixed paths by default, so `.claude` itself needs no negation.
-      '!.claude/scripts/**',
     ],
   },
   {
