@@ -49,7 +49,9 @@ describe('checkNestedMofloIslands (#1174)', () => {
 
     const result = await checkNestedMofloIslands(root);
     expect(result.status).toBe('warn');
-    expect(result.message).toContain('1 nested');
+    // #1315 split the message by class: "with state" (#1174) vs
+    // "daemon-minted, no moflo.db" (#1315). This one has a moflo.db.
+    expect(result.message).toContain('1 with state');
     expect(result.message).toContain(path.join('packages', 'api'));
     expect(result.fix).toContain('nested-moflo');
   });
@@ -65,7 +67,35 @@ describe('checkNestedMofloIslands (#1174)', () => {
 
     const result = await checkNestedMofloIslands(root);
     expect(result.status).toBe('warn');
-    expect(result.message).toContain('2 nested');
+    expect(result.message).toContain('2 with state');
+  });
+
+  it('detects a daemon-minted .moflo/ husk with no moflo.db (#1315)', async () => {
+    // The residue the #1315 bug actually produces: `daemon.lock`,
+    // `daemon-state.json`, `metrics/` — and NO moflo.db, because `flo init`
+    // never ran here. The pre-#1315 scan keyed on moflo.db and saw nothing.
+    seedMofloDb(root);
+    const stray = path.join(root, 'back-office', 'ui');
+    fs.mkdirSync(path.join(stray, '.moflo', 'metrics'), { recursive: true });
+    fs.writeFileSync(path.join(stray, '.moflo', 'daemon-state.json'), '{}');
+
+    const result = await checkNestedMofloIslands(root);
+    expect(result.status).toBe('warn');
+    expect(result.message).toContain('daemon-minted');
+    expect(result.message).toContain(path.join('back-office', 'ui'));
+    expect(findNestedMofloDirsForFix(root)).toContain(stray);
+  });
+
+  it('finds a husk seven levels deep (past the old depth-5 bound)', async () => {
+    // The waxstak case verbatim. At the old maxDepth of 5 the walk reported a
+    // clean tree while this sat there with a live daemon bound to it.
+    seedMofloDb(root);
+    const deep = path.join(root, 'back-office', 'ui', 'src', 'layout', 'Dashboard', 'Header', 'HeaderContent');
+    fs.mkdirSync(path.join(deep, '.moflo', 'metrics'), { recursive: true });
+
+    const result = await checkNestedMofloIslands(root);
+    expect(result.status).toBe('warn');
+    expect(result.message).toContain('HeaderContent');
   });
 
   it('does not recurse below a nested island', async () => {

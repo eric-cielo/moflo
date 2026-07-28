@@ -24,7 +24,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, statSync } from 'fs';
 import { atomicWriteFileSync } from './atomic-file-write.js';
 import { mofloDir } from './moflo-paths.js';
 import { cpus } from 'os';
@@ -46,6 +46,7 @@ import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { calculateDelay } from '../production/retry.js';
 import { CircuitBreaker } from '../production/circuit-breaker.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { readMofloEnv } from './env-compat.js';
 
 // Worker types matching hooks-tools.ts. `audit`, `predict`, `document`
 // were removed in #970; `optimize` + `testgaps` were removed in #1258 (moved
@@ -702,6 +703,68 @@ export class WorkerDaemon extends EventEmitter {
   }
 
   /**
+   * #1315 — exit when the project root has been deleted out from under us.
+   *
+   * A daemon started inside a git worktree outlived `git worktree remove`: the
+   * directory was gone, `git worktree list`/`prune` both reported clean, yet
+   * every tick the worker paths called `mkdirSync(stateDir, {recursive:true})`
+   * and RECREATED the deleted tree just to write `daemon-state.json` and
+   * `metrics/` into it. Deleting the husk by hand simply got it back on the
+   * next tick, because nothing ever asked whether the root still existed.
+   *
+   * Checked at the top of each tick, before any writer runs.
+   *
+   * Cross-platform (CLAUDE.md Rule #1): `existsSync` is platform-neutral, but
+   * the SCENARIO is mostly POSIX — Windows refuses to remove a directory that
+   * is a live process's cwd (sharing violation), and the daemon is spawned with
+   * `cwd: projectRoot`. So on Windows this check simply never fires, which is
+   * correct rather than a gap: the husk-recreation it guards against cannot
+   * happen there. No `process.platform` branch is warranted.
+   *
+   * @returns true when shutdown was initiated (caller must stop immediately).
+   */
+  private async shutdownIfRootVanished(): Promise<boolean> {
+    // `statSync`, NOT `existsSync`. `existsSync` swallows every error and
+    // returns false, so EACCES, EIO, a disconnected SMB share, or a sleeping
+    // network volume would be indistinguishable from "deleted" and would exit
+    // a perfectly healthy daemon on one bad sample. Only ENOENT means gone.
+    try {
+      statSync(this.projectRoot);
+      return false; // still there
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        // Can't tell — assume present. A false positive kills a healthy
+        // daemon, which is far worse than one more tick of an orphan.
+        return false;
+      }
+    }
+
+    this.log('warn', `Project root ${this.projectRoot} no longer exists — shutting down instead of recreating it`);
+    try {
+      await this.stop();
+    } catch {
+      /* best effort — we're leaving either way */
+    }
+    // Only a genuine daemon process may take the process down with it. A CLI
+    // command or a test that happens to hold a WorkerDaemon must not be
+    // exited out from under itself. `MOFLO_TEST_NO_DAEMON_SELF_EXIT` is the
+    // test-runner kill switch (vitest.setup.ts) — without it a vitest worker
+    // that inherited MOFLO_DAEMON would exit(0) mid-run and report every
+    // remaining test as passed.
+    // `readMofloEnv('DAEMON')`, not raw `process.env.MOFLO_DAEMON` — it also
+    // honors the legacy `CLAUDE_FLOW_DAEMON` prefix, which is what OS service
+    // units written by older moflo versions still set. Reading only the modern
+    // name left those daemons clearing their timers but never exiting: a live
+    // process still holding its dashboard port. Matches how `daemon.ts`
+    // identifies a daemon process.
+    const isDaemonProcess = readMofloEnv('DAEMON') === '1';
+    if (isDaemonProcess && process.env.MOFLO_TEST_NO_DAEMON_SELF_EXIT !== '1') {
+      process.exit(0);
+    }
+    return true;
+  }
+
+  /**
    * Schedule a worker to run at intervals with staggered start
    */
   private scheduleWorker(workerConfig: WorkerConfig): void {
@@ -720,6 +783,8 @@ export class WorkerDaemon extends EventEmitter {
 
     const runAndReschedule = async () => {
       if (!this.running) return;
+      // #1315 — before any writer runs, confirm we still have a project.
+      if (await this.shutdownIfRootVanished()) return;
 
       // Use concurrency-controlled execution (P0 fix)
       await this.executeWorkerWithConcurrencyControl(workerConfig);

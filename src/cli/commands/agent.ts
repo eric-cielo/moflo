@@ -10,6 +10,7 @@ import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /**
  * Update swarm-activity.json metrics with absolute agent count.
@@ -20,7 +21,10 @@ import * as path from 'path';
  */
 function syncSwarmAgentCount(absoluteCount: number): void {
   try {
-    const metricsDir = path.join(process.cwd(), '.moflo', 'metrics');
+    // #1315 — resolved root, not cwd. This mkdirs, so a subdirectory
+    // invocation minted a `.moflo/metrics/` island; and the statusline reads
+    // this file from the ROOT, so a cwd-anchored write was invisible to it.
+    const metricsDir = path.join(resolveStateRoot(), '.moflo', 'metrics');
     const activityPath = path.join(metricsDir, 'swarm-activity.json');
 
     let data: Record<string, unknown> = {
@@ -54,7 +58,8 @@ function syncSwarmAgentCount(absoluteCount: number): void {
  */
 function readSwarmAgentCount(): number {
   try {
-    const activityPath = path.join(process.cwd(), '.moflo', 'metrics', 'swarm-activity.json');
+    // #1315 — must read from the same root `syncSwarmAgentCount` writes to.
+    const activityPath = path.join(resolveStateRoot(), '.moflo', 'metrics', 'swarm-activity.json');
     if (!fs.existsSync(activityPath)) return 0;
     const data = JSON.parse(fs.readFileSync(activityPath, 'utf-8'));
     return Math.max(0, (data?.swarm?.agent_count as number) || 0);

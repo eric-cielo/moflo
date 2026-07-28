@@ -38,7 +38,7 @@
  */
 
 import * as http from 'node:http';
-import { findProjectRoot } from '../services/project-root.js';
+import { resolveStateRoot } from '../services/project-root.js';
 import {
   resolveClientPort,
   LEGACY_DEFAULT_PORT,
@@ -52,7 +52,7 @@ import {
 
 /**
  * Read-only legacy default exported for tests; the actual port comes from
- * `getDaemonPort()` which delegates to `resolveClientPort(findProjectRoot())`.
+ * `getDaemonPort()` which delegates to `resolveClientPort(resolveStateRoot())`.
  * Routes through `LEGACY_DEFAULT_PORT` so no literal port number lives in
  * this file — see `daemon-port.ts` and the no-fixed-port regression guard.
  */
@@ -191,7 +191,7 @@ export function _resetForTest(): void {
 /**
  * Resolve the daemon HTTP port for this project.
  *
- * Delegates to `resolveClientPort(findProjectRoot())`:
+ * Delegates to `resolveClientPort(resolveStateRoot())`:
  *   1. `MOFLO_DAEMON_PORT` env override (consumer pin)
  *   2. `port` field in `<projectRoot>/.moflo/daemon.lock` (server records
  *      the actual bound port after startup — #1145)
@@ -205,7 +205,7 @@ export function _resetForTest(): void {
 let _portCache: { port: number; projectRoot: string } | null = null;
 
 function getDaemonPort(): number {
-  const projectRoot = findProjectRoot();
+  const projectRoot = resolveStateRoot();
   if (_portCache && _portCache.projectRoot === projectRoot) return _portCache.port;
   const port = resolveClientPort(projectRoot);
   _portCache = { port, projectRoot };
@@ -317,7 +317,7 @@ export async function isDaemonAvailable(): Promise<boolean> {
  */
 async function isDaemonIdentityMatch(port: number): Promise<boolean> {
   const now = Date.now();
-  const ourProjectRoot = findProjectRoot();
+  const ourProjectRoot = resolveStateRoot();
 
   if (
     identityCache &&

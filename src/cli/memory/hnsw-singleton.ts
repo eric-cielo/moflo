@@ -21,6 +21,7 @@ import { parseEmbeddingJson } from './controllers/_shared.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { openDaemonDatabase } from './daemon-backend.js';
 import { getBridge, isBridgeLoaded } from './bridge-loader.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 interface HNSWEntry {
   id: string;
@@ -71,7 +72,7 @@ export async function getHNSWIndex(options?: {
     // Use HnswLite pure TS implementation (no native dependencies).
 
     // Persistent storage paths — colocated with the canonical memory DB.
-    const dbPath = options?.dbPath || memoryDbPath(process.cwd());
+    const dbPath = options?.dbPath || memoryDbPath(resolveStateRoot());
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });

@@ -10,6 +10,9 @@ import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+// #1315 — the intelligence/maturity probes below read `.moflo/` state; anchor
+// them at the resolved root so a subdirectory invocation doesn't report zeroes.
+import { resolveStateRoot } from '../services/project-root.js';
 
 // Hook types
 const HOOK_TYPES = [
@@ -3131,7 +3134,7 @@ const statuslineCommand: Command = {
 
     // Get learning stats from memory database
     function getLearningStats() {
-      const memoryPaths = memoryDbCandidatePaths(process.cwd());
+      const memoryPaths = memoryDbCandidatePaths(resolveStateRoot());
 
       let patterns = 0;
       let sessions = 0;
@@ -3248,7 +3251,7 @@ const statuslineCommand: Command = {
 
       // 1. Check learning.json for REAL intelligence metrics first
       const learningJsonPaths = [
-        path.join(process.cwd(), '.moflo', 'learning.json'),
+        path.join(resolveStateRoot(), '.moflo', 'learning.json'),
         path.join(process.cwd(), '.claude', '.moflo', 'learning.json'),
         path.join(process.cwd(), '.swarm', 'learning.json'),
       ];
@@ -3276,7 +3279,7 @@ const statuslineCommand: Command = {
         let maturityScore = 0;
         // Check for key project files/dirs
         if (fs.existsSync(path.join(process.cwd(), '.claude'))) maturityScore += 15;
-        if (fs.existsSync(path.join(process.cwd(), '.moflo'))) maturityScore += 15;
+        if (fs.existsSync(path.join(resolveStateRoot(), '.moflo'))) maturityScore += 15;
         if (fs.existsSync(path.join(process.cwd(), 'CLAUDE.md'))) maturityScore += 10;
         if (fs.existsSync(path.join(process.cwd(), 'claude-flow.config.json'))) maturityScore += 10;
         if (fs.existsSync(path.join(process.cwd(), '.swarm'))) maturityScore += 10;
@@ -3399,10 +3402,10 @@ const statuslineCommand: Command = {
 
     // Check for direct database files first. Canonical first, legacies after.
     const dbPaths = [
-      ...memoryDbCandidatePaths(process.cwd()),
+      ...memoryDbCandidatePaths(resolveStateRoot()),
       path.join(process.cwd(), 'memory.db'),
       path.join(process.cwd(), '.agentdb', 'memory.db'),
-      path.join(process.cwd(), '.moflo', 'memory', 'agentdb.db'),
+      path.join(resolveStateRoot(), '.moflo', 'memory', 'agentdb.db'),
     ];
     for (const dbPath of dbPaths) {
       if (fs.existsSync(dbPath)) {
@@ -3419,7 +3422,7 @@ const statuslineCommand: Command = {
     // Check for AgentDB directories if no direct db found
     if (agentdbStats.vectorCount === 0) {
       const agentdbDirs = [
-        path.join(process.cwd(), '.moflo', 'agentdb'),
+        path.join(resolveStateRoot(), '.moflo', 'agentdb'),
         path.join(process.cwd(), '.swarm', 'agentdb'),
         path.join(process.cwd(), 'data', 'agentdb'),
         path.join(process.cwd(), '.agentdb'),
@@ -3445,7 +3448,7 @@ const statuslineCommand: Command = {
 
     // Check for HNSW index files
     const hnswPaths = [
-      path.join(process.cwd(), '.moflo', 'hnsw'),
+      path.join(resolveStateRoot(), '.moflo', 'hnsw'),
       path.join(process.cwd(), '.swarm', 'hnsw'),
       path.join(process.cwd(), 'data', 'hnsw'),
     ];
@@ -3466,7 +3469,7 @@ const statuslineCommand: Command = {
     }
 
     // Check for vectors.json file
-    const vectorsPath = path.join(process.cwd(), '.moflo', 'vectors.json');
+    const vectorsPath = path.join(resolveStateRoot(), '.moflo', 'vectors.json');
     if (fs.existsSync(vectorsPath) && agentdbStats.vectorCount === 0) {
       try {
         const data = JSON.parse(fs.readFileSync(vectorsPath, 'utf-8'));

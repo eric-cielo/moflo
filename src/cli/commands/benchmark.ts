@@ -10,6 +10,9 @@ import { output } from '../output.js';
 import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorDetail } from '../shared/utils/error-detail.js';
+// #1315 — benchmark results are `.moflo/` state; anchor them at the resolved
+// root so a subdirectory run doesn't mint an island to save into.
+import { resolveStateRoot } from '../services/project-root.js';
 
 // ============================================================================
 // Pretrain Benchmark Subcommand
@@ -54,7 +57,7 @@ const pretrainCommand: Command = {
 
       // Save to file if requested
       if (saveFile) {
-        const resultsDir = join(process.cwd(), '.moflo', 'benchmarks');
+        const resultsDir = join(resolveStateRoot(), '.moflo', 'benchmarks');
         if (!existsSync(resultsDir)) {
           mkdirSync(resultsDir, { recursive: true });
         }
@@ -446,7 +449,7 @@ const allCommand: Command = {
     // Save if requested
     const saveFile = ctx.flags.save as string | undefined;
     if (saveFile) {
-      const resultsDir = join(process.cwd(), '.moflo', 'benchmarks');
+      const resultsDir = join(resolveStateRoot(), '.moflo', 'benchmarks');
       if (!existsSync(resultsDir)) {
         mkdirSync(resultsDir, { recursive: true });
       }

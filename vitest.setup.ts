@@ -63,6 +63,15 @@ process.env.MOFLO_TEST_TRUST_DAEMON_PID = '1';
 // its own `beforeEach`, same as the two vars below.
 process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART = '1';
 
+// #1315 — disarm the daemon's deleted-root self-exit inside the test runner.
+// `WorkerDaemon.shutdownIfRootVanished()` calls `process.exit(0)` when it sees
+// `MOFLO_DAEMON=1`, which is correct for a real daemon whose project was
+// deleted. But tests routinely build a WorkerDaemon over a tmp dir and then
+// remove it, and a vitest worker that inherited `MOFLO_DAEMON` would exit(0)
+// mid-run — reporting every remaining test as passed. Fail loudly, never
+// silently green. The self-exit test clears this in its own `beforeEach`.
+process.env.MOFLO_TEST_NO_DAEMON_SELF_EXIT = '1';
+
 // #1150 — skip the same-project orphan scan in `acquireDaemonLock` for the
 // same reasons as TRUST_DAEMON_PID above: the PowerShell/CIM enumeration on
 // Windows is expensive and tests using synthetic tempDir-rooted "daemons"
@@ -88,5 +97,8 @@ beforeEach(() => {
   }
   if (process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART !== '1') {
     process.env.MOFLO_TEST_SKIP_DAEMON_AUTOSTART = '1';
+  }
+  if (process.env.MOFLO_TEST_NO_DAEMON_SELF_EXIT !== '1') {
+    process.env.MOFLO_TEST_NO_DAEMON_SELF_EXIT = '1';
   }
 });

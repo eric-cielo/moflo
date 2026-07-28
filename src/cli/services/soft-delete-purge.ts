@@ -21,9 +21,10 @@
 
 import { memoryDbPath } from './moflo-paths.js';
 import { openDaemonDatabase } from '../memory/daemon-backend.js';
+import { resolveStateRoot } from './project-root.js';
 
 export interface PurgeSoftDeletedOptions {
-  /** Path to the memory DB. Defaults to `<cwd>/.moflo/moflo.db`. */
+  /** Path to the memory DB. Defaults to `<resolved project root>/.moflo/moflo.db` (#1315). */
   dbPath?: string;
 }
 
@@ -46,7 +47,7 @@ export async function purgeSoftDeletedEntries(
   const fs = await import('fs');
   const path = await import('path');
 
-  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
+  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(resolveStateRoot()));
   if (!fs.existsSync(dbPath)) return { purged: 0 };
 
   // node:sqlite via the unified factory (Phase 5 / #1084). WAL persists each

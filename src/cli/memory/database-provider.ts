@@ -23,6 +23,7 @@ import {
   MemoryEntryUpdate,
 } from './types.js';
 import { SqliteBackend, SqliteBackendConfig } from './sqlite-backend.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /**
  * Available database provider types.
@@ -309,14 +310,22 @@ export function getPlatformInfo(): PlatformInfo {
  * Wrapped in a dynamic import so the memory subtree doesn't pull
  * `js-yaml` / `fs` into hot paths (e.g. the in-memory test backend).
  *
- * Memoised per (cwd, process) — a test suite or daemon that opens many
- * DBs in sequence parses moflo.yaml once. Keyed on cwd so a test that
- * `chdir`s into a temp dir gets a fresh resolution.
+ * Memoised per (resolved state root, process) — a test suite or daemon that
+ * opens many DBs in sequence parses moflo.yaml once. Keyed on the resolved
+ * root so a test that `chdir`s into a temp dir still gets a fresh resolution
+ * (an un-initialized temp dir resolves to itself).
+ *
+ * #1315 — this reads the BACKEND while the rest of the memory layer resolves
+ * the DB PATH. Both must anchor on the same root or they disagree: with the
+ * path fixed to `<root>/.moflo/moflo.db` but the config still read from cwd, a
+ * `flo` invocation from a sub-directory found no moflo.yaml, fell back to the
+ * DEFAULT backend, and opened the root's database with a different engine than
+ * the daemon was using it with.
  */
 const _resolvedProviderCache = new Map<string, DatabaseProvider | null>();
 
 async function preferredProviderFromConfig(verbose: boolean): Promise<DatabaseProvider | null> {
-  const key = process.cwd();
+  const key = resolveStateRoot();
   if (_resolvedProviderCache.has(key)) {
     return _resolvedProviderCache.get(key) ?? null;
   }
@@ -324,7 +333,7 @@ async function preferredProviderFromConfig(verbose: boolean): Promise<DatabasePr
     const { loadMofloConfig, resolveDatabaseProvider } = await import(
       '../config/moflo-config.js'
     );
-    const cfg = loadMofloConfig();
+    const cfg = loadMofloConfig(key);
     const resolved = resolveDatabaseProvider(cfg.memory.backend);
     if (verbose) {
       console.log(

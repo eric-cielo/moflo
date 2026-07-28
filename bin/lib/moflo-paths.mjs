@@ -12,7 +12,7 @@
  * helpers no longer ship: the version-bump-gated cherry-pick lives entirely
  * in the launcher and the TS service `cli/services/cherry-pick-learnings.ts`.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, parse, resolve } from 'node:path';
 
 export const MOFLO_DIR = '.moflo';
@@ -127,6 +127,42 @@ export function findAncestorMofloRoot(dir) {
  * @param {{ cwd?: string; honorEnv?: boolean }} [opts]
  * @returns {string} absolute project root
  */
+/**
+ * Pure-JS twin of `src/cli/services/project-root.ts:resolveStateRoot()` (#1315).
+ *
+ * Use this — never `findProjectRoot()` — anywhere the bin/hook layer is about
+ * to CREATE `.moflo/` state. `findProjectRoot` returns `CLAUDE_PROJECT_DIR`
+ * verbatim, and Claude Code sets that to the SESSION directory; in a monorepo
+ * session rooted at a sub-workspace the launcher therefore mkdir'd a `.moflo/`
+ * island there every session. That made the healer's nested-island fix a
+ * perpetual loop: archive it, next session re-mints it.
+ *
+ * Semantics (kept in lockstep with the TS side): an EXISTING
+ * `CLAUDE_PROJECT_DIR` wins outright and is never climbed above — the marker
+ * walk has no upper bound, so climbing past an explicit anchor would let a
+ * stray ancestor `.moflo/moflo.db` capture every project beneath it. Otherwise
+ * walk up from cwd and take the topmost marker, which is what stops a
+ * sub-directory invocation from minting an island where it stands. A value
+ * naming a directory that does not exist is ignored rather than materialized.
+ *
+ * @param {{ cwd?: string }} [opts]
+ * @returns {string} absolute project root
+ */
+export function resolveStateRoot(opts) {
+  const envDir = process.env.CLAUDE_PROJECT_DIR;
+  const envAbs = envDir ? resolve(envDir) : undefined;
+  const resolved = envAbs && existsSync(envAbs)
+    ? envAbs
+    : findProjectRoot({ honorEnv: false, cwd: opts?.cwd });
+  // Canonicalize so this compares equal to the realpath'd root the TS side
+  // derives (macOS /var → /private/var). Falls back when the path is absent.
+  try {
+    return realpathSync(resolve(resolved));
+  } catch {
+    return resolve(resolved);
+  }
+}
+
 export function findProjectRoot(opts) {
   const honorEnv = opts?.honorEnv !== false;
   if (honorEnv && process.env.CLAUDE_PROJECT_DIR) {

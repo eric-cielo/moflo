@@ -1853,12 +1853,22 @@ export async function killConsumerBackgroundProcesses(consumerDir) {
   }
 }
 
-// Belt-and-suspenders: the auto-start daemon path in src/cli/index.ts spawns
-// `daemon start --foreground --quiet` via raw spawn() and never registers
-// the PID with ProcessManager. flo daemon stop reaches it via lock holder
-// most of the time, but a daemon spawned during a late check may not have
-// acquired the lock by the time stopConsumerDaemon ran. Read the lock file
-// directly and kill the process tree as a final pass.
+// Belt-and-suspenders final pass: read the lock file directly and kill the
+// process tree.
+//
+// `flo daemon stop` reaches the daemon via the lock holder most of the time,
+// but a daemon spawned during a late check may not have acquired the lock yet
+// when stopConsumerDaemon ran.
+//
+// NB (#1315): do NOT try to identify the daemon by its command line. Several
+// paths emit a byte-identical `daemon start --foreground --quiet` — the
+// auto-start in src/cli/index.ts, `startBackgroundDaemon` in commands/daemon.ts
+// (which re-execs every plain `daemon start --quiet` in that form), the spell
+// scheduler's defaultStartDaemon, and the generated systemd/launchd/schtasks
+// entries. Nor is ProcessManager registration a reliable discriminator: only
+// index.ts and daemon-readiness.ts register, so a launcher-descended daemon is
+// absent from the registry while an auto-started one is present. The lock file
+// is the only dependable handle.
 function killDaemonByLockFile(consumerDir) {
   const lockFile = join(consumerDir, '.moflo', 'daemon.lock');
   if (!existsSync(lockFile)) return 0;

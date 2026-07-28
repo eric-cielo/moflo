@@ -14,7 +14,7 @@ import {
   memoryDbPath,
   MOFLO_DIR,
 } from '../services/moflo-paths.js';
-import { findProjectRoot } from '../services/project-root.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 // When run via npx, CWD may be node_modules/moflo — walk up to find actual project
 let _projectRoot: string | undefined;
@@ -75,7 +75,13 @@ export function searchCandidateCap(): number {
  */
 function getProjectRoot(): string {
   if (_projectRoot) return _projectRoot;
-  _projectRoot = findProjectRoot();
+  // #1315 — MUST be the same resolver `entries-read`/`entries-write` use, or
+  // the bridge and the entry writers open DIFFERENT `.moflo/moflo.db` files.
+  // `findProjectRoot()` returns `CLAUDE_PROJECT_DIR` unvalidated, so in a
+  // Claude Code session rooted at a sub-workspace the bridge would anchor
+  // there while the writers anchored at the true root — the split-brain this
+  // module's own header warns about.
+  _projectRoot = resolveStateRoot();
   return _projectRoot;
 }
 

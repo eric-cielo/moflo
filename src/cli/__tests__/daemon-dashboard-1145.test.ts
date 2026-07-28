@@ -103,8 +103,12 @@ function makeProjectRoot(): string {
 describe('GET /api/health (#1145)', () => {
   it('returns 200 with projectRoot, pid, version, uptimeMs', async () => {
     const root = makeProjectRoot();
-    const port = 45000 + Math.floor(Math.random() * 100);
-    const handle = await startDashboard(makeDaemon(), { port, projectRoot: root });
+    // Port 0 (honored by startDashboard) instead of a guessed one. An
+    // explicitly-pinned port deliberately does NOT fall back on EADDRINUSE, so
+    // a random pick colliding with a concurrent test failed this outright.
+    // These tests assert /api/health content, not port selection, and already
+    // read the bound port back off the handle.
+    const handle = await startDashboard(makeDaemon(), { port: 0, projectRoot: root });
     handles.push(handle);
 
     const { status, body } = await getJson(handle.port, '/api/health');
@@ -117,8 +121,7 @@ describe('GET /api/health (#1145)', () => {
   });
 
   it('reports the requesting cwd when projectRoot opt is omitted', async () => {
-    const port = 46000 + Math.floor(Math.random() * 100);
-    const handle = await startDashboard(makeDaemon(), { port });
+    const handle = await startDashboard(makeDaemon(), { port: 0 });
     handles.push(handle);
 
     const { status, body } = await getJson(handle.port, '/api/health');
@@ -170,13 +173,21 @@ describe('Per-project port allocation (#1145)', () => {
 
 describe('Bind exhaustion (#1145 §9.4)', () => {
   it('throws when the explicitly-pinned port is in use', async () => {
-    const port = 47000 + Math.floor(Math.random() * 100);
-    // First server claims the port.
+    // First server claims a port. Bind ephemeral (0) and read back what the OS
+    // gave us, rather than guessing: the blocker itself used to race concurrent
+    // tests for a random port and fail on EADDRINUSE before the assertion under
+    // test ever ran. Taking whatever port we're handed is strictly better here,
+    // since the point is only that the port IS occupied.
     const blocker = http.createServer((_, res) => res.end('blocker'));
     await new Promise<void>((resolve, reject) => {
       blocker.on('error', reject);
-      blocker.listen(port, '127.0.0.1', () => resolve());
+      blocker.listen(0, '127.0.0.1', () => resolve());
     });
+    const blockerAddress = blocker.address();
+    if (typeof blockerAddress !== 'object' || blockerAddress === null) {
+      throw new Error('blocker: server.address() did not return an AddressInfo');
+    }
+    const port = blockerAddress.port;
 
     try {
       await expect(

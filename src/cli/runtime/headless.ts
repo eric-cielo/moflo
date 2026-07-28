@@ -19,6 +19,7 @@ import { HeadlessWorkerExecutor, HEADLESS_WORKER_TYPES, type HeadlessWorkerType 
 import { WorkerDaemon, getDaemon, startDaemon, stopDaemon } from '../services/worker-daemon.js';
 import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { resolveStateRoot } from '../services/project-root.js';
 import {
   initializeIntelligence,
   benchmarkAdaptation,
@@ -137,7 +138,10 @@ Examples:
 async function runWorker(workerType: HeadlessWorkerType, timeout: number): Promise<void> {
   console.log(`[Headless] Starting worker: ${workerType}`);
 
-  const executor = new HeadlessWorkerExecutor(process.cwd(), {
+  // #1315 — the HeadlessWorkerExecutor constructor unconditionally creates
+  // `<root>/.moflo/reports` and `<root>/.moflo/logs/headless`, so handing it
+  // raw cwd minted an island wherever the headless runtime happened to start.
+  const executor = new HeadlessWorkerExecutor(resolveStateRoot(), {
     maxConcurrent: 1,
     defaultTimeoutMs: timeout
   });
@@ -170,8 +174,9 @@ async function runWorker(workerType: HeadlessWorkerType, timeout: number): Promi
 async function runDaemon(): Promise<void> {
   console.log('[Headless] Starting daemon mode...');
 
-  // Start the daemon
-  const daemon = await startDaemon(process.cwd());
+  // Start the daemon. #1315 — resolved root, not cwd: `startDaemon` builds a
+  // WorkerDaemon and that constructor creates the state dir it is handed.
+  const daemon = await startDaemon(resolveStateRoot());
 
   console.log('[Headless] Daemon started');
   console.log('[Headless] Press Ctrl+C to stop');

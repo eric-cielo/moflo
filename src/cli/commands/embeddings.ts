@@ -20,6 +20,7 @@ import { memoryDbPath, MEMORY_DB_FILE, MOFLO_DIR } from '../services/moflo-paths
 import * as embeddings from '../embeddings/index.js';
 import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 const DEFAULT_DB_PATH_FLAG = `${MOFLO_DIR}/${MEMORY_DB_FILE}`;
 
@@ -125,7 +126,7 @@ const searchCommand: Command = {
     const namespace = ctx.flags.collection as string || 'default';
     const limit = parseInt(ctx.flags.limit as string || '10', 10);
     const threshold = parseFloat(ctx.flags.threshold as string || '0.5');
-    const dbPath = ctx.flags.dbPath as string || memoryDbPath(process.cwd());
+    const dbPath = ctx.flags.dbPath as string || memoryDbPath(resolveStateRoot());
 
     if (!query) {
       output.printError('Query is required');
@@ -407,7 +408,7 @@ const collectionsCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'list';
-    const dbPath = ctx.flags.dbPath as string || memoryDbPath(process.cwd());
+    const dbPath = ctx.flags.dbPath as string || memoryDbPath(resolveStateRoot());
 
     output.writeln();
     output.writeln(output.bold('Embedding Collections (Namespaces)'));
@@ -692,7 +693,10 @@ export const initCommand: Command = {
       const fs = await import('fs');
       const path = await import('path');
 
-      const configDir = path.join(process.cwd(), '.moflo');
+      // #1315 — resolved root, not cwd. This mkdirs below, so `flo embeddings
+      // init` from a subdirectory minted an island holding an embeddings config
+      // the rest of the stack would never look at.
+      const configDir = path.join(resolveStateRoot(), '.moflo');
       const configPath = path.join(configDir, 'embeddings.json');
 
       // Second-session path: config already exists. Skip download / rewrite,
@@ -1064,7 +1068,8 @@ const neuralCommand: Command = {
     // Check if embeddings config exists
     const fs = await import('fs');
     const path = await import('path');
-    const configPath = path.join(process.cwd(), '.moflo', 'embeddings.json');
+    // #1315 — must read from the root `init` writes to.
+    const configPath = path.join(resolveStateRoot(), '.moflo', 'embeddings.json');
 
     if (!fs.existsSync(configPath)) {
       output.printWarning('Embeddings not initialized');
@@ -1643,7 +1648,7 @@ const migrateCommand: Command = {
     { command: 'flo embeddings migrate -d .custom/mem.db', description: 'Migrate a custom DB' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const dbPath = (ctx.flags.db as string) || memoryDbPath(process.cwd());
+    const dbPath = (ctx.flags.db as string) || memoryDbPath(resolveStateRoot());
     try {
       const ran = await runEmbeddingsMigrationIfNeeded({ dbPath });
       return { success: true, data: { ran } };

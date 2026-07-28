@@ -20,6 +20,7 @@ import {
 import { openDaemonDatabase } from './daemon-backend.js';
 import { getBridge } from './bridge-loader.js';
 import { MEMORY_SCHEMA_V3, getInitialMetadata, type MemoryInitResult } from './schema.js';
+import { resolveStateRoot } from '../services/project-root.js';
 
 /**
  * Check for legacy database installations and migrate if needed
@@ -41,12 +42,17 @@ export async function checkAndMigrateLegacy(options: {
   // probe still catches consumers whose launcher migration deferred. The
   // bare `memory.db` and `.claude/memory.db`/`data/memory.db` entries are
   // older still.
+  // #1315 — every probe anchors on the RESOLVED root, not cwd. These look for
+  // a pre-#727 database to migrate from, and that database lives at the
+  // project root; probing cwd meant a `flo` run from any sub-directory found
+  // nothing and silently skipped the migration.
+  const stateRoot = resolveStateRoot();
   const legacyPaths = [
-    legacyMemoryDbPath(process.cwd()),
-    path.join(process.cwd(), MOFLO_DIR, 'memory.db'),
-    path.join(process.cwd(), 'memory.db'),
-    path.join(process.cwd(), '.claude', 'memory.db'),
-    path.join(process.cwd(), 'data', 'memory.db'),
+    legacyMemoryDbPath(stateRoot),
+    path.join(stateRoot, MOFLO_DIR, 'memory.db'),
+    path.join(stateRoot, 'memory.db'),
+    path.join(stateRoot, '.claude', 'memory.db'),
+    path.join(stateRoot, 'data', 'memory.db'),
   ];
 
   for (const legacyPath of legacyPaths) {
@@ -186,7 +192,7 @@ export async function initializeMemoryDatabase(options: {
     migrate = true
   } = options;
 
-  const dbPath = customPath || memoryDbPath(process.cwd());
+  const dbPath = customPath || memoryDbPath(resolveStateRoot());
   const dbDir = path.dirname(dbPath);
 
   try {
@@ -340,7 +346,7 @@ export async function checkMemoryInitialization(dbPath?: string): Promise<{
   };
   tables?: string[];
 }> {
-  const path_ = dbPath || memoryDbPath(process.cwd());
+  const path_ = dbPath || memoryDbPath(resolveStateRoot());
 
   if (!fs.existsSync(path_)) {
     return { initialized: false };
@@ -394,7 +400,7 @@ export async function applyTemporalDecay(dbPath?: string): Promise<{
   patternsDecayed: number;
   error?: string;
 }> {
-  const path_ = dbPath || memoryDbPath(process.cwd());
+  const path_ = dbPath || memoryDbPath(resolveStateRoot());
 
   try {
     const db = openDaemonDatabase(path_);
