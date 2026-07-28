@@ -1,5 +1,5 @@
 /**
- * Cross-cutting source guards.
+ * Cross-cutting source guards (flat config).
  *
  * Originated as the hash-embedding regression guard (epic #527, story #532)
  * and now hosts the small set of structural rules that protect consumer
@@ -13,7 +13,18 @@
  *
  * Each rule cluster has its own selectors block — keep new clusters
  * similarly delineated so the file stays scannable.
+ *
+ * This is deliberately NOT a style config: there is no `extends`, and the only
+ * enabled rules are `no-restricted-syntax` and `no-restricted-imports`. Every
+ * guard is a hand-written esquery selector, so a toolchain bump can break one
+ * silently while lint stays green. `tests/guards/source-guards.test.ts` and
+ * `tests/guards/hash-fallback-guard.test.ts` drive the real ESLint API to
+ * prove each cluster still fires and each exemption still exempts (#1319) —
+ * extend them alongside any new cluster here.
  */
+
+import tsParser from '@typescript-eslint/parser';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 const BANNED_EMBEDDING_MESSAGE =
   'Hash embeddings are permanently banned (epic #527, story #532). ' +
@@ -230,28 +241,44 @@ const INLINE_HASH_EMBEDDING_SELECTORS = [
   message: INLINE_HASH_EMBEDDING_MESSAGE,
 }));
 
+const BANNED_IDENTIFIER_SELECTOR = {
+  selector: `Identifier[name=/${BANNED_IDENTIFIER_PATTERN}/]`,
+  message: BANNED_EMBEDDING_MESSAGE,
+};
+
+const BANNED_LITERAL_SELECTORS = [
+  {
+    selector: `Literal[value=/${BANNED_LITERAL_PATTERN}/]`,
+    message: BANNED_EMBEDDING_MESSAGE,
+  },
+  {
+    selector: `TemplateElement[value.raw=/${BANNED_LITERAL_PATTERN}/]`,
+    message: BANNED_EMBEDDING_MESSAGE,
+  },
+];
+
+/**
+ * Every guard, in one list. The per-file exemptions below rebuild this list
+ * minus the cluster they exempt, so a new cluster added here is picked up by
+ * them automatically rather than being silently dropped.
+ */
+const ALL_SYNTAX_SELECTORS = [
+  BANNED_IDENTIFIER_SELECTOR,
+  ...BANNED_LITERAL_SELECTORS,
+  ...INLINE_HASH_EMBEDDING_SELECTORS,
+  ...RAW_DB_WRITE_SELECTORS,
+  ...FIXED_DEPTH_MODULES_SELECTORS,
+  ...PATH_TRAVERSAL_SELECTORS,
+  ...SILENT_WARN_CATCH_SELECTORS,
+  ...KEBAB_FLAG_READ_SELECTORS,
+];
+
+/** `ALL_SYNTAX_SELECTORS` minus the entries in `exempt`. */
+const allSelectorsExcept = exempt =>
+  ALL_SYNTAX_SELECTORS.filter(s => !exempt.includes(s));
+
 const bannedEmbeddingRules = {
-  'no-restricted-syntax': [
-    'error',
-    {
-      selector: `Identifier[name=/${BANNED_IDENTIFIER_PATTERN}/]`,
-      message: BANNED_EMBEDDING_MESSAGE,
-    },
-    {
-      selector: `Literal[value=/${BANNED_LITERAL_PATTERN}/]`,
-      message: BANNED_EMBEDDING_MESSAGE,
-    },
-    {
-      selector: `TemplateElement[value.raw=/${BANNED_LITERAL_PATTERN}/]`,
-      message: BANNED_EMBEDDING_MESSAGE,
-    },
-    ...INLINE_HASH_EMBEDDING_SELECTORS,
-    ...RAW_DB_WRITE_SELECTORS,
-    ...FIXED_DEPTH_MODULES_SELECTORS,
-    ...PATH_TRAVERSAL_SELECTORS,
-    ...SILENT_WARN_CATCH_SELECTORS,
-    ...KEBAB_FLAG_READ_SELECTORS,
-  ],
+  'no-restricted-syntax': ['error', ...ALL_SYNTAX_SELECTORS],
   'no-restricted-imports': [
     'error',
     {
@@ -266,155 +293,136 @@ const bannedEmbeddingRules = {
   ],
 };
 
-module.exports = {
-  root: true,
-  ignorePatterns: [
-    'node_modules/',
-    'dist/',
-    '**/dist/**',
-    '.moflo/',
-    '.claude-flow/',
-    '.swarm/',
-    'harness/**/.work/**',
-    'spells/',
-    'scripts/',
-    'examples/',
-    'data/',
-    'docs/',
-    'tests/fixtures/**',
-    '**/*.d.ts',
-    // Issue #545: ESLint ignores dot-prefixed paths by default. Negations
-    // below put the shipped helper scripts back under the guard — they ride
-    // into consumer installs via the scriptFiles sync list and need the
-    // same hash-fallback protection as src/ + bin/. The parent path has to
-    // be un-ignored first (ESLint evaluates patterns top-down and can't
-    // traverse into an ignored dir), then the specific subtree is allowed.
-    '!.claude',
-    '!.claude/scripts',
-    '!.claude/scripts/**',
-  ],
-  overrides: [
-    {
-      files: ['src/**/*.ts', 'src/**/*.tsx', 'src/**/*.mts', 'src/**/*.cts'],
-      parser: '@typescript-eslint/parser',
-      parserOptions: {
-        ecmaVersion: 2022,
-        sourceType: 'module',
-      },
-      // Plugin is registered here only so existing `eslint-disable-next-line
-      // @typescript-eslint/*` comments in source do not trip "rule not found"
-      // errors. No rules from this plugin are enabled — this config is
-      // intentionally scoped to the hash-embedding guard.
-      plugins: ['@typescript-eslint'],
-      rules: bannedEmbeddingRules,
-    },
-    {
-      // JS/MJS/CJS across src, bin, and the shipped `.claude/scripts/` helpers
-      // (issue #545 pulled the last group in — it was previously invisible to
-      // the guard because lint only targeted src/ + bin/).
-      files: [
-        'src/**/*.js',
-        'src/**/*.mjs',
-        'src/**/*.cjs',
-        'bin/**/*.js',
-        'bin/**/*.mjs',
-        'bin/**/*.cjs',
-        '.claude/scripts/**/*.js',
-        '.claude/scripts/**/*.mjs',
-        '.claude/scripts/**/*.cjs',
-      ],
-      parserOptions: {
-        ecmaVersion: 2022,
-        sourceType: 'module',
-      },
-      rules: bannedEmbeddingRules,
-    },
-    {
-      // The embedding-hygiene doctor is the legitimate detector for the banned
-      // `domain-aware-hash*` model tag — its entire purpose is to find rows in
-      // the user's memory DB that still carry the retired model label. The
-      // identifier-rule still applies (no ressurrected hashEmbed/HashEmbedding*
-      // function names), but the literal-prefix selector is allowed here.
-      files: ['src/cli/commands/doctor-embedding-hygiene.ts'],
-      rules: {
-        'no-restricted-syntax': [
-          'error',
-          {
-            selector: `Identifier[name=/${BANNED_IDENTIFIER_PATTERN}/]`,
-            message: BANNED_EMBEDDING_MESSAGE,
-          },
-          ...INLINE_HASH_EMBEDDING_SELECTORS,
-          ...RAW_DB_WRITE_SELECTORS,
-          ...FIXED_DEPTH_MODULES_SELECTORS,
-          ...PATH_TRAVERSAL_SELECTORS,
-          ...SILENT_WARN_CATCH_SELECTORS,
-          ...KEBAB_FLAG_READ_SELECTORS,
-        ],
-      },
-    },
-    {
-      // Issue #782: the canonical `mofloPath()` helper is itself the
-      // sanctioned escape hatch from the path-traversal rule. It does NOT
-      // use `'..', '..'` literals (it walks via `dirname()` until it finds
-      // the moflo package.json), so this exemption is defensive — keeps the
-      // rule from accidentally firing if the helper is ever rewritten.
-      files: ['src/cli/shared/core/moflo-package-root.ts'],
-      rules: {
-        'no-restricted-syntax': [
-          'error',
-          // Drop PATH_TRAVERSAL_SELECTORS only; keep every other guard.
-          {
-            selector: `Identifier[name=/${BANNED_IDENTIFIER_PATTERN}/]`,
-            message: BANNED_EMBEDDING_MESSAGE,
-          },
-          {
-            selector: `Literal[value=/${BANNED_LITERAL_PATTERN}/]`,
-            message: BANNED_EMBEDDING_MESSAGE,
-          },
-          {
-            selector: `TemplateElement[value.raw=/${BANNED_LITERAL_PATTERN}/]`,
-            message: BANNED_EMBEDDING_MESSAGE,
-          },
-          ...INLINE_HASH_EMBEDDING_SELECTORS,
-          ...RAW_DB_WRITE_SELECTORS,
-          ...FIXED_DEPTH_MODULES_SELECTORS,
-          ...SILENT_WARN_CATCH_SELECTORS,
-          ...KEBAB_FLAG_READ_SELECTORS,
-        ],
-      },
-    },
-    {
-      // Test-only deterministic mocks are explicitly allowed to reference the
-      // hash-embedding identifiers so existing guidance-retriever test
-      // fixtures continue to work. They are NOT exported from any package.
-      //
-      // Patterns cover every test/mock/benchmark convention we actually use:
-      //  - `__tests__/`, `*.test.*`, `*.spec.*` — standard vitest layouts
-      //  - `__mocks__/` — vitest manual mock dirs (incl. production-adjacent
-      //    mock-provider modules imported from prod via `useMockEmbeddings`)
-      //  - `tests/` — package-level alt layout (e.g. guidance package)
-      //  - `benchmarks/`, `*.bench.ts`, `*.perf.ts` — microbenchmarks /
-      //    perf-threshold suites that simulate hash embeddings intentionally
-      //    to measure vector-math throughput. `*.perf.ts` runs via
-      //    `npm run bench` (#956); excluded from npm publish via package.json
-      //    `!**/*.perf.js`, so this allowlist is dev-only — never ships.
-      files: [
-        'src/**/__tests__/**',
-        'src/**/__mocks__/**',
-        'src/**/tests/**',
-        'src/**/benchmarks/**',
-        'src/**/*.test.ts',
-        'src/**/*.test.js',
-        'src/**/*.bench.ts',
-        'src/**/*.perf.ts',
-        'src/**/*.spec.ts',
-        'src/**/*.spec.js',
-        'src/__tests__/**',
-      ],
-      rules: {
-        'no-restricted-syntax': 'off',
-        'no-restricted-imports': 'off',
-      },
-    },
-  ],
+const LANGUAGE_OPTIONS = {
+  ecmaVersion: 2022,
+  sourceType: 'module',
 };
+
+export default [
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '.moflo/**',
+      '.claude-flow/**',
+      '.swarm/**',
+      'harness/**/.work/**',
+      // These five are the repo's top-level non-source trees. Under eslintrc
+      // they were written bare (`spells/`, `data/`, …), where an unanchored
+      // pattern matched at EVERY level — so `src/cli/spells/`,
+      // `src/cli/data/`, `src/cli/scripts/`, `src/cli/guidance/scripts/` and
+      // `src/helpers/docs/` were swept out of the guard too, almost certainly
+      // by accident. Flat config makes the anchoring explicit, so these are
+      // now top-level only: 171 source files come back under the guard, all
+      // of them already clean (#1319).
+      'spells/**',
+      'scripts/**',
+      'examples/**',
+      'data/**',
+      'docs/**',
+      'tests/fixtures/**',
+      '**/*.d.ts',
+    ],
+  },
+  {
+    // Flat config flipped `reportUnusedDisableDirectives` from off to "warn",
+    // and `npm run lint` runs at `--max-warnings 0`. Here the signal is a
+    // 100% false positive by construction: this config enables no core style
+    // rules and no `@typescript-eslint` rules, so every
+    // `eslint-disable @typescript-eslint/no-explicit-any` / `no-console`
+    // comment in source is "unused" from ESLint's point of view — 27 of them
+    // at migration time. Those comments document intent for anyone who later
+    // turns a recommended set on; deleting them to silence a warning this
+    // config can never legitimately raise would be the wrong trade (#1319).
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
+  },
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx', 'src/**/*.mts', 'src/**/*.cts'],
+    languageOptions: { ...LANGUAGE_OPTIONS, parser: tsParser },
+    // Plugin is registered here only so existing `eslint-disable-next-line
+    // @typescript-eslint/*` comments in source do not trip "rule not found"
+    // errors. No rules from this plugin are enabled — this config is
+    // intentionally scoped to the structural guards.
+    plugins: { '@typescript-eslint': tsPlugin },
+    rules: bannedEmbeddingRules,
+  },
+  {
+    // JS/MJS/CJS across src, bin, and the shipped `.claude/scripts/` helpers
+    // (issue #545 pulled the last group in — it was previously invisible to
+    // the guard because lint only targeted src/ + bin/).
+    files: [
+      'src/**/*.js',
+      'src/**/*.mjs',
+      'src/**/*.cjs',
+      'bin/**/*.js',
+      'bin/**/*.mjs',
+      'bin/**/*.cjs',
+      '.claude/scripts/**/*.js',
+      '.claude/scripts/**/*.mjs',
+      '.claude/scripts/**/*.cjs',
+    ],
+    languageOptions: LANGUAGE_OPTIONS,
+    rules: bannedEmbeddingRules,
+  },
+  {
+    // The embedding-hygiene doctor is the legitimate detector for the banned
+    // `domain-aware-hash*` model tag — its entire purpose is to find rows in
+    // the user's memory DB that still carry the retired model label. The
+    // identifier rule still applies (no resurrected hashEmbed/HashEmbedding*
+    // function names), but the literal-prefix selectors are allowed here.
+    files: ['src/cli/commands/doctor-embedding-hygiene.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...allSelectorsExcept(BANNED_LITERAL_SELECTORS),
+      ],
+    },
+  },
+  {
+    // Issue #782: the canonical `mofloPath()` helper is itself the sanctioned
+    // escape hatch from the path-traversal rule. It does NOT use `'..', '..'`
+    // literals (it walks via `dirname()` until it finds the moflo
+    // package.json), so this exemption is defensive — keeps the rule from
+    // accidentally firing if the helper is ever rewritten.
+    files: ['src/cli/shared/core/moflo-package-root.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...allSelectorsExcept(PATH_TRAVERSAL_SELECTORS),
+      ],
+    },
+  },
+  {
+    // Test-only deterministic mocks are explicitly allowed to reference the
+    // hash-embedding identifiers so existing guidance-retriever test fixtures
+    // continue to work. They are NOT exported from any package.
+    //
+    // Patterns cover every test/mock/benchmark convention we actually use:
+    //  - `__tests__/`, `*.test.*`, `*.spec.*` — standard vitest layouts
+    //  - `__mocks__/` — vitest manual mock dirs (incl. production-adjacent
+    //    mock-provider modules imported from prod via `useMockEmbeddings`)
+    //  - `tests/` — package-level alt layout (e.g. guidance package)
+    //  - `benchmarks/`, `*.bench.ts`, `*.perf.ts` — microbenchmarks /
+    //    perf-threshold suites that simulate hash embeddings intentionally
+    //    to measure vector-math throughput. `*.perf.ts` runs via
+    //    `npm run bench` (#956); excluded from npm publish via package.json
+    //    `!**/*.perf.js`, so this allowlist is dev-only — never ships.
+    files: [
+      'src/**/__tests__/**',
+      'src/**/__mocks__/**',
+      'src/**/tests/**',
+      'src/**/benchmarks/**',
+      'src/**/*.test.ts',
+      'src/**/*.test.js',
+      'src/**/*.bench.ts',
+      'src/**/*.perf.ts',
+      'src/**/*.spec.ts',
+      'src/**/*.spec.js',
+      'src/__tests__/**',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
+      'no-restricted-imports': 'off',
+    },
+  },
+];

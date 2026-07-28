@@ -57,7 +57,7 @@ If a rule has been promoted into an ESLint check, a drift-guard test, a smoke-ha
 ## Retire example
 feedback_no_fixed_depth_paths.md and feedback_consumer_project_paths.md
 both teach "don't count `../` segments across moflo packages."
-→ ESLint rule in `.eslintrc.path-safety.cjs` now bans the patterns.
+→ ESLint rule in `eslint.config.js` now bans the patterns.
 → Consumer-smoke probe scans for `Cannot find module` / `MOFLO_BRIDGE_QUIET`.
 → Memory entries are advisory; the gate is enforcing. RETIRE the memories.
 ```
@@ -75,7 +75,7 @@ Multi-paragraph entries documenting "what we found in the audit" are useful as b
 Before (25 lines): a full audit retro listing five categories of residue.
 After (3 lines):  "Post-collapse residue is now machine-blocked by 5 invariants
                    in `published-package-drift-guard.test.ts`. Sibling guards in
-                   `.eslintrc.cjs` ban deep `../` paths + hash-embedding identifiers."
+                   `eslint.config.js` ban deep `../` paths + hash-embedding identifiers."
 ```
 
 ### KEEP: Standing rules with concrete cost the user paid
