@@ -27,6 +27,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { errorDetail } from './shared/utils/error-detail.js';
 import { findProjectRoot } from './services/project-root.js';
+import { getMofloVersion } from './services/moflo-version.js';
 import { readMofloEnv } from './services/env-compat.js';
 
 // ESM-compatible __dirname
@@ -335,22 +336,7 @@ export class MCPServerManager extends EventEmitter {
     const { listMCPTools, callMCPTool, hasTool } = await import('./mcp-client.js');
 
     // Read version dynamically from root moflo package.json
-    let VERSION = '4.6.3';
-    try {
-      const { readFileSync } = await import('fs');
-      const { dirname: _d, join: _j } = await import('path');
-      const { fileURLToPath: _f } = await import('url');
-      let _dir = _d(_f(import.meta.url));
-      for (;;) {
-        try {
-          const _pkg = JSON.parse(readFileSync(_j(_dir, 'package.json'), 'utf8'));
-          if (_pkg.name === 'moflo' && _pkg.version) { VERSION = _pkg.version; break; }
-        } catch {}
-        const _p = _d(_dir);
-        if (_p === _dir) break;
-        _dir = _p;
-      }
-    } catch {}
+    const VERSION = getMofloVersion();
     const sessionId = `mcp-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     // Log to stderr to not corrupt stdout
@@ -544,7 +530,9 @@ export class MCPServerManager extends EventEmitter {
             id: message.id,
             result: {
               protocolVersion: '2024-11-05',
-              serverInfo: { name: 'moflo', version: '3.0.0' },
+              // The `initialize` reply is where a client learns the server
+              // version; this reported 3.0.0 from a 4.x package (#1325).
+              serverInfo: { name: 'moflo', version: getMofloVersion() },
               capabilities: {
                 tools: { listChanged: true },
                 resources: { subscribe: true, listChanged: true },

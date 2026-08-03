@@ -10,6 +10,7 @@
  */
 
 import type { MCPTool } from './types.js';
+import { applySyntheticNotices } from './synthetic.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
@@ -72,10 +73,10 @@ function saveGitHubStore(store: GitHubStore): void {
   writeFileSync(getGitHubPath(), JSON.stringify(store, null, 2), 'utf-8');
 }
 
-export const githubTools: MCPTool[] = [
+const rawGithubTools: MCPTool[] = [
   {
     name: 'github_repo_analyze',
-    description: 'Analyze a GitHub repository',
+    description: 'Record a placeholder repository analysis in local state',
     category: 'github',
     inputSchema: {
       type: 'object',
@@ -129,7 +130,7 @@ export const githubTools: MCPTool[] = [
   },
   {
     name: 'github_pr_manage',
-    description: 'Manage pull requests',
+    description: 'Track pull-request coordination state locally',
     category: 'github',
     inputSchema: {
       type: 'object',
@@ -231,7 +232,7 @@ export const githubTools: MCPTool[] = [
   },
   {
     name: 'github_issue_track',
-    description: 'Track and manage issues',
+    description: 'Track issue coordination state locally',
     category: 'github',
     inputSchema: {
       type: 'object',
@@ -316,7 +317,7 @@ export const githubTools: MCPTool[] = [
   },
   {
     name: 'github_metrics',
-    description: 'Get repository metrics and statistics',
+    description: 'Return placeholder repository metrics',
     category: 'github',
     inputSchema: {
       type: 'object',
@@ -365,3 +366,20 @@ export const githubTools: MCPTool[] = [
     },
   },
 ];
+
+/**
+ * Every tool in this file is local-only, so all four are labelled (#1324).
+ * The header comment above has said so since the file was written — but a
+ * source comment is invisible to the agent choosing a tool, which is exactly
+ * how a fabricated `merged`/`approved` record ends up read as a real one.
+ */
+export const githubTools: MCPTool[] = applySyntheticNotices(rawGithubTools, {
+  github_repo_analyze:
+    'no repository is read and no GitHub API call is made. Metrics, code quality, test coverage and security-issue counts are generated placeholders, not measurements.',
+  github_pr_manage:
+    'local coordination state only — no GitHub API call is made, so no PR is created, reviewed, merged or closed on GitHub. "approved" and "merged" results describe nothing that happened. Use the `gh` CLI or a GitHub MCP server for real operations.',
+  github_issue_track:
+    'local coordination state only — no GitHub API call is made, so no issue is created, updated, closed or assigned on GitHub. Use the `gh` CLI or a GitHub MCP server for real operations.',
+  github_metrics:
+    'no repository is read and no GitHub API call is made. Every count is a generated placeholder and changes on each call.',
+});

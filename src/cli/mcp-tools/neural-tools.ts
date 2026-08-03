@@ -11,6 +11,7 @@
  */
 
 import type { MCPTool } from './types.js';
+import { applySyntheticNotices } from './synthetic.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
@@ -169,10 +170,10 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB) || 1);
 }
 
-export const neuralTools: MCPTool[] = [
+const rawNeuralTools: MCPTool[] = [
   {
     name: 'neural_train',
-    description: 'Train a neural model',
+    description: 'Register a model entry with a placeholder accuracy',
     category: 'neural',
     inputSchema: {
       type: 'object',
@@ -207,7 +208,11 @@ export const neuralTools: MCPTool[] = [
       store.models[modelId] = model;
       saveNeuralStore(store);
 
-      // Simulate training
+      // No training happens (#1325). The sleep below is not work, and the
+      // accuracy assigned after it is a random draw in [0.85, 0.95) — it is
+      // unrelated to `input.data`, `epochs` or `learningRate`, all of which
+      // are recorded and never used. Note this accuracy is PERSISTED, so
+      // `neural_status`'s avgAccuracy averages these placeholders too.
       await new Promise(resolve => setTimeout(resolve, 100));
 
       model.status = 'ready';
@@ -228,7 +233,7 @@ export const neuralTools: MCPTool[] = [
   },
   {
     name: 'neural_predict',
-    description: 'Make predictions using a neural model',
+    description: 'Embed the input for real, and return placeholder predictions',
     category: 'neural',
     inputSchema: {
       type: 'object',
@@ -252,7 +257,10 @@ export const neuralTools: MCPTool[] = [
         return { success: false, error: 'Model not ready' };
       }
 
-      // Simulate predictions
+      // The labels are a fixed list and the confidences are random draws
+      // (#1325) — no model is consulted, and the ranking does not depend on
+      // `inputText`. The embedding computed below IS real; the predictions
+      // sitting beside it in the same response are not.
       const predictions = [
         { label: 'coder', confidence: 0.75 + Math.random() * 0.2 },
         { label: 'researcher', confidence: 0.5 + Math.random() * 0.3 },
@@ -454,3 +462,19 @@ export const neuralTools: MCPTool[] = [
     },
   },
 ];
+
+/**
+ * `neural_patterns` and `neural_status` are left unlabelled: their embeddings
+ * come from the real embedding service and their cosine similarity is really
+ * computed, so blanket-labelling the file would put a SYNTHETIC banner on the
+ * one part of it that measures something. `neural_status.avgAccuracy` is the
+ * exception — it averages the placeholder accuracies `neural_train` persists —
+ * which is called out at the assignment site rather than by mislabelling the
+ * whole tool.
+ */
+export const neuralTools: MCPTool[] = applySyntheticNotices(rawNeuralTools, {
+  neural_train:
+    'no model is trained. The call sleeps 100ms and assigns a random accuracy in [0.85, 0.95); `epochs`, `learningRate` and `data` are recorded but never used. The accuracy is persisted, so later readers inherit it.',
+  neural_predict:
+    'the returned `embedding` is real, computed by the embedding service. The `predictions` are not — the labels are a fixed list with random confidences and do not depend on the input.',
+});

@@ -9,6 +9,7 @@
  */
 
 import type { MCPTool } from './types.js';
+import { applySyntheticNotices } from './synthetic.js';
 import { createJsonStore } from './json-store.js';
 
 interface SystemMetrics {
@@ -39,10 +40,10 @@ const store = createJsonStore<SystemMetrics>({
   }),
 });
 
-export const systemTools: MCPTool[] = [
+const rawSystemTools: MCPTool[] = [
   {
     name: 'system_health',
-    description: 'Perform system health check',
+    description: 'Report component health from mostly-placeholder checks',
     category: 'system',
     inputSchema: {
       type: 'object',
@@ -56,6 +57,11 @@ export const systemTools: MCPTool[] = [
       const metrics = store.load();
       const checks: Array<{ name: string; status: string; latency: number; message?: string }> = [];
 
+      // Nothing below is probed (#1325): every `status` except `neural` is the
+      // literal 'healthy', and every `latency` is a random draw rather than a
+      // timed round-trip. A component that is genuinely down still reports
+      // healthy here. Left as-is — a real probe is a behaviour change — so the
+      // tool carries a synthetic notice instead.
       // Core checks
       checks.push({
         name: 'swarm',
@@ -126,3 +132,14 @@ export const systemTools: MCPTool[] = [
     },
   },
 ];
+
+/**
+ * `score` IS computed (`healthy / total`), so it is not a literal — but it is
+ * computed from inputs that are almost all hardcoded, which makes the number
+ * arithmetic over placeholders rather than a measurement. The notice says so
+ * rather than claiming the whole response is invented.
+ */
+export const systemTools: MCPTool[] = applySyntheticNotices(rawSystemTools, {
+  system_health:
+    'no component is probed. Every status except `neural` is hardcoded healthy and every latency is a random draw, so `score` is arithmetic over placeholders — a failing component still reports healthy. The `fix` parameter is accepted and ignored.',
+});
