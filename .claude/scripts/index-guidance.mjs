@@ -30,6 +30,7 @@ import { openBackend } from './lib/get-backend.mjs';
 import { applyIncrementalChunks } from './lib/incremental-write.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
+import { readGuidanceConfig } from './lib/guidance-config.mjs';
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -49,47 +50,13 @@ const DB_PATH = memoryDbPath(projectRoot);
 function loadGuidanceDirs() {
   const dirs = [];
 
-  // 1. Read moflo.yaml / moflo.config.json for user-configured directories
-  let configDirs = null;
-  // #1294 — configurable SDD spec/plan location (default .moflo/specs). Parsed
-  // here alongside the guidance dirs so step 6 can honor it and skip a
-  // double-index when it sits inside a guidance dir.
-  let specsDirConfig = null;
-  const yamlPath = resolve(projectRoot, 'moflo.yaml');
-  const jsonPath = resolve(projectRoot, 'moflo.config.json');
-
-  if (existsSync(yamlPath)) {
-    try {
-      const content = readFileSync(yamlPath, 'utf-8');
-      // sdd.specs_dir (snake_case or camelCase, quoted or bare). Two-step:
-      // isolate the top-level `sdd:` block (up to the next column-0 key, blank
-      // lines included — a naive contiguous-line regex would break on natural
-      // whitespace between keys, #1294 review), then find specs_dir within it.
-      const sddBlock = content.match(/(?:^|\n)[ \t]*sdd:[ \t]*\n([\s\S]*?)(?=\n\S|$)/);
-      if (sddBlock) {
-        const m = sddBlock[1].match(/(?:^|\n)[ \t]+specs_?[dD]ir:[ \t]*["']?([^"'\n#]+)/);
-        if (m && m[1].trim()) specsDirConfig = m[1].trim();
-      }
-      // Simple YAML array extraction — avoids needing js-yaml at runtime
-      // Matches:  guidance:\n    directories:\n      - .claude/guidance\n      - docs/guides
-      const guidanceBlock = content.match(/guidance:\s*\n\s+directories:\s*\n((?:\s+-\s+.+\n?)+)/);
-      if (guidanceBlock) {
-        const items = guidanceBlock[1].match(/-\s+(.+)/g);
-        if (items && items.length > 0) {
-          configDirs = items.map(item => item.replace(/^-\s+/, '').trim());
-        }
-      }
-    } catch { /* ignore parse errors, fall through to defaults */ }
-  } else if (existsSync(jsonPath)) {
-    try {
-      const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'));
-      if (raw.guidance?.directories && Array.isArray(raw.guidance.directories)) {
-        configDirs = raw.guidance.directories;
-      }
-      const sd = raw.sdd?.specs_dir ?? raw.sdd?.specsDir;
-      if (typeof sd === 'string' && sd.trim()) specsDirConfig = sd.trim();
-    } catch { /* ignore parse errors */ }
-  }
+  // 1. Read moflo.yaml / moflo.config.json for user-configured directories.
+  //     Delegated to lib/guidance-config.mjs so the step GATE fingerprints
+  //     exactly the directories this indexer walks — they disagreed before
+  //     #1323, which left every non-default directory permanently stale.
+  //     #1294 — specs_dir comes from the same read so step 6 can honor it and
+  //     skip a double-index when it sits inside a guidance dir.
+  const { directories: configDirs, specsDir: specsDirConfig } = readGuidanceConfig(projectRoot);
 
   // Use config dirs or fall back to defaults
   // Each directory gets a unique prefix derived from its path to avoid key collisions
