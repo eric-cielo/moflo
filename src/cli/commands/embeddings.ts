@@ -10,7 +10,7 @@
  * - Neural substrate integration
  * - Persistent SQLite cache
  *
- * Created with ❤️ by motailz.com
+ * Created with ❤️ by cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -1726,7 +1726,7 @@ export const embeddingsCommand: Command = {
       'Hyperbolic: Better hierarchical representation',
     ]);
     output.writeln();
-    output.writeln(output.dim('Created with ❤️ by motailz.com'));
+    output.writeln(output.dim('Created with ❤️ by cielolimitada.com'));
     return { success: true };
   },
 };

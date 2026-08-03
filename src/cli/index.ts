@@ -2,7 +2,7 @@
  * V3 CLI Main Entry Point
  * MoFlo V4 CLI
  *
- * Created with ❤️ by motailz.com
+ * Created with ❤️ by cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult, CLIError } from './types.js';
@@ -427,7 +427,7 @@ export class CLI {
 
     this.output.writeln(this.output.dim(`Run "${this.name} <command> --help" for command help`));
     this.output.writeln();
-    this.output.writeln(this.output.dim('Created with ❤️ by motailz.com'));
+    this.output.writeln(this.output.dim('Created with ❤️ by cielolimitada.com'));
     this.output.writeln();
   }
 

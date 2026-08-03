@@ -53,6 +53,44 @@ See `feedback_consumer_blast_radius.md` (auto-memory) for the full posture.
 
 ---
 
+## ⚠ Rule #3 — No client or contributor project names, ever
+
+**moflo is open source and installs into consumer projects. A client's project name, personal
+filesystem path, or contact domain appearing anywhere in this repo is a disclosure leak.** Not a
+style nit, and not limited to shipped code — git history is permanent.
+
+**The vector is issue resolution.** These names arrive when an outside project files a PR or issue
+and the fix gets written up citing where the bug was seen. Writing `Symptoms in the wild
+(<their-project>/code)` into a regression test's header feels like good provenance and is exactly
+how 38 files got contaminated — including 9 runtime `output.writeln` banners that printed a client
+domain into every consumer's terminal, and the `Co-Authored-By` trailer `flo init` stamps into
+every consumer's `.claude/settings.json`.
+
+**When resolving an issue or PR that originated outside moflo, never record the reporter's
+identity.** Cite the issue number — that is the durable, non-leaking reference.
+
+Below, `<client>` stands in for the real name — written literally here so these examples do not
+themselves trip the guard.
+
+| Instead of | Write |
+|---|---|
+| `Symptoms in the wild (<client>/code, 4.9.7 → 4.9.8)` | `Symptoms in the wild (a consumer project, 4.9.7 → 4.9.8)` |
+| `/Users/eric/Projects/<client>/code` | `/Users/eric/Projects/consumer-app/code` |
+| `const <client>Block = [...]` | `const consumerBlock = [...]` |
+| `<client>-style stale block` | `consumer-style stale block` |
+| `noreply@<client>.com` | `noreply@cielolimitada.com` |
+
+Applies to every surface: runtime strings, JSDoc headers, test fixture names and paths, commit
+trailers, and `docs/internal/**` post-mortems.
+
+**Enforced by** `tests/guards/client-name-leak-guard.test.ts`, which matches the *shapes* these
+identifiers take (project dir under a home path, contact domain in an email, domain on an
+attribution line) rather than any list of names — so a brand-new name trips it on first use. The
+guard holds no denylist on purpose: spelling the names out to block them would recreate the leak.
+If it goes red, replace the identifier with a neutral placeholder — do not add it to an allowlist.
+
+---
+
 ## ⚠ Dogfooding & local-vs-installed delivery — mandatory reading
 
 MoFlo dogfoods itself: the daemon, hooks, statusline, MCP server, and embeddings indexer ALL run from `node_modules/moflo/...` (NOT from the source tree). Source edits don't take effect for those runtime layers until publish + reinstall + Claude Code restart. Resolving paths between the source tree and the installed package has dist-vs-source depth pitfalls that bite every consumer if you get them wrong.

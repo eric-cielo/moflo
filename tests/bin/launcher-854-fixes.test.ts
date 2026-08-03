@@ -2,7 +2,7 @@
  * Regression tests for issue #854 — partial-migration loops in the
  * SessionStart launcher and the HNSW chicken-and-egg in build-embeddings.
  *
- * Symptoms in the wild (motailz/code, latent across moflo 4.8.x → 4.9.2):
+ * Symptoms in the wild (consumer-app/code, latent across moflo 4.8.x → 4.9.2):
  *   - `.moflo/moflo-version` never landed → every session re-detected the
  *     upgrade and re-ran the same broken sync sequence.
  *   - `.claude/helpers/gate.cjs` (and several others) stayed at the

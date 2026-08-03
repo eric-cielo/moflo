@@ -11,7 +11,7 @@
  * - Module communities using Louvain algorithm
  * - Circular dependency detection
  *
- * Created with motailz.com
+ * Created with cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

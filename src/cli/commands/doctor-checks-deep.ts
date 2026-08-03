@@ -11,7 +11,7 @@
  * so these checks work both in the dev repo AND in consumer projects where
  * moflo is installed under node_modules/moflo/.
  *
- * Created with motailz.com
+ * Created with cielolimitada.com
  */
 
 import { existsSync, readFileSync, statSync } from 'fs';

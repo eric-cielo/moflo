@@ -9,7 +9,7 @@
  * - aidefence_is_safe: Boolean-only quick check
  * - aidefence_has_pii: PII-only check
  *
- * Created with ❤️ by motailz.com
+ * Created with ❤️ by cielolimitada.com
  */
 
 import type { MCPTool, MCPToolResult } from './types.js';

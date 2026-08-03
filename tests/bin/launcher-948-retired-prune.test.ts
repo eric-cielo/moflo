@@ -276,7 +276,7 @@ describe('retired-files helper (#948)', () => {
     });
 
     it('prunes when consumer hash matches the 4th-or-later historic shipped version (#1133)', () => {
-      // Reproduces the motailz-style stale-install case the 3-hash cap missed:
+      // Reproduces the consumer-style stale-install case the 3-hash cap missed:
       // consumer installed an older moflo, file content matches a hash that
       // was sliced off the manifest under the legacy 3-cap. With the widened
       // window the manifest carries every historic hash, so the prune fires.
@@ -284,7 +284,7 @@ describe('retired-files helper (#948)', () => {
       const middle = '# moflo 4.7 shipped this\n';
       const newer  = '# moflo 4.8 shipped this\n';
       const newest = '# moflo 4.9 shipped this\n';
-      const consumer = oldest; // motailz-equivalent — frozen on 4.6 content
+      const consumer = oldest; // consumer-equivalent — frozen on 4.6 content
 
       writeAt(root, '.claude/agents/v3/stale.md', consumer);
       const manifestPath = writeManifest([

@@ -14,7 +14,7 @@ Consequences proven on the audit machine:
 
 - **Reads are wrong**: project B's `flo memory stats` / `memory list` / `memory retrieve` return project A's data.
 - **Writes are wrong** (chokepoint surface): project B's MCP `memory_store` / `memory_delete`, `flo memory store/delete` CLI, swarm persistence, aidefence, and write-through-adapter land in project A's `.moflo/moflo.db` — **lost from B, foreign in A**. Indexers and migrations are safe (they bypass HTTP — see §6).
-- **Orphan daemons accumulate**: same-project daemon proliferation. waxstack has TWO live daemons (3118, 3119) because stale-daemon detection failed.
+- **Orphan daemons accumulate**: same-project daemon proliferation. consumer-app has TWO live daemons (3118, 3119) because stale-daemon detection failed.
 - **No surface signal**: nothing logs, no health probe disagrees, daemon.lock contains no port — discovery is impossible without `netstat`.
 
 The original consumer-reported symptom (`memory_stats reports totalEntries:0`) is one downstream effect among seven stacked bugs (§4).
@@ -28,10 +28,10 @@ Three moflo daemons running on the audit machine at the time of investigation:
 | PID | Port | Project | Version | Identity |
 |-----|------|---------|---------|----------|
 | 19580 | 3117 | `C:/Users/eric/Projects/moflo` (moflo-dev) | 4.10.6 | First to bind; owns the default port |
-| 23040 | 3118 | `C:/Users/eric/Projects/motailz/code` (waxstack) | 4.10.7 | **Orphan** — not in any daemon.lock |
-| 30344 | 3119 | `C:/Users/eric/Projects/motailz/code` (waxstack) | 4.10.7 | Current — owns waxstack's `.moflo/daemon.lock` |
+| 23040 | 3118 | `C:/Users/eric/Projects/consumer-app/code` | 4.10.7 | **Orphan** — not in any daemon.lock |
+| 30344 | 3119 | `C:/Users/eric/Projects/consumer-app/code` | 4.10.7 | Current — owns consumer-app's `.moflo/daemon.lock` |
 
-`waxstack/.moflo/daemon.lock`:
+`consumer-app/.moflo/daemon.lock`:
 ```json
 {"pid":30344,"startedAt":1778845531679,"label":"moflo-daemon","version":"4.10.7"}
 ```
@@ -41,7 +41,7 @@ Three moflo daemons running on the audit machine at the time of investigation:
 ### Direct reproducer
 
 ```bash
-# From waxstack, with daemon routing enabled (default):
+# From consumer-app, with daemon routing enabled (default):
 $ flo memory stats
   Total Entries:        0       # LIE. DB has 5,909.
 
@@ -54,7 +54,7 @@ $ MOFLO_DISABLE_DAEMON_ROUTING=1 flo memory stats
 ```
 
 Verified via direct `node:sqlite` open of both DB files:
-- waxstack DB: 5,909 rows; namespaces `guidance` (2,620), `code-map` (1,414), `patterns` (1,297), `tests` (489)
+- consumer-app DB: 5,909 rows; namespaces `guidance` (2,620), `code-map` (1,414), `patterns` (1,297), `tests` (489)
 - moflo-dev DB: 4,364 rows; namespaces `code-map` (1,385), `guidance` (1,018), `patterns` (971), `tests` (852)
 - Different content, totally distinct projects.
 
@@ -66,7 +66,7 @@ $ curl 127.0.0.1:3117/api/memory/list -d '{"limit":5}'
   → moflo-dev rows (4,364 total)
 
 $ curl 127.0.0.1:3118/api/memory/list -d '{"limit":5}'
-  → waxstack rows (5,909 total) — first row: chunk-guidance-analysis-output-location-4
+  → consumer-app rows (5,909 total) — first row: chunk-guidance-analysis-output-location-4
 
 $ curl 127.0.0.1:3119/api/memory/list -d '{"limit":5}'
   → identical to 3118 (same DB file)
@@ -182,21 +182,21 @@ Detailed audit results (parallel to `docs/internal/1054-writer-audit.md` and `98
 
 During the daemon-overlap window:
 
-- **Foreign rows landed in moflo-dev's DB** from every chokepoint write originating in waxstack: MCP `memory_store` (Claude session "remember this", agent memory, hive-mind state), `flo memory store/delete` CLI, swarm coordination, aidefence learnings.
-- **Lost rows from waxstack's DB**: the same writes never reached waxstack's local file. No shadow copy. Data is gone unless the user reconstructs from the foreign DB.
-- **Intact in waxstack**: indexer-populated namespaces (`guidance`, `code-map`, `tests`, `patterns`) and learning-service `learned_patterns` (in-session writes). These bypass HTTP and write direct.
+- **Foreign rows landed in moflo-dev's DB** from every chokepoint write originating in consumer-app: MCP `memory_store` (Claude session "remember this", agent memory, hive-mind state), `flo memory store/delete` CLI, swarm coordination, aidefence learnings.
+- **Lost rows from consumer-app's DB**: the same writes never reached consumer-app's local file. No shadow copy. Data is gone unless the user reconstructs from the foreign DB.
+- **Intact in consumer-app**: indexer-populated namespaces (`guidance`, `code-map`, `tests`, `patterns`) and learning-service `learned_patterns` (in-session writes). These bypass HTTP and write direct.
 - **Intact in moflo-dev (its own namespaces)**: indexers ran direct against moflo-dev's DB too, so its `guidance`/`code-map`/`tests`/`patterns` are correct. The pollution shows up in `learnings`/`tasklist`/`swarm-*`/`default` namespaces (the MCP-store-targeted set).
 
-Spot-check on the audit machine: moflo-dev's `learnings` namespace had 27 entries. Surface inspection of recent rows showed moflo-internal content (e.g., `1140-dead-mjs-collapse-residue`) — no obvious waxstack pollution in the visible sample. A full audit requires diffing every MCP-store-routable namespace against waxstack's expected content. Out of scope for the fix PR; tracked as recovery surface (§10).
+Spot-check on the audit machine: moflo-dev's `learnings` namespace had 27 entries. Surface inspection of recent rows showed moflo-internal content (e.g., `1140-dead-mjs-collapse-residue`) — no obvious consumer-app pollution in the visible sample. A full audit requires diffing every MCP-store-routable namespace against consumer-app's expected content. Out of scope for the fix PR; tracked as recovery surface (§10).
 
 ---
 
 ## 7. Sidecar / HNSW Pollution Status
 
-| File | moflo-dev | waxstack | Polluted? |
+| File | moflo-dev | consumer-app | Polluted? |
 |------|-----------|----------|-----------|
-| `.moflo/moflo.db` | 49 MB, 4,364 rows | 60 MB, 5,909 rows | **Yes** (foreign chokepoint rows in moflo-dev; missing chokepoint rows in waxstack) |
-| `.moflo/hnsw.index` | 7.2 MB | 9.9 MB | **Indirect** — HNSW is rebuilt server-side by the daemon owning the project. waxstack's HNSW reflects waxstack's local DB (correct shape). moflo-dev's HNSW reflects moflo-dev's DB (including foreign rows it absorbed). |
+| `.moflo/moflo.db` | 49 MB, 4,364 rows | 60 MB, 5,909 rows | **Yes** (foreign chokepoint rows in moflo-dev; missing chokepoint rows in consumer-app) |
+| `.moflo/hnsw.index` | 7.2 MB | 9.9 MB | **Indirect** — HNSW is rebuilt server-side by the daemon owning the project. consumer-app's HNSW reflects consumer-app's local DB (correct shape). moflo-dev's HNSW reflects moflo-dev's DB (including foreign rows it absorbed). |
 | `.moflo/embeddings.json` | 317 B | 317 B | LOW — small bookkeeping; not a primary risk |
 | `.moflo/daemon.lock` | per-project, valid PID | per-project, valid PID | **Schema gap** — no port field; clients can't discover bound port |
 | `.moflo/daemon-state.json` | per-project | per-project | OK — describes the daemon's own workers, project-local |
@@ -204,8 +204,8 @@ Spot-check on the audit machine: moflo-dev's `learnings` namespace had 27 entrie
 
 HNSW pollution implications:
 
-- waxstack's `.moflo/hnsw.index` is **complete for direct-write content** (indexers wrote rows + embeddings local; HNSW rebuild covered them). It's **missing vectors** for chokepoint writes that went elsewhere — so semantic-search in waxstack will fail to surface anything the user stored via MCP during the overlap window.
-- moflo-dev's `.moflo/hnsw.index` includes **foreign vectors** for waxstack's chokepoint writes (HNSW rebuild covered the rows physically present in moflo-dev's DB regardless of origin). A search in moflo-dev surfaces waxstack content as plausible hits.
+- consumer-app's `.moflo/hnsw.index` is **complete for direct-write content** (indexers wrote rows + embeddings local; HNSW rebuild covered them). It's **missing vectors** for chokepoint writes that went elsewhere — so semantic-search in consumer-app will fail to surface anything the user stored via MCP during the overlap window.
+- moflo-dev's `.moflo/hnsw.index` includes **foreign vectors** for consumer-app's chokepoint writes (HNSW rebuild covered the rows physically present in moflo-dev's DB regardless of origin). A search in moflo-dev surfaces consumer-app content as plausible hits.
 
 Recovery requires HNSW rebuild after row migration (§10).
 
@@ -307,7 +307,7 @@ Add `GET /api/health` to the daemon (currently 404):
 ```json
 {
   "status": "ok",
-  "projectRoot": "C:\\Users\\eric\\Projects\\motailz\\code",
+  "projectRoot": "C:\\Users\\eric\\Projects\\consumer-app\\code",
   "pid": 30344,
   "version": "4.10.7",
   "uptimeMs": 36043927
@@ -322,7 +322,7 @@ Every client call probes `/api/health` (cached for 5 seconds, invalidated on rou
 
 ### 9.4 Hard-fail on bind failure with non-default port
 
-When `tryListenOnPort` exhausts the deterministic-range candidates and falls into the legacy retry, the daemon **must exit non-zero** rather than stay alive doing internal-worker-only work. Today's silent half-alive state (waxstack PID 30344) is the trap.
+When `tryListenOnPort` exhausts the deterministic-range candidates and falls into the legacy retry, the daemon **must exit non-zero** rather than stay alive doing internal-worker-only work. Today's silent half-alive state (consumer-app PID 30344) is the trap.
 
 Spawn launcher detects the non-zero exit, retries up to N times with exponential backoff, then surfaces to healer.
 

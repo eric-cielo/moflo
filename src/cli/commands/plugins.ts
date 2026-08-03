@@ -3,7 +3,7 @@
  * Plugin management, installation, and lifecycle
  * Now uses IPFS-based decentralized registry for discovery
  *
- * Created with ❤️ by motailz.com
+ * Created with ❤️ by cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -922,7 +922,7 @@ export const pluginsCommand: Command = {
     ]);
     output.writeln();
     output.writeln(output.dim('Run "flo plugins list --official" to see all official plugins'));
-    output.writeln(output.dim('Created with ❤️ by motailz.com'));
+    output.writeln(output.dim('Created with ❤️ by cielolimitada.com'));
     return { success: true };
   },
 };

@@ -8,7 +8,7 @@
  * `doctor-registry.ts`; rendering helpers live in `doctor-render.ts`.
  * This file is orchestration only.
  *
- * Created with motailz.com
+ * Created with cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

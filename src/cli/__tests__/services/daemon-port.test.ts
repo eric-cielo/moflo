@@ -222,7 +222,7 @@ describe('JS twin parity (bin/lib/daemon-port.mjs)', () => {
       '/project-a',
       '/project-b-unique',
       'C:\\Users\\eric\\Projects\\moflo',
-      '/Users/eric/Projects/motailz/code',
+      '/Users/eric/Projects/consumer-app/code',
     ];
     for (const p of testPaths) {
       expect(jsTwin.resolveProjectPort(p)).toBe(resolveProjectPort(p));

@@ -46,7 +46,7 @@ export function generateSettings(options: InitOptions): object {
 
   // Add claude-flow attribution for git commits and PRs
   settings.attribution = {
-    commit: 'Co-Authored-By: moflo <noreply@motailz.com>',
+    commit: 'Co-Authored-By: moflo <noreply@cielolimitada.com>',
     pr: '🤖 Generated with [moflo](https://github.com/eric-cielo/moflo)',
   };
 
