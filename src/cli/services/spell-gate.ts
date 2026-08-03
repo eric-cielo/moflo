@@ -3,7 +3,7 @@
  * Enforces TaskCreate + memory-first patterns before agent spawning
  * and file exploration. Tracks context bracket by interaction count.
  *
- * Ported from Motailz .claude/scripts/spell-gate.mjs into MoFlo core.
+ * Ported from a consumer project's .claude/scripts/spell-gate.mjs into MoFlo core.
  *
  * Gate types:
  *   check-before-agent     — blocks Agent tool if no TaskCreate or no memory search

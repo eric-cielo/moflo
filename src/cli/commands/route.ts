@@ -8,7 +8,7 @@
  * - Confidence scoring
  * - Learning from feedback
  *
- * Created with love by motailz.com
+ * Created with love by cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

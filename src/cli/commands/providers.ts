@@ -2,7 +2,7 @@
  * V3 CLI Providers Command
  * Manage AI providers, models, and configurations
  *
- * Created with ❤️ by motailz.com
+ * Created with ❤️ by cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -251,7 +251,7 @@ export const providersCommand: Command = {
       'Agentic Flow (optimized ONNX with SIMD)',
     ]);
     output.writeln();
-    output.writeln(output.dim('Created with ❤️ by motailz.com'));
+    output.writeln(output.dim('Created with ❤️ by cielolimitada.com'));
     return { success: true };
   },
 };

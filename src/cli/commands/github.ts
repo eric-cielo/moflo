@@ -4,7 +4,7 @@
  *
  * Uses `gh` CLI for GitHub API calls and project detection from moflo.yaml.
  *
- * Created with motailz.com
+ * Created with cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

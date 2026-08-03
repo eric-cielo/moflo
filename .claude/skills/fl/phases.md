@@ -182,7 +182,7 @@ git commit -m "type(scope): description
 
 Closes #<issue-number>
 
-Co-Authored-By: moflo <noreply@motailz.com>"
+Co-Authored-By: moflo <noreply@cielolimitada.com>"
 ```
 
 ### 5.1b Verify-before-done (default; skipped only with `--no-verify`)

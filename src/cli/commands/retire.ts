@@ -13,7 +13,7 @@
  * `retired-files.json` live at the moflo package root and don't ship to
  * consumer projects.
  *
- * Created with motailz.com
+ * Created with cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

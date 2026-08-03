@@ -90,7 +90,7 @@ describe('inspectMcpConfigs', () => {
   it('returns malformed when .mcp.json has unescaped Windows backslashes', () => {
     // The exact shape that caused #1126 — produced by an older writer that
     // string-concatenated instead of JSON.stringify-ing. `String.raw` keeps
-    // every backslash literal so the on-disk bytes match what motailz had:
+    // every backslash literal so the on-disk bytes match what the consumer project had:
     // `"C:\Users\..."` inside a JSON string is unescaped → JSON.parse throws.
     const bad = String.raw`{
   "mcpServers": {

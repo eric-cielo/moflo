@@ -2,7 +2,7 @@
  * Regression tests for issue #860 — session-start launcher must early-exit
  * when invoked from a daemon-spawned headless Claude session.
  *
- * Symptoms in the wild (motailz/code, 2026-05-02): the daemon's headless
+ * Symptoms in the wild (consumer-app/code, 2026-05-02): the daemon's headless
  * workers (optimize/testgaps/etc.) spawn `claude --print` with
  * CLAUDE_CODE_HEADLESS=true; each spawned Claude inherits SessionStart
  * hooks, which re-enter this launcher and fork the indexer chain →

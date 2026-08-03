@@ -115,7 +115,7 @@ export function acquireDaemonLock(
   //     running but the lock unlinked, and
   // (b) the second-spawn case (lock absent, prior daemon alive) is exactly
   //     the failure mode that produced two-daemons-per-project in #1145's
-  //     waxstack audit.
+  //     consumer-app audit.
   const lockHolderPid = readLockPayload(lock)?.pid;
   reapSameProjectOrphans(projectRoot, pid, lockHolderPid, opts.pidsHint);
 

@@ -1,5 +1,5 @@
 // One-off consumer-realistic smoke for the #1126 healer fix.
-// Stages a `.mcp.json` shaped like the motailz failure (unescaped Windows
+// Stages a `.mcp.json` shaped like the consumer-project failure (unescaped Windows
 // backslashes), runs the shipped checkMcpServers + autoFixCheck against it,
 // and reports before/after state. Not part of the test suite — manual repro
 // for verifying consumer behavior after a dist rebuild.
@@ -17,7 +17,7 @@ fs.writeFileSync(
   JSON.stringify({ name: 'fake-consumer', version: '0.0.0' }, null, 2),
 );
 
-// The exact motailz failure shape: backslash-Windows path inside JSON string
+// The exact consumer-project failure shape: backslash-Windows path inside JSON string
 // without the `\\` escapes. JSON.parse throws on `\U`, `\m`, etc.
 const cliPath = path.join(consumer, 'node_modules', 'moflo', 'bin', 'cli.js');
 const bad =

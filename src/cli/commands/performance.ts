@@ -2,7 +2,7 @@
  * V3 CLI Performance Command
  * Performance profiling, benchmarking, optimization, metrics
  *
- * Created with ❤️ by motailz.com
+ * Created with ❤️ by cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -643,7 +643,7 @@ export const performanceCommand: Command = {
       'Memory: Int8 quantized weight storage',
     ]);
     output.writeln();
-    output.writeln(output.dim('Created with ❤️ by motailz.com'));
+    output.writeln(output.dim('Created with ❤️ by cielolimitada.com'));
     return { success: true };
   },
 };

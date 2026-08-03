@@ -2,7 +2,7 @@
  * V3 CLI Smart Error Suggestions
  * Levenshtein distance and command suggestions
  *
- * Created with motailz.com
+ * Created with cielolimitada.com
  */
 
 /**

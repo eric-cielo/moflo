@@ -8,7 +8,7 @@
  *
  * All test data is cleaned up after each test — no code or state is left behind.
  *
- * Created with motailz.com
+ * Created with cielolimitada.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

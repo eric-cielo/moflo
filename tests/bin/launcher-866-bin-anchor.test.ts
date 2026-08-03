@@ -2,7 +2,7 @@
  * Regression tests for issue #866 — stale-install repair races indexer chain
  * spawn, leaving an orphan running pre-upgrade argv.
  *
- * Symptom in the wild (motailz, 4.9.7 → 4.9.8 upgrade):
+ * Symptom in the wild (a consumer project, 4.9.7 → 4.9.8 upgrade):
  *   - Launcher spawned `node .claude/scripts/index-all.mjs` from stale 4.9.7
  *     bytes (still has `--force`).
  *   - Section 3 sync overwrote `.claude/scripts/index-all.mjs` ~43 s later.

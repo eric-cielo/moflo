@@ -87,9 +87,9 @@ describe('checkClaudeMdInjectionDrift — five states', () => {
     expect(result.message).toContain('off');
   });
 
-  it("repairs the motailz-style stale block when the fix is applied", async () => {
-    // Frozen fixture replicating motailz/code/CLAUDE.md (pre-1142 state).
-    const motailzBlock = [
+  it("repairs the consumer-style stale block when the fix is applied", async () => {
+    // Frozen fixture replicating consumer-app/code/CLAUDE.md (pre-1142 state).
+    const consumerBlock = [
       MARKER_START,
       '## MoFlo — AI Agent Orchestration',
       '',
@@ -101,7 +101,7 @@ describe('checkClaudeMdInjectionDrift — five states', () => {
       '`.claude/guidance/shipped/moflo-core-guidance.md`',
       MARKER_END,
     ].join('\n');
-    writeFileSync(join(tmpDir, 'CLAUDE.md'), `# Project\n\n${motailzBlock}\n`);
+    writeFileSync(join(tmpDir, 'CLAUDE.md'), `# Project\n\n${consumerBlock}\n`);
 
     // First check: drifted.
     const before = await checkClaudeMdInjectionDrift();

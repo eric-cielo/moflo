@@ -8,7 +8,7 @@
  *
  * Gracefully degrades when native backend is not available.
  *
- * Created with love by motailz.com
+ * Created with love by cielolimitada.com
  */
 
 // ============================================================================

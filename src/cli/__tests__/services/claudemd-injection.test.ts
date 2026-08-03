@@ -128,9 +128,9 @@ describe('computeInjectionDrift — five states', () => {
     expect(report.state).toBe('drifted');
   });
 
-  it("treats motailz-style stale block as 'drifted'", () => {
-    // Frozen fixture replicating the broken state captured from motailz/code.
-    const motailzBlock = [
+  it("treats consumer-style stale block as 'drifted'", () => {
+    // Frozen fixture replicating the broken state captured from consumer-app/code.
+    const consumerBlock = [
       MARKER_START,
       '## MoFlo — AI Agent Orchestration',
       '',
@@ -142,7 +142,7 @@ describe('computeInjectionDrift — five states', () => {
       '`.claude/guidance/shipped/moflo-core-guidance.md`',
       MARKER_END,
     ].join('\n');
-    const file = `# Project\n\n${motailzBlock}\n`;
+    const file = `# Project\n\n${consumerBlock}\n`;
     const report = computeInjectionDrift(file, CANONICAL);
     expect(report.state).toBe('drifted');
   });
@@ -201,8 +201,8 @@ describe('applyInjectionReplacement', () => {
     expect(result.state).toBe('in-sync');
   });
 
-  it('repairs the motailz-style fixture to produce in-sync output', () => {
-    const motailzBlock = [
+  it('repairs the consumer-style fixture to produce in-sync output', () => {
+    const consumerBlock = [
       MARKER_START,
       '## MoFlo (old)',
       '',
@@ -210,7 +210,7 @@ describe('applyInjectionReplacement', () => {
       '`.claude/guidance/shipped/moflo-core-guidance.md`',
       MARKER_END,
     ].join('\n');
-    const before = `# Project\n\n${motailzBlock}\n`;
+    const before = `# Project\n\n${consumerBlock}\n`;
 
     const result = applyInjectionReplacement(before, CANONICAL);
     expect(result.changed).toBe(true);

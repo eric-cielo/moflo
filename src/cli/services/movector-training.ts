@@ -9,7 +9,7 @@
  *
  * Backward Compatible: All v1 exported APIs preserved.
  *
- * Created with love by motailz.com
+ * Created with love by cielolimitada.com
  */
 
 import { createLoRAAdapter, type LoRAAdapter } from '../movector/lora-adapter.js';
