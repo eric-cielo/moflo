@@ -71,16 +71,35 @@ Overall verdict is PASS iff no row is FAIL or UNVERIFIED.
 
 ## Step 5 — Record the outcome to memory
 
-Always store the result (feeds routing/learning and the SDD trail):
+Always store the result (feeds routing/learning and the SDD trail). Store it **twice over**: the prose summary in `value`, and the Step 4 table itself — unflattened — in `metadata`.
 
 ```
 mcp__moflo__memory_store {
   namespace: "learnings",
   key: "verify:<slug-or-issue>",
   value: "<overall PASS/FAIL> — per-criterion: <criterion → evidence → verdict>; commit <sha>",
-  tags: ["verify", "sdd"]
+  tags: ["verify", "sdd"],
+  metadata: {
+    type: "verify-record",
+    issue: "<slug-or-issue>",
+    commit: "<sha>",
+    overall: "PASS" | "FAIL" | "UNVERIFIED",
+    verifiedAt: "<ISO-8601>",
+    criteria: [
+      { id: 1, statement: "<criterion>", verdict: "PASS" | "FAIL" | "UNVERIFIED",
+        evidence: "<test name / observed output>", freshlyExecuted: true }
+    ]
+  }
 }
 ```
+
+**Why both.** `value` is what gets embedded for semantic search, so it stays prose — a JSON blob there would degrade every future `learnings` search. `metadata` is stored verbatim and not embedded, so the structure survives without that cost. `memory_retrieve` returns the parsed `metadata` object for non-chunk entries, which is what makes the record readable rather than write-only.
+
+**`freshlyExecuted` is required on every criterion, not optional.** Step 3 deliberately permits *citing* an earlier green run instead of re-executing. That is a sound cost optimisation, but it means evidence may be a citation rather than a fresh result — set `freshlyExecuted: false` when you cited. Without that flag a later reader silently inherits stale evidence and cannot tell a re-verified criterion from a re-cited one.
+
+**Never record an exit code.** Claude Code's `tool_response` for Bash carries `stdout`/`stderr` but **no exit status**, and PostToolUse does not fire at all when a command exits non-zero (#1322). `evidence` is therefore descriptive by necessity; a field named `exitCode` would be agent-narrated fiction, which is the problem this record exists to remove.
+
+`overall` MUST agree with the Step 4 rule — PASS iff no criterion is FAIL or UNVERIFIED. Record a FAIL as a FAIL; the store is the audit trail, and a verdict that only ever reads PASS is worth nothing.
 
 ## Step 6 — Report
 

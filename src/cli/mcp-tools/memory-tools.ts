@@ -132,6 +132,17 @@ interface RetrievedEntry {
   accessCount: number;
   hasEmbedding: boolean;
   navigation: NavigationFull | null;
+  // #1328: the parsed `metadata` column for NON-chunk entries. Producers of
+  // structured records (e.g. /verify's per-criterion verdict) write them here
+  // so `value` can stay human-readable prose — the embedded text stays clean
+  // while the machine-readable half survives the round trip. Before this,
+  // metadata reached the DB intact but `metadata` had no outlet in the
+  // response at all, making it write-only for anything that wasn't a chunk.
+  //
+  // Chunk entries get null: `navigation` already projects their metadata, and
+  // chunk metadata averages ~4x the size of non-chunk metadata, so echoing it
+  // raw would double-bill the RAG traversal path this response is tuned for.
+  metadata: Record<string, unknown> | null;
   found: boolean;
   backend: string;
 }
@@ -154,20 +165,42 @@ interface SearchHit {
   expanded?: ExpandedNeighbor[];
 }
 
+/**
+ * Parse a raw `metadata` column into a plain object, or null.
+ *
+ * Total by contract: a malformed row yields null rather than throwing, so one
+ * bad entry can never fail an otherwise-good read. Arrays are rejected too —
+ * valid JSON, but not the record shape any caller here expects.
+ */
+function parseMetadataObject(metadataJson: string | undefined): Record<string, unknown> | null {
+  if (!metadataJson) return null;
+  let meta: unknown;
+  try {
+    meta = JSON.parse(metadataJson);
+  } catch {
+    return null;
+  }
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  return meta as Record<string, unknown>;
+}
+
 function parseNavigation(metadataJson: string | undefined, mode: 'full'): NavigationFull | null;
 function parseNavigation(metadataJson: string | undefined, mode: 'compact'): NavigationCompact | null;
 function parseNavigation(
   metadataJson: string | undefined,
   mode: 'full' | 'compact',
 ): NavigationFull | NavigationCompact | null {
-  if (!metadataJson) return null;
-  let meta: Record<string, unknown>;
-  try {
-    meta = JSON.parse(metadataJson);
-  } catch {
-    return null;
-  }
-  if (!meta || typeof meta !== 'object') return null;
+  const meta = parseMetadataObject(metadataJson);
+  return mode === 'full' ? navigationFrom(meta, 'full') : navigationFrom(meta, 'compact');
+}
+
+function navigationFrom(meta: Record<string, unknown> | null, mode: 'full'): NavigationFull | null;
+function navigationFrom(meta: Record<string, unknown> | null, mode: 'compact'): NavigationCompact | null;
+function navigationFrom(
+  meta: Record<string, unknown> | null,
+  mode: 'full' | 'compact',
+): NavigationFull | NavigationCompact | null {
+  if (!meta) return null;
   // Discriminator: only `type === 'chunk'` entries carry the nav fields.
   if (meta.type !== 'chunk') return null;
 
@@ -212,6 +245,9 @@ function sourceIdOf(key: string): string {
 function shapeRetrievedEntry(entry: MemoryEntryWithMeta): RetrievedEntry {
   let value: unknown = entry.content;
   try { value = JSON.parse(entry.content); } catch { /* keep string */ }
+  // Parse once and derive both projections — chunk metadata averages ~1.1KB,
+  // and this is the per-hop cost of the RAG traversal path.
+  const meta = parseMetadataObject(entry.metadata);
   return {
     key: entry.key,
     namespace: entry.namespace,
@@ -221,7 +257,9 @@ function shapeRetrievedEntry(entry: MemoryEntryWithMeta): RetrievedEntry {
     updatedAt: entry.updatedAt,
     accessCount: entry.accessCount,
     hasEmbedding: entry.hasEmbedding,
-    navigation: parseNavigation(entry.metadata, 'full'),
+    navigation: navigationFrom(meta, 'full'),
+    // #1328: chunks project through `navigation` instead — see RetrievedEntry.
+    metadata: meta && meta.type !== 'chunk' && Object.keys(meta).length > 0 ? meta : null,
     found: true,
     backend: BACKEND_LABEL,
   };
@@ -422,7 +460,7 @@ export const memoryTools: MCPTool[] = [
   },
   {
     name: 'memory_retrieve',
-    description: 'Retrieve the full value for a SPECIFIC key. For chunk entries, prefer `memory_get_neighbors` for traversal — bulk-retrieving search hits is a protocol violation. The returned `navigation` object lets you keep traversing. See `.claude/guidance/moflo-memory-protocol.md`.',
+    description: 'Retrieve the full value for a SPECIFIC key. For chunk entries, prefer `memory_get_neighbors` for traversal — bulk-retrieving search hits is a protocol violation. The returned `navigation` object lets you keep traversing. Non-chunk entries instead return their parsed `metadata` object (null when absent), which is where structured records — e.g. a `/verify` per-criterion verdict — live; `value` stays human-readable. See `.claude/guidance/moflo-memory-protocol.md`.',
     category: 'memory',
     inputSchema: {
       type: 'object',
