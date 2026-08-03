@@ -24,6 +24,7 @@ import {
   computeStepFingerprint,
   saveStepFingerprint,
   cleanupLegacyFingerprint,
+  FORCE_ENV,
 } from './lib/index-fingerprint.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 
@@ -42,6 +43,43 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // during development but gets synced to .claude/scripts/ in consumer projects,
 // so __dirname-relative paths break. findProjectRoot() (lib/moflo-paths.mjs)
 // works in both locations and resolves identically to the TS bridge.
+/**
+ * Parse argv (#1323). This script previously read NO arguments at all, so
+ * `index-all.mjs --force` was accepted and did nothing — a no-op that looks
+ * exactly like a successful forced reindex, which is how guidance staleness
+ * got misdiagnosed in the first place. `--force` is now an alias for the
+ * documented `FLO_FORCE_INDEX=1`, and anything unrecognised exits non-zero
+ * rather than being silently dropped.
+ */
+function parseArgs(argv) {
+  const unknown = [];
+  let force = false;
+  for (const arg of argv) {
+    if (arg === '--force' || arg === '-f') force = true;
+    else if (arg === '--help' || arg === '-h') return { help: true, force, unknown };
+    else unknown.push(arg);
+  }
+  return { help: false, force, unknown };
+}
+
+const USAGE = `Usage: index-all.mjs [--force] [--help]
+
+  --force, -f   Bypass every per-step gate (equivalent to ${FORCE_ENV}=1)
+  --help,  -h   Show this message
+`;
+
+const cliArgs = parseArgs(process.argv.slice(2));
+if (cliArgs.help) {
+  process.stdout.write(USAGE);
+  process.exit(0);
+}
+if (cliArgs.unknown.length > 0) {
+  process.stderr.write(`index-all: unknown argument(s): ${cliArgs.unknown.join(', ')}\n${USAGE}`);
+  process.exit(2);
+}
+// Set before any gate decision is computed — decideStepGate reads the env var.
+if (cliArgs.force) process.env[FORCE_ENV] = '1';
+
 const projectRoot = findProjectRoot();
 const LOG_PATH = resolve(projectRoot, '.moflo', 'logs', 'hooks.log');
 try { mkdirSync(dirname(LOG_PATH), { recursive: true }); } catch { /* best effort */ }
