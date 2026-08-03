@@ -190,16 +190,12 @@ function parseNavigation(
   metadataJson: string | undefined,
   mode: 'full' | 'compact',
 ): NavigationFull | NavigationCompact | null {
-  return navigationFrom(parseMetadataObject(metadataJson), mode);
+  const meta = parseMetadataObject(metadataJson);
+  return mode === 'full' ? navigationFrom(meta, 'full') : navigationFrom(meta, 'compact');
 }
 
 function navigationFrom(meta: Record<string, unknown> | null, mode: 'full'): NavigationFull | null;
 function navigationFrom(meta: Record<string, unknown> | null, mode: 'compact'): NavigationCompact | null;
-// Union overload so `parseNavigation` can forward its own `mode` straight through.
-function navigationFrom(
-  meta: Record<string, unknown> | null,
-  mode: 'full' | 'compact',
-): NavigationFull | NavigationCompact | null;
 function navigationFrom(
   meta: Record<string, unknown> | null,
   mode: 'full' | 'compact',
