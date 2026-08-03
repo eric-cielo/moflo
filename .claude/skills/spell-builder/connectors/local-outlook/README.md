@@ -4,17 +4,18 @@
 
 ## Usage
 
+From a spell, reach this connector through the `outlook` step, which delegates to it:
+
 ```yaml
 - id: check-for-invoices
-  type: agent
+  type: outlook
   config:
-    prompt: |
-      Use the local-outlook connector to search for recent invoices.
-      Call context.tools.execute('local-outlook', 'search', {
-        query: 'invoice from:billing@vendor.com',
-        limit: 5
-      })
+    action: search
+    query: "invoice from:billing@vendor.com"
+    limit: 5
 ```
+
+> Earlier revisions of this file showed an `agent` step calling `context.tools.execute(...)` from a prompt. The `agent` step type has never been executable — use the `outlook` step, a composite step's `tool` action, or a custom step command.
 
 ## Actions
 

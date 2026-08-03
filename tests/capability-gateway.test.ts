@@ -15,7 +15,7 @@ import {
   formatSpellDisclosure,
 } from '../src/cli/spells/core/capability-gateway.js';
 import type { StepCapability, CastingContext } from '../src/cli/spells/types/step-command.types.js';
-import { agentCommand } from '../src/cli/spells/commands/agent-command.js';
+import { agentCommand, AGENT_STEP_NOT_EXECUTABLE } from '../src/cli/spells/commands/agent-command.js';
 import { githubCommand } from '../src/cli/spells/commands/github-command.js';
 import { memoryCommand } from '../src/cli/spells/commands/memory-command.js';
 
@@ -154,7 +154,12 @@ describe('agent-command gateway enforcement', () => {
     expect(result.error).toMatch(/outside allowed scope/);
   });
 
-  it('allows agent spawning when agent type matches scope', async () => {
+  // These two used to assert `success: true` as a proxy for "the gateway let it
+  // through". That conflated permitted-by-scope with actually-ran, and the step
+  // never ran anything (#1334). The step now always fails, so the assertion is
+  // that the failure is NOT a scope denial — which is what these tests are
+  // actually about.
+  it('passes scope check when agent type matches scope', async () => {
     const caps: StepCapability[] = [{ type: 'agent', scope: ['researcher'] }];
     const gw = new CapabilityGateway(caps, 'test-task', 'agent');
     const ctx = makeContext(caps, gw);
@@ -164,10 +169,11 @@ describe('agent-command gateway enforcement', () => {
       ctx,
     );
 
-    expect(result.success).toBe(true);
+    expect(result.error).not.toMatch(/outside allowed scope/);
+    expect(result.error).toBe(AGENT_STEP_NOT_EXECUTABLE);
   });
 
-  it('allows any agent type when scope is unrestricted', async () => {
+  it('passes scope check for any agent type when scope is unrestricted', async () => {
     const caps: StepCapability[] = [{ type: 'agent' }];
     const gw = new CapabilityGateway(caps, 'test-task', 'agent');
     const ctx = makeContext(caps, gw);
@@ -177,7 +183,8 @@ describe('agent-command gateway enforcement', () => {
       ctx,
     );
 
-    expect(result.success).toBe(true);
+    expect(result.error).not.toMatch(/outside allowed scope/);
+    expect(result.error).toBe(AGENT_STEP_NOT_EXECUTABLE);
   });
 });
 

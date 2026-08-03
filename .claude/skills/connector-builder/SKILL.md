@@ -118,12 +118,13 @@ steps:
       command: "echo 'preparing...'"
 
   - name: use-<name>
-    type: agent
+    type: <name>          # the step command registered in Step 4
     config:
-      prompt: |
-        Use the <name> connector to <action-1>.
-        Access via context.tools.execute('<name>', '<action-1>', { ... })
+      action: <action-1>
+      # ...action params
 ```
+
+**Do not reach a connector from an `agent` step.** That step type has never been executable. A connector is reached from its own step command (Step 4 above), from a composite step's `tool` action, or from a custom step command.
 
 ---
 

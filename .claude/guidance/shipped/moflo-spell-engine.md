@@ -1,6 +1,6 @@
 # Spell Engine — Definition Format & Step Types
 
-**Purpose:** How to define a spell (YAML/JSON schema, arguments, steps, variable interpolation) and a reference for the nine built-in step command types. For execution mechanics (running, dry-run, error codes, pause/resume, layering, credentials), see `.claude/guidance/moflo-spell-runner.md`.
+**Purpose:** How to define a spell (YAML/JSON schema, arguments, steps, variable interpolation) and a reference for the built-in step command types. For execution mechanics (running, dry-run, error codes, pause/resume, layering, credentials), see `.claude/guidance/moflo-spell-runner.md`.
 
 ---
 
@@ -96,16 +96,16 @@ steps:
     config:
       command: "curl -s {args.api_url}"
   - id: process
-    type: agent
+    type: bash
     config:
-      prompt: "Analyze this response: {fetch-url.stdout}"
+      command: 'claude -p "Analyze this response: {fetch-url.stdout}"'
 ```
 
 ---
 
 ## Step Command Types
 
-**Nine built-in step types are registered automatically.** Each implements `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. To add new step types via JS/TS files, YAML composite steps, or `moflo-step-*` npm packages, see `.claude/guidance/moflo-spell-custom-steps.md`.
+**Fifteen built-in step types are registered automatically** (one of them, `agent`, is registered but not executable — see below). Each implements `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. To add new step types via JS/TS files, YAML composite steps, or `moflo-step-*` npm packages, see `.claude/guidance/moflo-spell-custom-steps.md`.
 
 ### bash — Run a Shell Command
 
@@ -122,18 +122,21 @@ steps:
 
 ---
 
-### agent — Spawn a Claude Subagent
+### agent — NOT EXECUTABLE
+
+**Do not use this step type.** It has never spawned a subagent — moflo has no agent spawner in the spell runner. It is still registered so existing spell YAML keeps parsing, but casting it now always fails with an explanatory error (#1334). Earlier versions returned `success: true` and a `result` string for work that never happened.
+
+**To run a Claude subagent from a spell, use a `bash` step:**
 
 ```yaml
 - id: research
-  type: agent
+  type: bash
   config:
-    agentType: "researcher"     # Required. researcher, coder, tester, etc.
-    prompt: "Find all API endpoints in {args.directory}"  # Required.
-    background: false           # Optional. Default false.
+    command: 'claude -p "Find all API endpoints in {args.directory}"'
+    timeout: 300000
 ```
 
-**Outputs:** `result` (string), `agentType` (string), `prompt` (string).
+**Outputs:** none — the step always fails. `agentType` and `prompt` are echoed in the failure for diagnosis only.
 
 ---
 

@@ -1,21 +1,28 @@
 # `http` — HTTP Requests
 
-**Purpose:** Use this connector to make HTTP requests to any URL from within agent steps. Choose this when you need to call REST APIs, fetch data, or post payloads during spell execution.
+**Purpose:** Use this connector to make HTTP requests to any URL. Choose this when you need to call REST APIs, fetch data, or post payloads during spell execution.
 
 ## Usage
 
+Unlike `playwright`/`github-cli`/`local-outlook`, this connector has **no dedicated step type**. Reach it from a composite (YAML) step's `tool` action:
+
 ```yaml
-- id: fetch-status
-  type: agent
-  config:
-    prompt: |
-      Use the http connector to check the deployment status.
-      Call context.tools.execute('http', 'request', {
-        method: 'GET',
-        url: 'https://api.myapp.com/deploy/status',
-        headers: { 'Authorization': 'Bearer {credentials.API_TOKEN}' }
-      })
+name: fetch-status
+inputs:
+  token: { type: string }
+actions:
+  - tool: http
+    action: request
+    params:
+      method: GET
+      url: "https://api.myapp.com/deploy/status"
+      headers:
+        Authorization: "Bearer ${inputs.token}"
 ```
+
+…or from a custom step command via the Direct Usage API below. See `.claude/guidance/moflo-spell-custom-steps.md`.
+
+> Earlier revisions of this file showed an `agent` step calling `context.tools.execute(...)` from a prompt. The `agent` step type has never been executable.
 
 ## Actions
 
