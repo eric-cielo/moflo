@@ -145,9 +145,23 @@ describe('#1328 a structured verify record survives the round trip', () => {
     expect(result.value).toBe('FAIL — 1 of 2 criteria unproven; commit abc1234');
   });
 
-  it('records no exit code — the runtime cannot supply one (#1322)', async () => {
+  it('records no exit-code FIELD — the runtime cannot supply one (#1322)', async () => {
+    // Assert on field names, not a substring of the serialised record: a
+    // criterion's `evidence` prose may legitimately mention an exit code
+    // while claiming none (a real stored record did exactly that). The AC is
+    // about a field asserting fidelity, so only key names can answer it.
+    const collectKeys = (node: unknown, acc: string[] = []): string[] => {
+      if (Array.isArray(node)) { for (const v of node) collectKeys(v, acc); return acc; }
+      if (node && typeof node === 'object') {
+        for (const [k, v] of Object.entries(node)) { acc.push(k); collectKeys(v, acc); }
+      }
+      return acc;
+    };
+
     const meta = (await retrieve('verify:1328')).metadata as Record<string, unknown>;
-    expect(JSON.stringify(meta)).not.toMatch(/exitCode/i);
+    const keys = collectKeys(meta);
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.filter(k => /^exit(code|status)$/i.test(k))).toEqual([]);
   });
 });
 
