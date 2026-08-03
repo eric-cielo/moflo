@@ -58,7 +58,7 @@ const TEST_FILE_PATTERNS = [
   /\.test-\w+\.\w+$/,
 ];
 
-const TEST_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs']);
+const TEST_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
 const EXCLUDE_DIRS = new Set([
   'node_modules', 'dist', 'build', '.next', 'coverage',
@@ -193,8 +193,10 @@ function getTestFiles() {
   // Strategy 1: git ls-files for tracked test files
   let gitFiles = [];
   try {
+    // `:(icase)` — git pathspec globs are case-sensitive regardless of
+    // core.ignorecase, so `Foo.Test.mjs` would otherwise be skipped (#1337).
     const raw = execFileSync(
-      'git', ['ls-files', '--', '*.test.*', '*.spec.*', '*.test-*'],
+      'git', ['ls-files', '--', ':(icase)*.test.*', ':(icase)*.spec.*', ':(icase)*.test-*'],
       { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true }
     ).trim();
 
@@ -207,7 +209,7 @@ function getTestFiles() {
             if (f.startsWith(ex + '/')) return false;
           }
           // Only include recognized extensions
-          const ext = extname(f);
+          const ext = extname(f).toLowerCase();
           return TEST_EXTENSIONS.has(ext);
         });
     }
@@ -239,7 +241,7 @@ function walkTestFiles(dir, results) {
           walkTestFiles(resolve(dir, entry.name), results);
         }
       } else if (entry.isFile()) {
-        const ext = extname(entry.name);
+        const ext = extname(entry.name).toLowerCase();
         if (!TEST_EXTENSIONS.has(ext)) continue;
 
         // Include if it matches test patterns OR if it's inside a test directory
