@@ -16,7 +16,7 @@ guidance:
 code_map:
   directories:
     - src
-  extensions: [".js", ".ts"]
+  extensions: [".js", ".ts", ".mjs", ".cjs"]
   exclude: [node_modules, dist, .next, coverage, build, __pycache__, target, .git]
   namespace: code-map
 

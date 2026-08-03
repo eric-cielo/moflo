@@ -124,9 +124,11 @@ describe('defaultMofloYamlConfig', () => {
     expect(config.testDirs).toEqual(['tests']);
   });
 
-  it('falls back to .ts/.tsx/.js/.jsx when no source files exist', () => {
+  it('falls back to the JS/TS family when no source files exist', () => {
+    // .mjs/.cjs included since #1337 — the fallback seeds a consumer's
+    // code_map.extensions, and omitting them left ESM/CJS runtime unindexed.
     const config = defaultMofloYamlConfig(root);
-    expect(config.detectedExts).toEqual(['.ts', '.tsx', '.js', '.jsx']);
+    expect(config.detectedExts).toEqual(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
   });
 
   it('detects existing src/ with .ts files', () => {
@@ -319,6 +321,6 @@ describe('discovery walk safety', () => {
   });
 
   it('detectExtensions falls back when src/ does not exist', () => {
-    expect(detectExtensions(root, ['src'])).toEqual(['.ts', '.tsx', '.js', '.jsx']);
+    expect(detectExtensions(root, ['src'])).toEqual(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
   });
 });

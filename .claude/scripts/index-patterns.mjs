@@ -48,7 +48,7 @@ const statsOnly = args.includes('--stats');
 function log(msg) { console.log(`[index-patterns] ${msg}`); }
 function debug(msg) { if (verbose) console.log(`[index-patterns]   ${msg}`); }
 
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.go', '.rs']);
+const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs']);
 const EXCLUDE_DIRS = new Set([
   'node_modules', 'dist', 'build', '.next', 'coverage',
   '.claude', '.swarm', '.moflo', '.git', 'template',
@@ -123,7 +123,7 @@ function collectSourceFiles(dir, maxDepth = 8, depth = 0) {
     const fullPath = resolve(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...collectSourceFiles(fullPath, maxDepth, depth + 1));
-    } else if (entry.isFile() && SOURCE_EXTENSIONS.has(extname(entry.name))) {
+    } else if (entry.isFile() && SOURCE_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
       files.push(fullPath);
     }
   }

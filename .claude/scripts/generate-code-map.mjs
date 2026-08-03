@@ -168,7 +168,7 @@ function readCodeMapConfig() {
   const defaults = {
     directories: ['src'],
     extensions: [
-      '.ts', '.tsx', '.js', '.mjs', '.jsx',         // JS/TS
+      '.ts', '.tsx', '.js', '.mjs', '.cjs', '.jsx', // JS/TS
       '.py', '.pyi',                                  // Python
       '.go',                                           // Go
       '.java', '.kt', '.kts',                         // JVM
@@ -210,6 +210,18 @@ function readCodeMapConfig() {
   } catch { return defaults; }
 }
 
+/**
+ * Extension of `p`, lowercased.
+ *
+ * Rule #1: NTFS (Windows) and APFS (macOS) are case-insensitive by default, so a
+ * file committed as `Foo.MJS` is routine there. `extname()` returns the literal
+ * `.MJS` on every platform — including Linux — so an exact compare against a
+ * lowercase list silently skips the file everywhere. Normalise both sides. (#1337)
+ */
+function normExt(p) {
+  return extname(p).toLowerCase();
+}
+
 /** Walk a directory tree collecting source files (filesystem fallback). */
 function walkDir(dir, extensions, excludeSet, maxDepth = 8, depth = 0) {
   if (depth > maxDepth) return [];
@@ -225,8 +237,7 @@ function walkDir(dir, extensions, excludeSet, maxDepth = 8, depth = 0) {
     if (entry.isDirectory()) {
       results.push(...walkDir(rel, extensions, excludeSet, maxDepth, depth + 1));
     } else if (entry.isFile()) {
-      const ext = extname(entry.name);
-      if (extensions.has(ext)) results.push(rel);
+      if (extensions.has(normExt(entry.name))) results.push(rel);
     }
   }
   return results;
@@ -234,11 +245,18 @@ function walkDir(dir, extensions, excludeSet, maxDepth = 8, depth = 0) {
 
 function getSourceFiles() {
   const config = readCodeMapConfig();
-  const extSet = new Set(config.extensions);
+  // Lowercase the configured list too, so `extensions: [".MJS"]` in a consumer's
+  // moflo.yaml still matches the normalised extension of a scanned file.
+  const extSet = new Set(config.extensions.map(e => e.toLowerCase()));
   const excludeSet = new Set(config.exclude);
 
-  // Build git glob patterns from configured extensions
-  const gitGlobArgs = config.extensions.map(ext => `*${ext}`);
+  // Build git glob patterns from configured extensions.
+  // `:(icase)` is required, not cosmetic: git pathspec globs are case-sensitive
+  // regardless of `core.ignorecase` (verified on git 2.43 with the setting both
+  // on and off), so a bare `*.mjs` misses a committed `Foo.MJS` on every
+  // platform. This is the primary enumeration path — normalising `extname()` in
+  // the filesystem fallback alone would leave it broken. (#1337)
+  const gitGlobArgs = config.extensions.map(ext => `:(icase)*${ext}`);
 
   // Try git ls-files first (fast, respects .gitignore)
   try {
@@ -415,19 +433,48 @@ const EXT_TO_LANG = {
 
 const ENTITY_DECORATOR = /@Entity\s*\(/;
 
-function extractTypes(filePath) {
+/**
+ * Dispatch-command string literals (`case 'check-before-done':`).
+ *
+ * Symbol extraction alone leaves command routers unsearchable: in `bin/gate.cjs`
+ * the gate names exist only as `case` labels, so the one token a agent would
+ * actually query on ("check-before-done") never reached the index. Indexing the
+ * file made it present but still unfindable. (#1337)
+ *
+ * Deliberately narrow — `case` labels only, and only those bearing an internal
+ * separator, so it adds routing vocabulary without pulling in arbitrary strings.
+ */
+const DISPATCH_CASE = /\bcase\s+['"`]([A-Za-z][\w.:-]{2,60})['"`]\s*:/g;
+const MAX_COMMANDS = 40;
+
+function extractDispatchCommands(content) {
+  const found = new Set();
+  for (const m of content.matchAll(DISPATCH_CASE)) {
+    // Internal separator required: skips bare enum-ish words (`case 'open':`)
+    // while keeping real command names (`check-before-pr`, `hooks:post-edit`).
+    if (/[.:-]/.test(m[1])) found.add(m[1]);
+    if (found.size >= MAX_COMMANDS) break;
+  }
+  return [...found];
+}
+
+/**
+ * Read a source file once and extract both its type declarations and its
+ * dispatch-command literals. Single read: `generateFileEntries` used to
+ * re-open every file for commands, doubling I/O across the whole tree.
+ */
+function extractFileFacts(filePath) {
   const fullPath = resolve(projectRoot, filePath);
-  if (!existsSync(fullPath)) return [];
+  if (!existsSync(fullPath)) return { types: [], commands: [] };
 
   let content;
   try {
     content = readFileSync(fullPath, 'utf-8');
   } catch {
-    return [];
+    return { types: [], commands: [] };
   }
 
-  const ext = extname(filePath);
-  const lang = EXT_TO_LANG[ext] || 'ts';
+  const lang = EXT_TO_LANG[normExt(filePath)] || 'ts';
   const patterns = LANG_PATTERNS[lang] || LANG_PATTERNS.ts;
 
   const lines = content.split('\n');
@@ -471,7 +518,7 @@ function extractTypes(filePath) {
     }
   }
 
-  return types;
+  return { types, commands: extractDispatchCommands(content) };
 }
 
 function detectKind(line, name, lang) {
@@ -516,7 +563,6 @@ function getDirDescription(dirName) {
 }
 
 function detectLanguage(filePath) {
-  const ext = extname(filePath);
   const langMap = {
     '.tsx': 'React/TypeScript', '.jsx': 'React/JavaScript',
     '.ts': 'TypeScript', '.mjs': 'ESM', '.cjs': 'CommonJS', '.js': 'JavaScript',
@@ -530,7 +576,7 @@ function detectLanguage(filePath) {
     '.php': 'PHP',
     '.c': 'C', '.h': 'C/C++ Header', '.cpp': 'C++', '.hpp': 'C++ Header', '.cc': 'C++',
   };
-  return langMap[ext] || 'Unknown';
+  return langMap[normExt(filePath)] || 'Unknown';
 }
 
 // ---------------------------------------------------------------------------
@@ -714,7 +760,7 @@ function generateTypeIndex(allTypes) {
  * This enables precise semantic search: a query for "CompanyAuditLog" will match
  * the specific file entry rather than being diluted across a batch of 80 types.
  */
-function generateFileEntries(typesByFile) {
+function generateFileEntries(typesByFile, commandsByFile) {
   const chunks = [];
 
   for (const [filePath, types] of Object.entries(typesByFile)) {
@@ -742,6 +788,11 @@ function generateFileEntries(typesByFile) {
       // For files without detected exports, include a summary line
       // so the file is still discoverable via semantic search
       content += '\nSource file (no detected exports)\n';
+    }
+
+    const commands = commandsByFile[filePath];
+    if (commands && commands.length > 0) {
+      content += `\nHandles commands: ${commands.join(', ')}\n`;
     }
 
     // Build tags for filtering
@@ -833,17 +884,19 @@ async function main() {
   const typesByProject = {};
   const typesByDir = {};
   const typesByFile = {};
+  const commandsByFile = {};
 
   for (const file of files) {
     const project = getProjectName(file);
     if (!filesByProject[project]) filesByProject[project] = [];
     filesByProject[project].push(file);
 
-    const types = extractTypes(file);
+    const { types, commands } = extractFileFacts(file);
 
     // Track ALL files for file-level entries (not just those with types)
     // This ensures plain JS projects without explicit exports still get indexed
     typesByFile[file] = types;
+    if (commands.length > 0) commandsByFile[file] = commands;
 
     for (const t of types) {
       allTypes.push(t);
@@ -866,7 +919,7 @@ async function main() {
   const dirChunks = generateDirectoryDetails(typesByDir);
   const ifaceChunks = generateInterfaceMaps(allTypes);
   const typeIdxChunks = generateTypeIndex(allTypes);
-  const fileChunks = generateFileEntries(typesByFile);
+  const fileChunks = generateFileEntries(typesByFile, commandsByFile);
 
   const allChunks = [...projectChunks, ...dirChunks, ...ifaceChunks, ...typeIdxChunks, ...fileChunks];
 

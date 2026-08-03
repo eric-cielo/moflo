@@ -25,8 +25,14 @@ const WALK_SKIP_DIRS = new Set([
   '.swarm', '.moflo', 'packages',
 ]);
 
+// `.mjs`/`.cjs` are first-class JS sources, not build artifacts — moflo's own
+// hook/gate/launcher runtime is written in them. Omitting them here made every
+// consumer's generated `code_map.extensions` exclude them, so an explicit list
+// from `flo init` shadowed the indexer defaults and left that code unsearchable
+// (#1337).
 const SOURCE_EXTENSIONS = [
-  '.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.kt', '.swift', '.rb', '.cs',
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+  '.py', '.go', '.rs', '.java', '.kt', '.swift', '.rb', '.cs',
 ];
 
 // Mirror of `MofloInitAnswers` (defined in moflo-init.ts) plus render-only
@@ -137,7 +143,9 @@ function scanExtensions(dir: string, extensions: Set<string>, depth: number, max
     if (entry.isDirectory() && !['node_modules', '.git', 'dist', 'build'].includes(entry.name)) {
       scanExtensions(path.join(dir, entry.name), extensions, depth + 1, maxDepth);
     } else if (entry.isFile()) {
-      const ext = path.extname(entry.name);
+      // Lowercase before matching: NTFS/APFS are case-insensitive, so a file
+      // committed as `Foo.MJS` yields `.MJS` and would miss an exact compare.
+      const ext = path.extname(entry.name).toLowerCase();
       if (SOURCE_EXTENSIONS.includes(ext)) extensions.add(ext);
     }
   }
@@ -151,7 +159,7 @@ export function detectExtensions(root: string, srcDirs: string[]): string[] {
       try { scanExtensions(fullDir, extensions, 0, 3); } catch { /* skip */ }
     }
   }
-  return extensions.size > 0 ? [...extensions].sort() : ['.ts', '.tsx', '.js', '.jsx'];
+  return extensions.size > 0 ? [...extensions].sort() : ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 }
 
 export function defaultMofloYamlConfig(root: string): MofloYamlConfig {
