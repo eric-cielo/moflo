@@ -14,7 +14,9 @@ Prove the current change **actually does what it was supposed to** before it shi
 
 ## What satisfies the gate
 
-Invoking this skill (name `verify`) trips the `record-verify-run` hook, which flips the `verifyRun` state the `check-before-done` gate reads. **Only `/verify` satisfies it** — `/ward` and `/quicken` are targeted audits, not an end-to-end verification. A source edit *after* verifying invalidates the result (the edit gate resets `verifyRun`), so run `/verify` as the last step before the PR.
+Invoking this skill (name `verify`) trips the `record-verify-run` hook, which flips the `verifyRun` state. **That alone does not open the gate** (#1332): `check-before-done` also requires the recorded verdict to be `PASS`, which reaches it from the `metadata.overall` your Step 5 store writes. So a run returning FAIL leaves `gh pr create` blocked — as it should, since the change did not meet its criteria — and a run that stores prose without `metadata` counts as *no verdict* and blocks too.
+
+**Only `/verify` satisfies it** — `/ward` and `/quicken` are targeted audits, not an end-to-end verification. A source edit *after* verifying invalidates both the flag and the verdict, so run `/verify` as the last step before the PR.
 
 ## Step 0 — Memory first
 

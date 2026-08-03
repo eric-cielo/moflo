@@ -865,10 +865,45 @@ switch (command) {
     // crediting them would let the gate pass without an end-to-end verify.
     if (vName === 'verify') {
       var s = readState();
-      if (!s.verifyRun) { s.verifyRun = true; writeState(s); }
+      // #1332: invoking /verify starts a verification; it does not conclude
+      // one. Clear any prior verdict so the run in progress cannot inherit the
+      // PASS from a previous issue and satisfy check-before-done on its own.
+      if (!s.verifyRun || s.verifyOutcome) {
+        s.verifyRun = true;
+        s.verifyOutcome = null;
+        writeState(s);
+      }
     } else if (vName) {
       process.stderr.write('gate: record-verify-run no-op — TOOL_INPUT_skill="' + vName + '" is not verify\n');
     }
+    break;
+  }
+  case 'record-verify-outcome': {
+    // #1332. Fires PostToolUse on mcp__moflo__memory_store. `record-verify-run`
+    // above proves a verification was ATTEMPTED; this proves how it ENDED.
+    //
+    // The verdict is read from the structured record #1328 made /verify write
+    // to memory_store's `metadata` — never parsed out of the prose `value`,
+    // which is precisely the free-text dependency #1328 removed. gate-hook.mjs
+    // forwards the object as JSON (see its MAX_STRUCTURED_LEN note).
+    var mKey = process.env.TOOL_INPUT_key || '';
+    if (mKey.indexOf('verify:') !== 0) break;
+    var rawMeta = process.env.TOOL_INPUT_metadata || '';
+    if (!rawMeta) {
+      process.stderr.write('gate: record-verify-outcome — "' + mKey + '" carries no metadata; verdict not recorded\n');
+      break;
+    }
+    var parsedMeta = null;
+    try { parsedMeta = JSON.parse(rawMeta); } catch (e) { parsedMeta = null; }
+    if (!parsedMeta || typeof parsedMeta !== 'object' || parsedMeta.type !== 'verify-record') break;
+    var overall = typeof parsedMeta.overall === 'string' ? parsedMeta.overall.toUpperCase() : '';
+    if (overall !== 'PASS' && overall !== 'FAIL' && overall !== 'UNVERIFIED') {
+      process.stderr.write('gate: record-verify-outcome — unrecognised overall="' + parsedMeta.overall + '"; treating as not-passing\n');
+      overall = 'UNVERIFIED';
+    }
+    var vs = readState();
+    vs.verifyOutcome = overall;
+    writeState(vs);
     break;
   }
   case 'reset-edit-gates': {
@@ -883,12 +918,17 @@ switch (command) {
     var resetTests = s.testsRun;
     // A code edit invalidates a prior verification (Story #1274) — same as tests,
     // including test-only edits (the criteria being verified may have moved).
-    var resetVerify = s.verifyRun;
+    // #1332: also fires when a verdict lingers without the flag, so no path
+    // can leave a recorded outcome behind after a source edit.
+    var resetVerify = s.verifyRun || !!s.verifyOutcome;
     var resetSimplify = s.simplifyRun && !isTestOnly;
     if (!resetTests && !resetSimplify && !resetVerify) break;
     var gates = [];
     if (resetTests) { s.testsRun = false; gates.push('tests'); }
-    if (resetVerify) { s.verifyRun = false; gates.push('verify'); }
+    // #1332: drop the recorded verdict with the flag. Leaving a stale PASS
+    // behind would let the next check-before-done pass on a verdict that
+    // describes pre-edit code.
+    if (resetVerify) { s.verifyRun = false; s.verifyOutcome = null; gates.push('verify'); }
     if (resetSimplify) { s.simplifyRun = false; gates.push('simplify'); }
     if (fp) {
       s.lastResetBy = { file: fp, at: new Date().toISOString(), gates: gates };
@@ -1017,11 +1057,28 @@ switch (command) {
       }
     }
     var sd = readState();
-    if (sd.verifyRun) break;
+    // #1332: gate on the OUTCOME, not on attendance. Before this, `verifyRun`
+    // alone opened the gate, so a /verify returning FAIL satisfied it exactly
+    // as a PASS did — a failing verdict is still a successful tool invocation.
+    if (sd.verifyRun && sd.verifyOutcome === 'PASS') break;
     process.stderr.write('BLOCKED: gh pr create requires verification before done:\n');
-    process.stderr.write('  - the change has not been verified since the last code edit (run /verify)\n');
-    if (sd.lastResetBy && sd.lastResetBy.file && (sd.lastResetBy.gates || []).indexOf('verify') >= 0) {
+    // The four states need different remedies, so name which one applies
+    // rather than emitting one message that fits none of them.
+    var invalidated = sd.lastResetBy && sd.lastResetBy.file
+      && (sd.lastResetBy.gates || []).indexOf('verify') >= 0;
+    if (!sd.verifyRun && invalidated) {
+      process.stderr.write('  - a code edit invalidated the previous verification — re-run /verify\n');
       process.stderr.write('Last gate reset: ' + sd.lastResetBy.file + ' (verify)\n');
+    } else if (!sd.verifyRun) {
+      process.stderr.write('  - the change has not been verified since the last code edit (run /verify)\n');
+    } else if (sd.verifyOutcome === 'FAIL' || sd.verifyOutcome === 'UNVERIFIED') {
+      process.stderr.write('  - /verify ran and returned ' + sd.verifyOutcome + ' — fix the failing criteria, then re-run /verify\n');
+      process.stderr.write('    (a FAIL is a real result, not a gate error; the PR is blocked because the change did not meet its acceptance criteria)\n');
+    } else {
+      // Ran, but no verdict reached the gate: /verify was invoked and never
+      // recorded a structured outcome (interrupted, or it stored prose only).
+      process.stderr.write('  - /verify ran but recorded no verdict — re-run it so it stores a structured result\n');
+      process.stderr.write('    (Step 5 of the verify skill must pass metadata.overall to memory_store)\n');
     }
     process.stderr.write('Disable via moflo.yaml:\n');
     process.stderr.write('  gates:\n    verify_before_done: false\n');

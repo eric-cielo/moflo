@@ -150,7 +150,9 @@ export function getReferenceHookBlock(): HooksTree {
       { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000), gateHook('record-verify-run', 2000)] },
       { matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hooks: [gateHook('record-memory-searched', 3000)] },
       { matcher: '^TaskUpdate$',                  hooks: [gateCjs('check-task-transition', 2000)] },
-      { matcher: '^mcp__moflo__memory_store$',    hooks: [gateCjs('record-learnings-stored', 2000)] },
+      // #1332 — record-verify-outcome routes via gateHook (not gateCjs): the
+      // TOOL_INPUT_* env vars it reads are built by gate-hook.mjs from stdin.
+      { matcher: '^mcp__moflo__memory_store$',    hooks: [gateCjs('record-learnings-stored', 2000), gateHook('record-verify-outcome', 2000)] },
       // #952 — wired so /fl -s/--swarm and /fl -h/--hive runs satisfy the
       // check-before-agent gate after the protected MCP init has been called.
       { matcher: '^mcp__moflo__swarm_init$',      hooks: [gateCjs('record-swarm-init', 2000)] },
