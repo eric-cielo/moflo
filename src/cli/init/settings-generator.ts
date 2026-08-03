@@ -364,7 +364,15 @@ function generateHooksConfig(config: HooksConfig): object {
       },
       {
         matcher: '^mcp__moflo__memory_store$',
-        hooks: [{ type: 'command', command: gateCmd('record-learnings-stored'), timeout: 2000 }],
+        hooks: [
+          { type: 'command', command: gateCmd('record-learnings-stored'), timeout: 2000 },
+          // #1332 — capture /verify's structured verdict so check-before-done
+          // can gate on the outcome rather than on attendance. Must route via
+          // gateHookCmd, not gateCmd: the TOOL_INPUT_* env vars this reads are
+          // built by gate-hook.mjs from the hook's stdin payload, so a direct
+          // gate.cjs invocation would see no key and no metadata.
+          { type: 'command', command: gateHookCmd('record-verify-outcome'), timeout: 2000 },
+        ],
       },
       {
         // #952 — when /fl is invoked with -s/--swarm, the gate blocks Agent

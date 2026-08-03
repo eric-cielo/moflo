@@ -1742,13 +1742,24 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.stderr).toContain('has not been verified');
     });
 
-    it('allows gh pr create by default when verified', () => {
+    it('allows gh pr create by default when verified AND the verdict passed', () => {
       const env = baseEnv(tmpDir);
-      writeState(tmpDir, { verifyRun: true });
+      writeState(tmpDir, { verifyRun: true, verifyOutcome: 'PASS' });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-done', env);
       expect(r.exitCode).toBe(0);
       expect(r.stderr).not.toContain('BLOCKED');
+    });
+
+    it('blocks when /verify ran but the verdict was not a pass (#1332)', () => {
+      // Pre-#1332 this passed on verifyRun alone, so a FAIL shipped as readily
+      // as a PASS. The verdict is now load-bearing.
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { verifyRun: true, verifyOutcome: 'FAIL' });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-done', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('returned FAIL');
     });
 
     it('is a no-op when opted out (verify_before_done: false) even without a verify', () => {

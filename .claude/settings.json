@@ -160,6 +160,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" record-learnings-stored",
             "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" record-verify-outcome",
+            "timeout": 2000
           }
         ]
       },

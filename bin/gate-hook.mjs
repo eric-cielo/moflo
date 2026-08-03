@@ -32,11 +32,42 @@ if (hookContext.tool_name) env.TOOL_NAME = hookContext.tool_name;
 if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
   env.HOOK_SESSION_ID = hookContext.session_id;
 }
+// #1332: structured tool inputs are forwarded as JSON, not dropped.
+//
+// This previously forwarded ONLY string values, so any object-valued input was
+// invisible to gate.cjs. That blocked the verify-before-done gate from reading
+// `/verify`'s per-criterion verdict, which #1328 stores in memory_store's
+// `metadata` — an object. Parsing the verdict out of the prose `value` string
+// instead would re-create exactly the free-text dependency #1328 removed.
+//
+// Cross-platform (Rule #1): Windows caps a single environment variable at
+// ~32KB and the whole block at ~32K wide chars, and exceeding it fails the
+// spawn rather than truncating. Newly-forwarded values are therefore skipped
+// when oversized, not clipped — a truncated JSON blob would parse as malformed
+// on the far side and read as a corrupt record rather than an absent one.
+// `metadata` is capped at 64KB by memory_store, so a real verdict never nears
+// this. STRING values keep their previous uncapped behaviour byte-for-byte:
+// gate.cjs reads TOOL_INPUT_command, and dropping an oversized heredoc command
+// would silently stop check-dangerous-command from firing on the exact inputs
+// most worth checking.
+var MAX_STRUCTURED_LEN = 16384;
 if (hookContext.tool_input && typeof hookContext.tool_input === 'object') {
   Object.keys(hookContext.tool_input).forEach(function(key) {
-    if (typeof hookContext.tool_input[key] === 'string') {
-      env['TOOL_INPUT_' + key] = hookContext.tool_input[key];
+    var raw = hookContext.tool_input[key];
+    if (typeof raw === 'string') {
+      env['TOOL_INPUT_' + key] = raw;
+      return;
     }
+    var val;
+    if (typeof raw === 'number' || typeof raw === 'boolean') {
+      val = String(raw);
+    } else if (raw && typeof raw === 'object') {
+      try { val = JSON.stringify(raw); } catch (e) { return; }
+    } else {
+      return; // null/undefined/function — nothing meaningful to forward
+    }
+    if (val.length > MAX_STRUCTURED_LEN) return;
+    env['TOOL_INPUT_' + key] = val;
   });
 }
 

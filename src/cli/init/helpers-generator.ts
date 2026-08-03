@@ -740,8 +740,32 @@ switch (command) {
     // end-to-end verification (see fl/sdd.md).
     if (vName === 'verify') {
       var s = readState();
-      if (!s.verifyRun) { s.verifyRun = true; writeState(s); }
+      // #1332: starting a verification clears any prior verdict, so the run
+      // in progress cannot inherit a previous issue's PASS.
+      if (!s.verifyRun || s.verifyOutcome) {
+        s.verifyRun = true;
+        s.verifyOutcome = null;
+        writeState(s);
+      }
     }
+    break;
+  }
+  case 'record-verify-outcome': {
+    // #1332 — record HOW the verification ended, from the structured record
+    // #1328 has /verify write to memory_store's \`metadata\`. Never parsed out
+    // of the prose \`value\`; gate-hook.mjs forwards the object as JSON.
+    var mKey = process.env.TOOL_INPUT_key || '';
+    if (mKey.indexOf('verify:') !== 0) break;
+    var rawMeta = process.env.TOOL_INPUT_metadata || '';
+    if (!rawMeta) break;
+    var parsedMeta = null;
+    try { parsedMeta = JSON.parse(rawMeta); } catch (e) { parsedMeta = null; }
+    if (!parsedMeta || typeof parsedMeta !== 'object' || parsedMeta.type !== 'verify-record') break;
+    var overall = typeof parsedMeta.overall === 'string' ? parsedMeta.overall.toUpperCase() : '';
+    if (overall !== 'PASS' && overall !== 'FAIL' && overall !== 'UNVERIFIED') overall = 'UNVERIFIED';
+    var vs = readState();
+    vs.verifyOutcome = overall;
+    writeState(vs);
     break;
   }
   case 'reset-edit-gates': {
@@ -753,12 +777,13 @@ switch (command) {
     var isTestOnly = fp && EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE.test(fp);
     var resetTests = s.testsRun;
     // A code edit invalidates a prior verification (Story #1274), like tests.
-    var resetVerify = s.verifyRun;
+    // #1332: also fires on a lingering verdict, so no stale PASS survives.
+    var resetVerify = s.verifyRun || !!s.verifyOutcome;
     var resetSimplify = s.simplifyRun && !isTestOnly;
     if (!resetTests && !resetSimplify && !resetVerify) break;
     var gates = [];
     if (resetTests) { s.testsRun = false; gates.push('tests'); }
-    if (resetVerify) { s.verifyRun = false; gates.push('verify'); }
+    if (resetVerify) { s.verifyRun = false; s.verifyOutcome = null; gates.push('verify'); }
     if (resetSimplify) { s.simplifyRun = false; gates.push('simplify'); }
     if (fp) {
       s.lastResetBy = { file: fp, at: new Date().toISOString(), gates: gates };
@@ -825,9 +850,17 @@ switch (command) {
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\\s*|\\|\\|\\s*|;\\s*)\\s*(?:[A-Z_][A-Z0-9_]*=\\S+\\s+)*gh\\s+pr\\s+create\\b/.test(cmd)) break;
     var s = readState();
-    if (s.verifyRun) break;
+    // #1332 — gate on the OUTCOME, not on attendance: a /verify returning FAIL
+    // is still a successful tool invocation, so verifyRun alone let it through.
+    if (s.verifyRun && s.verifyOutcome === 'PASS') break;
     process.stderr.write('BLOCKED: gh pr create requires verification before done:\\n');
-    process.stderr.write('  - the change has not been verified since the last code edit (run /verify)\\n');
+    if (!s.verifyRun) {
+      process.stderr.write('  - the change has not been verified since the last code edit (run /verify)\\n');
+    } else if (s.verifyOutcome === 'FAIL' || s.verifyOutcome === 'UNVERIFIED') {
+      process.stderr.write('  - /verify ran and returned ' + s.verifyOutcome + ' — fix the failing criteria, then re-run /verify\\n');
+    } else {
+      process.stderr.write('  - /verify ran but recorded no verdict — re-run it so it stores a structured result\\n');
+    }
     process.stderr.write('Disable via moflo.yaml:\\n');
     process.stderr.write('  gates:\\n    verify_before_done: false\\n');
     process.exit(2);
