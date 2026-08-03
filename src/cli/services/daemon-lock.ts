@@ -50,7 +50,10 @@ export function lockPath(projectRoot: string): string {
 /**
  * Read this daemon's own moflo package version by walking up from the
  * compiled module location until a `package.json` with `"name": "moflo"`
- * is found. Mirrors the pattern in `mcp-server.ts:260-279`. Returns
+ * is found. Duplicates `services/moflo-version.ts:getMofloVersion`, kept
+ * separate on purpose: this one must NOT cache (the launcher compares a
+ * running daemon's version against the installed package across an upgrade)
+ * and returns `undefined` rather than a placeholder. Returns
  * `undefined` if the package.json can't be located — the launcher treats
  * an undefined version the same as a mismatch, so this stays safe.
  */

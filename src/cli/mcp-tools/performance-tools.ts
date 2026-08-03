@@ -11,6 +11,7 @@
  */
 
 import type { MCPTool } from './types.js';
+import { applySyntheticNotices } from './synthetic.js';
 import * as os from 'node:os';
 import { createJsonStore } from './json-store.js';
 
@@ -48,10 +49,10 @@ const store = createJsonStore<PerfStore>({
   defaults: () => ({ metrics: [], benchmarks: {}, version: '3.0.0' }),
 });
 
-export const performanceTools: MCPTool[] = [
+const rawPerformanceTools: MCPTool[] = [
   {
     name: 'performance_report',
-    description: 'Generate performance report',
+    description: 'Report process CPU and memory, with placeholder latency and throughput',
     category: 'performance',
     inputSchema: {
       type: 'object',
@@ -84,6 +85,11 @@ export const performanceTools: MCPTool[] = [
           total: Math.round(totalMem / 1024 / 1024),
           heap: Math.round(memUsage.heapUsed / 1024 / 1024),
         },
+        // NOT measured (#1325). Nothing in this process is timed to produce
+        // these; the seeds below are constants, and every later call averages
+        // this tool's own prior outputs — so the numbers converge on the seed
+        // no matter how the system actually behaves. Left as-is because
+        // changing them is a behaviour change; the tool is labelled instead.
         latency: {
           avg: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.avg, 0) / Math.min(state.metrics.length, 10) : 50,
           p50: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.p50, 0) / Math.min(state.metrics.length, 10) : 40,
@@ -106,7 +112,6 @@ export const performanceTools: MCPTool[] = [
 
       if (format === 'summary') {
         return {
-          _real: true,
           status: 'healthy',
           cpu: `${currentMetrics.cpu.usage.toFixed(1)}%`,
           memory: `${currentMetrics.memory.used}MB / ${currentMetrics.memory.total}MB`,
@@ -128,7 +133,6 @@ export const performanceTools: MCPTool[] = [
         : 'stable';
 
       return {
-        _real: true,
         current: currentMetrics,
         history,
         system: {
@@ -284,3 +288,19 @@ export const performanceTools: MCPTool[] = [
     },
   },
 ];
+
+/**
+ * Only `performance_report` is labelled. `performance_benchmark` genuinely
+ * measures — it runs real workloads and times them with `performance.now()`,
+ * so its `_real: true` is accurate and stays. (The `Math.random()` calls in
+ * its benchmark functions generate the workload; they are not the result.)
+ *
+ * `performance_report`'s `_real: true` was removed rather than kept alongside
+ * the notice: a response cannot be both authentic and synthetic, and a wrong
+ * authenticity claim is worse than an unlabelled number — a caller can
+ * discount an unmarked figure, but not one asserted as measured (#1325).
+ */
+export const performanceTools: MCPTool[] = applySyntheticNotices(rawPerformanceTools, {
+  performance_report:
+    'CPU, memory and heap are measured from this process. Latency and throughput are NOT — they seed to constants and each call averages this tool\'s own prior outputs, so they describe no real request.',
+});

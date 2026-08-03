@@ -8,6 +8,8 @@ import { dirname, join, resolve, extname } from 'path';
 import type { MCPTool } from './types.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { withSyntheticNotice } from './synthetic.js';
+import { getMofloVersion } from '../services/moflo-version.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -940,9 +942,9 @@ export const hooksRoute: MCPTool = {
   },
 };
 
-export const hooksMetrics: MCPTool = {
+export const hooksMetrics: MCPTool = withSyntheticNotice({
   name: 'hooks_metrics',
-  description: 'View learning metrics dashboard',
+  description: 'Return a placeholder learning-metrics dashboard',
   inputSchema: {
     type: 'object',
     properties: {
@@ -951,6 +953,8 @@ export const hooksMetrics: MCPTool = {
     },
   },
   handler: async (params: Record<string, unknown>) => {
+    // `period` is echoed back but never applied (#1325) — every branch below
+    // is a literal, so 1h and 30d return byte-identical numbers.
     const period = (params.period as string) || '24h';
 
     return {
@@ -980,7 +984,7 @@ export const hooksMetrics: MCPTool = {
       lastUpdated: new Date().toISOString(),
     };
   },
-};
+}, 'every value is a hardcoded literal. `period` is accepted and ignored, so 1h and 30d return identical numbers; nothing here is counted, routed or executed.');
 
 export const hooksList: MCPTool = {
   name: 'hooks_list',
@@ -2170,9 +2174,9 @@ export const hooksSessionRestore: MCPTool = {
 };
 
 // Intelligence hook - MoVector intelligence system
-export const hooksIntelligence: MCPTool = {
+export const hooksIntelligence: MCPTool = withSyntheticNotice({
   name: 'hooks_intelligence',
-  description: 'MoVector intelligence system status (shows REAL metrics from memory store)',
+  description: 'MoVector intelligence system status',
   inputSchema: {
     type: 'object',
     properties: {
@@ -2260,6 +2264,9 @@ export const hooksIntelligence: MCPTool = {
         memory: realStats.memory,
         routing: realStats.routing,
       },
+      // Nothing checks these subsystems (#1325). The list is a literal, so
+      // `partial` and `notImplemented` are empty by construction — this
+      // asserts that all twelve work no matter what state they are in.
       implementationStatus: {
         working: [
           'memory-store', 'embeddings', 'trajectory-recording', 'claims', 'swarm-coordination',
@@ -2269,13 +2276,13 @@ export const hooksIntelligence: MCPTool = {
         partial: [],
         notImplemented: [],
       },
-      version: '3.0.0-alpha.102',
+      version: getMofloVersion(),
     };
   },
-};
+}, 'the "real" counts read `.moflo/memory/store.json`, a JSON store this version no longer writes, so they resolve to zeros rather than reflecting the memory backend. `implementationStatus` is a hardcoded list asserting all twelve subsystems work, checked against nothing.');
 
 // Intelligence reset hook
-export const hooksIntelligenceReset: MCPTool = {
+export const hooksIntelligenceReset: MCPTool = withSyntheticNotice({
   name: 'hooks_intelligence-reset',
   description: 'Reset intelligence learning state',
   inputSchema: {
@@ -2283,6 +2290,15 @@ export const hooksIntelligenceReset: MCPTool = {
     properties: {},
   },
   handler: async () => {
+    // This handler has no side effects at all — it clears nothing and the
+    // three counts are literals (#1325). It is the worst of the labelled set:
+    // the others report a state falsely, this one reports an ACTION that
+    // never happened, and a caller can act on believing state was cleared.
+    //
+    // Labelling is not the fix here — it is a floor. The real repair is
+    // either a working reset or an explicit failure, and both are behaviour
+    // changes tracked separately. Until then the response at least stops
+    // presenting itself as a completed reset.
     return {
       reset: true,
       cleared: {
@@ -2293,7 +2309,7 @@ export const hooksIntelligenceReset: MCPTool = {
       timestamp: new Date().toISOString(),
     };
   },
-};
+}, 'NOTHING IS RESET. This handler has no side effects — no trajectory, pattern or index entry is cleared, and the counts below are hardcoded literals, not a tally of what was removed. Do not treat a call to this tool as having cleared any state.');
 
 // Pattern store/search hooks - REAL implementation using storeEntry
 export const hooksPatternStore: MCPTool = {
