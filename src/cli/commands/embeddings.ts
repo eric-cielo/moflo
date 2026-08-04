@@ -864,11 +864,11 @@ const chunkCommand: Command = {
     // the parser let it through.
     let text: string;
     if (file) {
-      if (!existsSync(file)) {
-        output.printError(`File not found: ${file}`);
-        return { success: false, exitCode: 1 };
-      }
       try {
+        // Read first and let ENOENT report the missing file, rather than
+        // stat-then-read: the existence check was both a second syscall and a
+        // TOCTOU window this catch already covers.
+        //
         // Normalize CRLF → LF: `chunking.ts` splits paragraphs on /\n\n+/,
         // which a Windows-authored file's \r\n\r\n does not match, so the same
         // document would chunk differently depending on the platform it was
@@ -877,7 +877,12 @@ const chunkCommand: Command = {
         // already-stored embeddings.
         text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
       } catch (err) {
-        output.printError(`Could not read ${file}: ${(err as Error).message}`);
+        const code = (err as NodeJS.ErrnoException).code;
+        output.printError(
+          code === 'ENOENT'
+            ? `File not found: ${file}`
+            : `Could not read ${file}: ${(err as Error).message}`,
+        );
         return { success: false, exitCode: 1 };
       }
     } else {

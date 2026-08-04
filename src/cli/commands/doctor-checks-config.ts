@@ -26,7 +26,7 @@ import {
   memoryDbPath,
 } from '../services/moflo-paths.js';
 import { probeDbIntegrity } from '../services/memory-db-integrity-repair.js';
-import { CLI_CONFIG_CANDIDATES } from '../config/cli-config-store.js';
+import { CLI_CONFIG_CANDIDATES, CLI_CONFIG_YAML_CANDIDATES } from '../config/cli-config-store.js';
 import { findProjectRoot, resolveStateRoot } from '../services/project-root.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
@@ -57,14 +57,7 @@ export async function checkConfigFile(): Promise<HealthCheck> {
   }
 
   // YAML configs (existence-checked only — no heavy yaml parser dependency).
-  const yamlPaths = [
-    join('.moflo', 'config.yaml'),
-    join('.moflo', 'config.yml'),
-    'moflo.config.yaml',
-    'claude-flow.config.yaml', // LEGACY-CONFIG: pre-#699 fallback
-  ];
-
-  for (const candidate of yamlPaths) {
+  for (const candidate of CLI_CONFIG_YAML_CANDIDATES) {
     if (existsSync(join(root, candidate))) {
       return { name: 'Config File', status: 'pass', message: `Found: ${candidate}` };
     }

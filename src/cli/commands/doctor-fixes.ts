@@ -58,7 +58,11 @@ export async function fixConfigFile(
     if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
     await run('npx moflo config init');
     return findCliConfigFile(root) !== null;
-  } catch {
+  } catch (e) {
+    // Leave a crumb rather than a bare `catch {}` — #854 is four versions of
+    // consumer-invisible breakage caused by exactly that shape in the launcher
+    // upgrade flow.
+    output.writeln(output.warning(`  Config File fix failed: ${errorDetail(e)}`));
     return false;
   }
 }

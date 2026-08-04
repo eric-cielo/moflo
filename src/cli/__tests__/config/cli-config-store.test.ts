@@ -76,6 +76,24 @@ describe('cli-config-store', () => {
       expect(config.memory.backend).toBe('hybrid');
     });
 
+    // deepMerge is structural, not validating: a hand-edited file could put a
+    // string where an array belongs and produce a CliConfig that lies about its
+    // own type, throwing on the first `.find`.
+    it('restores a section whose type the file contradicts', () => {
+      mkdirSync(join(tmpDir, '.moflo'), { recursive: true });
+      writeFileSync(
+        cliConfigPath(tmpDir),
+        JSON.stringify({ providers: 'not-an-array', swarm: 42, memory: { backend: 'rvf' } }),
+      );
+
+      const { config } = loadCliConfig(tmpDir);
+
+      expect(Array.isArray(config.providers)).toBe(true);
+      expect(config.swarm.topology).toBe('hybrid');
+      // A section that IS well-formed keeps the user's value.
+      expect(config.memory.backend).toBe('rvf');
+    });
+
     it('throws on corrupt JSON instead of silently defaulting', () => {
       mkdirSync(join(tmpDir, '.moflo'), { recursive: true });
       writeFileSync(cliConfigPath(tmpDir), '{ not json');
@@ -125,6 +143,16 @@ describe('cli-config-store', () => {
       expect(getConfigValue(config, 'swarm.nonesuch').found).toBe(false);
       expect(getConfigValue(config, 'providers.99.name').found).toBe(false);
       expect(getConfigValue(config, '').found).toBe(false);
+    });
+
+    // Filtering empty segments away would make this silently valid, which
+    // contradicts the loud-failure contract setConfigValue relies on.
+    it('rejects keys with empty segments rather than collapsing them', () => {
+      const config = defaultCliConfig();
+
+      expect(getConfigValue(config, 'swarm..topology').found).toBe(false);
+      expect(getConfigValue(config, '.swarm.topology').found).toBe(false);
+      expect(setConfigValue(config, 'swarm..topology', 'mesh').ok).toBe(false);
     });
   });
 
@@ -182,6 +210,17 @@ describe('cli-config-store', () => {
       expect(flat['swarm.topology']).toBe('hybrid');
       expect(flat['providers.0.name']).toBe('anthropic');
       expect(Object.values(flat).every((v) => typeof v !== 'object')).toBe(true);
+    });
+
+    // An empty container is a leaf: recursing over zero entries would drop the
+    // key, so `providers: []` would read as "not configured" rather than
+    // "configured empty".
+    it('keeps empty objects and arrays visible', () => {
+      const config = { ...defaultCliConfig(), providers: [] };
+
+      const flat = flattenConfig(config);
+
+      expect(flat.providers).toBe('[]');
     });
   });
 

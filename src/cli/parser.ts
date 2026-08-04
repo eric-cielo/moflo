@@ -146,6 +146,7 @@ export class CommandParser {
     const deepestCmd = chain[chain.length - 1];
     const aliases = this.buildScopedAliases(deepestCmd);
     const booleanFlags = this.getScopedBooleanFlags(deepestCmd);
+    const valueFlags = this.getScopedValueFlags(deepestCmd);
 
     let i = 0;
     let parsingFlags = true;
@@ -162,7 +163,7 @@ export class CommandParser {
 
       // Handle flags
       if (parsingFlags && arg.startsWith('-')) {
-        const parseResult = this.parseFlag(args, i, aliases, booleanFlags);
+        const parseResult = this.parseFlag(args, i, aliases, booleanFlags, valueFlags);
 
         // Apply to result flags
         Object.assign(result.flags, parseResult.flags);
@@ -219,11 +220,22 @@ export class CommandParser {
     args: string[],
     index: number,
     aliases: Record<string, string>,
-    booleanFlags: Set<string>
+    booleanFlags: Set<string>,
+    valueFlags: Set<string> = new Set()
   ): { flags: ParsedFlags; nextIndex: number } {
     const flags: ParsedFlags = { _: [] };
     const arg = args[index];
     let nextIndex = index + 1;
+
+    /**
+     * A flag that ran out of value. A DECLARED value-taking option becomes ''
+     * rather than `true`: `true` is how `--version` (redefined as a string by
+     * plugins/deployment) slipped back into the global boolean handler and
+     * printed the moflo version instead of running the command. '' stays falsy
+     * and trips the required-option check. Undeclared flags keep the legacy
+     * `true` so `--some-adhoc-flag` behaves as before.
+     */
+    const missingValue = (key: string): string | boolean => (valueFlags.has(key) ? '' : true);
 
     if (arg.startsWith('--')) {
       // Long flag
@@ -248,7 +260,7 @@ export class CommandParser {
           flags[normalizedKey] = this.parseValue(args[nextIndex]);
           nextIndex++;
         } else {
-          flags[normalizedKey] = true;
+          flags[normalizedKey] = missingValue(normalizedKey);
         }
       }
     } else if (arg.startsWith('-')) {
@@ -266,7 +278,7 @@ export class CommandParser {
           flags[normalizedKey] = this.parseValue(args[nextIndex]);
           nextIndex++;
         } else {
-          flags[normalizedKey] = true;
+          flags[normalizedKey] = missingValue(normalizedKey);
         }
       } else {
         // Multiple short flags combined (e.g., -abc)
@@ -357,6 +369,21 @@ export class CommandParser {
   /**
    * Get boolean flags scoped to a specific command/subcommand.
    */
+  /**
+   * Names declared as value-taking (non-boolean) by the resolved command or a
+   * global, command winning. The mirror of `getScopedBooleanFlags`: that set
+   * says "takes no value", this one says "REQUIRES one".
+   */
+  private getScopedValueFlags(resolvedCmd?: Command): Set<string> {
+    const flags = new Set<string>();
+    for (const opt of [...this.globalOptions, ...(resolvedCmd?.options ?? [])]) {
+      const key = this.normalizeKey(opt.name);
+      if (opt.type && opt.type !== 'boolean') flags.add(key);
+      else flags.delete(key);
+    }
+    return flags;
+  }
+
   private getScopedBooleanFlags(resolvedCmd?: Command): Set<string> {
     const flags = this.getBooleanFlags();
 

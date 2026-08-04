@@ -158,12 +158,12 @@ export class CLI {
         }
       }
 
-      // Handle global flags
       // Strict `=== true`: the global `--version` is a boolean, so a genuine
       // global usage always yields exactly `true`. Commands that redefine
       // `--version` as a value-taking option (plugins install/upgrade,
-      // deployment deploy/rollback) yield a string, and those must NOT be
-      // hijacked into printing the moflo version and returning.
+      // deployment deploy/rollback) yield a string — or '' when the value is
+      // omitted — and those must NOT be hijacked into printing the moflo
+      // version and returning.
       if (flags.version === true || flags.V === true) {
         this.showVersion();
         return;

@@ -482,6 +482,35 @@ describe('CommandParser', () => {
       expect(result.flags.version).toBe(true);
     });
 
+    // The value-omitted half of the same bug: `--version` with nothing after it
+    // fell through to `true`, which is exactly what the global version handler
+    // keys on, so it printed the moflo version instead of running the command.
+    it('does not fall back to `true` when a declared value option is given no value', () => {
+      const cmd: Command = {
+        name: 'install',
+        description: 'Install',
+        options: [
+          { name: 'version', short: 'v', type: 'string', description: 'Version to install' },
+          { name: 'force', type: 'boolean', description: 'Force' },
+        ],
+      };
+      parser.registerCommand(cmd);
+
+      expect(parser.parse(['install', 'pkg', '--version']).flags.version).toBe('');
+      expect(parser.parse(['install', 'pkg', '--version', '--force']).flags.version).toBe('');
+      // The boolean sibling is unaffected.
+      expect(parser.parse(['install', 'pkg', '--force']).flags.force).toBe(true);
+    });
+
+    it('leaves an UNDECLARED valueless flag as `true`', () => {
+      const cmd: Command = { name: 'adhoc', description: 'Adhoc', options: [] };
+      parser.registerCommand(cmd);
+
+      // Undeclared flags keep legacy behaviour — narrowing that would change
+      // every command that reads an ad-hoc flag.
+      expect(parser.parse(['adhoc', '--whatever']).flags.whatever).toBe(true);
+    });
+
     it('should report unknown flags when allowUnknownFlags is false', () => {
       const strictParser = new CommandParser({ allowUnknownFlags: false });
       const errors = strictParser.validateFlags({ _: [], unknown: true });

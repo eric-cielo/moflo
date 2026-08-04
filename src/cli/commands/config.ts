@@ -266,7 +266,7 @@ const setCommand: Command = {
 
     let target: string;
     try {
-      target = saveCliConfig(root, config);
+      target = saveCliConfig(root, config, { path: loaded.path ?? undefined });
     } catch (err) {
       output.printError(`Failed to write configuration: ${(err as Error).message}`);
       return { success: false, exitCode: 1 };
@@ -351,7 +351,7 @@ const providersCommand: Command = {
     if (mutated) {
       let target: string;
       try {
-        target = saveCliConfig(root, config);
+        target = saveCliConfig(root, config, { path: loaded.path ?? undefined });
       } catch (err) {
         output.printError(`Failed to write configuration: ${(err as Error).message}`);
         return { success: false, exitCode: 1 };
@@ -443,7 +443,7 @@ const resetCommand: Command = {
 
     let target: string;
     try {
-      target = saveCliConfig(root, resetSection(loaded.config, section));
+      target = saveCliConfig(root, resetSection(loaded.config, section), { path: loaded.path ?? undefined });
     } catch (err) {
       output.printError(`Failed to write configuration: ${(err as Error).message}`);
       return { success: false, exitCode: 1 };

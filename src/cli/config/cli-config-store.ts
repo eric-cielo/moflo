@@ -68,9 +68,9 @@ export interface CliConfig {
 }
 
 /**
- * Candidate filenames, canonical first. Mirrors the list in
- * `doctor-checks-config.ts:checkConfigFile` so the healer's check and this
- * store never disagree about whether a config exists — the mismatch that let
+ * Candidate filenames, canonical first. `doctor-checks-config.ts:checkConfigFile`
+ * imports this list rather than keeping its own, so the healer's check and this
+ * store cannot disagree about whether a config exists — the mismatch that let
  * the old auto-fix "succeed" against a file the check couldn't see.
  *
  * `claude-flow.*` entries are LEGACY-CONFIG: pre-#699 names, still read so
@@ -81,6 +81,17 @@ export const CLI_CONFIG_CANDIDATES = [
   'moflo.config.json',
   'claude-flow.config.json', // LEGACY-CONFIG: pre-#699 fallback
   '.claude-flow.json',       // LEGACY-CONFIG: pre-#699 fallback
+] as const;
+
+/**
+ * YAML config filenames. Existence-checked only — no yaml parse — and shared
+ * with the doctor for the same anti-drift reason as the JSON list above.
+ */
+export const CLI_CONFIG_YAML_CANDIDATES = [
+  join('.moflo', 'config.yaml'),
+  join('.moflo', 'config.yml'),
+  'moflo.config.yaml',
+  'claude-flow.config.yaml', // LEGACY-CONFIG: pre-#699 fallback
 ] as const;
 
 /** Absolute path of the canonical config file for a project root. */
@@ -181,7 +192,28 @@ export function loadCliConfig(projectRoot: string): { config: CliConfig; path: s
   } catch (err) {
     throw new CliConfigParseError(path, err);
   }
-  return { config: deepMerge(defaultCliConfig(), parsed), path };
+  return { config: coerceShape(deepMerge(defaultCliConfig(), parsed)), path };
+}
+
+/**
+ * Restore any section whose type the file contradicts. `deepMerge` is
+ * structural, not validating, so a hand-edited `"providers": "x"` would
+ * survive as a `CliConfig` that lies about its own type and throws the first
+ * time something calls `.find` on it. Falling back to the default for just the
+ * malformed section keeps the rest of the user's file intact.
+ */
+function coerceShape(config: CliConfig): CliConfig {
+  const defaults = defaultCliConfig();
+  const repaired = { ...config };
+
+  if (!Array.isArray(repaired.providers)) repaired.providers = defaults.providers;
+
+  for (const section of ['agents', 'swarm', 'memory', 'mcp'] as const) {
+    if (!isPlainObject(repaired[section])) {
+      (repaired as Record<string, unknown>)[section] = defaults[section];
+    }
+  }
+  return repaired;
 }
 
 /**
@@ -201,8 +233,8 @@ export function saveCliConfig(
 
 /** Write `content` to `path` atomically, creating parent dirs as needed. */
 export function writeTextFile(path: string, content: string): void {
-  const dir = dirname(path);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  // recursive mkdir is already idempotent — no existence check needed.
+  mkdirSync(dirname(path), { recursive: true });
   atomicWriteFileSync(path, content);
 }
 
@@ -211,10 +243,15 @@ export function writeJsonFile(path: string, value: unknown): void {
   writeTextFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-/** Split a dot-notation key, rejecting prototype-polluting segments. */
+/**
+ * Split a dot-notation key, rejecting prototype-polluting segments and empty
+ * ones. Empty segments are rejected rather than filtered out: silently
+ * accepting `swarm..topology` contradicts the loud-failure contract that
+ * `setConfigValue` relies on to catch typos.
+ */
 function splitKey(key: string): string[] | null {
-  const segments = key.split('.').filter((s) => s.length > 0);
-  if (segments.length === 0) return null;
+  const segments = key.split('.');
+  if (segments.length === 0 || segments.some((s) => s.length === 0)) return null;
   if (segments.some((s) => s === '__proto__' || s === 'constructor' || s === 'prototype')) return null;
   return segments;
 }
@@ -298,20 +335,36 @@ export function setConfigValue(
   return { ok: true, value: coerced.value };
 }
 
-/** Flatten to dotted leaf keys for tabular display. */
+/**
+ * Flatten to dotted leaf keys for tabular display. An EMPTY object or array is
+ * itself a leaf — recursing over zero entries would otherwise drop the key
+ * entirely, so `providers: []` would vanish from `flo config get` and read as
+ * "not configured" rather than "configured empty".
+ */
 export function flattenConfig(value: unknown, prefix = ''): Record<string, unknown> {
   const flat: Record<string, unknown> = {};
+  const key = prefix.replace(/\.$/, '');
+
   if (Array.isArray(value)) {
+    if (value.length === 0) {
+      flat[key] = '[]';
+      return flat;
+    }
     value.forEach((item, index) => Object.assign(flat, flattenConfig(item, `${prefix}${index}.`)));
     return flat;
   }
   if (isPlainObject(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      Object.assign(flat, flattenConfig(child, `${prefix}${key}.`));
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      flat[key] = '{}';
+      return flat;
+    }
+    for (const [childKey, child] of entries) {
+      Object.assign(flat, flattenConfig(child, `${prefix}${childKey}.`));
     }
     return flat;
   }
-  flat[prefix.replace(/\.$/, '')] = value;
+  flat[key] = value;
   return flat;
 }
 

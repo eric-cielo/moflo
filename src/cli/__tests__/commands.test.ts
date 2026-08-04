@@ -8,6 +8,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _resetStateRootCacheForTest } from '../services/project-root.js';
+import { cliConfigPath } from '../config/cli-config-store.js';
 import { agentCommand } from '../commands/agent.js';
 import { swarmCommand } from '../commands/swarm.js';
 import { memoryCommand } from '../commands/memory.js';
@@ -689,14 +690,16 @@ describe('Config Commands', () => {
     rmSync(projectDir, { recursive: true, force: true });
   });
 
-  const configFile = () => join(projectDir, '.moflo', 'config.json');
+  // Use the store's own resolver rather than rebuilding the path — a literal
+  // here would silently fork from CLI_CONFIG_CANDIDATES[0].
+  const configFile = () => cliConfigPath(projectDir);
   const readConfigFile = () => JSON.parse(readFileSync(configFile(), 'utf8'));
   const subcommand = (name: string) => configCommand.subcommands!.find(c => c.name === name)!;
   const runInit = async () => subcommand('init').action!({ ...ctx, flags: { _: [] } });
 
   describe('config init', () => {
     it('should initialize configuration', async () => {
-      const initCmd = configCommand.subcommands?.find(c => c.name === 'init');
+      const initCmd = subcommand('init');
       expect(initCmd).toBeDefined();
 
       const result = await initCmd!.action!(ctx);
@@ -717,10 +720,10 @@ describe('Config Commands', () => {
     });
 
     it('should initialize with V3 mode', async () => {
-      const initCmd = configCommand.subcommands?.find(c => c.name === 'init');
+      const initCmd = subcommand('init');
 
       ctx.flags = { v3: true, _: [] };
-      const result = await initCmd!.action!(ctx);
+      const result = await initCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('v3Mode', true);
@@ -751,11 +754,11 @@ describe('Config Commands', () => {
 
   describe('config get', () => {
     it('should get configuration value', async () => {
-      const getCmd = configCommand.subcommands?.find(c => c.name === 'get');
+      const getCmd = subcommand('get');
       expect(getCmd).toBeDefined();
 
       ctx.args = ['swarm.topology'];
-      const result = await getCmd!.action!(ctx);
+      const result = await getCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('key');
@@ -763,9 +766,9 @@ describe('Config Commands', () => {
     });
 
     it('should show all config when no key provided', async () => {
-      const getCmd = configCommand.subcommands?.find(c => c.name === 'get');
+      const getCmd = subcommand('get');
 
-      const result = await getCmd!.action!(ctx);
+      const result = await getCmd.action!(ctx);
 
       expect(result.success).toBe(true);
     });
@@ -789,11 +792,11 @@ describe('Config Commands', () => {
 
   describe('config set', () => {
     it('should set configuration value', async () => {
-      const setCmd = configCommand.subcommands?.find(c => c.name === 'set');
+      const setCmd = subcommand('set');
       expect(setCmd).toBeDefined();
 
       ctx.flags = { key: 'swarm.maxAgents', value: '20', _: [] };
-      const result = await setCmd!.action!(ctx);
+      const result = await setCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('key', 'swarm.maxAgents');
@@ -822,9 +825,9 @@ describe('Config Commands', () => {
     });
 
     it('should fail without key and value', async () => {
-      const setCmd = configCommand.subcommands?.find(c => c.name === 'set');
+      const setCmd = subcommand('set');
 
-      const result = await setCmd!.action!(ctx);
+      const result = await setCmd.action!(ctx);
 
       expect(result.success).toBe(false);
     });
@@ -832,10 +835,10 @@ describe('Config Commands', () => {
 
   describe('config providers', () => {
     it('should list providers', async () => {
-      const providersCmd = configCommand.subcommands?.find(c => c.name === 'providers');
+      const providersCmd = subcommand('providers');
       expect(providersCmd).toBeDefined();
 
-      const result = await providersCmd!.action!(ctx);
+      const result = await providersCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(Array.isArray(result.data)).toBe(true);
@@ -861,11 +864,11 @@ describe('Config Commands', () => {
 
   describe('config reset', () => {
     it('should reset configuration', async () => {
-      const resetCmd = configCommand.subcommands?.find(c => c.name === 'reset');
+      const resetCmd = subcommand('reset');
       expect(resetCmd).toBeDefined();
 
       ctx.flags = { force: true, _: [] };
-      const result = await resetCmd!.action!(ctx);
+      const result = await resetCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('reset', true);
@@ -883,10 +886,10 @@ describe('Config Commands', () => {
 
   describe('config export', () => {
     it('should export configuration', async () => {
-      const exportCmd = configCommand.subcommands?.find(c => c.name === 'export');
+      const exportCmd = subcommand('export');
       expect(exportCmd).toBeDefined();
 
-      const result = await exportCmd!.action!(ctx);
+      const result = await exportCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('config');
@@ -906,12 +909,12 @@ describe('Config Commands', () => {
 
   describe('config import', () => {
     it('should import configuration', async () => {
-      const importCmd = configCommand.subcommands?.find(c => c.name === 'import');
+      const importCmd = subcommand('import');
       expect(importCmd).toBeDefined();
 
       writeFileSync(join(projectDir, 'config.json'), JSON.stringify({ swarm: { topology: 'ring', maxAgents: 7 } }));
       ctx.flags = { file: './config.json', _: [] };
-      const result = await importCmd!.action!(ctx);
+      const result = await importCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('imported', true);
@@ -926,9 +929,9 @@ describe('Config Commands', () => {
     });
 
     it('should fail without file path', async () => {
-      const importCmd = configCommand.subcommands?.find(c => c.name === 'import');
+      const importCmd = subcommand('import');
 
-      const result = await importCmd!.action!(ctx);
+      const result = await importCmd.action!(ctx);
 
       expect(result.success).toBe(false);
     });
