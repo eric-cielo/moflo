@@ -26,19 +26,24 @@ name: File-sync smoke (#976)
 #   B6 upgrade-notice round-trip (in-progress → completed)
 
 on:
+  # Deliberately NOT path-filtered on pull_request.
+  #
+  # These three jobs are required status checks on `main`. A required context
+  # that never reports does not "pass by default" — GitHub waits for it
+  # indefinitely, so a path filter here blocks every PR that does not touch a
+  # listed file. That is exactly what happened once the contexts were made
+  # required: PR #1356 went 9/9 green and still sat at BLOCKED.
+  #
+  # The alternative — a mirrored skip-workflow with inverse `paths-ignore`
+  # posting identically-named jobs — keeps the filter but splits the job names
+  # across two files that must never drift, and a drift there silently stops
+  # the gate enforcing anything. Running for real is the cheaper guarantee:
+  # measured at 69s (windows) / 37s (ubuntu) / 29s (macos), all comfortably
+  # inside the CI `Tests` job, so this adds no wall-clock to a PR.
+  #
+  # The `push` trigger below keeps its filter — nothing gates on those runs.
   pull_request:
     branches: [main, 'epic/*']
-    paths:
-      - 'bin/lib/file-sync.mjs'
-      - 'bin/lib/shipped-scripts.mjs'
-      - 'bin/lib/shipped-scripts.json'
-      - 'bin/session-start-launcher.mjs'
-      - 'scripts/post-install-bootstrap.mjs'
-      - 'src/cli/__tests__/file-sync-helper.test.ts'
-      - 'src/cli/__tests__/post-install-bootstrap.test.ts'
-      - 'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts'
-      - 'src/cli/__tests__/shipped-scripts-manifest.test.ts'
-      - '.github/workflows/file-sync-smoke.yml'
   push:
     branches: [main, 'epic/*']
     paths:
