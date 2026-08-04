@@ -123,8 +123,48 @@ export class CLI {
       let parseResult = this.parser.parse(args);
       let { command: commandPath, flags, positional } = parseResult;
 
+      // Handle lazy-loaded commands that weren't recognized by the parser.
+      // If commandPath is empty but positional has a command name, check if
+      // it's lazy-loadable.
+      if (commandPath.length === 0 && positional.length > 0 && !positional[0].startsWith('-')) {
+        const potentialCommand = positional[0];
+        if (hasCommand(potentialCommand)) {
+          // This is a lazy-loaded command, treat it as the command
+          commandPath.push(potentialCommand);
+          positional.shift();
+        }
+      }
+
+      // Resolve the command BEFORE the global-flag handling below, so those
+      // checks see flags parsed against the command's own option tree.
+      // The first parse happens without knowledge of a lazily-loaded command's
+      // options, so `plugins install pkg --version 1.2.3` parsed `--version`
+      // under the GLOBAL boolean rule, came out as `version: true`, and hit the
+      // version handler below — printing "flo v4.12.4-rc.1" and returning
+      // without installing anything. Re-parsing here makes flags authoritative.
+      let command = commandPath[0]
+        ? this.parser.getCommand(commandPath[0]) || getCommand(commandPath[0])
+        : undefined;
+
+      if (!command && commandPath[0] && hasCommand(commandPath[0])) {
+        command = await getCommandAsync(commandPath[0]);
+        if (command) {
+          // Registering the newly-loaded command also restores scoped
+          // short-flag aliases for its nested subcommand options, which the
+          // first parse could not apply.
+          this.parser.registerCommand(command);
+          parseResult = this.parser.parse(args);
+          ({ command: commandPath, flags, positional } = parseResult);
+        }
+      }
+
       // Handle global flags
-      if (flags.version || flags.V) {
+      // Strict `=== true`: the global `--version` is a boolean, so a genuine
+      // global usage always yields exactly `true`. Commands that redefine
+      // `--version` as a value-taking option (plugins install/upgrade,
+      // deployment deploy/rollback) yield a string, and those must NOT be
+      // hijacked into printing the moflo version and returning.
+      if (flags.version === true || flags.V === true) {
         this.showVersion();
         return;
       }
@@ -159,17 +199,6 @@ export class CLI {
         this.maybeAutoStartDaemon().catch(() => {/* silent */});
       }
 
-      // Handle lazy-loaded commands that weren't recognized by the parser
-      // If commandPath is empty but positional has a command name, check if it's lazy-loadable
-      if (commandPath.length === 0 && positional.length > 0 && !positional[0].startsWith('-')) {
-        const potentialCommand = positional[0];
-        if (hasCommand(potentialCommand)) {
-          // This is a lazy-loaded command, treat it as the command
-          commandPath.push(potentialCommand);
-          positional.shift();
-        }
-      }
-
       // No command - show help or suggest correction
       if (commandPath.length === 0 || flags.help || flags.h) {
         if (commandPath.length > 0) {
@@ -189,27 +218,9 @@ export class CLI {
         return;
       }
 
-      // Find and execute command
+      // Find and execute command. Resolution + any lazy load already happened
+      // above, before global-flag handling — see the note there.
       const commandName = commandPath[0];
-      // First check the parser's registry (for dynamically registered commands)
-      // Then fall back to the static registry, then try lazy loading
-      let command = this.parser.getCommand(commandName) || getCommand(commandName);
-
-      // If not found in sync registry, try lazy loading
-      if (!command && hasCommand(commandName)) {
-        command = await getCommandAsync(commandName);
-        if (command) {
-          // The first parse happened without knowledge of this command's
-          // subcommand tree, so scoped short-flag aliases for any nested
-          // subcommand options weren't applied — and a globally-registered
-          // command's `-x` would have hijacked the value. Register the
-          // newly-loaded command and re-parse so flags reflect the leaf
-          // command's options.
-          this.parser.registerCommand(command);
-          parseResult = this.parser.parse(args);
-          ({ command: commandPath, flags, positional } = parseResult);
-        }
-      }
 
       if (!command) {
         this.output.printError(`Unknown command: ${commandName}`);

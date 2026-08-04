@@ -18,18 +18,18 @@ const trainCommand: Command = {
   description: 'Train neural patterns with WASM SIMD acceleration (MicroLoRA + Flash Attention)',
   options: [
     { name: 'pattern', short: 'p', type: 'string', description: 'Pattern type: coordination, optimization, prediction, security, testing', default: 'coordination' },
-    { name: 'epochs', short: 'e', type: 'number', description: 'Number of training epochs', default: '50' },
+    { name: 'epochs', short: 'e', type: 'number', description: 'Number of training epochs', default: 50 },
     { name: 'data', short: 'd', type: 'string', description: 'Training data file or inline JSON' },
     { name: 'model', short: 'm', type: 'string', description: 'Model ID to train' },
-    { name: 'learning-rate', short: 'l', type: 'number', description: 'Learning rate', default: '0.01' },
-    { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size', default: '32' },
-    { name: 'dim', type: 'number', description: 'Embedding dimension (max 256)', default: '256' },
-    { name: 'wasm', short: 'w', type: 'boolean', description: 'Use MoVector WASM acceleration', default: 'true' },
-    { name: 'flash', type: 'boolean', description: 'Enable Flash Attention (memory-efficient attention)', default: 'true' },
-    { name: 'moe', type: 'boolean', description: 'Enable Mixture of Experts routing', default: 'false' },
-    { name: 'hyperbolic', type: 'boolean', description: 'Enable hyperbolic attention for hierarchical patterns', default: 'false' },
-    { name: 'contrastive', type: 'boolean', description: 'Use contrastive learning (InfoNCE)', default: 'true' },
-    { name: 'curriculum', type: 'boolean', description: 'Enable curriculum learning', default: 'false' },
+    { name: 'learning-rate', short: 'l', type: 'number', description: 'Learning rate', default: 0.01 },
+    { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size', default: 32 },
+    { name: 'dim', type: 'number', description: 'Embedding dimension (max 256)', default: 256 },
+    { name: 'wasm', short: 'w', type: 'boolean', description: 'Use MoVector WASM acceleration', default: true },
+    { name: 'flash', type: 'boolean', description: 'Enable Flash Attention (memory-efficient attention)', default: true },
+    { name: 'moe', type: 'boolean', description: 'Enable Mixture of Experts routing', default: false },
+    { name: 'hyperbolic', type: 'boolean', description: 'Enable hyperbolic attention for hierarchical patterns', default: false },
+    { name: 'contrastive', type: 'boolean', description: 'Use contrastive learning (InfoNCE)', default: true },
+    { name: 'curriculum', type: 'boolean', description: 'Enable curriculum learning', default: false },
   ],
   examples: [
     { command: 'flo neural train -p coordination -e 100', description: 'Train coordination patterns' },
@@ -560,7 +560,7 @@ const patternsCommand: Command = {
   options: [
     { name: 'action', short: 'a', type: 'string', description: 'Action: analyze, learn, predict, list', default: 'list' },
     { name: 'query', short: 'q', type: 'string', description: 'Pattern query for search' },
-    { name: 'limit', short: 'l', type: 'number', description: 'Max patterns to return', default: '10' },
+    { name: 'limit', short: 'l', type: 'number', description: 'Max patterns to return', default: 10 },
   ],
   examples: [
     { command: 'flo neural patterns --action list', description: 'List all patterns' },
@@ -667,7 +667,7 @@ const predictCommand: Command = {
   description: 'Make AI predictions using trained models',
   options: [
     { name: 'input', short: 'i', type: 'string', description: 'Input text to predict routing for', required: true },
-    { name: 'k', short: 'k', type: 'number', description: 'Number of top predictions', default: '5' },
+    { name: 'k', short: 'k', type: 'number', description: 'Number of top predictions', default: 5 },
     { name: 'format', short: 'f', type: 'string', description: 'Output format: json, table', default: 'table' },
   ],
   examples: [
@@ -932,8 +932,8 @@ const exportCommand: Command = {
     { name: 'model', short: 'm', type: 'string', description: 'Model ID or category to export' },
     { name: 'output', short: 'o', type: 'string', description: 'Output file path (optional)' },
     { name: 'ipfs', short: 'i', type: 'boolean', description: 'Pin to IPFS (requires Pinata credentials)' },
-    { name: 'sign', short: 's', type: 'boolean', description: 'Sign with Ed25519 key', default: 'true' },
-    { name: 'strip-pii', type: 'boolean', description: 'Strip potential PII from export', default: 'true' },
+    { name: 'sign', short: 's', type: 'boolean', description: 'Sign with Ed25519 key', default: true },
+    { name: 'strip-pii', type: 'boolean', description: 'Strip potential PII from export', default: true },
     { name: 'name', short: 'n', type: 'string', description: 'Custom name for exported model' },
   ],
   examples: [
@@ -1302,8 +1302,8 @@ const importCommand: Command = {
   options: [
     { name: 'cid', short: 'c', type: 'string', description: 'IPFS CID to import from' },
     { name: 'file', short: 'f', type: 'string', description: 'Local file to import' },
-    { name: 'verify', short: 'v', type: 'boolean', description: 'Verify Ed25519 signature', default: 'true' },
-    { name: 'merge', type: 'boolean', description: 'Merge with existing patterns (vs replace)', default: 'true' },
+    { name: 'verify', short: 'v', type: 'boolean', description: 'Verify Ed25519 signature', default: true },
+    { name: 'merge', type: 'boolean', description: 'Merge with existing patterns (vs replace)', default: true },
     { name: 'category', type: 'string', description: 'Only import patterns from specific category' },
   ],
   examples: [
@@ -1525,9 +1525,9 @@ const benchmarkCommand: Command = {
   name: 'benchmark',
   description: 'Benchmark MoVector WASM training performance',
   options: [
-    { name: 'dim', short: 'd', type: 'number', description: 'Embedding dimension (max 256)', default: '256' },
-    { name: 'iterations', short: 'i', type: 'number', description: 'Number of iterations', default: '1000' },
-    { name: 'keys', short: 'k', type: 'number', description: 'Number of keys for attention', default: '100' },
+    { name: 'dim', short: 'd', type: 'number', description: 'Embedding dimension (max 256)', default: 256 },
+    { name: 'iterations', short: 'i', type: 'number', description: 'Number of iterations', default: 1000 },
+    { name: 'keys', short: 'k', type: 'number', description: 'Number of keys for attention', default: 100 },
   ],
   examples: [
     { command: 'flo neural benchmark', description: 'Run default benchmark' },

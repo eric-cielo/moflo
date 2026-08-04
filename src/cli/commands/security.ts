@@ -340,7 +340,7 @@ const auditCommand: Command = {
   description: 'Security audit logging and compliance',
   options: [
     { name: 'action', short: 'a', type: 'string', description: 'Action: log, list, export, clear', default: 'list' },
-    { name: 'limit', short: 'l', type: 'number', description: 'Number of entries to show', default: '20' },
+    { name: 'limit', short: 'l', type: 'number', description: 'Number of entries to show', default: 20 },
     { name: 'filter', short: 'f', type: 'string', description: 'Filter by event type' },
   ],
   examples: [
@@ -430,7 +430,7 @@ const defendCommand: Command = {
     { name: 'input', short: 'i', type: 'string', description: 'Input text to scan for threats' },
     { name: 'file', short: 'f', type: 'string', description: 'File to scan for threats' },
     { name: 'quick', short: 'Q', type: 'boolean', description: 'Quick scan (faster, less detailed)' },
-    { name: 'learn', short: 'l', type: 'boolean', description: 'Enable learning mode', default: 'true' },
+    { name: 'learn', short: 'l', type: 'boolean', description: 'Enable learning mode', default: true },
     { name: 'stats', short: 's', type: 'boolean', description: 'Show detection statistics' },
     { name: 'output', short: 'o', type: 'string', description: 'Output format: text, json', default: 'text' },
   ],

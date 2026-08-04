@@ -1,11 +1,79 @@
 /**
  * V3 CLI Config Command
  * Configuration management
+ *
+ * Every subcommand here reads and writes a real file — see
+ * `../config/cli-config-store.ts` for the store and for why that is worth
+ * stating: this family used to print "Creating ..." and "Configuration
+ * updated" without touching the filesystem, which made `flo doctor --fix`
+ * report the `Config File` warning as fixed forever.
+ *
+ * `show` and `generate` are the odd pair out: they operate on **moflo.yaml**
+ * via `../config/moflo-config.ts`, not on the JSON config.
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { select, confirm, input } from '../prompt.js';
+import { confirm } from '../prompt.js';
+import { resolveStateRoot } from '../services/project-root.js';
+import {
+  CliConfigParseError,
+  RESETTABLE_SECTIONS,
+  cliConfigPath,
+  defaultCliConfig,
+  findCliConfigFile,
+  flattenConfig,
+  getConfigValue,
+  loadCliConfig,
+  resetSection,
+  saveCliConfig,
+  setConfigValue,
+  writeJsonFile,
+  writeTextFile,
+  type CliConfig,
+  type CliConfigProvider,
+  type ResettableSection,
+} from '../config/cli-config-store.js';
+
+/**
+ * Anchor config reads/writes at the state root — `resolveStateRoot`, not
+ * `findProjectRoot`, because this command CREATES `.moflo/` content and must
+ * land on the monorepo's canonical anchor rather than minting an island in a
+ * sub-workspace (#1315).
+ */
+function configRoot(ctx: CommandContext): string {
+  return resolveStateRoot({ cwd: ctx.cwd || process.cwd() });
+}
+
+/**
+ * Path relative to the project root, for display. Builds the `./` prefix from
+ * `path.sep` so Windows shows `.\.moflo\config.json` rather than a mixed
+ * `./.moflo\config.json`.
+ */
+function displayPath(root: string, target: string): string {
+  const rel = relative(root, target);
+  return rel && !rel.startsWith('..') ? `.${sep}${rel}` : target;
+}
+
+/**
+ * Load config, printing the parse error and returning `null` when the file on
+ * disk is corrupt. Callers exit 1 on `null` rather than silently falling back
+ * to defaults — a config that cannot be read is a failure, not a default.
+ */
+function loadOrReport(root: string): { config: CliConfig; path: string | null } | null {
+  try {
+    return loadCliConfig(root);
+  } catch (err) {
+    if (err instanceof CliConfigParseError) {
+      output.printError(err.message);
+      output.writeln(output.dim('  Fix the JSON syntax, or run `flo config init --force` to rewrite it.'));
+      return null;
+    }
+    throw err;
+  }
+}
 
 // Init configuration
 const initCommand: Command = {
@@ -35,59 +103,30 @@ const initCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const sparc = ctx.flags.sparc as boolean;
     const v3 = ctx.flags.v3 as boolean;
+    const force = ctx.flags.force as boolean;
+    const root = configRoot(ctx);
+
+    const existing = findCliConfigFile(root);
+    if (existing && !force) {
+      output.printError(`Configuration already exists: ${displayPath(root, existing)}`);
+      output.writeln(output.dim('  Re-run with --force to overwrite it.'));
+      return { success: false, exitCode: 1 };
+    }
 
     output.writeln();
     output.printInfo('Initializing MoFlo configuration...');
     output.writeln();
 
-    // Create default configuration
-    const config = {
-      version: '3.0.0',
-      v3Mode: v3,
-      sparc: sparc,
-      agents: {
-        defaultType: 'coder',
-        maxConcurrent: 15,
-        autoSpawn: true,
-        timeout: 300
-      },
-      swarm: {
-        topology: 'hybrid',
-        maxAgents: 15,
-        autoScale: true,
-        coordinationStrategy: 'consensus'
-      },
-      memory: {
-        backend: 'hybrid',
-        path: './data/memory',
-        cacheSize: 256,
-        enableHNSW: true
-      },
-      mcp: {
-        transport: 'stdio',
-        autoStart: true,
-        tools: 'all'
-      },
-      providers: [
-        { name: 'anthropic', priority: 1, enabled: true },
-        { name: 'openrouter', priority: 2, enabled: false },
-        { name: 'ollama', priority: 3, enabled: false }
-      ]
-    };
-
-    output.writeln(output.dim('  Creating claude-flow.config.json...'));
-    output.writeln(output.dim('  Creating .moflo/ directory...'));
-
-    if (sparc) {
-      output.writeln(output.dim('  Initializing SPARC methodology...'));
-      output.writeln(output.dim('  Creating SPARC workflow files...'));
+    const config = defaultCliConfig({ v3, sparc });
+    const target = existing ?? cliConfigPath(root);
+    try {
+      saveCliConfig(root, config, { path: target });
+    } catch (err) {
+      output.printError(`Failed to write ${displayPath(root, target)}: ${(err as Error).message}`);
+      return { success: false, exitCode: 1 };
     }
 
-    if (v3) {
-      output.writeln(output.dim('  Enabling V3 15-agent coordination...'));
-      output.writeln(output.dim('  Configuring AgentDB integration...'));
-      output.writeln(output.dim('  Setting up Flash Attention optimization...'));
-    }
+    output.writeln(output.dim(`  Wrote ${displayPath(root, target)}`));
 
     output.writeln();
     output.printTable({
@@ -108,7 +147,7 @@ const initCommand: Command = {
 
     output.writeln();
     output.printSuccess('Configuration initialized');
-    output.writeln(output.dim('  Config file: ./claude-flow.config.json'));
+    output.writeln(output.dim(`  Config file: ${displayPath(root, target)}`));
 
     return { success: true, data: config };
   }
@@ -132,23 +171,15 @@ const getCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const key = ctx.flags.key as string || ctx.args[0];
+    const root = configRoot(ctx);
 
-    // Default config values (loaded from actual config when available)
-    const configValues: Record<string, unknown> = {
-      'version': '3.0.0',
-      'v3Mode': true,
-      'swarm.topology': 'hybrid',
-      'swarm.maxAgents': 15,
-      'swarm.autoScale': true,
-      'memory.backend': 'hybrid',
-      'memory.cacheSize': 256,
-      'mcp.transport': 'stdio',
-      'agents.defaultType': 'coder',
-      'agents.maxConcurrent': 15
-    };
+    const loaded = loadOrReport(root);
+    if (!loaded) return { success: false, exitCode: 1 };
+    const { config, path } = loaded;
 
     if (!key) {
-      // Show all config
+      const configValues = flattenConfig(config);
+
       if (ctx.flags.format === 'json') {
         output.printJson(configValues);
         return { success: true, data: configValues };
@@ -156,11 +187,12 @@ const getCommand: Command = {
 
       output.writeln();
       output.writeln(output.bold('Current Configuration'));
+      output.writeln(output.dim(path ? `  ${displayPath(root, path)}` : '  (no config file — showing defaults)'));
       output.writeln();
 
       output.printTable({
         columns: [
-          { key: 'key', header: 'Key', width: 25 },
+          { key: 'key', header: 'Key', width: 30 },
           { key: 'value', header: 'Value', width: 30 }
         ],
         data: Object.entries(configValues).map(([k, v]) => ({ key: k, value: String(v) }))
@@ -169,9 +201,9 @@ const getCommand: Command = {
       return { success: true, data: configValues };
     }
 
-    const value = configValues[key];
+    const { found, value } = getConfigValue(config, key);
 
-    if (value === undefined) {
+    if (!found) {
       output.printError(`Configuration key not found: ${key}`);
       return { success: false, exitCode: 1 };
     }
@@ -179,7 +211,7 @@ const getCommand: Command = {
     if (ctx.flags.format === 'json') {
       output.printJson({ key, value });
     } else {
-      output.writeln(`${key} = ${value}`);
+      output.writeln(`${key} = ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`);
     }
 
     return { success: true, data: { key, value } };
@@ -191,19 +223,21 @@ const setCommand: Command = {
   name: 'set',
   description: 'Set configuration value',
   options: [
+    // Not `required` at the parser level: these are also accepted
+    // positionally (`flo config set swarm.maxAgents 20`, this command's own
+    // documented example), and a parser-level requirement rejects that form
+    // before the action can read ctx.args. The action validates instead.
     {
       name: 'key',
       short: 'k',
       description: 'Configuration key',
-      type: 'string',
-      required: true
+      type: 'string'
     },
     {
       name: 'value',
       short: 'v',
       description: 'Configuration value',
-      type: 'string',
-      required: true
+      type: 'string'
     }
   ],
   examples: [
@@ -219,10 +253,29 @@ const setCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
-    output.printInfo(`Setting ${key} = ${value}`);
-    output.printSuccess('Configuration updated');
+    const root = configRoot(ctx);
+    const loaded = loadOrReport(root);
+    if (!loaded) return { success: false, exitCode: 1 };
+    const { config } = loaded;
 
-    return { success: true, data: { key, value } };
+    const result = setConfigValue(config, key, String(value));
+    if (!result.ok) {
+      output.printError(`Cannot set ${key}: ${result.error}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    let target: string;
+    try {
+      target = saveCliConfig(root, config);
+    } catch (err) {
+      output.printError(`Failed to write configuration: ${(err as Error).message}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    output.printInfo(`Setting ${key} = ${String(result.value)}`);
+    output.printSuccess(`Configuration updated (${displayPath(root, target)})`);
+
+    return { success: true, data: { key, value: result.value } };
   }
 };
 
@@ -255,12 +308,62 @@ const providersCommand: Command = {
     }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const providers = [
-      { name: 'anthropic', model: 'claude-3-5-sonnet-20241022', priority: 1, enabled: true, status: 'Active' },
-      { name: 'openrouter', model: 'claude-3.5-sonnet', priority: 2, enabled: false, status: 'Disabled' },
-      { name: 'ollama', model: 'llama3.2', priority: 3, enabled: false, status: 'Disabled' },
-      { name: 'gemini', model: 'gemini-2.0-flash', priority: 4, enabled: false, status: 'Disabled' }
-    ];
+    const root = configRoot(ctx);
+    const loaded = loadOrReport(root);
+    if (!loaded) return { success: false, exitCode: 1 };
+    const { config } = loaded;
+
+    const add = ctx.flags.add as string | undefined;
+    const remove = ctx.flags.remove as string | undefined;
+    const enable = ctx.flags.enable as string | undefined;
+    const disable = ctx.flags.disable as string | undefined;
+
+    const find = (name: string): CliConfigProvider | undefined =>
+      config.providers.find((p) => p.name.toLowerCase() === name.toLowerCase());
+
+    let mutated = false;
+
+    if (add) {
+      if (find(add)) {
+        output.printError(`Provider already exists: ${add}`);
+        return { success: false, exitCode: 1 };
+      }
+      const priority = config.providers.reduce((max, p) => Math.max(max, p.priority), 0) + 1;
+      config.providers.push({ name: add, priority, enabled: false });
+      mutated = true;
+    }
+
+    for (const [name, action] of [[remove, 'remove'], [enable, 'enable'], [disable, 'disable']] as const) {
+      if (!name) continue;
+      const provider = find(name);
+      if (!provider) {
+        output.printError(`Provider not found: ${name}`);
+        return { success: false, exitCode: 1 };
+      }
+      if (action === 'remove') {
+        config.providers = config.providers.filter((p) => p !== provider);
+      } else {
+        provider.enabled = action === 'enable';
+      }
+      mutated = true;
+    }
+
+    if (mutated) {
+      let target: string;
+      try {
+        target = saveCliConfig(root, config);
+      } catch (err) {
+        output.printError(`Failed to write configuration: ${(err as Error).message}`);
+        return { success: false, exitCode: 1 };
+      }
+      output.printSuccess(`Providers updated (${displayPath(root, target)})`);
+    }
+
+    const providers = config.providers.map((p) => ({
+      ...p,
+      model: p.model ?? '',
+      status: p.enabled ? 'Active' : 'Disabled'
+    }));
 
     if (ctx.flags.format === 'json') {
       output.printJson(providers);
@@ -307,12 +410,18 @@ const resetCommand: Command = {
       name: 'section',
       description: 'Reset specific section only',
       type: 'string',
-      choices: ['agents', 'swarm', 'memory', 'mcp', 'providers', 'all']
+      choices: [...RESETTABLE_SECTIONS]
     }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const force = ctx.flags.force as boolean;
-    const section = ctx.flags.section as string || 'all';
+    const section = (ctx.flags.section as string || 'all') as ResettableSection;
+
+    if (!RESETTABLE_SECTIONS.includes(section)) {
+      output.printError(`Unknown section: ${section}`);
+      output.writeln(output.dim(`  Valid sections: ${RESETTABLE_SECTIONS.join(', ')}`));
+      return { success: false, exitCode: 1 };
+    }
 
     if (!force && ctx.interactive) {
       const confirmed = await confirm({
@@ -326,10 +435,23 @@ const resetCommand: Command = {
       }
     }
 
-    output.printInfo(`Resetting ${section} configuration...`);
-    output.printSuccess('Configuration reset to defaults');
+    const root = configRoot(ctx);
+    const loaded = loadOrReport(root);
+    if (!loaded) return { success: false, exitCode: 1 };
 
-    return { success: true, data: { section, reset: true } };
+    output.printInfo(`Resetting ${section} configuration...`);
+
+    let target: string;
+    try {
+      target = saveCliConfig(root, resetSection(loaded.config, section));
+    } catch (err) {
+      output.printError(`Failed to write configuration: ${(err as Error).message}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    output.printSuccess(`Configuration reset to defaults (${displayPath(root, target)})`);
+
+    return { success: true, data: { section, reset: true, path: target } };
   }
 };
 
@@ -354,23 +476,43 @@ const exportCommand: Command = {
     }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const outputPath = ctx.flags.output as string || './claude-flow.config.export.json';
+    const format = (ctx.flags.format as string) || 'json';
+    if (format !== 'json' && format !== 'yaml') {
+      output.printError(`Unsupported export format: ${format}`);
+      output.writeln(output.dim('  Valid formats: json, yaml'));
+      return { success: false, exitCode: 1 };
+    }
 
-    const config = {
-      version: '3.0.0',
-      exportedAt: new Date().toISOString(),
-      agents: { defaultType: 'coder', maxConcurrent: 15 },
-      swarm: { topology: 'hybrid', maxAgents: 15 },
-      memory: { backend: 'hybrid', cacheSize: 256 },
-      mcp: { transport: 'stdio', tools: 'all' }
-    };
+    const root = configRoot(ctx);
+    const loaded = loadOrReport(root);
+    if (!loaded) return { success: false, exitCode: 1 };
 
-    output.printInfo(`Exporting configuration to ${outputPath}...`);
-    output.printJson(config);
+    const requested = ctx.flags.output as string | undefined;
+    const defaultName = `moflo.config.export.${format === 'yaml' ? 'yaml' : 'json'}`;
+    const outputPath = requested
+      ? (isAbsolute(requested) ? requested : resolve(root, requested))
+      : resolve(root, defaultName);
+
+    const config = { ...loaded.config, exportedAt: new Date().toISOString() };
+
+    output.printInfo(`Exporting configuration to ${displayPath(root, outputPath)}...`);
+
+    try {
+      if (format === 'yaml') {
+        const { dump } = await import('js-yaml');
+        writeTextFile(outputPath, dump(config));
+      } else {
+        writeJsonFile(outputPath, config);
+      }
+    } catch (err) {
+      output.printError(`Failed to write ${displayPath(root, outputPath)}: ${(err as Error).message}`);
+      return { success: false, exitCode: 1 };
+    }
+
     output.writeln();
     output.printSuccess('Configuration exported');
 
-    return { success: true, data: { path: outputPath, config } };
+    return { success: true, data: { path: outputPath, format, config } };
   }
 };
 
@@ -379,12 +521,13 @@ const importCommand: Command = {
   name: 'import',
   description: 'Import configuration',
   options: [
+    // Also accepted positionally (`flo config import ./cfg.json`) — see the
+    // note on `set`.
     {
       name: 'file',
       short: 'f',
       description: 'Configuration file path',
-      type: 'string',
-      required: true
+      type: 'string'
     },
     {
       name: 'merge',
@@ -402,17 +545,61 @@ const importCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
+    const root = configRoot(ctx);
+    const source = isAbsolute(file) ? file : resolve(root, file);
+
+    if (!existsSync(source)) {
+      output.printError(`Configuration file not found: ${file}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    let incoming: unknown;
+    try {
+      const raw = readFileSync(source, 'utf8');
+      if (extname(source).toLowerCase() === '.yaml' || extname(source).toLowerCase() === '.yml') {
+        const { load } = await import('js-yaml');
+        incoming = load(raw);
+      } else {
+        incoming = JSON.parse(raw);
+      }
+    } catch (err) {
+      output.printError(`Could not parse ${file}: ${(err as Error).message}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    if (typeof incoming !== 'object' || incoming === null || Array.isArray(incoming)) {
+      output.printError(`Not a configuration object: ${file}`);
+      return { success: false, exitCode: 1 };
+    }
+
     output.printInfo(`Importing configuration from ${file}...`);
 
+    // Merge mode layers the file over what is on disk; replace mode layers it
+    // over defaults, so an incomplete file still yields a complete config.
+    let base: CliConfig;
     if (merge) {
+      const loaded = loadOrReport(root);
+      if (!loaded) return { success: false, exitCode: 1 };
+      base = loaded.config;
       output.writeln(output.dim('  Merging with existing configuration...'));
     } else {
+      base = defaultCliConfig();
       output.writeln(output.dim('  Replacing existing configuration...'));
     }
 
-    output.printSuccess('Configuration imported');
+    const imported: CliConfig = { ...base, ...(incoming as Partial<CliConfig>) };
 
-    return { success: true, data: { file, merge, imported: true } };
+    let target: string;
+    try {
+      target = saveCliConfig(root, imported);
+    } catch (err) {
+      output.printError(`Failed to write configuration: ${(err as Error).message}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    output.printSuccess(`Configuration imported (${displayPath(root, target)})`);
+
+    return { success: true, data: { file, merge, imported: true, path: target } };
   }
 };
 
