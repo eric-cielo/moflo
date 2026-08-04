@@ -31,6 +31,13 @@ Three reporting surfaces stop printing a fabricated `0.00` on Windows and emit
 `null` / `not measured` instead — `flo performance metrics` (both text and
 `--format json`), and the built-in `performance` and `health` workers.
 
+The worker statusline's `⚡` segment now shows the load average the performance
+worker actually measured (`⚡n/a` where there is none). It previously rendered
+`⚡1.0x` from a `speedup` field that was the literal `'1.0x'` — nothing ever
+computed a speedup. `StatuslineData.performance.speedup: string` is replaced by
+`performance.loadAvg: string | null`; the shipped `statusline.cjs` never read
+this shape, so consumer statuslines are unaffected.
+
 ### Changed — Verify-before-done is now ON by default (#1294)
 
 `gates.verify_before_done` now defaults to **true** (was opt-in/false). Every

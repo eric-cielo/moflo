@@ -28,7 +28,7 @@ vi.mock('os', async (importOriginal) => {
   };
 });
 
-const { createPerformanceWorker, createHealthWorker } = await import('../../hooks/workers/index.js');
+const { createPerformanceWorker, createHealthWorker, WorkerManager } = await import('../../hooks/workers/index.js');
 
 const PROJECT_ROOT = path.join(realOs.tmpdir(), 'moflo-1358-loadavg');
 
@@ -82,6 +82,40 @@ describe('#1358 — worker reporters omit the load average where there is none',
     } else {
       expect(system.loadAvg).toHaveLength(3);
       expect(system.loadAvg!.every(v => !Number.isNaN(Number(v)))).toBe(true);
+    }
+  });
+});
+
+/**
+ * The statusline's `⚡` slot used to render `speedup: '1.0x'` — a literal with
+ * a `// Placeholder` comment at its source and a second `?? '1.0x'` fallback
+ * at the consumer, sitting alongside three segments that were real. It now
+ * carries the load average the performance worker actually measured.
+ */
+describe('#1358 — the statusline performance slot carries a measured value', () => {
+  it('reports null before any worker has run, rather than a stand-in figure', () => {
+    const manager = new WorkerManager(PROJECT_ROOT);
+    const data = manager.getStatuslineData();
+
+    expect(data.performance.loadAvg).toBeNull();
+    expect(manager.getStatuslineString()).toContain('⚡n/a');
+    // The field it replaced must be gone, not merely unused.
+    expect('speedup' in data.performance).toBe(false);
+  });
+
+  it('surfaces the performance worker\'s real reading once it has run', async () => {
+    const manager = new WorkerManager(PROJECT_ROOT);
+    manager.register('performance', createPerformanceWorker(PROJECT_ROOT));
+    await manager.runWorker('performance');
+
+    const data = manager.getStatuslineData();
+
+    if (realOs.platform() === 'win32') {
+      expect(data.performance.loadAvg).toBeNull();
+    } else {
+      expect(data.performance.loadAvg).not.toBeNull();
+      expect(Number.isNaN(Number(data.performance.loadAvg))).toBe(false);
+      expect(manager.getStatuslineString()).toContain(`⚡${data.performance.loadAvg}`);
     }
   });
 });
