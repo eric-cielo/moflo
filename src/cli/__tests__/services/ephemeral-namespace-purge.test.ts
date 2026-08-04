@@ -10,9 +10,12 @@
  *  - Preserves tasklist rows up to retention cap (#968 fix)
  *  - Trims tasklist beyond retention cap, keeping the most recent entries
  *  - Preserves rows in unrelated namespaces (knowledge, patterns, etc.)
- *  - Idempotent: clean DB returns { purged: 0, trimmed: 0 } without writing
+ *  - Idempotent: clean DB returns all-zero counts without writing
  *  - Skips DBs that lack memory_entries
  *  - Returns zero counts when the DB does not exist
+ *  - Re-files stray `verify:*` rows out of `learnings` (#1375), case-sensitively,
+ *    counting a key that collides with an existing `verify` record separately
+ *    from one that moved, and trimming the namespace to its retention cap
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -30,6 +33,8 @@ import {
   PURGE_ON_SESSION_START_NAMESPACES,
   PURGE_ON_SESSION_START_PREFIXES,
   TASKLIST_RETENTION_CAP,
+  VERIFY_RECORD_NAMESPACE,
+  VERIFY_RETENTION_CAP,
   isEphemeralNamespace,
   shouldPurgeOnSessionStart,
 } from '../../memory/bridge-embedder.js';
@@ -75,7 +80,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     const result = await purgeEphemeralNamespaces({
       dbPath: join(tmpdir(), 'moflo-missing-729', 'nope.db'),
     });
-    expect(result).toEqual({ purged: 0, trimmed: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
   });
 
   it('hard-deletes only PURGE_ON_SESSION_START_NAMESPACES and preserves tasklist + others', async () => {
@@ -155,7 +160,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     });
 
     const result = await purgeEphemeralNamespaces({ dbPath });
-    expect(result).toEqual({ purged: 0, trimmed: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
 
     // Pre-WAL the test verified byte-equality of the file, but the daemon
     // factory rewrites journal_mode pragma bytes in the header on every open
@@ -181,7 +186,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     expect(first.trimmed).toBe(0);
 
     const second = await purgeEphemeralNamespaces({ dbPath });
-    expect(second).toEqual({ purged: 0, trimmed: 0 });
+    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
   });
 
   it('skips DBs that lack a memory_entries table', async () => {
@@ -193,7 +198,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     db.close();
 
     const result = await purgeEphemeralNamespaces({ dbPath });
-    expect(result).toEqual({ purged: 0, trimmed: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
   });
 
   it('hard-purges prefix-match namespaces (doctor-memprobe-*) alongside exact-match', async () => {
@@ -275,6 +280,204 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     expect(countByNamespace(dbPath, 'doctor-neighbors-1778701810936-zmnzzp')).toBe(0);
     expect(countByNamespace(dbPath, 'doctor-neighbors-1778700000000-aaaaaa')).toBe(0);
     expect(countByNamespace(dbPath, 'learnings')).toBe(1);
+  });
+});
+
+describe('verify-record relocation + retention (#1375)', () => {
+  /** Insert one row, defaulting created_at so retention ordering is deterministic. */
+  function insertRow(
+    db: SqlJsLikeDatabase,
+    id: string,
+    key: string,
+    namespace: string,
+    createdAt = 1_700_000_000_000,
+  ): void {
+    db.run(
+      `INSERT INTO memory_entries (id, key, namespace, content, status, created_at)
+       VALUES (?, ?, ?, ?, 'active', ?)`,
+      [id, key, namespace, `content-${id}`, createdAt],
+    );
+  }
+
+  function keysIn(dbPath: string, namespace: string): string[] {
+    const db = openDaemonDatabase(dbPath);
+    try {
+      const rows = db.exec(
+        `SELECT key FROM memory_entries WHERE namespace = ? ORDER BY key ASC`,
+        [namespace],
+      );
+      return (rows[0]?.values ?? []).map(r => String(r[0]));
+    } finally {
+      db.close();
+    }
+  }
+
+  it('moves verify:* rows out of learnings and leaves real learnings alone', async () => {
+    const dbPath = await makeTmpDb((db) => {
+      insertRow(db, 'v1', 'verify:1375', 'learnings');
+      insertRow(db, 'v2', 'verify:some-spec-slug', 'learnings');
+      // A genuine learning whose key merely CONTAINS "verify" must not move —
+      // the match is a `verify:` key PREFIX, the same shape the gate keys on.
+      insertRow(db, 'l1', 'a_recorder_must_check_its_run_is_still_live', 'learnings');
+      insertRow(db, 'l2', 'never_verify_by_prose', 'learnings');
+      // Same key shape in another namespace is untouched.
+      insertRow(db, 'p1', 'verify:1375', 'patterns');
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath });
+    expect(result.relocated).toBe(2);
+    expect(result.purged).toBe(0);
+    expect(result.trimmed).toBe(0);
+
+    expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual([
+      'verify:1375',
+      'verify:some-spec-slug',
+    ]);
+    expect(keysIn(dbPath, 'learnings')).toEqual([
+      'a_recorder_must_check_its_run_is_still_live',
+      'never_verify_by_prose',
+    ]);
+    expect(keysIn(dbPath, 'patterns')).toEqual(['verify:1375']);
+  });
+
+  it('drops a stray row whose key already exists in verify, keeping the newer record', async () => {
+    // UNIQUE(namespace, key) means the move would fail outright without this.
+    // The row already in `verify` was written by the post-fix skill, so it is
+    // the current verdict; the `learnings` copy is the superseded one.
+    const dbPath = await makeTmpDb((db) => {
+      insertRow(db, 'stale', 'verify:1375', 'learnings');
+      db.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, status, created_at)
+         VALUES (?, ?, ?, ?, 'active', ?)`,
+        ['current', 'verify:1375', VERIFY_RECORD_NAMESPACE, 'the current verdict', 1_700_000_001_000],
+      );
+      insertRow(db, 'other', 'verify:1370', 'learnings');
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath });
+    // Only `verify:1370` actually moved; the colliding row was dropped — and
+    // the drop is reported separately, never folded into `relocated`.
+    expect(result.relocated).toBe(1);
+    expect(result.superseded).toBe(1);
+    expect(keysIn(dbPath, 'learnings')).toEqual([]);
+    expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1370', 'verify:1375']);
+
+    const db = openDaemonDatabase(dbPath);
+    try {
+      const rows = db.exec(
+        `SELECT content FROM memory_entries WHERE namespace = ? AND key = 'verify:1375'`,
+        [VERIFY_RECORD_NAMESPACE],
+      );
+      expect(rows[0]?.values?.[0]?.[0]).toBe('the current verdict');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trims verify beyond its retention cap, keeping the most recent rows', async () => {
+    const dbPath = await makeTmpDb((db) => {
+      const base = 1_700_000_000_000;
+      for (let i = 0; i < 6; i++) {
+        insertRow(db, `v-${i}`, `verify:${1300 + i}`, VERIFY_RECORD_NAMESPACE, base + i * 1000);
+      }
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath, verifyRetentionCap: 2 });
+    expect(result.trimmed).toBe(4);
+    expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1304', 'verify:1305']);
+  });
+
+  it('counts rows relocated in the same run against the verify cap', async () => {
+    // The relocation and the trim share one pass. If the trim used the
+    // pre-relocation count, a backlog moved in from `learnings` would sit above
+    // the cap until the NEXT session start.
+    const dbPath = await makeTmpDb((db) => {
+      const base = 1_700_000_000_000;
+      insertRow(db, 'resident', 'verify:1400', VERIFY_RECORD_NAMESPACE, base + 9000);
+      for (let i = 0; i < 4; i++) {
+        insertRow(db, `moved-${i}`, `verify:${1300 + i}`, 'learnings', base + i * 1000);
+      }
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath, verifyRetentionCap: 2 });
+    expect(result.relocated).toBe(4);
+    expect(result.trimmed).toBe(3); // 1 resident + 4 relocated = 5, keep the newest 2
+    expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1303', 'verify:1400']);
+  });
+
+  it('is idempotent: a second pass relocates nothing', async () => {
+    const dbPath = await makeTmpDb((db) => {
+      insertRow(db, 'v1', 'verify:1375', 'learnings');
+    });
+
+    const first = await purgeEphemeralNamespaces({ dbPath });
+    expect(first.relocated).toBe(1);
+
+    const second = await purgeEphemeralNamespaces({ dbPath });
+    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
+    expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1375']);
+  });
+
+  it('matches the verify: key prefix case-sensitively, as the gate does', async () => {
+    // SQLite's LIKE is case-INSENSITIVE for ASCII, so a `key LIKE 'verify:%'`
+    // match would sweep rows that `gate.cjs`'s record-verify-outcome
+    // (`key.indexOf('verify:') !== 0`) would never have credited as verdicts.
+    // Anything the gate would not recognise is somebody's real learning.
+    const dbPath = await makeTmpDb((db) => {
+      insertRow(db, 'real', 'verify:1375', 'learnings');
+      insertRow(db, 'cap1', 'Verify:1375', 'learnings');
+      insertRow(db, 'cap2', 'VERIFY:not-a-verdict', 'learnings');
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath });
+    expect(result.relocated).toBe(1);
+    expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1375']);
+    expect(keysIn(dbPath, 'learnings')).toEqual(['VERIFY:not-a-verdict', 'Verify:1375']);
+  });
+
+  it('purges, relocates and trims in one pass without crossing the counts', async () => {
+    // The three passes read their totals positionally out of ONE count query.
+    // Exercising them together is what guards that index mapping — a reordered
+    // subquery would otherwise trim against the purge count and go unnoticed.
+    const dbPath = await makeTmpDb((db) => {
+      const base = 1_700_000_000_000;
+      insertRow(db, 'hm-1', 'msg:1', 'hive-mind');
+      insertRow(db, 'hm-2', 'msg:2', 'hive-mind');
+      insertRow(db, 'ep-1', 'epic-7', 'epic-state');
+      for (let i = 0; i < 5; i++) {
+        insertRow(db, `tl-${i}`, `flo-${i}`, 'tasklist', base + i * 1000);
+      }
+      for (let i = 0; i < 3; i++) {
+        insertRow(db, `lv-${i}`, `verify:${1300 + i}`, 'learnings', base + i * 1000);
+      }
+      insertRow(db, 'keep', 'a_real_lesson', 'learnings', base);
+    });
+
+    const result = await purgeEphemeralNamespaces({
+      dbPath,
+      tasklistRetentionCap: 2,
+      verifyRetentionCap: 2,
+    });
+
+    expect(result.purged).toBe(3);      // 2 hive-mind + 1 epic-state
+    expect(result.relocated).toBe(3);   // all three verify:* rows
+    expect(result.superseded).toBe(0);  // no key collisions
+    expect(result.trimmed).toBe(4);     // tasklist 5→2 (3) + verify 3→2 (1)
+
+    expect(countByNamespace(dbPath, 'hive-mind')).toBe(0);
+    expect(countByNamespace(dbPath, 'epic-state')).toBe(0);
+    expect(countByNamespace(dbPath, 'tasklist')).toBe(2);
+    expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1301', 'verify:1302']);
+    expect(keysIn(dbPath, 'learnings')).toEqual(['a_real_lesson']);
+  });
+
+  it('exposes a verify retention cap that leaves room for real history', () => {
+    // Guards the constant itself: a cap of 0/1 would silently make the
+    // namespace write-only, which is worse than the bloat it replaced.
+    expect(VERIFY_RECORD_NAMESPACE).toBe('verify');
+    expect(VERIFY_RETENTION_CAP).toBeGreaterThanOrEqual(50);
+    // Verify records are the larger rows; they must not outgrow flo-run history.
+    expect(VERIFY_RETENTION_CAP).toBeLessThanOrEqual(TASKLIST_RETENTION_CAP);
   });
 });
 

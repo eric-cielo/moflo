@@ -23,8 +23,10 @@ Invoking this skill (name `verify`) trips the `record-verify-run` hook, which fl
 Search memory before reading files, same as any task (satisfies `memory_first`, surfaces prior verify runs for this area):
 
 ```
-mcp__moflo__memory_search { query: "verify <feature keywords>", namespace: "learnings" }
+mcp__moflo__memory_search { query: "verify <feature keywords>", namespace: "verify" }
 ```
+
+**Search `verify`, never `learnings`.** Verdict records moved out of `learnings` in #1375 — see Step 5.
 
 ## Step 1 — Locate the acceptance criteria
 
@@ -77,7 +79,7 @@ Always store the result (feeds routing/learning and the SDD trail). Store it **t
 
 ```
 mcp__moflo__memory_store {
-  namespace: "learnings",
+  namespace: "verify",
   key: "verify:<slug-or-issue>",
   value: "<overall PASS/FAIL> — per-criterion: <criterion → evidence → verdict>; commit <sha>",
   tags: ["verify", "sdd"],
@@ -95,7 +97,9 @@ mcp__moflo__memory_store {
 }
 ```
 
-**Why both.** `value` is what gets embedded for semantic search, so it stays prose — a JSON blob there would degrade every future `learnings` search. `metadata` is stored verbatim and not embedded, so the structure survives without that cost. `memory_retrieve` returns the parsed `metadata` object for non-chunk entries, which is what makes the record readable rather than write-only.
+**Store to `verify`, never `learnings` (#1375).** A verdict is audit exhaust — one commit, one issue, criteria that never apply again — and `memory_search` returns a bounded set, so every verdict parked in `learnings` displaced a reusable lesson. The move is free: `record-learnings-stored` matches any `memory_store`, and `record-verify-outcome` keys on the `verify:` **key prefix**, not the namespace. Both gates still fire.
+
+**Why both.** `value` is what gets embedded for semantic search, so it stays prose — a JSON blob there would degrade every future `verify` search. `metadata` is stored verbatim and not embedded, so the structure survives without that cost. `memory_retrieve` returns the parsed `metadata` object for non-chunk entries, which is what makes the record readable rather than write-only.
 
 **`freshlyExecuted` is required on every criterion, not optional.** Step 3 deliberately permits *citing* an earlier green run instead of re-executing. That is a sound cost optimisation, but it means evidence may be a citation rather than a fresh result — set `freshlyExecuted: false` when you cited. Without that flag a later reader silently inherits stale evidence and cannot tell a re-verified criterion from a re-cited one.
 

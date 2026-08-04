@@ -35,6 +35,7 @@ Source files (`.claude/guidance/*.md`, `docs/**/*.md`, code, tests) flow through
 | `patterns` | Per-file code patterns (services, routes, exports) | `index-patterns.mjs` |
 | `tests` | Test structure and patterns | `index-tests.mjs` |
 | `learnings` | User-stored patterns from work sessions | `mcp__moflo__memory_store` |
+| `verify` | Per-run `/verify` verdict records, keyed `verify:<slug>` | `/verify` skill Step 5 |
 
 Namespaces are independent indexes. Search defaults to `all`; pass `namespace: "guidance"` to target one.
 
