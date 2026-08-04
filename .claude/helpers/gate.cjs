@@ -672,36 +672,74 @@ function creditFingerprint(scope) {
 function computeCreditFingerprint(scope) {
   var git = function (args) {
     return cp.execFileSync('git', args, {
-      cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 5000, windowsHide: true,
-      maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+      cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 10000, windowsHide: true,
+      maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
     });
   };
-  var head;
+  // Fingerprint the CONTENT of the working tree, never (HEAD + delta). Those
+  // are not the same thing: `git commit` moves changes from the working tree
+  // into HEAD without altering a single byte of code, and a HEAD-based
+  // fingerprint would expire every credit on commit — forcing a pointless
+  // re-run of the tests that just passed on exactly this code. Content-
+  // addressing also makes the fingerprint stable across amend, stash/pop, and
+  // any branch switch that lands on identical content, while still moving the
+  // moment real content differs.
+  //
+  // Unchanged files contribute git's own blob hashes (free, already computed);
+  // only files git reports as changed or untracked are hashed here.
+  var tracked;
   try {
-    head = git(['rev-parse', 'HEAD']).trim();
-  } catch (e) { return null; }
-  if (!head) return null;
-  var parts = ['head:' + head];
+    tracked = git(['ls-tree', '-r', '-z', 'HEAD']);
+  } catch (e) { return null; } // no git, no repo, or no commit yet
+  var byPath = Object.create(null);
+  var entries = String(tracked).split('\0');
+  for (var i = 0; i < entries.length; i++) {
+    // "<mode> <type> <object>\t<path>"
+    var tab = entries[i].indexOf('\t');
+    if (tab < 0) continue;
+    var meta = entries[i].slice(0, tab).split(' ');
+    byPath[entries[i].slice(tab + 1)] = meta[2];
+  }
   try {
-    var files = parsePorcelainZ(git(['status', '--porcelain=v1', '-uall', '-z']));
-    files.sort();
-    for (var i = 0; i < files.length; i++) {
-      var rel = files[i];
-      if (!fingerprintIncludes(rel, scope)) continue;
+    var changed = parsePorcelainZ(git(['status', '--porcelain=v1', '-uall', '-z']));
+    var live = [];
+    for (var j = 0; j < changed.length; j++) {
+      var rel = changed[j];
       var abs = path.resolve(PROJECT_DIR, rel);
-      var body;
-      try {
-        body = crypto.createHash('sha1').update(fs.readFileSync(abs)).digest('hex');
-      } catch (e) {
-        body = 'absent'; // deleted, or unreadable — either way, a change
+      var isFile = false;
+      try { isFile = fs.statSync(abs).isFile(); } catch (e) { isFile = false; }
+      // A path git reports but that is gone (or is not a regular file) is
+      // absent from the content, so it must leave the map entirely.
+      if (!isFile) { delete byPath[rel]; continue; }
+      if (rel.indexOf('\n') >= 0) { delete byPath[rel]; continue; } // unhashable via --stdin-paths
+      live.push(rel);
+    }
+    if (live.length) {
+      // `git hash-object` — NOT a raw sha1 of the bytes. A git blob id hashes
+      // "blob <size>\0" plus the content, and applies the same clean filters
+      // and core.autocrlf normalisation git would apply on checkin. Hashing the
+      // raw bytes here instead would produce a different string than ls-tree
+      // reports for identical content, so a file would appear to "change" the
+      // moment it was committed — and on Windows, whenever autocrlf rewrote its
+      // line endings. One batched call covers every changed path.
+      var hashed = cp.execFileSync('git', ['hash-object', '--stdin-paths'], {
+        cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 10000, windowsHide: true,
+        maxBuffer: 64 * 1024 * 1024, input: live.join('\n') + '\n',
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim().split('\n');
+      for (var m = 0; m < live.length; m++) {
+        if (hashed[m]) byPath[live[m]] = hashed[m].trim();
       }
-      parts.push(rel + ':' + body);
     }
   } catch (e) {
-    // HEAD resolved but status failed — fingerprint on HEAD alone rather than
-    // returning null, so a committed change still invalidates credit.
+    // status failed — fall back to the committed tree alone rather than null,
+    // so the fingerprint still tracks committed content.
   }
-  return crypto.createHash('sha1').update(parts.join('\n')).digest('hex');
+  var paths = Object.keys(byPath).filter(function (p) { return fingerprintIncludes(p, scope); });
+  paths.sort();
+  var h = crypto.createHash('sha1');
+  for (var k = 0; k < paths.length; k++) h.update(paths[k] + ':' + byPath[paths[k]] + '\n');
+  return h.digest('hex');
 }
 
 /**

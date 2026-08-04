@@ -113,7 +113,7 @@ describe('gate credit is pinned to the code it describes', () => {
     expect(r.status).toBe(2);
   });
 
-  it('blocks after the change is committed, too — HEAD is part of the fingerprint', () => {
+  it('blocks after the change is committed, too', () => {
     earnFullCredit();
     appendFileSync(join(root, 'src.js'), 'export const evil = 2;\n');
     git('add', '-A');
@@ -122,6 +122,37 @@ describe('gate credit is pinned to the code it describes', () => {
     const r = gate('check-before-pr', PR_CMD);
     expect(r.stderr).toContain('BLOCKED');
     expect(r.status).toBe(2);
+  });
+
+  it('does NOT expire credit merely because the work was committed', () => {
+    // The fingerprint is over CONTENT, not (HEAD + delta). `git commit` moves
+    // changes from the working tree into HEAD without altering a byte of code,
+    // so credit earned on the uncommitted change must survive committing it.
+    // A HEAD-based fingerprint failed this: every commit after a green test run
+    // demanded a pointless re-run of the tests that just passed on that code.
+    appendFileSync(join(root, 'src.js'), 'export const feature = 2;\n');
+    earnFullCredit(); // tests/simplify/verify run against the uncommitted change
+    git('add', '-A');
+    git('commit', '-qm', 'commit the very code that was just verified');
+
+    const r = gate('check-before-pr', PR_CMD);
+    expect(r.stderr).not.toContain('BLOCKED');
+    expect(r.status).toBe(0);
+  });
+
+  it('survives a branch switch that lands on identical content', () => {
+    // Content-addressing, not ref-watching: the same code reached by a
+    // different route is the same code, and the credit still describes it.
+    appendFileSync(join(root, 'src.js'), 'export const feature = 2;\n');
+    git('add', '-A');
+    git('commit', '-qm', 'work');
+    git('checkout', '-q', '-b', 'twin');
+    earnFullCredit();
+    git('checkout', '-q', '-');
+
+    const r = gate('check-before-pr', PR_CMD);
+    expect(r.stderr).not.toContain('BLOCKED');
+    expect(r.status).toBe(0);
   });
 
   it('blocks after a branch switch moves the tree', () => {
