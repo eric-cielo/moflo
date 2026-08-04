@@ -14,6 +14,8 @@ import type {
   AgentStatus,
   AgentType,
   ConsensusResult,
+  TaskDefinition,
+  TaskStatus,
   TopologyState,
 } from './types.js';
 import type { AgentDomain } from './unified-coordinator.js';
@@ -21,10 +23,37 @@ import type { AgentDomain } from './unified-coordinator.js';
 export const SWARM_AGENTS_NS = 'swarm-agents' as const;
 export const SWARM_TOPOLOGY_NS = 'swarm-topology' as const;
 export const SWARM_CONSENSUS_NS = 'swarm-consensus' as const;
+export const SWARM_TASKS_NS = 'swarm-tasks' as const;
 
 const AGENT_KEY_PREFIX = 'agent:';
 const PROPOSAL_KEY_PREFIX = 'proposal:';
+const TASK_KEY_PREFIX = 'task:';
 const TOPOLOGY_KEY = 'current';
+
+/**
+ * Statuses a task never leaves. Terminal tasks are still worth persisting —
+ * `task_status` on a finished task should return its result rather than
+ * "not found" — but they accumulate where live tasks don't, so retention
+ * treats the two classes differently.
+ */
+const TERMINAL_TASK_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
+  'completed', 'failed', 'cancelled', 'timeout',
+]);
+
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return TERMINAL_TASK_STATUSES.has(status);
+}
+
+/**
+ * How many terminal tasks survive a hydrate, newest first.
+ *
+ * Load-bearing, not a tidiness knob: `submitTask` throws at `maxTasks`
+ * (default 1000) and nothing ever removes a task from the coordinator's map,
+ * so before this layer existed a restart was the only thing that cleared that
+ * budget. Persisting history without a cap would hand a long-lived consumer a
+ * swarm that refuses new tasks at boot.
+ */
+export const MAX_PERSISTED_TERMINAL_TASKS = 100;
 
 /** Memory-DB primitives the coordinator needs. Mirrors memory-initializer.ts. */
 export interface SwarmMemoryFns {
@@ -76,6 +105,60 @@ export interface PersistedConsensus {
   approved: boolean;
   approvalRate: number;
   decidedAt: string;
+}
+
+/**
+ * A task exactly as the coordinator holds it, with the three `Date` fields
+ * rendered ISO. `id`, `assignedTo` and `dependencies` are already plain
+ * JSON-safe identifier objects, so they round-trip untouched — which is what
+ * lets a restored task keep the swarm id it was created under.
+ */
+export type PersistedTask =
+  Omit<TaskDefinition, 'createdAt' | 'startedAt' | 'completedAt'> & {
+    createdAt: string;
+    startedAt?: string;
+    completedAt?: string;
+  };
+
+export function toPersistedTask(task: TaskDefinition): PersistedTask {
+  return {
+    ...task,
+    createdAt: task.createdAt.toISOString(),
+    startedAt: task.startedAt?.toISOString(),
+    completedAt: task.completedAt?.toISOString(),
+  };
+}
+
+/**
+ * Inverse of `toPersistedTask`. Throws on an unparseable `createdAt` so a
+ * corrupt row is dropped by the caller's per-record catch rather than
+ * producing a task whose `createdAt` is `Invalid Date`.
+ */
+export function fromPersistedTask(record: PersistedTask): TaskDefinition {
+  const createdAt = new Date(record.createdAt);
+  if (Number.isNaN(createdAt.getTime())) {
+    throw new Error(`unparseable createdAt: ${record.createdAt}`);
+  }
+  return {
+    ...record,
+    createdAt,
+    startedAt: parseOptionalDate(record.startedAt),
+    completedAt: parseOptionalDate(record.completedAt),
+  };
+}
+
+function parseOptionalDate(iso?: string): Date | undefined {
+  if (!iso) return undefined;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+/** Recency key for terminal-task trimming: when it ended, else when it began. */
+function terminalOrder(record: PersistedTask): number {
+  const ended = record.completedAt ? Date.parse(record.completedAt) : NaN;
+  if (!Number.isNaN(ended)) return ended;
+  const created = Date.parse(record.createdAt);
+  return Number.isNaN(created) ? 0 : created;
 }
 
 /**
@@ -152,6 +235,64 @@ export class SwarmPersistence {
       record,
       ['swarm', 'consensus', result.approved ? 'approved' : 'rejected'],
     );
+  }
+
+  /**
+   * Write one task row. Callers are expected to batch — see the coordinator's
+   * `scheduleTaskPersist`, which collapses a mutation burst into a single
+   * pass and skips tasks whose serialization is unchanged.
+   */
+  async persistTask(task: TaskDefinition): Promise<void> {
+    const record = toPersistedTask(task);
+    await this.safeStore(`${TASK_KEY_PREFIX}${task.id.id}`, SWARM_TASKS_NS, record, [
+      'swarm', 'task', task.type, task.status,
+    ]);
+  }
+
+  /**
+   * Read the persisted task set, trimming terminal-task rows beyond
+   * `terminalRetention` on the way through.
+   *
+   * The trim lives here rather than in a separate prune call because this read
+   * is the only moment the full set is in hand — splitting it would mean
+   * either a second full pass or a window where the store is unbounded.
+   * Non-terminal tasks are never trimmed: they are live work, and their count
+   * is already bounded by the coordinator's `maxTasks`.
+   */
+  async loadTasks(terminalRetention = MAX_PERSISTED_TERMINAL_TASKS): Promise<PersistedTask[]> {
+    const records = await this.loadList<PersistedTask>(
+      SWARM_TASKS_NS,
+      TASK_KEY_PREFIX,
+      (r): boolean => {
+        const rec = r as Partial<PersistedTask>;
+        return typeof rec.status === 'string'
+          && typeof rec.createdAt === 'string'
+          && typeof rec.id === 'object' && rec.id !== null
+          && typeof (rec.id as { id?: unknown }).id === 'string';
+      },
+    );
+
+    const live: PersistedTask[] = [];
+    const terminal: PersistedTask[] = [];
+    for (const record of records) {
+      (isTerminalTaskStatus(record.status) ? terminal : live).push(record);
+    }
+
+    // Newest first, so the trim drops the oldest history rather than whatever
+    // order the store happened to list.
+    terminal.sort((a, b) => terminalOrder(b) - terminalOrder(a));
+    const kept = terminal.slice(0, terminalRetention);
+
+    for (const dropped of terminal.slice(terminalRetention)) {
+      try {
+        await this.fns.deleteEntry({
+          key: `${TASK_KEY_PREFIX}${dropped.id.id}`,
+          namespace: SWARM_TASKS_NS,
+        });
+      } catch { /* best-effort: an untrimmed row is not worth failing a boot */ }
+    }
+
+    return [...live, ...kept];
   }
 
   async loadAgents(): Promise<PersistedAgent[]> {

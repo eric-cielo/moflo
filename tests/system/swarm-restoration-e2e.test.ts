@@ -11,7 +11,7 @@ import {
   _resetSwarmCoordinatorForTest,
   _setSwarmPersistenceForTest,
 } from '../../src/cli/mcp-tools/swarm-coordinator-singleton.js';
-import { SwarmPersistence } from '../../src/cli/swarm/swarm-persistence.js';
+import { SWARM_TASKS_NS, SwarmPersistence } from '../../src/cli/swarm/swarm-persistence.js';
 import { createInMemoryPersistence } from '../../src/cli/__tests__/swarm/_in-memory-persistence.js';
 import {
   getAgentTool,
@@ -178,6 +178,47 @@ describe('System E2E — swarm restoration', () => {
       expect(ids).toEqual([a1, a2].sort());
       const types = list.agents.map(a => a.agentType).sort();
       expect(types).toEqual(['coder', 'researcher']);
+    });
+
+    // Issue #1329: agents and topology already survived a restart, tasks did
+    // not — a caller that submitted work and later polled `task_status` got
+    // `not_found`, indistinguishable from a task that never existed.
+    it('orchestrate 3 → reset coordinator → every task is still resolvable', async () => {
+      await spawnAgentForTest({ agentType: 'coder' });
+      await spawnAgentForTest({ agentType: 'coder' });
+
+      const orchestrate = (await getTaskTool('task_orchestrate').handler({
+        tasks: Array.from({ length: 3 }, (_, i) => ({
+          type: 'coding',
+          description: `durable-task-${i}`,
+          priority: 'normal',
+        })),
+      })) as OrchestrateResult;
+      expect(orchestrate.submitted).toBe(3);
+
+      // Writes are microtask-debounced and fire-and-forget — yield until all
+      // three rows land rather than racing the flush.
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const rows = Array.from(backend.rows.values()).filter(r => r.namespace === SWARM_TASKS_NS);
+        if (rows.length >= 3) break;
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+
+      await _resetSwarmCoordinatorForTest();
+
+      for (const submitted of orchestrate.tasks) {
+        const status = (await getTaskTool('task_status').handler({
+          taskId: submitted.taskId,
+        })) as { taskId: string; status: string; description: string };
+        expect(status.status, `task ${submitted.taskId} lost across restart`).not.toBe('not_found');
+        expect(status.taskId).toBe(submitted.taskId);
+        expect(status.description).toMatch(/^durable-task-\d$/);
+      }
+
+      // The restored set is visible to the aggregate view too, not just to
+      // point lookups by id.
+      const swarmStatus = (await getSwarmTool('swarm_status').handler({})) as StatusResult;
+      expect(swarmStatus.taskCount).toBe(3);
     });
   });
 });
