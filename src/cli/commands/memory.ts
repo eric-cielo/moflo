@@ -835,12 +835,13 @@ const cleanupCommand: Command = {
           return { success: true, data: result };
         }
         if (!force) {
-          output.printJson({
+          const pending = {
             ...result,
             applied: false,
             reason: 'Confirmation required — re-run with --force to delete.',
-          });
-          return { success: true, data: result };
+          };
+          output.printJson(pending);
+          return { success: true, data: pending };
         }
         result = await callMCPTool<CleanupResult>('memory_cleanup', { ...cleanupArgs, apply: true });
         output.printJson(result);

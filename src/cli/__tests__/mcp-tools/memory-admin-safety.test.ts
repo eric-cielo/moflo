@@ -18,12 +18,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { memoryAdminTools } from '../../mcp-tools/memory-admin-tools.js';
 import { memoryDbPath } from '../../services/moflo-paths.js';
+import { _resetStateRootCacheForTest } from '../../services/project-root.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/schema.js';
 
 const cleanup = memoryAdminTools.find(t => t.name === 'memory_cleanup')!;
@@ -31,6 +32,7 @@ const cleanup = memoryAdminTools.find(t => t.name === 'memory_cleanup')!;
 /** Rule #1: os.tmpdir()/path.join only — never a hardcoded /tmp. */
 let root: string;
 let originalCwd: string;
+let originalProjectDir: string | undefined;
 
 function activeRows(): number {
   const db = new DatabaseSync(memoryDbPath(root));
@@ -61,13 +63,33 @@ function seed(rows: Array<{ key: string; expiresAt?: number; embedding?: string 
 
 beforeEach(() => {
   originalCwd = process.cwd();
-  root = mkdtempSync(join(tmpdir(), 'moflo-cleanup-'));
+  originalProjectDir = process.env.CLAUDE_PROJECT_DIR;
+
+  // realpath both sides: on macOS os.tmpdir() is /var/folders/... while
+  // resolveStateRoot canonicalizes to /private/var/folders/... (Rule #1 §2),
+  // and the assertions below must read the same file the handler writes.
+  root = realpathSync(mkdtempSync(join(tmpdir(), 'moflo-cleanup-')));
   mkdirSync(join(root, '.moflo'), { recursive: true });
+
+  // These two lines are the safety interlock, not setup boilerplate.
+  // resolveStateRoot() treats CLAUDE_PROJECT_DIR as AUTHORITATIVE and never
+  // climbs above it, so process.chdir alone does NOT redirect the handler:
+  // run inside a Claude Code session, `apply: true` below would delete real
+  // TTL-expired rows from the developer's own .moflo/moflo.db. The marker
+  // file anchors the fallback marker-walk to this temp root as well, so
+  // neither resolution path can escape it.
+  process.env.CLAUDE_PROJECT_DIR = root;
+  writeFileSync(memoryDbPath(root), '');
+  _resetStateRootCacheForTest();
+
   process.chdir(root);
 });
 
 afterEach(() => {
   process.chdir(originalCwd);
+  if (originalProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+  else process.env.CLAUDE_PROJECT_DIR = originalProjectDir;
+  _resetStateRootCacheForTest();
   rmSync(root, { recursive: true, force: true });
 });
 

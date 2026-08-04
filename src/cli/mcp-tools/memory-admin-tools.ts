@@ -313,7 +313,7 @@ export const memoryAdminTools: MCPTool[] = [
       type: 'object',
       properties: {
         apply: { type: 'boolean', description: 'Actually delete. Omit (the default) to report candidates only.' },
-        dryRun: { type: 'boolean', description: 'Deprecated alias — cleanup is dry by default; pass apply:true to delete.' },
+        dryRun: { type: 'boolean', description: 'Ignored. Cleanup is dry unless apply:true is passed; accepted only so older callers do not error.' },
         olderThan: { type: 'string', description: 'Age cutoff for stale/unusable entries, e.g. "30d"' },
         expiredOnly: { type: 'boolean', description: 'Only consider TTL-expired entries' },
         namespace: { type: 'string', description: 'Restrict cleanup to one namespace' },
