@@ -22,6 +22,10 @@
  * the unit suite. A `process.platform === 'win32'` fork *inside a test* is dead
  * code on two of the three legs and asserts nothing — the trap behind #1145 and
  * the reason #1354 introduced this parameter shape.
+ *
+ * This is also why `IS_WINDOWS` from `./platform.js` is deliberately not reused
+ * here: it is a module-level constant baked from `process.platform` at import
+ * time, so a caller could never ask "what would this do on Windows?".
  */
 export function isLoadAverageMeasurable(platform: NodeJS.Platform = process.platform): boolean {
   return platform !== 'win32';

@@ -14,7 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import * as path from 'path';
 import * as realOs from 'os';
 
-const IS_WINDOWS_MOCK = { value: false };
+const MOCK_WINDOWS = { value: false };
 
 vi.mock('os', async (importOriginal) => {
   const actual = await importOriginal<typeof import('os')>();
@@ -23,8 +23,8 @@ vi.mock('os', async (importOriginal) => {
     default: actual,
     // Node returns exactly this on Windows: not an error, not NaN, three
     // zeros indistinguishable from an idle machine.
-    loadavg: () => (IS_WINDOWS_MOCK.value ? [0, 0, 0] : actual.loadavg()),
-    platform: () => (IS_WINDOWS_MOCK.value ? ('win32' as NodeJS.Platform) : actual.platform()),
+    loadavg: () => (MOCK_WINDOWS.value ? [0, 0, 0] : actual.loadavg()),
+    platform: () => (MOCK_WINDOWS.value ? ('win32' as NodeJS.Platform) : actual.platform()),
   };
 });
 
@@ -34,7 +34,7 @@ const PROJECT_ROOT = path.join(realOs.tmpdir(), 'moflo-1358-loadavg');
 
 describe('#1358 — worker reporters omit the load average where there is none', () => {
   it('createPerformanceWorker reports null, not "0.00", on Windows', async () => {
-    IS_WINDOWS_MOCK.value = true;
+    MOCK_WINDOWS.value = true;
     try {
       const result = await createPerformanceWorker(PROJECT_ROOT)();
       const cpu = (result.data as { cpu: { cores: number; loadAvg: string | null } }).cpu;
@@ -44,12 +44,12 @@ describe('#1358 — worker reporters omit the load average where there is none',
       // omission, not a blanket "give up on Windows".
       expect(cpu.cores).toBeGreaterThan(0);
     } finally {
-      IS_WINDOWS_MOCK.value = false;
+      MOCK_WINDOWS.value = false;
     }
   });
 
   it('createHealthWorker reports null, not ["0.00","0.00","0.00"], on Windows', async () => {
-    IS_WINDOWS_MOCK.value = true;
+    MOCK_WINDOWS.value = true;
     try {
       const result = await createHealthWorker(PROJECT_ROOT)();
       const system = (result.data as { system: { loadAvg: string[] | null; platform: string } }).system;
@@ -57,7 +57,7 @@ describe('#1358 — worker reporters omit the load average where there is none',
       expect(system.loadAvg).toBeNull();
       expect(system.platform).toBe('win32');
     } finally {
-      IS_WINDOWS_MOCK.value = false;
+      MOCK_WINDOWS.value = false;
     }
   });
 
