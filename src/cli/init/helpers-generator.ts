@@ -335,6 +335,9 @@ var EXEMPT = ['.claude/', '.claude\\\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-sta
 // bin/gate.cjs GATE_ORIGIN_NOTE / GATE_DISABLE_NOTE.
 var GATE_ORIGIN_NOTE = 'This is a moflo hook, not a Claude Code permission rule — allow-rules cannot override it.';
 var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: false';
+// #1348 — the pre-PR gates are order-dependent; naming only the missing one left
+// callers to rediscover the sequence by trial. SYNC: mirrors bin/gate.cjs.
+var ORDER_HINT = 'Order that satisfies all of them: tests green -> /flo-simplify (re-run tests if it edits) -> /verify -> its memory_store verdict -> gh pr create\\n';
 // #1294 Finding 3 — exempt ephemeral reads/scans under the OS temp dir
 // (background-task output, scratchpads) from the memory-first gate. Mirrors
 // bin/gate.cjs isEphemeralPath. Cross-platform via os.tmpdir(); normalizes a
@@ -605,7 +608,9 @@ function detectTestFailure() {
 }
 var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
 // #1297 — path-inert dirs (.github/workflows etc.); SYNC: mirrors bin/gate.cjs EDIT_RESET_SKIP_PATH_RE.
-var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\\\\/])\\.github[\\\\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\\\\/.]|$)/i;
+// #1348 — plus \`.moflo/\`, moflo's own gitignored state dir: nothing written
+// there can reach the branch diff, so it must not invalidate a gate.
+var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\\\\/])\\.github[\\\\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\\\\/.]|$)|(?:^|[\\\\\\/])\\.moflo[\\\\\\/]/i;
 // Test files: invalidate testsRun but preserve simplifyRun (#908) — /simplify
 // already reviewed the production code, touching tests/fixtures doesn't expose
 // new untested surface for code review.
@@ -820,14 +825,22 @@ switch (command) {
     var overall = typeof parsedMeta.overall === 'string' ? parsedMeta.overall.toUpperCase() : '';
     if (overall !== 'PASS' && overall !== 'FAIL' && overall !== 'UNVERIFIED') overall = 'UNVERIFIED';
     var vs = readState();
+    // #1348 — a verdict that arrives after a code edit cleared verifyRun
+    // describes pre-edit code; recording it leaves state self-contradictory.
+    if (!vs.verifyRun) break;
     vs.verifyOutcome = overall;
     writeState(vs);
     break;
   }
   case 'reset-edit-gates': {
     var fp = process.env.TOOL_INPUT_file_path || '';
-    // Inert files (markdown, lockfiles, CHANGELOG, .env.example): no gate reset.
-    if (fp && EDIT_RESET_SKIP_BOTH_RE.test(fp)) break;
+    // Inert files (markdown, lockfiles, CHANGELOG, .env.example) and inert paths
+    // (.github meta dirs, .moflo state): no gate reset.
+    if (fp && (EDIT_RESET_SKIP_BOTH_RE.test(fp) || EDIT_RESET_SKIP_PATH_RE.test(fp))) break;
+    // #1348 — a scratchpad write under the OS temp dir is transient tool I/O,
+    // never a code edit, so it must not reset tests/simplify/verify. SYNC:
+    // mirrors bin/gate.cjs, which carries the full rationale.
+    if (isEphemeralPath(fp)) break;
     var s = readState();
     // Test-only edits invalidate testsRun but preserve simplifyRun (#908).
     var isTestOnly = fp && EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE.test(fp);
@@ -891,6 +904,7 @@ switch (command) {
     if (s.lastResetBy && s.lastResetBy.file) {
       process.stderr.write('Last gate reset: ' + s.lastResetBy.file + ' (' + (s.lastResetBy.gates || []).join(', ') + ')\\n');
     }
+    process.stderr.write(ORDER_HINT);
     process.stderr.write('Disable per-gate via moflo.yaml:\\n');
     process.stderr.write('  gates:\\n    testing_gate: false\\n    simplify_gate: false\\n    learnings_gate: false\\n');
     process.exit(2);
@@ -916,7 +930,11 @@ switch (command) {
       process.stderr.write('  - /verify ran and returned ' + s.verifyOutcome + ' — fix the failing criteria, then re-run /verify\\n');
     } else {
       process.stderr.write('  - /verify ran but recorded no verdict — re-run it so it stores a structured result\\n');
+      // #1348 — re-invoking /verify clears the prior verdict by design (#1332),
+      // so the obvious recovery lands back here unless Step 5 completes.
+      process.stderr.write('    Re-invoking /verify clears the prior verdict, so a re-run that skips Step 5 lands here again.\\n');
     }
+    process.stderr.write(ORDER_HINT);
     process.stderr.write('Disable via moflo.yaml:\\n');
     process.stderr.write('  gates:\\n    verify_before_done: false\\n');
     process.exit(2);
