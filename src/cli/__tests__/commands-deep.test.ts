@@ -1528,10 +1528,14 @@ describe('Init System', () => {
       expect(md).toContain('mcp__moflo__memory_search');
     });
 
-    it('should contain auto-enforced gates section', () => {
+    it('should separate blocking gates from advisory reminders (#1326)', () => {
+      // Previously headed "Auto-enforced gates" with the TaskCreate reminder
+      // filed under it — but that reminder never blocked anything.
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('Auto-enforced gates');
-      expect(md).toContain('TaskCreate-first');
+      expect(md).not.toContain('Auto-enforced gates');
+      expect(md).toContain('**Blocking**');
+      expect(md).toContain('**Advisory**');
+      expect(md).toContain('TaskCreate');
     });
 
     it('should reference MCP tools and the CLI', () => {
@@ -1609,9 +1613,8 @@ describe('Init System', () => {
   });
 
   describe('Task Icons reference in generated CLAUDE.md', () => {
-    it('should reference task-icons.md in spell gates section', () => {
+    it('should reference task-icons.md from the advisory bullet', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('Task Icons');
       expect(md).toContain('moflo-task-icons.md');
     });
 

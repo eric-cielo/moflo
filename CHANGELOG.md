@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the TaskCreate reminder claimed to block, and shipped that claim (#1326)
+
+`check-before-agent` printed *"Task tool is blocked until then"* on stdout with no
+`process.exit(2)` behind it. Nothing was blocked. The same overstatement reached
+every install through the CLAUDE.md block `flo init` injects, which filed the
+advisory TaskCreate reminder under a heading reading *"Auto-enforced gates"*.
+
+The correction is not "delete the word blocked": the same handler contains a real
+hard block (#952 — an Agent spawn under `/fl -s|-h` before `swarm_init` /
+`hive-mind_init` exits 2), and the comment above it still claimed *"agent spawning
+is never blocked"*, predating that change. Message, comment, and behaviour
+disagreed in three directions at once.
+
+The reminder is now plain (`REMINDER: Use TaskCreate before spawning agents.`)
+across all five copies, the comment describes what the handler actually does, and
+the injected CLAUDE.md block distinguishes blocking gates from advisory ones in the
+same four lines it used before — consumers get the correction automatically via the
+#1142 injection-drift refresh, without re-running `flo init`.
+
+A guard test pins the invariant to Claude Code's hook contract rather than to any
+sentence: stderr + `exit 2` may claim to block, stdout may not, and any case
+emitting blocking language must contain the exit that backs it.
+
 ### Fixed — a masked test failure satisfied the testing gate (#1322)
 
 `record-test-run` set `testsRun = true` from the submitted command string alone,
