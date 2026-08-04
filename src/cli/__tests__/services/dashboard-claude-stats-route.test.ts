@@ -74,12 +74,20 @@ afterEach(async () => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-// Avoid the well-known dashboard port range so a daemon already running
-// on the dev machine doesn't clash with the test. startDashboard tries
-// port+1..port+9 on EADDRINUSE so a random base above 30000 is plenty.
-function pickPort(): number {
-  return 30_000 + Math.floor(Math.random() * 30_000);
-}
+// Port 0 — let the OS assign an ephemeral port; `handle.port` reports the real
+// one. `startDashboard`'s `buildBindCandidates` honors 0 specifically so tests
+// get collision-free isolation.
+//
+// This used to pick a random port in 30000–60000, on the stated assumption that
+// startDashboard "tries port+1..port+9 on EADDRINUSE". It does not: an
+// explicitly pinned port is returned as a single candidate with NO fallback,
+// because a consumer who passed --dashboard-port meant that port. So one
+// collision under parallel forks failed the run outright — the intermittent
+// full-suite failure, green in isolation.
+//
+// Rule #1 besides: 30000 + rand(30000) reaches 49152+, which Windows reserves
+// (EACCES), and the imagined +1..+9 retry would have stayed inside that range.
+const EPHEMERAL_PORT = 0;
 
 function getJson(port: number, path: string): Promise<{ status: number; body: unknown }> {
   return new Promise((resolve, reject) => {
@@ -103,7 +111,7 @@ function getJson(port: number, path: string): Promise<{ status: number; body: un
 describe('GET /api/claude-stats', () => {
   it('returns the empty-shape body when no transcripts exist for this CWD', async () => {
     // homedir() is now tmpRoot but no .claude/projects/<cwd>/ dir exists.
-    handle = await startDashboard(stubDaemon, { port: pickPort() });
+    handle = await startDashboard(stubDaemon, { port: EPHEMERAL_PORT });
     const { status, body } = await getJson(handle.port, '/api/claude-stats');
     expect(status).toBe(200);
     const shape = body as { available: boolean; totalSessions: number };
@@ -126,7 +134,7 @@ describe('GET /api/claude-stats', () => {
       }),
     );
 
-    handle = await startDashboard(stubDaemon, { port: pickPort() });
+    handle = await startDashboard(stubDaemon, { port: EPHEMERAL_PORT });
     const { status, body } = await getJson(handle.port, '/api/claude-stats');
     expect(status).toBe(200);
     const shape = body as {
