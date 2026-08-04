@@ -1528,6 +1528,10 @@ describe('end-to-end: spell lifecycle', () => {
     expect(s.memorySearched).toBe(true);
   });
 
+  // #1331 — this gate is no longer WIRED to `^TaskUpdate$` in any consumer; the
+  // case is retained only for backwards compatibility (and doctor's
+  // REQUIRED_GATE_CASES). These tests still pin its no-op contract so a future
+  // edit can't quietly give it behaviour that nothing invokes.
   describe('task transition gate (check-task-transition)', () => {
     it('resets memorySearched when task moves to in_progress', () => {
       const env = baseEnv(tmpDir);

@@ -752,9 +752,10 @@ switch (command) {
     break;
   }
   case 'check-task-transition': {
-    // Memory gate resets on new user prompts (prompt-reminder), not on task
-    // transitions. Within a single prompt (e.g., /flo workflow), memory stays
-    // searched so Read/Grep aren't blocked mid-execution.
+    // Intentional no-op, retained for backwards compatibility only (#1331).
+    // The ^TaskUpdate$ wiring was removed — see bin/gate.cjs for the full note
+    // and applyPromptStateReset() for why the memory gate resets per-prompt
+    // rather than per-task-transition.
     break;
   }
   case 'record-learnings-stored': {

@@ -144,16 +144,6 @@
         ]
       },
       {
-        "matcher": "^TaskUpdate$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" check-task-transition",
-            "timeout": 2000
-          }
-        ]
-      },
-      {
         "matcher": "^mcp__moflo__memory_store$",
         "hooks": [
           {

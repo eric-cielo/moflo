@@ -123,11 +123,15 @@ describe('doctor-checks-deep', () => {
       expect(REQUIRED_HOOK_WIRING.length).toBeGreaterThanOrEqual(10);
     });
 
-    it('should include check-before-pr, check-task-transition, and record-learnings-stored', () => {
+    it('should include check-before-pr and record-learnings-stored', () => {
       const patterns = REQUIRED_HOOK_WIRING.map(h => h.pattern);
       expect(patterns).toContain('check-before-pr');
-      expect(patterns).toContain('check-task-transition');
       expect(patterns).toContain('record-learnings-stored');
+      // #1331 — check-task-transition is deliberately NOT here. It is a no-op
+      // gate; listing it made repairHookWiring() re-graft the `^TaskUpdate$`
+      // hook into every consumer. The gate CASE is still required (see
+      // REQUIRED_GATE_CASES below) — only the wiring is gone.
+      expect(patterns).not.toContain('check-task-transition');
     });
 
     it('should have valid event types', () => {

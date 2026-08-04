@@ -1505,6 +1505,14 @@ try {
       { from: 'npx flo gate record-task-created',   to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-task-created' },
       { from: 'npx flo gate check-bash-memory',     to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory' },
       { from: 'npx flo gate record-memory-searched', to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-memory-searched' },
+      // #1331 — RETAINED even though the ^TaskUpdate$ wiring is gone. This
+      // migration runs before runHookBlockDriftCheck, and the drift sweep only
+      // recognises a stale entry as moflo-owned when the command points at a
+      // `.claude/helpers|scripts/<basename>` path. An ancient consumer still on
+      // the `npx flo gate` form would therefore be classified as a user
+      // customisation and preserved forever. Migrating it first gives the
+      // sweep a shape it can drop. Delete this row only once no consumer can
+      // plausibly still carry the npx form.
       { from: 'npx flo gate check-task-transition', to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-task-transition' },
       { from: 'npx flo gate record-learnings-stored', to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored' },
       // UserPromptSubmit

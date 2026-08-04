@@ -478,6 +478,13 @@ function classifyBashNamespaceHint(cmd) {
 // owns interactionCount and the user-visible REMINDER/Context emissions, so
 // this helper stays silent.
 function applyPromptStateReset(state, promptText) {
+  // #352/#1331 — this is the ONLY place the memory gate resets. Deliberately
+  // NOT on task transitions: within a single prompt (e.g. a /flo workflow)
+  // memory stays searched so Read/Grep aren't blocked mid-execution. A
+  // `TaskUpdate`-driven reset would re-block the agent halfway through its own
+  // workflow. The rationale used to live on the `check-task-transition` case,
+  // which is why that case is an empty no-op; #1331 unwired the hook and moved
+  // the reasoning here, where the reset it describes actually happens.
   state.memorySearched = false;
   // Wipe per-actor memory tracking too — a new user prompt is a fresh window
   // for both parent AND any subagents the parent may spawn during this turn.
@@ -1050,9 +1057,15 @@ switch (command) {
     break;
   }
   case 'check-task-transition': {
-    // Memory gate resets on new user prompts (prompt-reminder), not on task
-    // transitions. Within a single prompt (e.g., /flo workflow), memory stays
-    // searched so Read/Grep aren't blocked mid-execution.
+    // Intentional no-op, retained for backwards compatibility only (#1331).
+    // The `^TaskUpdate$` wiring was removed from settings-generator.ts,
+    // hook-block-hash.ts and hook-wiring.ts because spawning gate-hook.mjs +
+    // gate.cjs on every TaskUpdate to do nothing is pure overhead. The case
+    // stays because doctor-checks-deep.ts lists it in REQUIRED_GATE_CASES —
+    // dropping the case would turn `flo doctor`'s Gate Health check red in
+    // every consumer for no gain. (Falling through to `default: break` would
+    // otherwise be harmless; this is about the doctor contract, not runtime.)
+    // Why it does nothing: see applyPromptStateReset().
     break;
   }
   case 'record-learnings-stored': {

@@ -40,7 +40,9 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PreToolUse', pattern: 'check-before-agent' },
   { event: 'PostToolUse', pattern: 'record-task-created' },
   { event: 'PostToolUse', pattern: 'record-memory-searched' },
-  { event: 'PostToolUse', pattern: 'check-task-transition' },
+  // #1331 — `check-task-transition` deliberately absent. It is a no-op gate;
+  // listing it here made repairHookWiring() graft the hook back into every
+  // consumer on session start, undoing the removal.
   { event: 'PostToolUse', pattern: 'record-learnings-stored' },
   { event: 'PostToolUse', pattern: 'check-bash-memory' },
   { event: 'PostToolUse', pattern: 'record-test-run' },
@@ -93,7 +95,7 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // tool name (#929 regression — the hook silently no-ops, leaving every
   // memory_search uncounted by the gate).
   'record-memory-searched':   { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched', timeout: 3000 } },
-  'check-task-transition':    { event: 'PostToolUse',      matcher: '^TaskUpdate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-task-transition', timeout: 2000 } },
+  // #1331 — no `check-task-transition` entry (see REQUIRED_HOOK_WIRING above).
   'record-learnings-stored':  { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_store$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored', timeout: 2000 } },
   // #1171 — widened to ^(Bash|PowerShell)$ so PS reads / PS-invoked tests credit
   // the same gates as Bash. Name kept as `check-bash-memory` for backwards compat.
