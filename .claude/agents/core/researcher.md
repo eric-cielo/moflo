@@ -155,10 +155,9 @@ mcp__moflo__memory_search {
 
 ### Analysis Tools
 ```javascript
-// Analyze codebase
-mcp__moflo__github_repo_analyze {
-  repo: "current",
-  analysis_type: "code_quality"
+// Understand what a change touches and how risky it is
+mcp__moflo__analyze_diff {
+  ref: "main"
 }
 
 // Track research metrics

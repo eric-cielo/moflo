@@ -1,28 +1,72 @@
 /**
  * Performance MCP Tools for CLI
  *
- * Performance reporting and benchmarking using real process / OS metrics.
+ * Performance reporting and benchmarking from real process / OS metrics:
  *
- * Uses REAL process metrics where available:
- * - process.memoryUsage() for heap/memory stats
- * - process.cpuUsage() for CPU time
- * - os module for system load and memory
- * - performance.now() for benchmark timing
+ * - `process.memoryUsage()` for heap stats
+ * - `os.totalmem()` / `os.freemem()` for system memory
+ * - `os.loadavg()` for CPU load — Unix only, see `readCpuUsagePercent`
+ * - `performance.now()` for benchmark timing
+ *
+ * Every number either comes from one of those calls or is `null`. #1354
+ * removed the fields that came from neither: seeded latency percentiles, a
+ * throughput counter that counted calls to this tool, and a hardcoded
+ * `status: 'healthy'`.
  */
 
 import type { MCPTool } from './types.js';
-import { applySyntheticNotices } from './synthetic.js';
 import * as os from 'node:os';
 import { createJsonStore } from './json-store.js';
 
+/**
+ * #1354: `latency`, `throughput` and `errors` are gone from this shape.
+ *
+ * Nothing in this process was ever timed to produce them — the latency seeds
+ * were constants that each call re-averaged from the tool's own prior output,
+ * throughput was an incrementing counter of calls to this tool, and the error
+ * counts were the literals 0/0. Persisted history written before this change
+ * still carries those keys on disk; nothing reads them, so they age out of the
+ * rolling 100-entry window on their own.
+ */
 interface PerfMetrics {
   timestamp: string;
-  cpu: { usage: number; cores: number };
+  /**
+   * `usage` is null where the platform cannot supply a load average — see
+   * `readCpuUsagePercent`. Null, never 0: a percentage this tool could not
+   * measure must not render as an idle CPU.
+   */
+  cpu: { usage: number | null; cores: number };
   memory: { used: number; total: number; heap: number };
-  latency: { avg: number; p50: number; p95: number; p99: number };
-  throughput: { requests: number; operations: number };
-  errors: { count: number; rate: number };
 }
+
+/**
+ * Cross-platform CPU usage, or null where it cannot be measured (Rule #1).
+ *
+ * `os.loadavg()` is a Unix concept and Node documents it as **always**
+ * returning `[0, 0, 0]` on Windows. The previous `(loadAvg[0] / cores) * 100`
+ * therefore produced a confident `0.0%` on every Windows consumer — an
+ * invented number wearing a measurement's clothes, which is the whole defect
+ * #1354 exists to remove, and the same trap #1349 hit when a failed probe
+ * rendered as `Search Time: 0.00ms` and read as infinitely fast.
+ *
+ * `os.cpus()` is also documented as possibly returning an empty array, which
+ * would make the division `Infinity`.
+ */
+export function readCpuUsagePercent(
+  loadAvg: number[],
+  coreCount: number,
+  // Injectable so the Windows branch is provable from a Linux runner. Without
+  // it the only coverage would be a `process.platform === 'win32'` fork in the
+  // test, which never executes on the Ubuntu leg that runs the unit suite —
+  // exactly how a platform bug ships green (Rule #1, cf. #1145).
+  platform: NodeJS.Platform = process.platform,
+): number | null {
+  if (platform === 'win32' || coreCount === 0) return null;
+  return Math.min((loadAvg[0] / coreCount) * 100, 100);
+}
+
+/** Rendered wherever a real figure is unavailable — never a zero. */
+const NOT_MEASURED = 'not measured';
 
 interface Benchmark {
   id: string;
@@ -52,7 +96,7 @@ const store = createJsonStore<PerfStore>({
 const rawPerformanceTools: MCPTool[] = [
   {
     name: 'performance_report',
-    description: 'Report process CPU and memory, with placeholder latency and throughput',
+    description: 'Report measured CPU, memory and heap usage for this process',
     category: 'performance',
     inputSchema: {
       type: 'object',
@@ -64,6 +108,17 @@ const rawPerformanceTools: MCPTool[] = [
     },
     handler: async (input) => {
       const state = store.load();
+      // A consumer upgrading into this build still has pre-#1354 samples on
+      // disk carrying `latency` / `throughput` / `errors`. Narrowing the
+      // interface does not narrow JSON already written, and `history` returns
+      // stored entries verbatim — so the fabricated keys would keep surfacing
+      // for the next 100 calls. Project every loaded sample onto the current
+      // shape on the way in, and the rewrite persists the clean form.
+      state.metrics = state.metrics.map(m => ({
+        timestamp: m.timestamp,
+        cpu: m.cpu,
+        memory: m.memory,
+      }));
       const format = (input.format as string) || 'summary';
 
       // Get REAL system metrics via Node.js APIs
@@ -73,34 +128,18 @@ const rawPerformanceTools: MCPTool[] = [
       const totalMem = os.totalmem();
       const freeMem = os.freemem();
 
-      // Calculate real CPU usage percentage from load average
-      const cpuPercent = (loadAvg[0] / cpus.length) * 100;
+      const cpuPercent = readCpuUsagePercent(loadAvg, cpus.length);
 
-      // Generate current metrics with REAL values
+      // Every field below comes from a Node/OS call made on this invocation,
+      // or is null because this platform could not answer.
       const currentMetrics: PerfMetrics = {
         timestamp: new Date().toISOString(),
-        cpu: { usage: Math.min(cpuPercent, 100), cores: cpus.length },
+        cpu: { usage: cpuPercent, cores: cpus.length },
         memory: {
           used: Math.round((totalMem - freeMem) / 1024 / 1024),
           total: Math.round(totalMem / 1024 / 1024),
           heap: Math.round(memUsage.heapUsed / 1024 / 1024),
         },
-        // NOT measured (#1325). Nothing in this process is timed to produce
-        // these; the seeds below are constants, and every later call averages
-        // this tool's own prior outputs — so the numbers converge on the seed
-        // no matter how the system actually behaves. Left as-is because
-        // changing them is a behaviour change; the tool is labelled instead.
-        latency: {
-          avg: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.avg, 0) / Math.min(state.metrics.length, 10) : 50,
-          p50: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.p50, 0) / Math.min(state.metrics.length, 10) : 40,
-          p95: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.p95, 0) / Math.min(state.metrics.length, 10) : 100,
-          p99: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.p99, 0) / Math.min(state.metrics.length, 10) : 200,
-        },
-        throughput: {
-          requests: state.metrics.length > 0 ? state.metrics[state.metrics.length - 1].throughput.requests + 1 : 1,
-          operations: state.metrics.length > 0 ? state.metrics[state.metrics.length - 1].throughput.operations + 10 : 10,
-        },
-        errors: { count: 0, rate: 0 },
       };
 
       state.metrics.push(currentMetrics);
@@ -111,25 +150,30 @@ const rawPerformanceTools: MCPTool[] = [
       store.save(state);
 
       if (format === 'summary') {
+        // No `status` field: the literal 'healthy' it used to carry was not a
+        // verdict — nothing here can observe ill-health. `mcp__moflo__system_health`
+        // probes components; this tool reports resource usage (#1354).
         return {
-          status: 'healthy',
-          cpu: `${currentMetrics.cpu.usage.toFixed(1)}%`,
+          cpu: currentMetrics.cpu.usage === null
+            ? NOT_MEASURED
+            : `${currentMetrics.cpu.usage.toFixed(1)}%`,
           memory: `${currentMetrics.memory.used}MB / ${currentMetrics.memory.total}MB`,
           heap: `${currentMetrics.memory.heap}MB`,
-          latency: `${currentMetrics.latency.avg.toFixed(0)}ms avg`,
-          throughput: `${currentMetrics.throughput.operations} ops/s`,
-          errorRate: `${(currentMetrics.errors.rate * 100).toFixed(2)}%`,
           timestamp: currentMetrics.timestamp,
         };
       }
 
-      // Calculate trends from history
+      // Calculate trends from history. A trend needs two comparable readings,
+      // so a platform with no CPU figure gets `null` rather than the 'stable'
+      // that two nulls would otherwise compare their way into.
       const history = state.metrics.slice(-10);
-      const cpuTrend = history.length >= 2
-        ? (history[history.length - 1].cpu.usage > history[0].cpu.usage ? 'increasing' : 'stable')
-        : 'stable';
+      const oldest = history[0];
+      const newest = history[history.length - 1];
+      const cpuTrend = history.length >= 2 && typeof newest.cpu.usage === 'number' && typeof oldest.cpu.usage === 'number'
+        ? (newest.cpu.usage > oldest.cpu.usage ? 'increasing' : 'stable')
+        : history.length >= 2 ? null : 'stable';
       const memTrend = history.length >= 2
-        ? (history[history.length - 1].memory.used > history[0].memory.used ? 'increasing' : 'stable')
+        ? (newest.memory.used > oldest.memory.used ? 'increasing' : 'stable')
         : 'stable';
 
       return {
@@ -139,17 +183,21 @@ const rawPerformanceTools: MCPTool[] = [
           platform: process.platform,
           arch: process.arch,
           nodeVersion: process.version,
-          cpuModel: cpus[0]?.model,
-          loadAverage: loadAvg,
+          cpuModel: cpus[0]?.model ?? null,
+          // Same reason as `cpu.usage`: Node returns [0, 0, 0] here on
+          // Windows, and three zeros read as a genuinely idle machine.
+          loadAverage: cpuPercent === null ? null : loadAvg,
         },
+        // No `latency` trend — there is no latency series to trend. Both
+        // entries below compare the oldest and newest samples in `history`,
+        // which are real readings (#1354).
         trends: {
           cpu: cpuTrend,
           memory: memTrend,
-          latency: 'stable',
         },
         recommendations: currentMetrics.memory.used / currentMetrics.memory.total > 0.8
           ? [{ priority: 'high', message: 'Memory usage above 80% - consider cleanup' }]
-          : currentMetrics.cpu.usage > 70
+          : currentMetrics.cpu.usage !== null && currentMetrics.cpu.usage > 70
             ? [{ priority: 'medium', message: 'CPU load elevated - check for resource-intensive processes' }]
             : [{ priority: 'low', message: 'System running normally' }],
       };
@@ -290,17 +338,16 @@ const rawPerformanceTools: MCPTool[] = [
 ];
 
 /**
- * Only `performance_report` is labelled. `performance_benchmark` genuinely
- * measures — it runs real workloads and times them with `performance.now()`,
- * so its `_real: true` is accurate and stays. (The `Math.random()` calls in
- * its benchmark functions generate the workload; they are not the result.)
+ * Neither tool is labelled any more (#1354).
  *
- * `performance_report`'s `_real: true` was removed rather than kept alongside
- * the notice: a response cannot be both authentic and synthetic, and a wrong
- * authenticity claim is worse than an unlabelled number — a caller can
- * discount an unmarked figure, but not one asserted as measured (#1325).
+ * `performance_benchmark` always measured — it runs real workloads and times
+ * them with `performance.now()`, so its `_real: true` is accurate and stays.
+ * (The `Math.random()` calls in its benchmark functions generate the workload;
+ * they are not the result.)
+ *
+ * `performance_report` earned its way out of the notice by losing the fields
+ * the notice was about, rather than by relabelling them. #1325 had already
+ * removed its `_real: true` — a response cannot be both authentic and
+ * synthetic — and what is left now is authentic, so neither marker applies.
  */
-export const performanceTools: MCPTool[] = applySyntheticNotices(rawPerformanceTools, {
-  performance_report:
-    'CPU, memory and heap are measured from this process. Latency and throughput are NOT — they seed to constants and each call averages this tool\'s own prior outputs, so they describe no real request.',
-});
+export const performanceTools: MCPTool[] = rawPerformanceTools;

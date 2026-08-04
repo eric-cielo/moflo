@@ -23,12 +23,15 @@ import { listMCPTools, callMCPTool, hasTool, getToolMetadata } from '../mcp-clie
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder } from '../services/daemon-lock.js';
 import { readMofloEnv } from '../services/env-compat.js';
 
-// MCP tools categories
+// MCP tool categories offered by `flo mcp tools --category`.
+//
+// #1353 removed the `github` entry along with the four tools that were the
+// only members of that category — offering a filter that can only ever return
+// nothing is its own small false promise.
 const TOOL_CATEGORIES = [
   { value: 'coordination', label: 'Coordination', hint: 'Swarm and agent coordination tools' },
   { value: 'monitoring', label: 'Monitoring', hint: 'Status and metrics monitoring' },
   { value: 'memory', label: 'Memory', hint: 'Memory and neural features' },
-  { value: 'github', label: 'GitHub', hint: 'GitHub integration tools' },
   { value: 'system', label: 'System', hint: 'System and benchmark tools' }
 ];
 

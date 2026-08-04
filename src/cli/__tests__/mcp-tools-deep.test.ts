@@ -149,7 +149,6 @@ vi.mock('../mcp-tools/auto-install.js', () => ({
 import { agentTools } from '../mcp-tools/agent-tools.js';
 import { moflodbTools } from '../mcp-tools/moflodb-tools.js';
 import { coordinationTools } from '../mcp-tools/coordination-tools.js';
-import { githubTools } from '../mcp-tools/github-tools.js';
 import { hiveMindTools } from '../mcp-tools/hive-mind-tools.js';
 import { memoryTools } from '../mcp-tools/memory-tools.js';
 import { neuralTools } from '../mcp-tools/neural-tools.js';
@@ -177,7 +176,6 @@ const ALL_MODULES: ToolModule[] = [
   { name: 'agent-tools', tools: agentTools },
   { name: 'moflodb-tools', tools: moflodbTools },
   { name: 'coordination-tools', tools: coordinationTools },
-  { name: 'github-tools', tools: githubTools },
   { name: 'hive-mind-tools', tools: hiveMindTools },
   { name: 'hooks-tools', tools: hooksTools },
   { name: 'memory-tools', tools: memoryTools },
@@ -205,7 +203,11 @@ describe('MCP Tools Deep Test Suite', () => {
   describe('Module Loading & Registration', () => {
     it('should load the retained tool modules', () => {
       // Lower bound only — exact accounting lives in the drift-guard test.
-      expect(ALL_MODULES.length).toBeGreaterThanOrEqual(15);
+      // 15 → 14 in #1353, which deleted github-tools.ts outright: all four of
+      // its tools made no GitHub API call, so the module had no honest half to
+      // keep. Lowering this bound is legitimate when a module is deliberately
+      // removed; it is a red flag when a module merely stops loading.
+      expect(ALL_MODULES.length).toBeGreaterThanOrEqual(14);
     });
 
     it('should export arrays from each module', () => {
@@ -230,10 +232,9 @@ describe('MCP Tools Deep Test Suite', () => {
         'agent-tools': 6,
         'moflodb-tools': 15,
         'coordination-tools': 1,
-        'github-tools': 4,
         'hive-mind-tools': 9,
         'memory-tools': 6,
-        'neural-tools': 4,
+        'neural-tools': 3,
         'performance-tools': 2,
         'security-tools': 6,
         'session-tools': 4,
@@ -607,31 +608,6 @@ describe('MCP Tools Deep Test Suite', () => {
       const tool = coordinationTools.find(t => t.name === 'coordination_sync')!;
       const result: any = await tool.handler({ action: 'status' });
       expect(result.success).toBe(true);
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // 14. Handler Invocation - GitHub Tools
-  // --------------------------------------------------------------------------
-  describe('GitHub Tools - Handler Invocation', () => {
-    it('github_repo_analyze returns analysis', async () => {
-      const tool = githubTools.find(t => t.name === 'github_repo_analyze')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-      expect(result.analysis).toBeDefined();
-    });
-
-    it('github_pr_manage list returns PRs', async () => {
-      const tool = githubTools.find(t => t.name === 'github_pr_manage')!;
-      const result: any = await tool.handler({ action: 'list' });
-      expect(result.success).toBe(true);
-    });
-
-    it('github_metrics returns all metrics', async () => {
-      const tool = githubTools.find(t => t.name === 'github_metrics')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-      expect(result.metrics).toBeDefined();
     });
   });
 

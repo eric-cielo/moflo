@@ -6,7 +6,14 @@
  * fix is correct iff the JSON store lands under <project-root>/.moflo/ and
  * NOT under <cwd>/.moflo/. Mirrors hive-mind-store-path.test.ts.
  *
- * Covers: json-store, session-tools, github-tools, neural-tools.
+ * Covers: json-store, session-tools, neural-tools.
+ *
+ * #1353 deleted the two tools this file used to exercise for github-tools and
+ * neural-tools (`github_repo_analyze`, `neural_train`). The github section goes
+ * with its file; the neural one moved to `neural_patterns` (action `store`),
+ * which writes the same `.moflo/neural/models.json` through the same
+ * `saveNeuralStore()`, so the store-path invariant stays covered by a live
+ * caller rather than by a test kept alive for a deleted one.
  *
  * Out of scope here: hooks-tools (changes only forward findProjectRoot() to
  * `startDaemon()` / `hooksPretrain` — both are themselves rooted there, so
@@ -25,12 +32,10 @@ vi.mock('../../services/project-root.js', () => ({
 
 import { createJsonStore } from '../../mcp-tools/json-store.js';
 import { sessionTools } from '../../mcp-tools/session-tools.js';
-import { githubTools } from '../../mcp-tools/github-tools.js';
 import { neuralTools } from '../../mcp-tools/neural-tools.js';
 
 const sessionSave = sessionTools.find(t => t.name === 'session_save')!;
-const githubAnalyze = githubTools.find(t => t.name === 'github_repo_analyze')!;
-const neuralTrain = neuralTools.find(t => t.name === 'neural_train')!;
+const neuralPatterns = neuralTools.find(t => t.name === 'neural_patterns')!;
 
 describe('mcp-tools store paths anchor on findProjectRoot() (issue #829)', () => {
   let originalCwd: string;
@@ -84,27 +89,13 @@ describe('mcp-tools store paths anchor on findProjectRoot() (issue #829)', () =>
     });
   });
 
-  describe('github-tools', () => {
-    it('github_repo_analyze writes under findProjectRoot()/.moflo/github, not cwd', async () => {
-      await githubAnalyze.handler({ owner: 'eric-cielo', repo: 'moflo', branch: 'main' });
-
-      const correctPath = resolve(fakeProjectRoot, '.moflo', 'github', 'store.json');
-      const buggyPath = resolve(cwdSentinel, '.moflo', 'github', 'store.json');
-      expect(existsSync(correctPath)).toBe(true);
-      expect(existsSync(buggyPath)).toBe(false);
-      const stored = JSON.parse(readFileSync(correctPath, 'utf-8')) as {
-        repos: Record<string, unknown>;
-      };
-      expect(stored.repos['eric-cielo/moflo']).toBeDefined();
-    });
-  });
-
   describe('neural-tools', () => {
-    it('neural_train writes under findProjectRoot()/.moflo/neural, not cwd', async () => {
-      const result = (await neuralTrain.handler({ modelType: 'classifier', epochs: 1 })) as {
-        success: boolean;
-        modelId: string;
-      };
+    it('neural_patterns store writes under findProjectRoot()/.moflo/neural, not cwd', async () => {
+      const result = (await neuralPatterns.handler({
+        action: 'store',
+        name: 'store-path probe',
+        type: 'test',
+      })) as { success: boolean; patternId: string };
       expect(result.success).toBe(true);
 
       const correctPath = resolve(fakeProjectRoot, '.moflo', 'neural', 'models.json');
@@ -112,9 +103,9 @@ describe('mcp-tools store paths anchor on findProjectRoot() (issue #829)', () =>
       expect(existsSync(correctPath)).toBe(true);
       expect(existsSync(buggyPath)).toBe(false);
       const stored = JSON.parse(readFileSync(correctPath, 'utf-8')) as {
-        models: Record<string, unknown>;
+        patterns: Record<string, unknown>;
       };
-      expect(stored.models[result.modelId]).toBeDefined();
+      expect(stored.patterns[result.patternId]).toBeDefined();
     });
   });
 });

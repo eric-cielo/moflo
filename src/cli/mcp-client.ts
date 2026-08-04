@@ -23,7 +23,9 @@ import { securityTools } from './mcp-tools/security-tools.js';
 import { systemTools } from './mcp-tools/system-tools.js';
 import { neuralTools } from './mcp-tools/neural-tools.js';
 import { performanceTools } from './mcp-tools/performance-tools.js';
-import { githubTools } from './mcp-tools/github-tools.js';
+// #1353 — `github-tools.ts` is gone. Its four tools made no GitHub API call;
+// they wrote local JSON and returned `Math.random()` counts, so a `merged: true`
+// described nothing that happened. Use the `gh` CLI or a GitHub MCP server.
 import { coordinationTools } from './mcp-tools/coordination-tools.js';
 import { moflodbTools } from './mcp-tools/moflodb-tools.js';
 // #1349 — handlers for tool names shipped CLI commands were already calling.
@@ -60,7 +62,6 @@ registerTools([
   ...systemTools,
   ...neuralTools,
   ...performanceTools,
-  ...githubTools,
   ...coordinationTools,
   ...moflodbTools,
   ...progressTools,
