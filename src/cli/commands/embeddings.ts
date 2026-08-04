@@ -13,6 +13,7 @@
  * Created with ❤️ by cielolimitada.com
  */
 
+import { existsSync, readFileSync } from 'node:fs';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { runEmbeddingsMigrationIfNeeded } from '../services/embeddings-migration.js';
@@ -113,8 +114,8 @@ const searchCommand: Command = {
   options: [
     { name: 'query', short: 'q', type: 'string', description: 'Search query', required: true },
     { name: 'collection', short: 'c', type: 'string', description: 'Namespace to search', default: 'default' },
-    { name: 'limit', short: 'l', type: 'number', description: 'Max results', default: '10' },
-    { name: 'threshold', short: 't', type: 'number', description: 'Similarity threshold (0-1)', default: '0.5' },
+    { name: 'limit', short: 'l', type: 'number', description: 'Max results', default: 10 },
+    { name: 'threshold', short: 't', type: 'number', description: 'Similarity threshold (0-1)', default: 0.5 },
     { name: 'db-path', type: 'string', description: 'Database path', default: DEFAULT_DB_PATH_FLAG },
   ],
   examples: [
@@ -514,8 +515,8 @@ const indexCommand: Command = {
   options: [
     { name: 'action', short: 'a', type: 'string', description: 'Action: build, rebuild, status, optimize', default: 'status' },
     { name: 'collection', short: 'c', type: 'string', description: 'Collection/namespace name' },
-    { name: 'ef-construction', type: 'number', description: 'HNSW ef_construction parameter', default: '200' },
-    { name: 'm', type: 'number', description: 'HNSW M parameter', default: '16' },
+    { name: 'ef-construction', type: 'number', description: 'HNSW ef_construction parameter', default: 200 },
+    { name: 'm', type: 'number', description: 'HNSW M parameter', default: 16 },
   ],
   examples: [
     { command: 'flo embeddings index', description: 'Show index status' },
@@ -661,11 +662,11 @@ export const initCommand: Command = {
   description: 'Initialize embedding subsystem with ONNX model and hyperbolic config',
   options: [
     { name: 'model', short: 'm', type: 'string', description: 'ONNX model ID', default: 'all-MiniLM-L6-v2' },
-    { name: 'hyperbolic', type: 'boolean', description: 'Enable hyperbolic (Poincaré ball) embeddings', default: 'true' },
+    { name: 'hyperbolic', type: 'boolean', description: 'Enable hyperbolic (Poincaré ball) embeddings', default: true },
     { name: 'curvature', short: 'c', type: 'string', description: 'Poincaré ball curvature (use --curvature=-1 for negative)', default: '-1' },
-    { name: 'download', short: 'd', type: 'boolean', description: 'Download model during init', default: 'true' },
+    { name: 'download', short: 'd', type: 'boolean', description: 'Download model during init', default: true },
     { name: 'cache-size', type: 'string', description: 'LRU cache entries', default: '256' },
-    { name: 'force', short: 'f', type: 'boolean', description: 'Overwrite existing configuration', default: 'false' },
+    { name: 'force', short: 'f', type: 'boolean', description: 'Overwrite existing configuration', default: false },
   ],
   examples: [
     { command: 'flo embeddings init', description: 'Initialize with defaults' },
@@ -841,9 +842,13 @@ const chunkCommand: Command = {
   name: 'chunk',
   description: 'Chunk text for embedding with overlap',
   options: [
-    { name: 'text', short: 't', type: 'string', description: 'Text to chunk', required: true },
-    { name: 'max-size', short: 's', type: 'number', description: 'Max chunk size in chars', default: '512' },
-    { name: 'overlap', short: 'o', type: 'number', description: 'Overlap between chunks', default: '50' },
+    // Not `required`: --file is the documented alternative ("instead of
+    // text"), and a parser-level requirement made its own example
+    // (`chunk -f doc.txt`) impossible to run. The action validates that
+    // exactly one source was given.
+    { name: 'text', short: 't', type: 'string', description: 'Text to chunk' },
+    { name: 'max-size', short: 's', type: 'number', description: 'Max chunk size in chars', default: 512 },
+    { name: 'overlap', short: 'o', type: 'number', description: 'Overlap between chunks', default: 50 },
     { name: 'strategy', type: 'string', description: 'Strategy: character, sentence, paragraph, token', default: 'sentence' },
     { name: 'file', short: 'f', type: 'string', description: 'File to chunk (instead of text)' },
   ],
@@ -852,7 +857,43 @@ const chunkCommand: Command = {
     { command: 'flo embeddings chunk -f doc.txt --strategy paragraph', description: 'Chunk file by paragraph' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const text = ctx.flags.text as string || '';
+    const file = ctx.flags.file as string | undefined;
+
+    // --file was declared, described as "instead of text", and given its own
+    // example — but never read here, so it chunked the empty string even once
+    // the parser let it through.
+    let text: string;
+    if (file) {
+      try {
+        // Read first and let ENOENT report the missing file, rather than
+        // stat-then-read: the existence check was both a second syscall and a
+        // TOCTOU window this catch already covers.
+        //
+        // Normalize CRLF → LF: `chunking.ts` splits paragraphs on /\n\n+/,
+        // which a Windows-authored file's \r\n\r\n does not match, so the same
+        // document would chunk differently depending on the platform it was
+        // written on. Normalizing here keeps `--file` platform-independent
+        // without touching the shared splitter, whose boundaries determine
+        // already-stored embeddings.
+        text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        output.printError(
+          code === 'ENOENT'
+            ? `File not found: ${file}`
+            : `Could not read ${file}: ${(err as Error).message}`,
+        );
+        return { success: false, exitCode: 1 };
+      }
+    } else {
+      text = ctx.flags.text as string || '';
+    }
+
+    if (!text) {
+      output.printError('Nothing to chunk — pass --text or --file');
+      return { success: false, exitCode: 1 };
+    }
+
     const maxSize = parseInt(ctx.flags.maxSize as string || '512', 10);
     const overlap = parseInt(ctx.flags.overlap as string || '50', 10);
     const strategy = ctx.flags.strategy as string || 'sentence';
@@ -882,7 +923,7 @@ const chunkCommand: Command = {
     output.writeln();
     output.writeln(output.dim(`Total: ${result.totalChunks} chunks from ${result.originalLength} chars`));
 
-    return { success: true };
+    return { success: true, data: result };
   },
 };
 
@@ -935,7 +976,7 @@ const hyperbolicCommand: Command = {
   description: 'Hyperbolic embedding operations (Poincaré ball)',
   options: [
     { name: 'action', short: 'a', type: 'string', description: 'Action: convert, distance, centroid', default: 'convert' },
-    { name: 'curvature', short: 'c', type: 'number', description: 'Hyperbolic curvature', default: '-1' },
+    { name: 'curvature', short: 'c', type: 'number', description: 'Hyperbolic curvature', default: -1 },
     { name: 'input', short: 'i', type: 'string', description: 'Input embedding(s) JSON' },
   ],
   examples: [
@@ -1203,7 +1244,7 @@ export const modelsCommand: Command = {
   description: 'List and download embedding models',
   options: [
     { name: 'download', short: 'd', type: 'string', description: 'Model ID to download' },
-    { name: 'list', short: 'l', type: 'boolean', description: 'List available models', default: 'true' },
+    { name: 'list', short: 'l', type: 'boolean', description: 'List available models', default: true },
   ],
   examples: [
     { command: 'flo embeddings models', description: 'List models' },
@@ -1394,8 +1435,8 @@ const warmupCommand: Command = {
   name: 'warmup',
   description: 'Preload embedding model for faster subsequent operations',
   options: [
-    { name: 'background', short: 'b', type: 'boolean', description: 'Run warmup in background daemon', default: 'false' },
-    { name: 'test', short: 't', type: 'boolean', description: 'Run test embedding after warmup', default: 'true' },
+    { name: 'background', short: 'b', type: 'boolean', description: 'Run warmup in background daemon', default: false },
+    { name: 'test', short: 't', type: 'boolean', description: 'Run test embedding after warmup', default: true },
   ],
   examples: [
     { command: 'flo embeddings warmup', description: 'Preload model with test' },
@@ -1481,9 +1522,9 @@ const benchmarkCommand: Command = {
   name: 'benchmark',
   description: 'Run embedding performance benchmarks',
   options: [
-    { name: 'iterations', short: 'n', type: 'number', description: 'Number of iterations', default: '10' },
-    { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size for batch test', default: '5' },
-    { name: 'full', short: 'f', type: 'boolean', description: 'Run full benchmark suite', default: 'false' },
+    { name: 'iterations', short: 'n', type: 'number', description: 'Number of iterations', default: 10 },
+    { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size for batch test', default: 5 },
+    { name: 'full', short: 'f', type: 'boolean', description: 'Run full benchmark suite', default: false },
   ],
   examples: [
     { command: 'flo embeddings benchmark', description: 'Quick benchmark' },
@@ -1640,8 +1681,11 @@ const migrateCommand: Command = {
     'Re-embed existing vectors using the current neural model (runs automatically on session start if needed)',
   options: [
     { name: 'db', short: 'd', type: 'string', description: 'Path to memory DB', default: DEFAULT_DB_PATH_FLAG },
-    { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size', default: '128' },
-    { name: 'verbose', short: 'v', type: 'boolean', description: 'Verbose output', default: 'false' },
+    { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size', default: 128 },
+    // Boolean default, not the string 'false' — this option shadows the global
+    // --verbose, so its default is the one the parser applies, and 'false' is
+    // a truthy string that would turn verbose ON by default.
+    { name: 'verbose', short: 'v', type: 'boolean', description: 'Verbose output', default: false },
   ],
   examples: [
     { command: 'flo embeddings migrate', description: `Migrate ${DEFAULT_DB_PATH_FLAG} to current version` },

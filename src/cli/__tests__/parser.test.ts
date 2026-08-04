@@ -400,6 +400,117 @@ describe('CommandParser', () => {
       expect(errors[0]).toContain('Invalid value for --count');
     });
 
+    // A command option must SHADOW the same-named global, not stack with it.
+    // Stacking made every collision unsatisfiable — `flo config export
+    // --format yaml` had to satisfy both the command's ['json','yaml'] and the
+    // global's ['text','json','table'], so it errored whatever the user typed.
+    it('lets a command option shadow a same-named global option', () => {
+      const cmd: Command = {
+        name: 'export',
+        description: 'Export',
+        options: [
+          { name: 'format', type: 'string', choices: ['json', 'yaml'], description: 'Export format' },
+        ],
+      };
+
+      expect(parser.validateFlags({ _: [], format: 'yaml' }, cmd)).toEqual([]);
+      // The command's choices still apply — shadowing narrows, it doesn't skip.
+      expect(parser.validateFlags({ _: [], format: 'table' }, cmd).length).toBe(1);
+    });
+
+    it('applies a command option default over the global default of the same name', () => {
+      const cmd: Command = {
+        name: 'export',
+        description: 'Export',
+        options: [
+          { name: 'format', type: 'string', default: 'json', choices: ['json', 'yaml'], description: 'Export format' },
+        ],
+      };
+      parser.registerCommand(cmd);
+
+      const result = parser.parse(['export']);
+
+      // Without this, the global's 'text' default is injected and then fails
+      // the command's own choices — a command broken with no flags at all.
+      expect(result.flags.format).toBe('json');
+      expect(parser.validateFlags(result.flags, cmd)).toEqual([]);
+    });
+
+    // Guard on blast radius: 455 command options across the CLI declare
+    // defaults the parser has never applied, 28 of them giving a boolean the
+    // truthy STRING 'false'. Only options that shadow a global may have their
+    // default applied — applying all of them flips flags like --force to ON.
+    it('does not apply command defaults for options that do not shadow a global', () => {
+      const cmd: Command = {
+        name: 'init',
+        description: 'Init',
+        options: [
+          { name: 'force', type: 'boolean', default: 'false', description: 'Force' },
+        ],
+      };
+      parser.registerCommand(cmd);
+
+      const result = parser.parse(['init']);
+
+      expect(result.flags.force).toBeUndefined();
+    });
+
+    // A command that redefines a global BOOLEAN as a value-taking option must
+    // be parsed as value-taking. `plugins install pkg --version 1.2.3` used to
+    // yield `version: true` with '1.2.3' stranded in positionals, which then
+    // tripped the global --version handler: it printed the moflo version and
+    // returned without installing anything.
+    it('parses a global boolean redefined as a value option as value-taking', () => {
+      const cmd: Command = {
+        name: 'install',
+        description: 'Install',
+        options: [
+          { name: 'version', short: 'v', type: 'string', description: 'Version to install' },
+        ],
+      };
+      parser.registerCommand(cmd);
+
+      const result = parser.parse(['install', 'mypkg', '--version', '1.2.3']);
+
+      expect(result.flags.version).toBe('1.2.3');
+      expect(result.positional).toEqual(['mypkg']);
+    });
+
+    it('still parses the global --version as a boolean when no command shadows it', () => {
+      const result = parser.parse(['--version']);
+
+      expect(result.flags.version).toBe(true);
+    });
+
+    // The value-omitted half of the same bug: `--version` with nothing after it
+    // fell through to `true`, which is exactly what the global version handler
+    // keys on, so it printed the moflo version instead of running the command.
+    it('does not fall back to `true` when a declared value option is given no value', () => {
+      const cmd: Command = {
+        name: 'install',
+        description: 'Install',
+        options: [
+          { name: 'version', short: 'v', type: 'string', description: 'Version to install' },
+          { name: 'force', type: 'boolean', description: 'Force' },
+        ],
+      };
+      parser.registerCommand(cmd);
+
+      expect(parser.parse(['install', 'pkg', '--version']).flags.version).toBe('');
+      expect(parser.parse(['install', 'pkg', '--version', '--force']).flags.version).toBe('');
+      // The boolean sibling is unaffected.
+      expect(parser.parse(['install', 'pkg', '--force']).flags.force).toBe(true);
+    });
+
+    it('leaves an UNDECLARED valueless flag as `true`', () => {
+      const cmd: Command = { name: 'adhoc', description: 'Adhoc', options: [] };
+      parser.registerCommand(cmd);
+
+      // Undeclared flags keep legacy behaviour — narrowing that would change
+      // every command that reads an ad-hoc flag.
+      expect(parser.parse(['adhoc', '--whatever']).flags.whatever).toBe(true);
+    });
+
     it('should report unknown flags when allowUnknownFlags is false', () => {
       const strictParser = new CommandParser({ allowUnknownFlags: false });
       const errors = strictParser.validateFlags({ _: [], unknown: true });

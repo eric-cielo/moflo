@@ -4,6 +4,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { _resetStateRootCacheForTest } from '../services/project-root.js';
+import { cliConfigPath } from '../config/cli-config-store.js';
 import { agentCommand } from '../commands/agent.js';
 import { swarmCommand } from '../commands/swarm.js';
 import { memoryCommand } from '../commands/memory.js';
@@ -655,19 +660,46 @@ describe('Memory Commands', () => {
 
 describe('Config Commands', () => {
   let ctx: CommandContext;
+  let projectDir: string;
+  let envBackup: string | undefined;
 
+  // `flo config` writes real files, so every case gets a throwaway project
+  // root. CLAUDE_PROJECT_DIR is authoritative for `resolveStateRoot`, so it
+  // must point at the fixture — otherwise a test run inside a Claude Code
+  // session resolves to the developer's actual repo and writes there.
+  // realpathSync both sides: macOS hands out /var/folders paths that resolve
+  // to /private/var/folders, and resolveStateRoot canonicalizes.
   beforeEach(() => {
+    projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'moflo-config-test-')));
+    envBackup = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = projectDir;
+    _resetStateRootCacheForTest();
+
     ctx = {
       args: [],
       flags: { _: [] },
-      cwd: '/test',
+      cwd: projectDir,
       interactive: false
     };
   });
 
+  afterEach(() => {
+    if (envBackup === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+    else process.env.CLAUDE_PROJECT_DIR = envBackup;
+    _resetStateRootCacheForTest();
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  // Use the store's own resolver rather than rebuilding the path — a literal
+  // here would silently fork from CLI_CONFIG_CANDIDATES[0].
+  const configFile = () => cliConfigPath(projectDir);
+  const readConfigFile = () => JSON.parse(readFileSync(configFile(), 'utf8'));
+  const subcommand = (name: string) => configCommand.subcommands!.find(c => c.name === name)!;
+  const runInit = async () => subcommand('init').action!({ ...ctx, flags: { _: [] } });
+
   describe('config init', () => {
     it('should initialize configuration', async () => {
-      const initCmd = configCommand.subcommands?.find(c => c.name === 'init');
+      const initCmd = subcommand('init');
       expect(initCmd).toBeDefined();
 
       const result = await initCmd!.action!(ctx);
@@ -676,24 +708,57 @@ describe('Config Commands', () => {
       expect(result.data).toHaveProperty('version');
     });
 
+    // The regression this whole module exists for: `init` reported success
+    // without writing anything, so the healer's `Config File` auto-fix claimed
+    // "applied" on every run while the warning never cleared.
+    it('writes a parseable config file to disk', async () => {
+      const result = await runInit();
+
+      expect(result.success).toBe(true);
+      expect(existsSync(configFile())).toBe(true);
+      expect(readConfigFile()).toMatchObject({ version: '3.0.0', swarm: { topology: 'hybrid' } });
+    });
+
     it('should initialize with V3 mode', async () => {
-      const initCmd = configCommand.subcommands?.find(c => c.name === 'init');
+      const initCmd = subcommand('init');
 
       ctx.flags = { v3: true, _: [] };
-      const result = await initCmd!.action!(ctx);
+      const result = await initCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('v3Mode', true);
+      expect(readConfigFile()).toMatchObject({ v3Mode: true });
+    });
+
+    it('refuses to clobber an existing config without --force', async () => {
+      await runInit();
+      await subcommand('set').action!({ ...ctx, flags: { key: 'swarm.maxAgents', value: '42', _: [] } });
+
+      const result = await subcommand('init').action!({ ...ctx, flags: { _: [] } });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(readConfigFile().swarm.maxAgents).toBe(42);
+    });
+
+    it('overwrites an existing config with --force', async () => {
+      await runInit();
+      await subcommand('set').action!({ ...ctx, flags: { key: 'swarm.maxAgents', value: '42', _: [] } });
+
+      const result = await subcommand('init').action!({ ...ctx, flags: { force: true, _: [] } });
+
+      expect(result.success).toBe(true);
+      expect(readConfigFile().swarm.maxAgents).toBe(15);
     });
   });
 
   describe('config get', () => {
     it('should get configuration value', async () => {
-      const getCmd = configCommand.subcommands?.find(c => c.name === 'get');
+      const getCmd = subcommand('get');
       expect(getCmd).toBeDefined();
 
       ctx.args = ['swarm.topology'];
-      const result = await getCmd!.action!(ctx);
+      const result = await getCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('key');
@@ -701,31 +766,68 @@ describe('Config Commands', () => {
     });
 
     it('should show all config when no key provided', async () => {
-      const getCmd = configCommand.subcommands?.find(c => c.name === 'get');
+      const getCmd = subcommand('get');
 
-      const result = await getCmd!.action!(ctx);
+      const result = await getCmd.action!(ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('reads back what set wrote, not a hardcoded default', async () => {
+      await runInit();
+      await subcommand('set').action!({ ...ctx, flags: { key: 'swarm.topology', value: 'mesh', _: [] } });
+
+      const result = await subcommand('get').action!({ ...ctx, args: ['swarm.topology'], flags: { _: [] } });
+
+      expect(result.data).toEqual({ key: 'swarm.topology', value: 'mesh' });
+    });
+
+    it('fails on an unknown key', async () => {
+      const result = await subcommand('get').action!({ ...ctx, args: ['swarm.nonesuch'], flags: { _: [] } });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
     });
   });
 
   describe('config set', () => {
     it('should set configuration value', async () => {
-      const setCmd = configCommand.subcommands?.find(c => c.name === 'set');
+      const setCmd = subcommand('set');
       expect(setCmd).toBeDefined();
 
       ctx.flags = { key: 'swarm.maxAgents', value: '20', _: [] };
-      const result = await setCmd!.action!(ctx);
+      const result = await setCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('key', 'swarm.maxAgents');
-      expect(result.data).toHaveProperty('value', '20');
+      // Coerced to the type already at that key, so the stored value is usable
+      // as a number rather than the string the shell handed us.
+      expect(result.data).toHaveProperty('value', 20);
+      expect(readConfigFile().swarm.maxAgents).toBe(20);
+    });
+
+    it('coerces booleans and rejects non-numbers for numeric keys', async () => {
+      const ok = await subcommand('set').action!({ ...ctx, flags: { key: 'swarm.autoScale', value: 'false', _: [] } });
+      expect(ok.success).toBe(true);
+      expect(readConfigFile().swarm.autoScale).toBe(false);
+
+      const bad = await subcommand('set').action!({ ...ctx, flags: { key: 'swarm.maxAgents', value: 'lots', _: [] } });
+      expect(bad.success).toBe(false);
+      expect(readConfigFile().swarm.maxAgents).toBe(15);
+    });
+
+    it('rejects an unknown key instead of silently creating it', async () => {
+      const result = await subcommand('set').action!({ ...ctx, flags: { key: 'swarm.nonesuch', value: '1', _: [] } });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(existsSync(configFile())).toBe(false);
     });
 
     it('should fail without key and value', async () => {
-      const setCmd = configCommand.subcommands?.find(c => c.name === 'set');
+      const setCmd = subcommand('set');
 
-      const result = await setCmd!.action!(ctx);
+      const result = await setCmd.action!(ctx);
 
       expect(result.success).toBe(false);
     });
@@ -733,57 +835,103 @@ describe('Config Commands', () => {
 
   describe('config providers', () => {
     it('should list providers', async () => {
-      const providersCmd = configCommand.subcommands?.find(c => c.name === 'providers');
+      const providersCmd = subcommand('providers');
       expect(providersCmd).toBeDefined();
 
-      const result = await providersCmd!.action!(ctx);
+      const result = await providersCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(Array.isArray(result.data)).toBe(true);
+    });
+
+    it('persists --enable / --disable instead of ignoring the flag', async () => {
+      await runInit();
+
+      await subcommand('providers').action!({ ...ctx, flags: { enable: 'ollama', _: [] } });
+      expect(readConfigFile().providers.find((p: { name: string }) => p.name === 'ollama').enabled).toBe(true);
+
+      await subcommand('providers').action!({ ...ctx, flags: { disable: 'ollama', _: [] } });
+      expect(readConfigFile().providers.find((p: { name: string }) => p.name === 'ollama').enabled).toBe(false);
+    });
+
+    it('fails on an unknown provider', async () => {
+      const result = await subcommand('providers').action!({ ...ctx, flags: { enable: 'nonesuch', _: [] } });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
     });
   });
 
   describe('config reset', () => {
     it('should reset configuration', async () => {
-      const resetCmd = configCommand.subcommands?.find(c => c.name === 'reset');
+      const resetCmd = subcommand('reset');
       expect(resetCmd).toBeDefined();
 
       ctx.flags = { force: true, _: [] };
-      const result = await resetCmd!.action!(ctx);
+      const result = await resetCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('reset', true);
+    });
+
+    it('restores changed values on disk', async () => {
+      await runInit();
+      await subcommand('set').action!({ ...ctx, flags: { key: 'swarm.maxAgents', value: '99', _: [] } });
+
+      await subcommand('reset').action!({ ...ctx, flags: { force: true, section: 'swarm', _: [] } });
+
+      expect(readConfigFile().swarm.maxAgents).toBe(15);
     });
   });
 
   describe('config export', () => {
     it('should export configuration', async () => {
-      const exportCmd = configCommand.subcommands?.find(c => c.name === 'export');
+      const exportCmd = subcommand('export');
       expect(exportCmd).toBeDefined();
 
-      const result = await exportCmd!.action!(ctx);
+      const result = await exportCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('config');
+    });
+
+    it('writes the export file it reports', async () => {
+      await runInit();
+
+      const result = await subcommand('export').action!({ ...ctx, flags: { output: 'out/cfg.json', _: [] } });
+
+      expect(result.success).toBe(true);
+      const exported = JSON.parse(readFileSync(join(projectDir, 'out', 'cfg.json'), 'utf8'));
+      expect(exported).toMatchObject({ version: '3.0.0' });
+      expect(exported.exportedAt).toBeTruthy();
     });
   });
 
   describe('config import', () => {
     it('should import configuration', async () => {
-      const importCmd = configCommand.subcommands?.find(c => c.name === 'import');
+      const importCmd = subcommand('import');
       expect(importCmd).toBeDefined();
 
+      writeFileSync(join(projectDir, 'config.json'), JSON.stringify({ swarm: { topology: 'ring', maxAgents: 7 } }));
       ctx.flags = { file: './config.json', _: [] };
-      const result = await importCmd!.action!(ctx);
+      const result = await importCmd.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('imported', true);
+      expect(readConfigFile()).toMatchObject({ swarm: { topology: 'ring', maxAgents: 7 } });
+    });
+
+    it('fails when the source file does not exist', async () => {
+      const result = await subcommand('import').action!({ ...ctx, flags: { file: './nope.json', _: [] } });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
     });
 
     it('should fail without file path', async () => {
-      const importCmd = configCommand.subcommands?.find(c => c.name === 'import');
+      const importCmd = subcommand('import');
 
-      const result = await importCmd!.action!(ctx);
+      const result = await importCmd.action!(ctx);
 
       expect(result.success).toBe(false);
     });

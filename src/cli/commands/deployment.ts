@@ -17,7 +17,7 @@ const deployCommand: Command = {
     { name: 'version', short: 'v', type: 'string', description: 'Version to deploy', default: 'latest' },
     { name: 'dry-run', short: 'd', type: 'boolean', description: 'Simulate deployment without changes' },
     { name: 'force', short: 'f', type: 'boolean', description: 'Force deployment without checks' },
-    { name: 'rollback-on-fail', type: 'boolean', description: 'Auto rollback on failure', default: 'true' },
+    { name: 'rollback-on-fail', type: 'boolean', description: 'Auto rollback on failure', default: true },
   ],
   examples: [
     { command: 'flo deployment deploy -e prod', description: 'Deploy to production' },
@@ -113,7 +113,7 @@ const rollbackCommand: Command = {
   options: [
     { name: 'env', short: 'e', type: 'string', description: 'Environment to rollback', required: true },
     { name: 'version', short: 'v', type: 'string', description: 'Specific version to rollback to' },
-    { name: 'steps', short: 's', type: 'number', description: 'Number of versions to rollback', default: '1' },
+    { name: 'steps', short: 's', type: 'number', description: 'Number of versions to rollback', default: 1 },
   ],
   examples: [
     { command: 'flo deployment rollback -e prod', description: 'Rollback production' },
@@ -163,7 +163,7 @@ const historyCommand: Command = {
   description: 'View deployment history',
   options: [
     { name: 'env', short: 'e', type: 'string', description: 'Filter by environment' },
-    { name: 'limit', short: 'l', type: 'number', description: 'Number of entries', default: '10' },
+    { name: 'limit', short: 'l', type: 'number', description: 'Number of entries', default: 10 },
   ],
   examples: [
     { command: 'flo deployment history', description: 'Show all history' },
@@ -243,7 +243,7 @@ const logsCommand: Command = {
     { name: 'deployment', short: 'd', type: 'string', description: 'Deployment ID' },
     { name: 'env', short: 'e', type: 'string', description: 'Environment' },
     { name: 'follow', short: 'f', type: 'boolean', description: 'Follow log output' },
-    { name: 'lines', short: 'n', type: 'number', description: 'Number of lines', default: '50' },
+    { name: 'lines', short: 'n', type: 'number', description: 'Number of lines', default: 50 },
   ],
   examples: [
     { command: 'flo deployment logs -e prod', description: 'View production logs' },

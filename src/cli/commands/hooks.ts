@@ -3639,7 +3639,7 @@ const tokenOptimizeCommand: Command = {
   name: 'token-optimize',
   description: 'Anti-drift swarm config for efficient multi-agent runs (30-50% savings)',
   options: [
-    { name: 'agents', short: 'A', type: 'number', description: 'Agent count for optimal config', default: '6' },
+    { name: 'agents', short: 'A', type: 'number', description: 'Agent count for optimal config', default: 6 },
     { name: 'report', short: 'r', type: 'boolean', description: 'Generate optimization report' },
     { name: 'stats', short: 's', type: 'boolean', description: 'Show token savings statistics' },
   ],

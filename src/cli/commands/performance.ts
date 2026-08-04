@@ -14,8 +14,8 @@ const benchmarkCommand: Command = {
   description: 'Run performance benchmarks',
   options: [
     { name: 'suite', short: 's', type: 'string', description: 'Benchmark suite: all, wasm, neural, memory, search', default: 'all' },
-    { name: 'iterations', short: 'i', type: 'number', description: 'Number of iterations', default: '100' },
-    { name: 'warmup', short: 'w', type: 'number', description: 'Warmup iterations', default: '10' },
+    { name: 'iterations', short: 'i', type: 'number', description: 'Number of iterations', default: 100 },
+    { name: 'warmup', short: 'w', type: 'number', description: 'Warmup iterations', default: 10 },
     { name: 'output', short: 'o', type: 'string', description: 'Output format: text, json, csv', default: 'text' },
   ],
   examples: [
@@ -252,7 +252,7 @@ const profileCommand: Command = {
   description: 'Profile application performance',
   options: [
     { name: 'type', short: 't', type: 'string', description: 'Profile type: cpu, memory, io, all', default: 'all' },
-    { name: 'duration', short: 'd', type: 'number', description: 'Duration in seconds', default: '30' },
+    { name: 'duration', short: 'd', type: 'number', description: 'Duration in seconds', default: 30 },
     { name: 'output', short: 'o', type: 'string', description: 'Output file for profile data' },
   ],
   examples: [

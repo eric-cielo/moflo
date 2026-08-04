@@ -62,6 +62,32 @@ describe('CLI', () => {
       const output = consoleOutput.join('');
       expect(output).toMatch(/v\d+\.\d+\.\d+/);
     });
+
+    // `flo plugins install pkg --version 1.2.3` printed "flo v4.12.4-rc.1" and
+    // returned without installing anything: the global boolean `--version`
+    // swallowed the flag, and the global handler fired before the command ran.
+    // A command that declares its own value-taking `--version` must receive the
+    // value and execute.
+    it('does not hijack --version when the command declares it as a value option', async () => {
+      let received: unknown = 'NOT_CALLED';
+      const mockCommand: Command = {
+        name: 'testinstall',
+        description: 'Test command',
+        options: [
+          { name: 'version', short: 'v', type: 'string', description: 'Version to install' }
+        ],
+        action: async (ctx) => {
+          received = ctx.flags.version;
+          return { success: true };
+        }
+      };
+
+      cli['parser'].registerCommand(mockCommand);
+      await cli.run(['testinstall', 'mypkg', '--version', '1.2.3']);
+
+      expect(received).toBe('1.2.3');
+      expect(consoleOutput.join('')).not.toContain(`flo v${VERSION}`);
+    });
   });
 
   describe('Help Command', () => {

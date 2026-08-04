@@ -31,6 +31,43 @@ async function runFixCommand(cmd: string): Promise<boolean> {
 }
 
 /**
+ * Fix the `Config File` check by creating the project's JSON config.
+ *
+ * The return value is derived from the file being on disk afterwards, NOT from
+ * the exit code of `config init`. That distinction is the whole fix: the
+ * command used to print "Creating claude-flow.config.json..." and exit 0
+ * without a single filesystem call, so `--fix` reported `applied: true` on
+ * every run while the warning it claimed to fix never cleared. An exit code is
+ * a claim; the file is the evidence.
+ *
+ * `deps` is injectable so tests can pin both branches without spawning npx —
+ * in particular the regression case, where the command "succeeds" and leaves
+ * nothing behind.
+ */
+export async function fixConfigFile(
+  deps: { root?: string; run?: (cmd: string) => Promise<boolean> } = {},
+): Promise<boolean> {
+  try {
+    const root = deps.root ?? resolveStateRoot();
+    const run = deps.run ?? runFixCommand;
+    const { findCliConfigFile } = await import('../config/cli-config-store.js');
+
+    if (findCliConfigFile(root)) return true;
+
+    const cfDir = mofloDir(root);
+    if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
+    await run('npx moflo config init');
+    return findCliConfigFile(root) !== null;
+  } catch (e) {
+    // Leave a crumb rather than a bare `catch {}` — #854 is four versions of
+    // consumer-invisible breakage caused by exactly that shape in the launcher
+    // upgrade flow.
+    output.writeln(output.warning(`  Config File fix failed: ${errorDetail(e)}`));
+    return false;
+  }
+}
+
+/**
  * Fix Gate Health failures: bin/.claude-helpers gate.cjs drift AND missing
  * settings.json hook wiring. The check has three independent failure modes
  * and the prior fix only handled hook wiring — leaving bin/helper drift
@@ -453,15 +490,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
         return runFixCommand('npx moflo memory init --force');
       }
     },
-    'Config File': async () => {
-      try {
-        const cfDir = join(resolveStateRoot(), '.moflo');
-        if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
-        return runFixCommand('npx moflo config init');
-      } catch {
-        return false;
-      }
-    },
+    'Config File': fixConfigFile,
     // moflo.yaml auto-create. The session-start launcher already runs
     // `ensureMofloYamlExists` (see bin/session-start-launcher.mjs § 3d-yaml-create,
     // #895) but it can miss when the launcher itself was old at upgrade time —

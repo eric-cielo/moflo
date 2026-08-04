@@ -15,7 +15,7 @@ const compileCommand: Command = {
     { name: 'root', short: 'r', type: 'string', description: 'Root guidance file path', default: './CLAUDE.md' },
     { name: 'local', short: 'l', type: 'string', description: 'Local guidance overlay file path' },
     { name: 'output', short: 'o', type: 'string', description: 'Output directory for compiled bundle' },
-    { name: 'json', type: 'boolean', description: 'Output as JSON', default: 'false' },
+    { name: 'json', type: 'boolean', description: 'Output as JSON', default: false },
   ],
   examples: [
     { command: 'flo guidance compile', description: 'Compile default CLAUDE.md' },
@@ -95,9 +95,9 @@ const retrieveCommand: Command = {
     { name: 'task', short: 't', type: 'string', description: 'Task description', required: true },
     { name: 'root', short: 'r', type: 'string', description: 'Root guidance file path', default: './CLAUDE.md' },
     { name: 'local', short: 'l', type: 'string', description: 'Local overlay file path' },
-    { name: 'max-shards', short: 'n', type: 'number', description: 'Maximum number of shards to retrieve', default: '5' },
+    { name: 'max-shards', short: 'n', type: 'number', description: 'Maximum number of shards to retrieve', default: 5 },
     { name: 'intent', short: 'i', type: 'string', description: 'Override detected intent' },
-    { name: 'json', type: 'boolean', description: 'Output as JSON', default: 'false' },
+    { name: 'json', type: 'boolean', description: 'Output as JSON', default: false },
   ],
   examples: [
     { command: 'flo guidance retrieve -t "Fix SQL injection in user search"', description: 'Retrieve guidance for a security task' },
@@ -194,7 +194,7 @@ const gatesCommand: Command = {
     { name: 'command', short: 'c', type: 'string', description: 'Command to evaluate' },
     { name: 'content', type: 'string', description: 'Content to check for secrets' },
     { name: 'tool', short: 't', type: 'string', description: 'Tool name to check against allowlist' },
-    { name: 'json', type: 'boolean', description: 'Output as JSON', default: 'false' },
+    { name: 'json', type: 'boolean', description: 'Output as JSON', default: false },
   ],
   examples: [
     { command: 'flo guidance gates -c "rm -rf /tmp"', description: 'Check if a command is destructive' },
@@ -283,7 +283,7 @@ const statusCommand: Command = {
   name: 'status',
   description: 'Show guidance control plane status and metrics',
   options: [
-    { name: 'json', type: 'boolean', description: 'Output as JSON', default: 'false' },
+    { name: 'json', type: 'boolean', description: 'Output as JSON', default: false },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const jsonOutput = ctx.flags.json === true;
@@ -343,11 +343,11 @@ const optimizeCommand: Command = {
   options: [
     { name: 'root', short: 'r', type: 'string', description: 'Root guidance file path', default: './CLAUDE.md' },
     { name: 'local', short: 'l', type: 'string', description: 'Local overlay file path' },
-    { name: 'apply', short: 'a', type: 'boolean', description: 'Apply optimizations to the file', default: 'false' },
+    { name: 'apply', short: 'a', type: 'boolean', description: 'Apply optimizations to the file', default: false },
     { name: 'context-size', short: 's', type: 'string', description: 'Target context size: compact, standard, full', default: 'standard' },
-    { name: 'target-score', type: 'number', description: 'Target composite score (0-100)', default: '90' },
-    { name: 'max-iterations', type: 'number', description: 'Maximum optimization iterations', default: '5' },
-    { name: 'json', type: 'boolean', description: 'Output as JSON', default: 'false' },
+    { name: 'target-score', type: 'number', description: 'Target composite score (0-100)', default: 90 },
+    { name: 'max-iterations', type: 'number', description: 'Maximum optimization iterations', default: 5 },
+    { name: 'json', type: 'boolean', description: 'Output as JSON', default: false },
   ],
   examples: [
     { command: 'flo guidance optimize', description: 'Analyze current CLAUDE.md and show suggestions' },
@@ -464,7 +464,7 @@ const abTestCommand: Command = {
     { name: 'config-b', short: 'b', type: 'string', description: 'Path to Config B (candidate CLAUDE.md)', default: './CLAUDE.md' },
     { name: 'tasks', short: 't', type: 'string', description: 'Path to custom task JSON file (array of ABTask objects)' },
     { name: 'work-dir', short: 'w', type: 'string', description: 'Working directory for test execution' },
-    { name: 'json', type: 'boolean', description: 'Output as JSON', default: 'false' },
+    { name: 'json', type: 'boolean', description: 'Output as JSON', default: false },
   ],
   examples: [
     { command: 'flo guidance ab-test', description: 'Run default A/B test (no guidance vs ./CLAUDE.md)' },

@@ -146,6 +146,7 @@ export class CommandParser {
     const deepestCmd = chain[chain.length - 1];
     const aliases = this.buildScopedAliases(deepestCmd);
     const booleanFlags = this.getScopedBooleanFlags(deepestCmd);
+    const valueFlags = this.getScopedValueFlags(deepestCmd);
 
     let i = 0;
     let parsingFlags = true;
@@ -162,7 +163,7 @@ export class CommandParser {
 
       // Handle flags
       if (parsingFlags && arg.startsWith('-')) {
-        const parseResult = this.parseFlag(args, i, aliases, booleanFlags);
+        const parseResult = this.parseFlag(args, i, aliases, booleanFlags, valueFlags);
 
         // Apply to result flags
         Object.assign(result.flags, parseResult.flags);
@@ -204,8 +205,9 @@ export class CommandParser {
       i++;
     }
 
-    // Apply defaults
-    this.applyDefaults(result.flags);
+    // Apply defaults. The resolved leaf command is passed so its own option
+    // defaults win over an identically-named global — see applyDefaults.
+    this.applyDefaults(result.flags, deepestCmd);
 
     return result;
   }
@@ -218,11 +220,22 @@ export class CommandParser {
     args: string[],
     index: number,
     aliases: Record<string, string>,
-    booleanFlags: Set<string>
+    booleanFlags: Set<string>,
+    valueFlags: Set<string> = new Set()
   ): { flags: ParsedFlags; nextIndex: number } {
     const flags: ParsedFlags = { _: [] };
     const arg = args[index];
     let nextIndex = index + 1;
+
+    /**
+     * A flag that ran out of value. A DECLARED value-taking option becomes ''
+     * rather than `true`: `true` is how `--version` (redefined as a string by
+     * plugins/deployment) slipped back into the global boolean handler and
+     * printed the moflo version instead of running the command. '' stays falsy
+     * and trips the required-option check. Undeclared flags keep the legacy
+     * `true` so `--some-adhoc-flag` behaves as before.
+     */
+    const missingValue = (key: string): string | boolean => (valueFlags.has(key) ? '' : true);
 
     if (arg.startsWith('--')) {
       // Long flag
@@ -247,7 +260,7 @@ export class CommandParser {
           flags[normalizedKey] = this.parseValue(args[nextIndex]);
           nextIndex++;
         } else {
-          flags[normalizedKey] = true;
+          flags[normalizedKey] = missingValue(normalizedKey);
         }
       }
     } else if (arg.startsWith('-')) {
@@ -265,7 +278,7 @@ export class CommandParser {
           flags[normalizedKey] = this.parseValue(args[nextIndex]);
           nextIndex++;
         } else {
-          flags[normalizedKey] = true;
+          flags[normalizedKey] = missingValue(normalizedKey);
         }
       } else {
         // Multiple short flags combined (e.g., -abc)
@@ -354,6 +367,21 @@ export class CommandParser {
   }
 
   /**
+   * Names declared as value-taking (non-boolean) by the resolved command or a
+   * global, command winning. The mirror of `getScopedBooleanFlags`: that set
+   * says "takes no value", this one says "REQUIRES one".
+   */
+  private getScopedValueFlags(resolvedCmd?: Command): Set<string> {
+    const flags = new Set<string>();
+    for (const opt of [...this.globalOptions, ...(resolvedCmd?.options ?? [])]) {
+      const key = this.normalizeKey(opt.name);
+      if (opt.type && opt.type !== 'boolean') flags.add(key);
+      else flags.delete(key);
+    }
+    return flags;
+  }
+
+  /**
    * Get boolean flags scoped to a specific command/subcommand.
    */
   private getScopedBooleanFlags(resolvedCmd?: Command): Set<string> {
@@ -361,8 +389,19 @@ export class CommandParser {
 
     if (resolvedCmd?.options) {
       for (const opt of resolvedCmd.options) {
+        const key = this.normalizeKey(opt.name);
         if (opt.type === 'boolean') {
-          flags.add(this.normalizeKey(opt.name));
+          flags.add(key);
+        } else {
+          // A command that redefines a global BOOLEAN as a value-taking option
+          // must also un-register it as boolean — otherwise the parser eats the
+          // flag and drops its value into positionals. `plugins install pkg
+          // --version 1.2.3` parsed as `version: true` + a stray '1.2.3'
+          // positional, which then tripped the global `--version` handler: it
+          // printed "flo v4.12.4-rc.1" and exited without installing anything.
+          // Same for `plugins upgrade` and `deployment deploy|rollback`.
+          // Mirrors buildScopedAliases, where the command already wins.
+          flags.delete(key);
         }
       }
     }
@@ -411,10 +450,31 @@ export class CommandParser {
     return flags;
   }
 
-  private applyDefaults(flags: ParsedFlags): void {
-    // Apply global option defaults
+  private applyDefaults(flags: ParsedFlags, command?: Command): void {
+    // Only options that SHADOW a global participate here. This is deliberately
+    // not a general "apply every command default" pass: 455 command options
+    // declare defaults the parser has never applied, and 28 of those give a
+    // boolean the truthy STRING 'false' — switching them all on would flip
+    // flags like --force and --full to ON by default across the whole CLI.
+    // The bug being fixed is narrower: a global's default was injected over a
+    // command's own declaration. `flo config export` declares `--format`
+    // defaulting to 'json'; the global's 'text' landed instead and then failed
+    // the command's own `choices`, so the command errored with no flag at all.
+    const shadowed = new Set<string>();
+    for (const opt of command?.options ?? []) {
+      const key = this.normalizeKey(opt.name);
+      if (!this.globalOptions.some(g => this.normalizeKey(g.name) === key)) continue;
+      shadowed.add(key);
+      if (flags[key] === undefined && opt.default !== undefined) {
+        flags[key] = opt.default as string | boolean | number | string[];
+      }
+    }
+
+    // Apply global option defaults, except where the command shadows them —
+    // there the command's declaration (or absence of one) is authoritative.
     for (const opt of this.globalOptions) {
       const key = this.normalizeKey(opt.name);
+      if (shadowed.has(key)) continue;
       if (flags[key] === undefined && opt.default !== undefined) {
         flags[key] = opt.default as string | boolean | number | string[];
       }
@@ -433,11 +493,19 @@ export class CommandParser {
 
   validateFlags(flags: ParsedFlags, command?: Command): string[] {
     const errors: string[] = [];
-    const allOptions = [...this.globalOptions];
 
-    if (command?.options) {
-      allOptions.push(...command.options);
+    // A command option SHADOWS a global of the same name instead of stacking
+    // with it. Stacking made every collision unsatisfiable: `--format yaml` on
+    // `flo config export` had to pass BOTH the command's ['json','yaml'] and
+    // the global's ['text','json','table'], so the flag was rejected no matter
+    // what the user typed. Same for `flo memory export --format csv`. 22 such
+    // collisions exist across 18 command files (format, verbose, quiet,
+    // version, config, help) — the specific declaration is the intended one.
+    const byName = new Map<string, CommandOption>();
+    for (const opt of [...this.globalOptions, ...(command?.options ?? [])]) {
+      byName.set(this.normalizeKey(opt.name), opt);
     }
+    const allOptions = [...byName.values()];
 
     // Check required flags
     for (const opt of allOptions) {

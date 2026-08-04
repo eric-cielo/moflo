@@ -26,45 +26,40 @@ import {
   memoryDbPath,
 } from '../services/moflo-paths.js';
 import { probeDbIntegrity } from '../services/memory-db-integrity-repair.js';
+import { CLI_CONFIG_CANDIDATES, CLI_CONFIG_YAML_CANDIDATES } from '../config/cli-config-store.js';
 import { findProjectRoot, resolveStateRoot } from '../services/project-root.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
 
 export async function checkConfigFile(): Promise<HealthCheck> {
-  // JSON configs (parse-validated). LEGACY-CONFIG: `.claude-flow.json` and
-  // `claude-flow.config.json` filenames are still recognised so consumers
-  // upgrading from pre-#699 moflo builds keep working
-  // without manual rename. Drift guard exempts these via LEGACY-CONFIG marker.
-  const jsonPaths = [
-    '.moflo/config.json',
-    'moflo.config.json',
-    'claude-flow.config.json', // LEGACY-CONFIG: pre-#699 fallback
-    '.claude-flow.json',       // LEGACY-CONFIG: pre-#699 fallback
-  ];
+  // Resolve against the state root, not the bare cwd: running `flo doctor`
+  // from a subdirectory used to report "no config file" for a project that has
+  // one, and the auto-fix (which writes at the state root) could never clear
+  // the warning it raised. Same anchor as `flo config` (#1315).
+  const root = resolveStateRoot();
 
-  for (const configPath of jsonPaths) {
+  // JSON configs (parse-validated). The candidate list lives in the config
+  // store so this check, `flo config`, and the doctor auto-fix all agree on
+  // which files count. LEGACY-CONFIG: `claude-flow.*` names are still
+  // recognised there so consumers upgrading from pre-#699 moflo builds keep
+  // working without a manual rename.
+  for (const candidate of CLI_CONFIG_CANDIDATES) {
+    const configPath = join(root, candidate);
     if (existsSync(configPath)) {
       try {
         const content = readFileSync(configPath, 'utf8');
         JSON.parse(content);
-        return { name: 'Config File', status: 'pass', message: `Found: ${configPath}` };
+        return { name: 'Config File', status: 'pass', message: `Found: ${candidate}` };
       } catch {
-        return { name: 'Config File', status: 'fail', message: `Invalid JSON: ${configPath}`, fix: 'Fix JSON syntax in config file' };
+        return { name: 'Config File', status: 'fail', message: `Invalid JSON: ${candidate}`, fix: 'Fix JSON syntax in config file' };
       }
     }
   }
 
   // YAML configs (existence-checked only — no heavy yaml parser dependency).
-  const yamlPaths = [
-    '.moflo/config.yaml',
-    '.moflo/config.yml',
-    'moflo.config.yaml',
-    'claude-flow.config.yaml', // LEGACY-CONFIG: pre-#699 fallback
-  ];
-
-  for (const configPath of yamlPaths) {
-    if (existsSync(configPath)) {
-      return { name: 'Config File', status: 'pass', message: `Found: ${configPath}` };
+  for (const candidate of CLI_CONFIG_YAML_CANDIDATES) {
+    if (existsSync(join(root, candidate))) {
+      return { name: 'Config File', status: 'pass', message: `Found: ${candidate}` };
     }
   }
 
