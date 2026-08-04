@@ -10,16 +10,13 @@ import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { isProjectInitialized } from '../shared/utils/project-initialized.js';
 
 // Default configuration
 const DEFAULT_TOPOLOGY = 'hierarchical-mesh';
 const DEFAULT_MAX_AGENTS = 15;
 
-// Check if project is initialized
-function isInitialized(cwd: string): boolean {
-  const configPath = path.join(cwd, '.moflo', 'config.yaml');
-  return fs.existsSync(configPath);
-}
+// Check if project is initialized — shared with `flo status` (#1363).
 
 // Simple YAML parser for config (basic implementation)
 function parseSimpleYaml(content: string): Record<string, unknown> {
@@ -94,7 +91,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const cwd = ctx.cwd;
 
   // Check initialization
-  if (!isInitialized(cwd)) {
+  if (!isProjectInitialized(cwd)) {
     output.printError('MoFlo is not initialized in this directory');
     output.printInfo('Run "flo init" first to initialize');
     return { success: false, exitCode: 1 };
@@ -414,7 +411,7 @@ const quickCommand: Command = {
   description: 'Quick start with default settings',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     // Initialize if needed
-    if (!isInitialized(ctx.cwd)) {
+    if (!isProjectInitialized(ctx.cwd)) {
       output.printInfo('Project not initialized, running init first...');
       output.writeln();
 

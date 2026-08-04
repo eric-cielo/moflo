@@ -19,14 +19,31 @@ import type { CommandContext } from '../types.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Mock fs module
+// Mock fs module.
+//
+// statSync is here for #1363: `flo status` / `flo start` no longer gate on
+// `.moflo/config.yaml` alone (that file is optional — writeRuntimeConfig only
+// emits it under `components.runtime`, so real installs without it were being
+// told "not initialized"). The shared isProjectInitialized() predicate now
+// requires the `.moflo/` STATE DIRECTORY plus any recognized config marker,
+// which means these suites have to model a directory, not just a file.
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
+  statSync: vi.fn(),
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
   readFileSync: vi.fn(),
   unlinkSync: vi.fn()
 }));
+
+// A statSync stand-in for the `.moflo/` state directory. Anything else throws,
+// mirroring a real ENOENT so the predicate's catch path stays exercised.
+function mockMofloStateDir() {
+  vi.mocked(fs.statSync).mockImplementation(((p: fs.PathLike) => {
+    if (String(p).includes('.moflo')) return { isDirectory: () => true } as fs.Stats;
+    throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  }) as unknown as typeof fs.statSync);
+}
 
 // Mock MCP client
 vi.mock('../mcp-client.js', () => ({
@@ -489,6 +506,7 @@ describe('Start Command', () => {
       const pathStr = String(p);
       return pathStr.includes('config.yaml');
     });
+    mockMofloStateDir();
     vi.mocked(fs.readFileSync).mockReturnValue('version: 3.0.0\nswarm:\n  topology: mesh');
   });
 
@@ -542,6 +560,20 @@ describe('Start Command', () => {
       const result = await startCommand.action!(ctx);
 
       expect(result.success).toBe(false);
+    });
+
+    // #1363 regression: `.moflo/config.yaml` is optional (writeRuntimeConfig
+    // only emits it under `components.runtime`), so an install carrying just
+    // `.moflo/` + root moflo.yaml is fully initialized and must not be turned
+    // away with "MoFlo is not initialized in this directory".
+    it('should start on an install with moflo.yaml but no .moflo/config.yaml', async () => {
+      vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) =>
+        String(p).endsWith('moflo.yaml') && !String(p).includes('config.yaml')
+      );
+
+      const result = await startCommand.action!(ctx);
+
+      expect(result.success).toBe(true);
     });
   });
 
@@ -685,6 +717,7 @@ describe('Status Command', () => {
     };
     vi.clearAllMocks();
     vi.mocked(fs.existsSync).mockReturnValue(true);
+    mockMofloStateDir();
   });
 
   describe('status (default)', () => {
@@ -723,6 +756,19 @@ describe('Status Command', () => {
       const result = await statusCommand.action!(ctx);
 
       expect(result.success).toBe(false);
+    });
+
+    // #1363 regression — see the matching Start Command case. This is the
+    // exact shape that made `flo status` claim a healthy install (running
+    // daemon, live MCP server) was never initialized.
+    it('should report status on an install with moflo.yaml but no .moflo/config.yaml', async () => {
+      vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) =>
+        String(p).endsWith('moflo.yaml') && !String(p).includes('config.yaml')
+      );
+
+      const result = await statusCommand.action!(ctx);
+
+      expect(result.success).toBe(true);
     });
   });
 

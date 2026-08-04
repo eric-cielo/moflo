@@ -9,6 +9,7 @@ import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { isProjectInitialized } from '../shared/utils/project-initialized.js';
 
 // Status refresh interval (ms)
 const DEFAULT_WATCH_INTERVAL = 2000;
@@ -43,11 +44,7 @@ function getProcessMemoryUsage(): number {
   return (usedMemory / totalMemory) * 100;
 }
 
-// Check if project is initialized
-function isInitialized(cwd: string): boolean {
-  const configPath = path.join(cwd, '.moflo', 'config.yaml');
-  return fs.existsSync(configPath);
-}
+// Check if project is initialized — shared with `flo start` (#1363).
 
 // Format uptime
 function formatUptime(ms: number): string {
@@ -330,7 +327,7 @@ const statusAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const cwd = ctx.cwd;
 
   // Check initialization
-  if (!isInitialized(cwd)) {
+  if (!isProjectInitialized(cwd)) {
     output.printError('MoFlo is not initialized in this directory');
     output.printInfo('Run "flo init" to initialize');
     return { success: false, exitCode: 1 };

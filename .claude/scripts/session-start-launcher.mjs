@@ -276,12 +276,30 @@ let upgradeNoticeContext = null;
 // after the sync that installs this version's files succeeds; every section
 // after the §3 sync block runs unconditionally + idempotently each session, so
 // an abort past this point strands no upgrade work.
+// #1363: this is also the moment the statusline notice flips to 'completed'.
+// The flip used to live at the end of §3 (old §3f), after every best-effort
+// stage — hook-drift, CLAUDE.md injection, embeddings migration, the memory
+// re-index that advertises 30-60s. A launcher killed by the 5s SessionStart
+// hook-timeout never reached it, so the notice stayed 'in-progress' and the
+// statusline painted "(updating…)" for the full 5-minute in-progress TTL with
+// nothing actually running. Marking completion here — where the upgrade has
+// functionally landed — means a kill during the best-effort tail leaves a
+// truthful terminal badge instead. A kill BEFORE this point deliberately
+// leaves 'in-progress': that upgrade really didn't land, and both the exit
+// handler (graceful) and the statusline's stalled-upgrade rendering (SIGKILL)
+// surface it honestly rather than claiming success.
 function commitVersionStamp(stampPath, version) {
   try {
     mkdirSync(dirname(stampPath), { recursive: true });
     writeFileSync(stampPath, version);
   } catch (err) {
     emitWarning(`version stamp write failed (${errMessage(err)}) — next launcher will re-detect the upgrade`);
+  }
+  // Written even when the stamp write above failed: #1173's recovery path keys
+  // off a prior session's 'completed' notice to repair exactly that miss.
+  if (upgradeNoticeContext) {
+    writeUpgradeNotice('completed');
+    upgradeNoticeFinalized = true;
   }
 }
 
@@ -969,10 +987,14 @@ try {
         };
         emitMutation('repaired stale install', 'manifest drift detected');
       }
-      // Surface a transient "(updating…)" badge in the statusline before the
-      // long-running upgrade work (manifest sync, daemon recycle, embeddings
-      // migration). See #738 — section 3f flips this to a 2-min "completed"
-      // badge once work finishes (TTL rationale at the constants above).
+      // Open the statusline notice before the long-running upgrade work
+      // (manifest sync, daemon recycle, embeddings migration). commitVersionStamp
+      // flips it to a 2-min "completed" badge the moment the upgrade lands
+      // (#1363; TTL rationale at the constants above). Nothing paints while
+      // this value is live — Claude Code renders the statusline only after the
+      // hook returns — so 'in-progress' surviving to paint time means the
+      // launcher died before the sync finished, which is what the statusline's
+      // stalled-upgrade rendering reports.
       writeUpgradeNotice('in-progress');
 
       // Stop the daemon BEFORE any DB writes (#851). It was started under the
@@ -2369,19 +2391,16 @@ try {
   } catch { /* stderr write must not throw */ }
 }
 
-// ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
-// See the TTL rationale at the constants above for why we switch to a
-// short-TTL completed badge instead of clearing the file.
-//
-// #1173: setting upgradeNoticeFinalized signals the exit handler (Option D
-// above) that the notice reached its terminal 'completed' state cleanly, so
-// the handler should NOT clear it on launcher exit. Without this flag the
-// exit cleanup would race with the statusline reader and drop the short-TTL
-// 'completed' badge the user is supposed to see.
-if (upgradeNoticeContext) {
-  writeUpgradeNotice('completed');
-  upgradeNoticeFinalized = true;
-}
+// ── 3f. (moved) Upgrade notice now completes at the version-stamp commit ────
+// The flip to 'completed' — and the upgradeNoticeFinalized flag that tells the
+// exit handler not to clear it — used to run here, at the very end of §3.
+// Everything between the sync block and this point is best-effort work that
+// routinely outlives the 5s SessionStart hook timeout, so on a slow upgrade
+// the launcher was killed before reaching it and the notice stayed
+// 'in-progress'. commitVersionStamp now owns the flip (#1363); see the
+// rationale there. Deliberately NOT reinstated as a fallback: a run that never
+// reached the stamp did not complete its upgrade, and flipping to 'completed'
+// here would paint success over exactly that failure.
 
 // ── 3g. (removed) Version stamp now commits eagerly on sync success ──────────
 // The stamp used to be deferred to here ("written LAST", #730). That made it

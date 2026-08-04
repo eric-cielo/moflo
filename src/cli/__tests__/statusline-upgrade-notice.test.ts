@@ -126,7 +126,17 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     expect(plain).not.toContain('changes');
   });
 
-  it('renders an in-progress notice with an updating… indicator', () => {
+  // #1363 — this case used to assert "4.8.79 → 4.8.80 (updating…)". That
+  // wording is unreachable in practice and actively misleading: Claude Code
+  // paints the statusline only AFTER the SessionStart hook returns, and the
+  // launcher now flips the notice to 'completed' at commitVersionStamp — the
+  // moment the upgrade functionally lands. So an in-progress UPGRADE notice
+  // observed at render time always means the launcher died before finishing
+  // its sync (hook-timeout SIGKILL, Windows TerminateProcess — neither runs
+  // the cleanup handlers). Since the TTL is only evaluated on re-invocation,
+  // that badge then sat frozen on screen advertising progress nothing was
+  // making. It now reports the stall and points at the healer.
+  it('reports a stalled upgrade instead of claiming work is in flight', () => {
     const now = Date.now();
     writeNotice(root, {
       status: 'in-progress',
@@ -141,6 +151,7 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     const { stdout, status } = runStatusline(root);
     expect(status).toBe(0);
     const json = JSON.parse(stdout);
+    // The parsed notice is unchanged — only the rendering differs.
     expect(json.upgradeNotice).toEqual({
       status: 'in-progress',
       kind: 'upgrade',
@@ -151,9 +162,31 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     const compact = runStatusline(root, ['--compact']);
     // eslint-disable-next-line no-control-regex
     const plain = compact.stdout.replace(/\x1B\[[0-9;]*m/g, '');
-    expect(plain).toContain('4.8.79 → 4.8.80');
-    expect(plain).toContain('updating');
+    expect(plain).toContain('upgrade interrupted');
+    expect(plain).toContain('/healer');
+    expect(plain).not.toContain('updating');
     expect(plain).not.toContain('changes');
+  });
+
+  // The stall rendering must not swallow the version-bump case where the
+  // launcher DID finish — that path writes 'completed' and keeps its wording.
+  it('does not report a stall for a completed upgrade', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'completed',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 1_000).toISOString(),
+      expiresAt: new Date(now + 2 * 60_000).toISOString(),
+      changes: 0,
+    });
+
+    const { stdout } = runStatusline(root, ['--compact']);
+    // eslint-disable-next-line no-control-regex
+    const plain = stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).not.toContain('interrupted');
+    expect(plain).toContain('upgraded to 4.8.80');
   });
 
   it('omits an in-progress notice past its TTL (zombie launcher safety)', () => {
@@ -207,6 +240,11 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     expect(json.upgradeNotice).toBeNull();
   });
 
+  // #1363 exempts 'repair' from the stalled-upgrade rendering: §0's bootstrap
+  // sentinel deliberately holds an in-progress repair notice open to keep the
+  // healer prompt in front of the user until §3h resolves it, so here the
+  // in-flight state IS the intended signal rather than evidence of a dead
+  // launcher. This test pins that exemption.
   it('renders an in-progress "repair" notice with the expected wording', () => {
     const now = Date.now();
     writeNotice(root, {
@@ -224,6 +262,7 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     const plain = stdout.replace(/\x1B\[[0-9;]*m/g, '');
     expect(plain).toContain('install repaired');
     expect(plain).toContain('updating');
+    expect(plain).not.toContain('interrupted');
   });
 
   it('renders a completed upgrade notice without the updating… indicator', () => {

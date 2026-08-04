@@ -649,17 +649,32 @@ function getUpgradeNotice() {
   };
 }
 
+// #1363: an 'upgrade' notice that still reads 'in-progress' when we render is
+// never live work. Claude Code paints the statusline only AFTER the SessionStart
+// hook returns, and the launcher flips the notice to 'completed' the moment the
+// upgrade functionally lands (commitVersionStamp) — so reaching this code with
+// 'in-progress' means the launcher died before finishing its sync: killed by the
+// 5s hook timeout via SIGKILL, or Windows TerminateProcess, neither of which runs
+// the launcher's cleanup handlers. Rendering "(updating…)" there advertises
+// progress nothing is making, and because the TTL is only evaluated when Claude
+// Code re-invokes this script, that badge stays frozen on screen until the next
+// repaint. Report the stall instead, and point at the fix.
+//
+// 'repair' notices are exempt: §0's bootstrap sentinel deliberately holds an
+// in-progress one open to keep the healer prompt in front of the user until §3h
+// resolves it, so there the in-flight state is the intended signal.
 function formatUpgradeNoticeSegment(notice) {
   if (!notice) return '';
   const inFlight = notice.status === 'in-progress';
-  const suffix = inFlight ? ` ${c.dim}(updating…)${c.reset}` : '';
-  // Pick body text: repair > in-flight version range > completed "upgraded to"
+  const stalledUpgrade = inFlight && notice.kind !== 'repair';
+  const suffix = inFlight && !stalledUpgrade ? ` ${c.dim}(updating…)${c.reset}` : '';
+  // Pick body text: repair > stalled upgrade > completed "upgraded to"
   // > bare "upgraded" fallback when no version is known.
   let body;
   if (notice.kind === 'repair') {
     body = 'install repaired';
-  } else if (inFlight) {
-    body = notice.from && notice.to ? `${notice.from} → ${notice.to}` : (notice.to || 'upgraded');
+  } else if (stalledUpgrade) {
+    return `${c.brightRed}📦 upgrade interrupted${c.reset} ${c.dim}(run /healer)${c.reset}`;
   } else {
     const target = notice.to || notice.from || '';
     body = target ? `upgraded to ${target}` : 'upgraded';

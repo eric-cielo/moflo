@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the post-upgrade badge outlived the upgrade, and `flo status` denied working installs (#1363)
+
+Two unrelated defects, both cases of moflo misreporting its own state.
+
+The statusline kept showing the upgrade badge — often with the `(updating…)`
+suffix — for minutes after an upgrade finished. The TTL check itself was correct;
+the problem was where completion got recorded. The flip to `completed` ran at the
+very end of the launcher's stage 3, past every best-effort stage including the
+memory re-index that advertises 30-60 s. The SessionStart hook budget is 5 s, so on
+a slow upgrade the launcher was killed before reaching it, the notice stayed
+`in-progress`, and the badge advertised work nothing was doing for the full 5-minute
+in-progress TTL. Completion now rides with the version-stamp commit — the point
+where the upgrade has functionally landed — so a kill during the tail leaves a
+truthful terminal badge. A run that dies *before* that point keeps `in-progress` on
+purpose, and the statusline now reports it as `upgrade interrupted (run /healer)`
+rather than implying progress. `repair` notices are untouched: the bootstrap
+sentinel deliberately holds one open to keep the healer prompt visible.
+
+One thing this does not change: the statusline evaluates its TTL only when Claude
+Code invokes it, and Claude Code repaints on activity rather than on a timer. A
+correct badge still persists on screen through an idle session. What's fixed is
+*which* badge gets frozen there.
+
+Separately, `flo status` and `flo start` reported *"MoFlo is not initialized in this
+directory"* on installs with a healthy `.moflo/`, a running daemon, and a live MCP
+server. Both gated solely on `.moflo/config.yaml`, which `flo init` writes only
+under `components.runtime` — so any consumer who initialized with a component subset
+was turned away by two commands over an optional file nothing else reads. They now
+share one predicate that accepts any genuine init marker.
+
+Consumers pick both up on upgrade. No migration, and `.moflo/` state keeps its shape
+— `upgrade-notice.json` is unchanged, only when it is written and how it renders.
+
 ### Fixed — the verify and simplify gates invalidated each other before a PR (#1348)
 
 Opening a PR needs both `/flo-simplify` and `/verify` to have run, and satisfying

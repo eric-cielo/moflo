@@ -197,6 +197,32 @@ describe('launcher #1173 — version-stamp loop recovery', () => {
     expect(eagerCommits.length).toBeGreaterThanOrEqual(2);
   });
 
+  // #1363 — same failure shape as the eager-stamp fix above, one stage later.
+  // The flip to 'completed' used to live at the very end of §3 (old §3f), past
+  // every best-effort stage including the memory re-index that advertises
+  // 30-60s. A launcher killed by the 5s hook timeout never reached it, so the
+  // notice stayed 'in-progress' and the statusline painted "(updating…)" for
+  // the full 5-minute in-progress TTL with nothing running. The flip now rides
+  // with the stamp commit — the point where the upgrade functionally landed.
+  //
+  // A functional repro needs a kill mid-§3, which is as platform-flaky here as
+  // it is for the stamp and the SIGTERM cases, so this is a source-shape guard.
+  it('eager-completion: the notice flips to completed at the stamp commit, not at the end of §3', () => {
+    const launcherSrc = readFileSync(LAUNCHER, 'utf-8');
+
+    // The flip lives inside commitVersionStamp, so it is reached on both sync
+    // arms at the moment the upgrade lands.
+    const stampFn = launcherSrc.match(/function commitVersionStamp\([\s\S]*?\n}/);
+    expect(stampFn, 'commitVersionStamp not found').not.toBeNull();
+    expect(stampFn![0]).toMatch(/writeUpgradeNotice\('completed'\)/);
+    expect(stampFn![0]).toMatch(/upgradeNoticeFinalized = true/);
+
+    // ...and exactly once overall: a surviving end-of-§3 copy would repaint
+    // success over an upgrade that never reached the stamp.
+    const flips = launcherSrc.match(/writeUpgradeNotice\('completed'\)/g) || [];
+    expect(flips.length).toBe(1);
+  });
+
   it('Option D guard: completed notice survives a clean exit (upgradeNoticeFinalized prevents cleanup)', () => {
     // If §3f sets upgradeNoticeFinalized=true correctly, the process.on('exit')
     // handler skips the unlink branch and the short-TTL 'completed' notice

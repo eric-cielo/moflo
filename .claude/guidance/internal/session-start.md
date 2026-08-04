@@ -99,13 +99,23 @@ Best-effort install of a shim into npm's global bin so bare `flo` resolves to th
 
 Both run **before** the daemon is restarted in stage 4 so a concurrent sql.js flush can't clobber the foreground purge.
 
-### 3f. Flip upgrade notice to "completed"
+### 3f. Upgrade notice reaches its terminal state at the version-stamp commit
 
-If stage 3 wrote an "in-progress" upgrade notice for the statusline, it's flipped to "completed" with a 2-minute TTL. The next session-start's stage 0-pre wipes any leftover.
+**Never flip the upgrade notice to "completed" at the end of stage 3.** The flip lives inside `commitVersionStamp`, in stage 3's sync block. Stage 3 opens the notice as `in-progress` before the long-running work; the stamp commit flips it to `completed` with a 2-minute TTL and sets `upgradeNoticeFinalized` so the exit handler leaves it alone. Stage 0-pre of the next session-start wipes any leftover.
 
-### 3g. Commit deferred version stamp
+Everything between the sync block and the end of stage 3 is best-effort work that routinely outlives the 5s SessionStart hook timeout. A launcher killed there used to leave the notice `in-progress`, and the statusline painted "(updating…)" for the full 5-minute in-progress TTL with nothing running. A run that never reaches the stamp did not complete its upgrade — flipping to `completed` there would paint success over exactly that failure. ([#1363](https://github.com/eric-cielo/moflo/issues/1363).)
 
-`.moflo/moflo-version` is finally written with the installed version. Any abort above leaves the stamp unchanged so the next launcher re-detects the upgrade and re-runs stage 3. ([#730](https://github.com/eric-cielo/moflo/issues/730).)
+| Launcher outcome | Notice on disk | Statusline renders |
+|---|---|---|
+| Reached the stamp commit | `completed`, 2-min TTL | `📦 upgraded to <version>` |
+| Died earlier, graceful exit / SIGTERM / SIGINT | deleted by the exit handler | nothing |
+| Died earlier, SIGKILL or Windows `TerminateProcess` | `in-progress`, 5-min TTL | `📦 upgrade interrupted (run /healer)` |
+
+**Expect a correct badge to outlive its TTL on screen.** The statusline evaluates `expiresAt` only when Claude Code invokes it, and Claude Code repaints on activity rather than on a timer — so the last painted badge persists through an idle session regardless of TTL. Diagnose a "stuck" badge by its wording, not its lifetime.
+
+### 3g. Version stamp commits eagerly, never deferred
+
+`.moflo/moflo-version` is written inside stage 3's sync block via `commitVersionStamp`, the moment this version's files are in place. It is **not** deferred to the end of stage 3 — that deferral was the root of the indefinite "updating…" re-detect loop, because a launcher killed during the best-effort tail never recorded the upgrade and every subsequent session re-detected the same one. [#730](https://github.com/eric-cielo/moflo/issues/730) still holds: the stamp commits only after the sync that installs this version's files succeeds. ([#1173](https://github.com/eric-cielo/moflo/issues/1173).)
 
 ### 4. Spawn background tasks
 
