@@ -269,36 +269,29 @@ npm run complexity-check
 ## MCP Tool Integration
 
 ### Memory Coordination
-```javascript
-// Report review status
-mcp__moflo__memory_store {
-    key: "swarm/reviewer/status",
-  namespace: "coordination",
-  value: JSON.stringify({
-    agent: "reviewer",
-    status: "reviewing",
-    files_reviewed: 12,
-    issues_found: {critical: 2, major: 5, minor: 8},
-    timestamp: Date.now()
-  })
-}
 
+Store findings that outlive this run, in the namespaces named in your operating
+context above. Prose in `value` — it is what gets embedded, so a JSON blob
+retrieves badly; structure goes in `metadata`, stored verbatim.
+
+```javascript
 // Share review findings
 mcp__moflo__memory_store {
-    key: "swarm/shared/review-findings",
-  namespace: "coordination",
-  value: JSON.stringify({
-    security_issues: ["SQL injection in auth.js:45"],
-    performance_issues: ["N+1 queries in user.service.ts"],
-    code_quality: {score: 7.8, coverage: "78%"},
-    action_items: ["Fix SQL injection", "Optimize queries", "Add tests"]
-  })
+  namespace: "patterns",
+  key: "auth-review-findings",
+  value: "Login builds its SQL by string concatenation (auth.js:45) and the user service loads roles per-row inside a loop, so both the injection risk and the N+1 come from the same request path.",
+  metadata: {
+    securityIssues: ["SQL injection in auth.js:45"],
+    performanceIssues: ["N+1 queries in user.service.ts"],
+    actionItems: ["Fix SQL injection", "Batch the role lookup", "Add tests"]
+  }
 }
 
-// Check implementation details
-mcp__moflo__memory_retrieve {
-    key: "swarm/coder/status",
-  namespace: "coordination"
+// Look up what the implementer established. Semantic search first — reach for
+// memory_retrieve only when you already know the exact key.
+mcp__moflo__memory_search {
+  query: "auth service shape",
+  namespace: "patterns"
 }
 ```
 
@@ -311,7 +304,7 @@ mcp__moflo__analyze_diff {
 
 // Scan the diff for prompt-injection and unsafe content
 mcp__moflo__aidefence_scan {
-  content: "<the diff or file under review>"
+  input: "<the diff or file under review>"
 }
 ```
 

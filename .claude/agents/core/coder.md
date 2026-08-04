@@ -195,36 +195,29 @@ src/
 ## MCP Tool Integration
 
 ### Memory Coordination
-```javascript
-// Report implementation status
-mcp__moflo__memory_store {
-    key: "swarm/coder/status",
-  namespace: "coordination",
-  value: JSON.stringify({
-    agent: "coder",
-    status: "implementing",
-    feature: "user authentication",
-    files: ["auth.service.ts", "auth.controller.ts"],
-    timestamp: Date.now()
-  })
-}
 
+Store decisions that outlive this run, in the namespaces named in your operating
+context above. Prose in `value` — it is what gets embedded, so a JSON blob
+retrieves badly; structure goes in `metadata`, stored verbatim.
+
+```javascript
 // Share code decisions
 mcp__moflo__memory_store {
-    key: "swarm/shared/implementation",
-  namespace: "coordination",
-  value: JSON.stringify({
-    type: "code",
+  namespace: "patterns",
+  key: "auth-service-shape",
+  value: "Auth is a singleton service behind a factory so the jwt signer can be swapped in tests; endpoints are /auth/login and /auth/logout on the express router.",
+  metadata: {
     patterns: ["singleton", "factory"],
     dependencies: ["express", "jwt"],
-    api_endpoints: ["/auth/login", "/auth/logout"]
-  })
+    apiEndpoints: ["/auth/login", "/auth/logout"]
+  }
 }
 
-// Check dependencies
-mcp__moflo__memory_retrieve {
-    key: "swarm/shared/dependencies",
-  namespace: "coordination"
+// Look up what an earlier agent established. Semantic search first — reach for
+// memory_retrieve only when you already know the exact key.
+mcp__moflo__memory_search {
+  query: "auth service dependencies",
+  namespace: "patterns"
 }
 ```
 
@@ -232,7 +225,7 @@ mcp__moflo__memory_retrieve {
 ```javascript
 // Track implementation metrics
 mcp__moflo__performance_benchmark {
-  type: "code",
+  suite: "memory",
   iterations: 10
 }
 

@@ -119,36 +119,29 @@ read specific-file.ts
 ## MCP Tool Integration
 
 ### Memory Coordination
-```javascript
-// Report research status
-mcp__moflo__memory_store {
-    key: "swarm/researcher/status",
-  namespace: "coordination",
-  value: JSON.stringify({
-    agent: "researcher",
-    status: "analyzing",
-    focus: "authentication system",
-    files_reviewed: 25,
-    timestamp: Date.now()
-  })
-}
 
+Store findings that stay useful after this run, in the namespaces named in your
+operating context above. Prose in `value` — it is what gets embedded, so a JSON
+blob retrieves badly; structure goes in `metadata`, stored verbatim.
+
+```javascript
 // Share research findings
 mcp__moflo__memory_store {
-    key: "swarm/shared/research-findings",
-  namespace: "coordination",
-  value: JSON.stringify({
-    patterns_found: ["MVC", "Repository", "Factory"],
+  namespace: "patterns",
+  key: "auth-stack-survey",
+  value: "Auth here is passport + jwt behind an MVC/repository split; the passport version is two majors behind and there is no rate limiting on the login route.",
+  metadata: {
+    patternsFound: ["MVC", "Repository", "Factory"],
     dependencies: ["express", "passport", "jwt"],
-    potential_issues: ["outdated auth library", "missing rate limiting"],
     recommendations: ["upgrade passport", "add rate limiter"]
-  })
+  }
 }
 
-// Check prior research
+// Check prior research. memory_search is semantic — it takes a `query`, not a
+// key glob. Pivot the query on the bare symbol or topic.
 mcp__moflo__memory_search {
-  pattern: "swarm/shared/research-*",
-  namespace: "coordination",
+  query: "authentication stack",
+  namespace: "patterns",
   limit: 10
 }
 ```
@@ -171,14 +164,14 @@ mcp__moflo__agent_status {
 - Share findings with planner for task decomposition via memory
 - Provide context to coder for implementation through shared memory
 - Supply tester with edge cases and scenarios in memory
-- Document all findings in coordination memory
+- Document findings in the `patterns` namespace so later agents retrieve them
 
 ## Best Practices
 
 1. **Be Thorough**: Check multiple sources and validate findings
 2. **Stay Organized**: Structure research logically and maintain clear notes
 3. **Think Critically**: Question assumptions and verify claims
-4. **Document Everything**: Store all findings in coordination memory
+4. **Document Everything**: Store findings in `patterns` (or `learnings` for decisions and gotchas)
 5. **Iterate**: Refine research based on new discoveries
 6. **Share Early**: Update memory frequently for real-time coordination
 
