@@ -153,6 +153,11 @@ var GATE_ORIGIN_NOTE = 'This is a moflo hook, not a Claude Code permission rule 
 // is why learnings has no separate step here.
 var ORDER_HINT = 'Order that satisfies all of them: tests green -> /flo-simplify (re-run tests if it edits) -> /verify -> its memory_store verdict -> gh pr create\n';
 var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: false';
+// #1338 — Claude Code spawns stdio MCP servers once at session start and never
+// respawns them, so a session can outlive its moflo MCP connection. Naming only
+// mcp__moflo__memory_search there points the reader at the one thing that cannot
+// work; this CLI path credits the gate identically and needs no MCP.
+var MCP_FALLBACK_NOTE = 'If mcp__moflo__* tools are unavailable this session (MCP server not connected), this credits the gate too: npx flo memory search --query "<topic>" --namespace <ns>';
 
 // #1294 Finding 3 — reads/scans of EPHEMERAL files under the OS temp dir
 // (background-task output/transcripts, agent scratchpads) are transient tool
@@ -193,11 +198,95 @@ var DANGEROUS = [
 
 // #1132 — Bash memory-first gate.
 //
-// CREDIT: the legacy detector that marks the gate satisfied when Claude
-// manually invokes a memory-search CLI (flo-search, the moflo MCP search via
-// shell, etc.). Preserved verbatim from the pre-#1132 behaviour so existing
-// recipes keep crediting the gate.
-var CREDIT_MEMORY_SEARCH_RE = /semantic-search|memory search|memory retrieve|memory-search/;
+// CREDIT: marks the gate satisfied when Claude invokes a memory-search CLI
+// (`flo memory search`, `flo-search`, `semantic-search.mjs`) from the shell —
+// the escape hatch that keeps the gate satisfiable when the moflo MCP server
+// is not connected to the session.
+//
+// #1338 — this used to be an unanchored substring test
+// (/semantic-search|memory search|memory retrieve|memory-search/) against the
+// whole command, so `echo "memory search"` — or a `git commit -m` mentioning
+// the phrase — satisfied the gate for the rest of the prompt. That is the
+// opposite discipline from READ_LIKE_BASH_RE directly below, which is
+// deliberately anchored. Credit now requires a real INVOCATION, matched by
+// BASENAME so Rule #1 holds: `flo`, `flo.cmd`, `npx.cmd flo`, `node ./bin/cli.js`
+// and `node C:\...\bin\cli.js` all credit, with either path separator.
+var CREDIT_RUNNER_RE = /^(?:npx|npm|pnpm|yarn|bun|bunx|deno|node|nodejs|tsx|ts-node)(?:\.(?:cmd|exe|bat|ps1))?$/i;
+// Sub-words of a runner invocation that are not the entrypoint itself
+// (`pnpm dlx flo`, `npm exec -- flo`, `npx -y flo`).
+var CREDIT_RUNNER_SKIP_RE = /^(?:dlx|exec|run|-y|--yes|-q|--quiet|--silent|--no-install|--)$/i;
+// The moflo CLI, under every name package.json binds it to (plus the raw entry
+// script, for `node node_modules/moflo/bin/cli.js`).
+var CREDIT_CLI_RE = /^(?:flo|moflo|claude-flow|cli\.js|cli\.mjs)(?:\.(?:cmd|exe|bat|ps1))?$/i;
+// A search entrypoint — every invocation of these IS a memory search.
+var CREDIT_SEARCH_BIN_RE = /^(?:flo-search(?:\.(?:cmd|exe|bat|ps1))?|semantic-search\.mjs)$/i;
+// Substring every crediting form must contain — the hot-path pre-filter. Covers
+// flo / moflo / flo-search / claude-flow (all contain "flo"), cli.js|cli.mjs,
+// and semantic-search.mjs.
+var CREDIT_HINT_RE = /flo|cli\.m?js|semantic-search/i;
+// `flo memory search` / `flo memory retrieve`, and the hyphen/underscore spellings.
+var CREDIT_MEMORY_VERB_RE = /^(?:search|retrieve)$/i;
+var CREDIT_MEMORY_COMPOUND_RE = /^memory[-_](?:search|retrieve)$/i;
+
+/**
+ * Last path segment of a token, lowercased. Splits on BOTH separators, unlike
+ * path.basename, which only honours the HOST's separator (Rule #1): an agent on
+ * POSIX can legitimately type `node .claude\scripts\semantic-search.mjs`, and a
+ * Windows-shaped path must resolve the same wherever the gate happens to run.
+ */
+function commandBasename(tok) {
+  var t = tok.replace(/^["']+|["']+$/g, '');
+  var cut = t.lastIndexOf('/');
+  var bs = t.lastIndexOf('\\');
+  if (bs > cut) cut = bs;
+  return (cut >= 0 ? t.slice(cut + 1) : t).toLowerCase();
+}
+
+/** Does one shell segment invoke a moflo memory search? */
+function segmentCreditsMemorySearch(seg) {
+  var tokens = seg.trim().split(/\s+/).filter(Boolean);
+  var i = 0;
+  // Skip shell noise ahead of the entrypoint: env assignments (`FOO=bar flo …`),
+  // sudo, package runners and their flags.
+  while (i < tokens.length) {
+    var tok = tokens[i];
+    if (tok === 'sudo' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tok)) { i++; continue; }
+    if (CREDIT_RUNNER_SKIP_RE.test(tok)) { i++; continue; }
+    if (CREDIT_RUNNER_RE.test(commandBasename(tok))) { i++; continue; }
+    break;
+  }
+  if (i >= tokens.length) return false;
+  var entry = commandBasename(tokens[i]);
+  if (CREDIT_SEARCH_BIN_RE.test(entry)) return true;
+  if (!CREDIT_CLI_RE.test(entry)) return false;
+  // Positional args after the CLI entrypoint; flags carry no subcommand.
+  var rest = [];
+  for (var j = i + 1; j < tokens.length; j++) {
+    if (tokens[j].charAt(0) !== '-') rest.push(tokens[j].toLowerCase());
+  }
+  if (!rest.length) return false;
+  if (CREDIT_MEMORY_COMPOUND_RE.test(rest[0])) return true;
+  return rest[0] === 'memory' && rest.length > 1 && CREDIT_MEMORY_VERB_RE.test(rest[1]);
+}
+
+/**
+ * CREDIT test for a whole Bash/PowerShell command. Quoted bodies are stripped
+ * first (so a commit message quoting "memory search" cannot credit), then each
+ * shell segment is checked at its own start — `cd repo && flo memory search`
+ * credits, `echo "flo memory search"` does not.
+ */
+function creditsMemorySearch(rawCmd) {
+  // Cheap reject first. This runs on EVERY Bash call in every consumer, ahead
+  // of the block arm's regexes, and every crediting form necessarily names an
+  // entrypoint containing one of these — so non-matches cost one regex, not a
+  // strip + split + tokenize.
+  if (!CREDIT_HINT_RE.test(rawCmd || '')) return false;
+  var segments = stripQuotedAndHeredocs(rawCmd).split(/[;|&\n]+/);
+  for (var i = 0; i < segments.length; i++) {
+    if (segmentCreditsMemorySearch(segments[i])) return true;
+  }
+  return false;
+}
 // BLOCK: read-like Bash commands that bypass the existing check-before-read /
 // check-before-scan gates by going through the shell. Anchored to the start of
 // the line so subcommands inside pipelines or `npm install grep` don't trip.
@@ -984,7 +1073,7 @@ switch (command) {
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (isEphemeralPath(process.env.TOOL_INPUT_path)) break;
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before exploring files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' + GATE_ORIGIN_NOTE + '\n' + GATE_DISABLE_NOTE + '\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before exploring files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' + MCP_FALLBACK_NOTE + '\n' + GATE_ORIGIN_NOTE + '\n' + GATE_DISABLE_NOTE + '\n');
     process.exit(2);
   }
   case 'check-before-read': {
@@ -997,7 +1086,7 @@ switch (command) {
     if (isEphemeralPath(fp)) break;
     var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
     if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before reading files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' + GATE_ORIGIN_NOTE + '\n' + GATE_DISABLE_NOTE + '\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before reading files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' + MCP_FALLBACK_NOTE + '\n' + GATE_ORIGIN_NOTE + '\n' + GATE_DISABLE_NOTE + '\n');
     process.exit(2);
   }
   case 'record-task-created': {
@@ -1025,7 +1114,7 @@ switch (command) {
 
     // 1) CREDIT — preserved behavior. A real memory-search invocation flips
     // the gate flag so subsequent Read/Grep/Glob within this prompt pass.
-    if (CREDIT_MEMORY_SEARCH_RE.test(cmd)) {
+    if (creditsMemorySearch(cmd)) {
       var s = readState();
       if (markMemorySearched(s)) writeState(s);
       break;
@@ -1050,6 +1139,7 @@ switch (command) {
       'Example: mcp__moflo__memory_search { query: "<topic>", namespace: "<one of: guidance | code-map | patterns | learnings | tests>" }\n' +
       (hint ? hint + '\n' : '') +
       'On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' +
+      MCP_FALLBACK_NOTE + '\n' +
       GATE_ORIGIN_NOTE + '\n' +
       GATE_DISABLE_NOTE + '\n'
     );

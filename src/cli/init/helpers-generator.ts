@@ -335,6 +335,9 @@ var EXEMPT = ['.claude/', '.claude\\\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-sta
 // bin/gate.cjs GATE_ORIGIN_NOTE / GATE_DISABLE_NOTE.
 var GATE_ORIGIN_NOTE = 'This is a moflo hook, not a Claude Code permission rule — allow-rules cannot override it.';
 var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: false';
+// #1338 — a session can outlive its moflo MCP connection (Claude Code spawns
+// stdio servers once, at session start). SYNC: mirrors bin/gate.cjs.
+var MCP_FALLBACK_NOTE = 'If mcp__moflo__* tools are unavailable this session (MCP server not connected), this credits the gate too: npx flo memory search --query "<topic>" --namespace <ns>';
 // #1348 — the pre-PR gates are order-dependent; naming only the missing one left
 // callers to rediscover the sequence by trial. SYNC: mirrors bin/gate.cjs.
 var ORDER_HINT = 'Order that satisfies all of them: tests green -> /flo-simplify (re-run tests if it edits) -> /verify -> its memory_store verdict -> gh pr create\\n';
@@ -360,7 +363,55 @@ var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\\\', ':(){:|:&};:', 'mk
 // #1132 — Bash memory-first gate regexes. See bin/gate.cjs for documentation.
 // #1171 — READ_LIKE extended with PS-native exploration forms (Get-ChildItem -Recurse,
 // dir /s, Format-Hex). Plain Get-ChildItem stays uncovered (ls-equivalent).
-var CREDIT_MEMORY_SEARCH_RE = /semantic-search|memory search|memory retrieve|memory-search/;
+// #1338 — CREDIT requires a real memory-search INVOCATION, not any command that
+// merely contains the phrase. Matched by basename so flo, flo.cmd, npx.cmd flo
+// and node C:\\\\...\\\\cli.js all credit (Rule #1).
+// SYNC: duplicated verbatim in bin/gate.cjs — see there for full rationale.
+var CREDIT_RUNNER_RE = /^(?:npx|npm|pnpm|yarn|bun|bunx|deno|node|nodejs|tsx|ts-node)(?:\\.(?:cmd|exe|bat|ps1))?$/i;
+var CREDIT_RUNNER_SKIP_RE = /^(?:dlx|exec|run|-y|--yes|-q|--quiet|--silent|--no-install|--)$/i;
+var CREDIT_CLI_RE = /^(?:flo|moflo|claude-flow|cli\\.js|cli\\.mjs)(?:\\.(?:cmd|exe|bat|ps1))?$/i;
+var CREDIT_SEARCH_BIN_RE = /^(?:flo-search(?:\\.(?:cmd|exe|bat|ps1))?|semantic-search\\.mjs)$/i;
+var CREDIT_HINT_RE = /flo|cli\\.m?js|semantic-search/i;
+var CREDIT_MEMORY_VERB_RE = /^(?:search|retrieve)$/i;
+var CREDIT_MEMORY_COMPOUND_RE = /^memory[-_](?:search|retrieve)$/i;
+// Splits on BOTH separators — path.basename honours only the host's (Rule #1).
+function commandBasename(tok) {
+  var t = tok.replace(/^["']+|["']+$/g, '');
+  var cut = t.lastIndexOf('/');
+  var bs = t.lastIndexOf('\\\\');
+  if (bs > cut) cut = bs;
+  return (cut >= 0 ? t.slice(cut + 1) : t).toLowerCase();
+}
+function segmentCreditsMemorySearch(seg) {
+  var tokens = seg.trim().split(/\\s+/).filter(Boolean);
+  var i = 0;
+  while (i < tokens.length) {
+    var tok = tokens[i];
+    if (tok === 'sudo' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tok)) { i++; continue; }
+    if (CREDIT_RUNNER_SKIP_RE.test(tok)) { i++; continue; }
+    if (CREDIT_RUNNER_RE.test(commandBasename(tok))) { i++; continue; }
+    break;
+  }
+  if (i >= tokens.length) return false;
+  var entry = commandBasename(tokens[i]);
+  if (CREDIT_SEARCH_BIN_RE.test(entry)) return true;
+  if (!CREDIT_CLI_RE.test(entry)) return false;
+  var rest = [];
+  for (var j = i + 1; j < tokens.length; j++) {
+    if (tokens[j].charAt(0) !== '-') rest.push(tokens[j].toLowerCase());
+  }
+  if (!rest.length) return false;
+  if (CREDIT_MEMORY_COMPOUND_RE.test(rest[0])) return true;
+  return rest[0] === 'memory' && rest.length > 1 && CREDIT_MEMORY_VERB_RE.test(rest[1]);
+}
+function creditsMemorySearch(rawCmd) {
+  if (!CREDIT_HINT_RE.test(rawCmd || '')) return false;
+  var segments = stripQuotedAndHeredocs(rawCmd).split(/[;|&\\n]+/);
+  for (var i = 0; i < segments.length; i++) {
+    if (segmentCreditsMemorySearch(segments[i])) return true;
+  }
+  return false;
+}
 var READ_LIKE_BASH_RE = /^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b|^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b|^\\s*sed\\s+-n\\b|^\\s*awk\\s+(?!.*<<)|^\\s*type\\s+\\S*[\\\\/.]|^\\s*(?:Get-Content|gc|Select-String|sls)\\b|^\\s*(?:Get-ChildItem|gci)\\b[^|]*-Recurse\\b|^\\s*dir\\b[^|]*\\s\\/[sS]\\b|^\\s*Format-Hex\\b/i;
 var BASH_CARVE_OUT_RE = /^\\s*(npm|npx|pnpm|yarn|bun|node|deno|tsx|ts-node)\\s|^\\s*(git|gh|hub)\\s|^\\s*(docker|kubectl|helm|terraform)\\s|^\\s*(curl|wget|http|fetch)\\s|^\\s*(jq|yq|xq)\\s|^\\s*(echo|printf|true|false|sleep|test|\\[)\\s|^\\s*cat\\s+(<<|<<<)|^\\s*cat\\s+[^|]*\\s*>|^\\s*tee\\b|^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b/;
 // #1171 follow-up — strip quoted bodies + heredocs before DANGEROUS substring
@@ -699,7 +750,7 @@ switch (command) {
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (isEphemeralPath(process.env.TOOL_INPUT_path)) break;
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before exploring files. Use mcp__moflo__memory_search.\\n' + GATE_ORIGIN_NOTE + '\\n' + GATE_DISABLE_NOTE + '\\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before exploring files. Use mcp__moflo__memory_search.\\n' + MCP_FALLBACK_NOTE + '\\n' + GATE_ORIGIN_NOTE + '\\n' + GATE_DISABLE_NOTE + '\\n');
     process.exit(2);
   }
   case 'check-before-read': {
@@ -709,7 +760,7 @@ switch (command) {
     var fp = process.env.TOOL_INPUT_file_path || '';
     if (isEphemeralPath(fp)) break;
     if (fp.indexOf('.claude/guidance/') < 0 && fp.indexOf('.claude\\\\guidance\\\\') < 0) break;
-    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before reading guidance files. Use mcp__moflo__memory_search.\\n' + GATE_ORIGIN_NOTE + '\\n' + GATE_DISABLE_NOTE + '\\n');
+    process.stderr.write('BLOCKED [moflo memory_first gate]: Search memory before reading guidance files. Use mcp__moflo__memory_search.\\n' + MCP_FALLBACK_NOTE + '\\n' + GATE_ORIGIN_NOTE + '\\n' + GATE_DISABLE_NOTE + '\\n');
     process.exit(2);
   }
   case 'record-task-created': {
@@ -727,7 +778,7 @@ switch (command) {
   case 'check-bash-memory': {
     // #1132 — credit + block. See bin/gate.cjs for full documentation.
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (CREDIT_MEMORY_SEARCH_RE.test(cmd)) {
+    if (creditsMemorySearch(cmd)) {
       var s = readState();
       if (markMemorySearched(s)) writeState(s);
       break;
@@ -745,6 +796,7 @@ switch (command) {
       'Example: mcp__moflo__memory_search { query: "<topic>", namespace: "<one of: guidance | code-map | patterns | learnings | tests>" }\\n' +
       (hint ? hint + '\\n' : '') +
       'On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\\n' +
+      MCP_FALLBACK_NOTE + '\\n' +
       GATE_ORIGIN_NOTE + '\\n' +
       GATE_DISABLE_NOTE + '\\n'
     );
