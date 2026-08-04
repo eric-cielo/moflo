@@ -2226,10 +2226,12 @@ try {
 // run-tracking and get hard-deleted on every session start. The fourth
 // embedding-skipped namespace, `tasklist`, backs the dashboard's Flo Runs
 // tab — it's *trimmed* to a retention cap instead of purged so prior runs
-// survive a session restart (#968). Idempotent: returns
-// `{ purged: 0, trimmed: 0 }` when nothing needs cleaning. Runs BEFORE the
-// background MCP/daemon spawn so the foreground sql.js write isn't
-// overwritten by a concurrent flush.
+// survive a session restart (#968); `verify` is trimmed the same way. The
+// pass also re-files stray `verify:*` records out of `learnings` (#1375),
+// which is what heals the backlog on an install upgrading into the fix.
+// Idempotent: returns all-zero counts when nothing needs cleaning. Runs
+// BEFORE the background MCP/daemon spawn so the foreground sql.js write
+// isn't overwritten by a concurrent flush.
 try {
   const purgePaths = [
     resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/ephemeral-namespace-purge.js'),
@@ -2249,6 +2251,18 @@ try {
       emitMutation(
         'trimmed flo run history',
         `${plural(result.trimmed, 'old row')} beyond retention cap`,
+      );
+    }
+    if (result?.relocated > 0) {
+      emitMutation(
+        'refiled verify records',
+        `${plural(result.relocated, 'row')} moved from learnings to the verify namespace`,
+      );
+    }
+    if (result?.superseded > 0) {
+      emitMutation(
+        'dropped superseded verify records',
+        `${plural(result.superseded, 'stale learnings row')} whose verdict already exists in the verify namespace`,
       );
     }
   }

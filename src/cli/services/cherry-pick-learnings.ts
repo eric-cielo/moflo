@@ -43,7 +43,16 @@ import {
 import { MEMORY_SCHEMA_V3 } from '../memory/memory-initializer.js';
 import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 
-/** Namespaces preserved across upgrades. Everything else is derived. */
+/**
+ * Namespaces preserved across upgrades. Everything else is derived.
+ *
+ * `verify` is deliberately absent (#1375). Verdict records used to ride along
+ * here by accident, because they were written into `learnings`; they are
+ * machine-generated audit exhaust scoped to one repo's issues, not the
+ * user-authored knowledge this list is for. Sharing them into another
+ * install's durable store via {@link isDurableNamespace} would recreate the
+ * pollution #1375 removed, one project over. Do not add it.
+ */
 export const DURABLE_NAMESPACES = ['learnings', 'knowledge'] as const;
 
 const DURABLE_NAMESPACE_SET: ReadonlySet<string> = new Set(DURABLE_NAMESPACES);

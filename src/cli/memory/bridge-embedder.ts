@@ -183,6 +183,36 @@ export function shouldPurgeOnSessionStart(namespace: string): boolean {
 export const TASKLIST_RETENTION_CAP = 200;
 
 /**
+ * Namespace holding `/verify`'s per-run verdict records (`verify:<slug>` keys).
+ *
+ * These used to land in `learnings` (#1375). They are audit exhaust, not
+ * distilled insight: each names one commit, one issue, and a criteria list that
+ * never applies again, yet they were the LARGEST rows in `learnings` and made
+ * up ~30% of it — so every bounded `learnings` search spent slots on them.
+ * `learnings` is what an agent searches to find a reusable lesson; a verdict
+ * record is never that answer.
+ *
+ * The verify-before-done gate does NOT read this namespace — `gate.cjs`'s
+ * `record-verify-outcome` keys on the `verify:` KEY prefix and takes the
+ * verdict from the store call's `metadata`, so moving the rows here left
+ * #1332's gate contract untouched.
+ */
+export const VERIFY_RECORD_NAMESPACE = 'verify';
+
+/**
+ * Maximum number of {@link VERIFY_RECORD_NAMESPACE} rows kept across session
+ * restarts, trimmed by the same session-start retention pass as `tasklist`.
+ *
+ * Records are keyed per issue/slug, so re-verifying upserts rather than
+ * appends — growth tracks *distinct issues verified*, which is unbounded over
+ * a repo's life. Moving unbounded growth from `learnings` into a new namespace
+ * and calling it fixed would just relocate the problem, so the cap ships with
+ * the move. 100 is well past the point where an older verdict is still worth
+ * consulting: nobody checks issue #200's criteria while working on #1400.
+ */
+export const VERIFY_RETENTION_CAP = 100;
+
+/**
  * Minimal contract the bridge needs from an embedder. Tests inject a stub
  * via `setBridgeEmbedderForTest`. `embed()` MUST throw on failure — silent
  * `null` returns are what story #649 is fixing.

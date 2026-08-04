@@ -64,7 +64,7 @@ The two review checkpoints are the point: **a spec must be reviewed before its p
 When enforced, `gh pr create` is blocked until the change has been verified end-to-end since the last code edit.
 
 - **On by default (#1294).** Enforced for every `/flo` run; disable per-project with `gates.verify_before_done: false` or per-run with `--no-verify`. On upgrade, consumers with no `verify_before_done` key start enforcing; an explicit value is preserved. Docs-only diffs are exempt, so a pure-docs PR is never blocked.
-- **Satisfy it by running the `/verify` skill** — `/flo` delegates to it. It exercises the change against the plan's (or ticket's) acceptance criteria and records its own outcome to memory (`namespace: learnings, key: verify:<slug>`). It reuses the Tests-phase run rather than repeating it (no double verify).
+- **Satisfy it by running the `/verify` skill** — `/flo` delegates to it. It exercises the change against the plan's (or ticket's) acceptance criteria and records its own outcome to memory (`namespace: verify, key: verify:<slug>`). It reuses the Tests-phase run rather than repeating it (no double verify).
 - **A source edit invalidates a prior verification** — re-run `/verify` after editing. `/ward` and `/quicken` are targeted audits, not the completion gate.
 
 ---
