@@ -229,22 +229,21 @@ Executes a command in a child process and captures stdout, stderr, and the exit 
 
 Set `failOnError: false` to capture the exit code without failing the spell — useful for commands where a non-zero exit is informational rather than fatal.
 
-### `agent` — Spawn a Claude Subagent
+### `agent` — NOT EXECUTABLE
 
-Delegates a task to a Claude subagent and captures its response.
+**Do not use this step type.** It has never spawned a subagent — there is no agent spawner in the spell runner. It stays registered so existing spell YAML keeps parsing, but casting it always fails with an explanatory error (#1334). Earlier versions returned `success: true` and a `result` string for work that never happened.
+
+To run a Claude subagent from a spell, use a `bash` step:
 
 ```yaml
 - id: research
-  type: agent
+  type: bash
   config:
-    agentType: researcher        # Agent specialization
-    prompt: "Find all API endpoints in the project"
-    background: false            # Wait for completion (default: false)
+    command: 'claude -p "Find all API endpoints in the project"'
+    timeout: 300000
 ```
 
-**Outputs:** `result`, `agentType`, `prompt`
-
-The `agentType` maps to your AI client's agent types — `researcher`, `coder`, `tester`, `reviewer`, etc.
+**Outputs:** none — the step always fails. `agentType` and `prompt` are echoed in the failure for diagnosis only.
 
 ### `condition` — Branch the Spell
 

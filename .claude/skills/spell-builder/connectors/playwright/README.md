@@ -1,20 +1,22 @@
 # `playwright` — Browser Automation Connector
 
-**Purpose:** Use this connector for low-level browser automation via Playwright. Choose this when you need direct browser control from agent steps, or when building browser-based connectors like `local-outlook`.
+**Purpose:** Use this connector for low-level browser automation via Playwright. Choose this when you need direct browser control from a step command, or when building browser-based connectors like `local-outlook`.
 
 ## Usage
 
+From a spell, reach this connector through the `browser` step, which delegates to it:
+
 ```yaml
 - id: take-screenshot
-  type: agent
+  type: browser
   config:
-    prompt: |
-      Use the playwright connector to screenshot the homepage.
-      Call context.tools.execute('playwright', 'navigate', {
-        url: 'https://myapp.com'
-      })
-      Then call context.tools.execute('playwright', 'screenshot', {})
+    actions:
+      - action: navigate
+        url: "https://myapp.com"
+      - action: screenshot
 ```
+
+> Earlier revisions of this file showed an `agent` step calling `context.tools.execute(...)` from a prompt. The `agent` step type has never been executable — use the `browser` step, a composite step's `tool` action, or a custom step command.
 
 ## Actions
 

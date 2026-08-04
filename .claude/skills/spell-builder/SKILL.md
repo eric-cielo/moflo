@@ -314,11 +314,12 @@ steps:
     output: audit-result
 
   - id: analyze-findings
-    type: agent
+    type: bash
     config:
-      prompt: |
-        Analyze the npm audit results and filter for severity >= {args.severity}.
-        Audit output: {scan-deps.result}
+      command: |
+        claude -p "Analyze these npm audit results and filter for severity >= {args.severity}.
+        Audit output: {scan-deps.stdout}"
+      timeout: 300000
     output: analysis
 
   - id: save-report

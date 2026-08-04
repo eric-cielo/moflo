@@ -136,11 +136,11 @@ steps:
     output: inbox          # ← stores output as "inbox"
 
   - id: process
-    type: agent
+    type: bash
     config:
-      prompt: |
-        Emails: {inbox.emails}            # ← references inbox output
-        Total: {inbox.totalEmails}
+      command: |
+        claude -p "Emails: {inbox.emails}   # ← references inbox output
+        Total: {inbox.totalEmails}"
 ```
 
 **Variable reference rules:**

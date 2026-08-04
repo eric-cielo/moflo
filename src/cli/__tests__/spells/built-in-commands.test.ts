@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
-import { agentCommand } from '../../spells/commands/agent-command.js';
+import { agentCommand, AGENT_STEP_NOT_EXECUTABLE } from '../../spells/commands/agent-command.js';
 import { bashCommand } from '../../spells/commands/bash-command.js';
 import { conditionCommand } from '../../spells/commands/condition-command.js';
 import { promptCommand } from '../../spells/commands/prompt-command.js';
@@ -69,16 +69,71 @@ describe('agentCommand', () => {
     expect(result.errors[0].path).toBe('prompt');
   });
 
-  it('should execute and return agent config', async () => {
+  // #1334: this step spawns nothing and must not report success. The previous
+  // version of this test asserted `success === true`, which is what let the
+  // fabricated result ship.
+  it('should fail rather than report success for work it never performs', async () => {
     const ctx = createContext();
     const output = await agentCommand.execute(
       { prompt: 'test task', agentType: 'researcher', background: true },
       ctx,
     );
-    expect(output.success).toBe(true);
+    expect(output.success).toBe(false);
+    expect(output.error).toBe(AGENT_STEP_NOT_EXECUTABLE);
+    // Still echoes what was asked for, so the failure is diagnosable.
     expect(output.data.agentType).toBe('researcher');
     expect(output.data.prompt).toBe('test task');
-    expect(output.data.background).toBe(true);
+  });
+
+  it('should name the step type and the working alternative in the error', async () => {
+    const output = await agentCommand.execute({ prompt: 'x' }, createContext());
+    expect(output.error).toMatch(/"agent" step type is not executable/);
+    expect(output.error).toMatch(/claude -p/);
+  });
+
+  // The message reaches consumer terminals, where #NNNN resolves against their
+  // repo rather than moflo's.
+  it('should not put a moflo issue number in consumer-visible strings', () => {
+    expect(AGENT_STEP_NOT_EXECUTABLE).not.toMatch(/#\d{3,4}/);
+    expect(agentCommand.description).not.toMatch(/#\d{3,4}/);
+  });
+
+  // A stale `{step.result}` reference must not replace the not-executable
+  // message with an interpolation error — those references are common in
+  // exactly the spells that contain an `agent` step.
+  it('should still report not-executable when the prompt has a bad reference', async () => {
+    const output = await agentCommand.execute(
+      { prompt: 'use {nonexistent.result} here' },
+      createContext(),
+    );
+    expect(output.success).toBe(false);
+    expect(output.error).toBe(AGENT_STEP_NOT_EXECUTABLE);
+  });
+
+  it('should never produce a `result` output authors could consume', async () => {
+    const output = await agentCommand.execute({ prompt: 'x' }, createContext());
+    expect(output.data.result).toBeUndefined();
+    expect(agentCommand.describeOutputs().map(o => o.name)).not.toContain('result');
+  });
+
+  // AC #4 — existing spell YAML containing an `agent` step must still parse and
+  // validate; only execution changed. Deleting the step type would break this.
+  it('should still validate existing spell config unchanged', () => {
+    const result = agentCommand.validate(
+      { prompt: 'test task', agentType: 'researcher', background: true },
+      createContext(),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  // The `claude` prerequisite gated preflight on a binary this step cannot use,
+  // so a machine without it reported "Install Claude CLI" instead of the reason.
+  it('should declare no prerequisites', () => {
+    expect(agentCommand.prerequisites ?? []).toHaveLength(0);
+  });
+
+  it('should keep the agent capability so scope enforcement still applies', () => {
+    expect(agentCommand.capabilities?.map(c => c.type)).toContain('agent');
   });
 
   it('should interpolate variables in prompt', async () => {
