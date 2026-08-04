@@ -17,6 +17,7 @@
 import type { MCPTool } from './types.js';
 import * as os from 'node:os';
 import { createJsonStore } from './json-store.js';
+import { readCpuUsagePercent, readLoadAverage, NOT_MEASURED } from '../shared/utils/load-average.js';
 
 /**
  * #1354: `latency`, `throughput` and `errors` are gone from this shape.
@@ -42,31 +43,11 @@ interface PerfMetrics {
 /**
  * Cross-platform CPU usage, or null where it cannot be measured (Rule #1).
  *
- * `os.loadavg()` is a Unix concept and Node documents it as **always**
- * returning `[0, 0, 0]` on Windows. The previous `(loadAvg[0] / cores) * 100`
- * therefore produced a confident `0.0%` on every Windows consumer — an
- * invented number wearing a measurement's clothes, which is the whole defect
- * #1354 exists to remove, and the same trap #1349 hit when a failed probe
- * rendered as `Search Time: 0.00ms` and read as infinitely fast.
- *
- * `os.cpus()` is also documented as possibly returning an empty array, which
- * would make the division `Infinity`.
+ * Added here by #1354; moved to `shared/utils/load-average.ts` by #1358 once
+ * three more consumers of `os.loadavg()` needed the same decision. Re-exported
+ * so this module's contract is unchanged.
  */
-export function readCpuUsagePercent(
-  loadAvg: number[],
-  coreCount: number,
-  // Injectable so the Windows branch is provable from a Linux runner. Without
-  // it the only coverage would be a `process.platform === 'win32'` fork in the
-  // test, which never executes on the Ubuntu leg that runs the unit suite —
-  // exactly how a platform bug ships green (Rule #1, cf. #1145).
-  platform: NodeJS.Platform = process.platform,
-): number | null {
-  if (platform === 'win32' || coreCount === 0) return null;
-  return Math.min((loadAvg[0] / coreCount) * 100, 100);
-}
-
-/** Rendered wherever a real figure is unavailable — never a zero. */
-const NOT_MEASURED = 'not measured';
+export { readCpuUsagePercent };
 
 interface Benchmark {
   id: string;
@@ -185,8 +166,11 @@ const rawPerformanceTools: MCPTool[] = [
           nodeVersion: process.version,
           cpuModel: cpus[0]?.model ?? null,
           // Same reason as `cpu.usage`: Node returns [0, 0, 0] here on
-          // Windows, and three zeros read as a genuinely idle machine.
-          loadAverage: cpuPercent === null ? null : loadAvg,
+          // Windows, and three zeros read as a genuinely idle machine. Gated on
+          // the reading itself rather than on `cpuPercent`, which is also null
+          // when `os.cpus()` comes back empty — that suppresses a per-core
+          // percentage, not the load average, which is still real (#1358).
+          loadAverage: readLoadAverage(loadAvg),
         },
         // No `latency` trend — there is no latency series to trend. Both
         // entries below compare the oldest and newest samples in `history`,

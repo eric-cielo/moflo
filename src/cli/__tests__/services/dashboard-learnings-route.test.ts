@@ -34,9 +34,12 @@ const stubDaemon = {
   getScheduler: () => null,
 } as unknown as Parameters<typeof startDashboard>[0];
 
-function pickPort(): number {
-  return 31_000 + Math.floor(Math.random() * 9_000);
-}
+// Port 0 — OS-assigned ephemeral port; `handle.port` reports the real one.
+// `startDashboard` honors 0 specifically so tests get collision-free isolation.
+// A pinned random port had NO EADDRINUSE fallback (buildBindCandidates returns a
+// single candidate for an explicit port), so a collision under parallel forks
+// failed the run outright.
+const EPHEMERAL_PORT = 0;
 
 function get(port: number, path: string): Promise<{ status: number; body: unknown; raw: string }> {
   return new Promise((resolve, reject) => {
@@ -82,7 +85,7 @@ afterEach(async () => {
 describe('GET /api/learnings', () => {
   it('returns the overview shape with ok + available flags', async () => {
     mockGetLearningsOverview.mockResolvedValue(sampleOverview);
-    handle = await startDashboard(stubDaemon, { port: pickPort() });
+    handle = await startDashboard(stubDaemon, { port: EPHEMERAL_PORT });
 
     const { status, body } = await get(handle.port, '/api/learnings');
     expect(status).toBe(200);
@@ -103,7 +106,7 @@ describe('GET /api/learnings', () => {
       total: 25,
       recent: sampleOverview.recent, // capped server-side; total stays authoritative
     });
-    handle = await startDashboard(stubDaemon, { port: pickPort() });
+    handle = await startDashboard(stubDaemon, { port: EPHEMERAL_PORT });
 
     const { body } = await get(handle.port, '/api/learnings');
     const b = body as Record<string, any>;
@@ -115,7 +118,7 @@ describe('GET /api/learnings', () => {
     mockGetLearningsOverview.mockResolvedValue({
       total: 0, recent: [], provenance: {}, growth: [], addedLast7d: 0, addedLast30d: 0,
     });
-    handle = await startDashboard(stubDaemon, { port: pickPort() });
+    handle = await startDashboard(stubDaemon, { port: EPHEMERAL_PORT });
 
     const { body } = await get(handle.port, '/api/learnings');
     expect((body as Record<string, any>).available).toBe(false);
@@ -123,7 +126,7 @@ describe('GET /api/learnings', () => {
 
   it('returns 500 when the overview query throws (no fake-empty panel)', async () => {
     mockGetLearningsOverview.mockRejectedValue(new Error('disk read failed'));
-    handle = await startDashboard(stubDaemon, { port: pickPort() });
+    handle = await startDashboard(stubDaemon, { port: EPHEMERAL_PORT });
 
     const { status, body } = await get(handle.port, '/api/learnings');
     expect(status).toBe(500);
@@ -131,7 +134,7 @@ describe('GET /api/learnings', () => {
   });
 
   it('serves the Learnings panel container, tab, and renderer in the HTML', async () => {
-    handle = await startDashboard(stubDaemon, { port: pickPort() });
+    handle = await startDashboard(stubDaemon, { port: EPHEMERAL_PORT });
     const { raw } = await get(handle.port, '/');
     expect(raw).toContain('id="panel-learnings"');
     expect(raw).toContain("'Learnings'");

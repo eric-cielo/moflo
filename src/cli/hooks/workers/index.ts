@@ -10,6 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { errorDetail } from '../../shared/utils/error-detail.js';
+import { readLoadAverage } from '../../shared/utils/load-average.js';
 
 // ============================================================================
 // Security Constants
@@ -307,7 +308,17 @@ export interface StatuslineData {
     issues: number;
   };
   performance: {
-    speedup: string;
+    /**
+     * The performance worker's 1-minute load average, as it measured it —
+     * `null` where the platform reports none (#1358).
+     *
+     * This slot used to be `speedup: string`, which was the literal `'1.0x'`
+     * with a `// Placeholder` comment at its source and a second `?? '1.0x'`
+     * fallback here. Nothing ever computed a speedup, so the statusline
+     * rendered `⚡1.0x` — a measurement-shaped way of saying nothing, next to
+     * three segments that were real.
+     */
+    loadAvg: string | null;
   };
   alerts: WorkerAlert[];
   lastUpdate: string;
@@ -674,7 +685,9 @@ export class WorkerManager extends EventEmitter {
         issues: securityResult?.totalIssues as number ?? 0,
       },
       performance: {
-        speedup: perfResult?.speedup as string ?? '1.0x',
+        // Null both when the worker has not run yet and when the platform has
+        // no load average — in either case there is nothing measured to show.
+        loadAvg: (perfResult?.cpu as Record<string, unknown> | undefined)?.loadAvg as string ?? null,
       },
       alerts: this.alerts.filter(a => a.severity === AlertSeverity.Critical).slice(-5),
       lastUpdate: new Date().toISOString(),
@@ -714,8 +727,10 @@ export class WorkerManager extends EventEmitter {
                     data.security.status === 'warning' ? '⚠️' : '🛡️';
     parts.push(`${secIcon}${data.security.issues}`);
 
-    // Performance
-    parts.push(`⚡${data.performance.speedup}`);
+    // Performance — 'n/a' rather than a zero, for the same reason the field
+    // is nullable: a statusline is exactly where an unmeasured value gets
+    // read as a measured one.
+    parts.push(`⚡${data.performance.loadAvg ?? 'n/a'}`);
 
     return parts.join(' │ ');
   }
@@ -997,9 +1012,9 @@ export function createPerformanceWorker(projectRoot: string): WorkerHandler {
     const freeMem = os.freemem();
     const memPct = Math.round((1 - freeMem / totalMem) * 100);
 
-    // CPU load
+    // CPU load — null where the platform has none (#1358), never "0.00"
     const cpus = os.cpus();
-    const loadAvg = os.loadavg()[0];
+    const loadAvg = readLoadAverage(os.loadavg(), os.platform());
 
     return {
       worker: 'performance',
@@ -1014,9 +1029,8 @@ export function createPerformanceWorker(projectRoot: string): WorkerHandler {
         },
         cpu: {
           cores: cpus.length,
-          loadAvg: loadAvg.toFixed(2),
+          loadAvg: loadAvg === null ? null : loadAvg[0].toFixed(2),
         },
-        speedup: '1.0x',  // Placeholder
       },
     };
   };
@@ -1031,7 +1045,9 @@ export function createHealthWorker(projectRoot: string): WorkerHandler {
     const memPct = Math.round((1 - freeMem / totalMem) * 100);
 
     const uptime = os.uptime();
-    const loadAvg = os.loadavg();
+    // null where the platform has none (#1358) — three zeros would read as an
+    // idle machine rather than as an absent reading.
+    const loadAvg = readLoadAverage(os.loadavg(), os.platform());
 
     // Disk space (cross-platform approximation)
     let diskPct = 0;
@@ -1058,7 +1074,7 @@ export function createHealthWorker(projectRoot: string): WorkerHandler {
         disk: { usedPct: diskPct, free: diskFree },
         system: {
           uptime: Math.round(uptime / 3600),
-          loadAvg: loadAvg.map(l => l.toFixed(2)),
+          loadAvg: loadAvg === null ? null : loadAvg.map(l => l.toFixed(2)),
           platform: os.platform(),
           arch: os.arch(),
         },

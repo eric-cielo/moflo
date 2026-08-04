@@ -123,6 +123,131 @@ describe('WorkerDaemon resource thresholds', () => {
   });
 
   // =========================================================================
+  // #1358 — the CPU gate on a platform with no load average
+  //
+  // Rule #1. The platform comes from the injected provider, never from
+  // `process.platform`, so the Windows path runs on the Ubuntu leg. Before
+  // #1358 the CPU branch compared a hardcoded 0 against a threshold validated
+  // `> 0`, making it unreachable on Windows: the daemon dispatched with no CPU
+  // backpressure while the still-working memory gate made it look throttled.
+  // =========================================================================
+  describe('#1358 CPU gate where no load average exists', () => {
+    const WINDOWS_OS = {
+      // Exactly what Node returns on Windows.
+      loadavg: () => [0, 0, 0],
+      totalmem: () => 16e9,
+      freemem: () => 8e9, // 50% free
+      platform: () => 'win32' as NodeJS.Platform,
+    };
+
+    it('skips the CPU gate explicitly rather than passing it by accident', async () => {
+      // maxCpuLoad this low would block any real machine. On Windows the old
+      // code "passed" it because 0 > 0.001 is false — the same outcome for the
+      // wrong reason. cpuGate is what distinguishes the two.
+      const daemon = new WorkerDaemon(tempDir, {
+        resourceThresholds: { maxCpuLoad: 0.001, minFreeMemoryPercent: 5 },
+      });
+      (daemon as any)._osProvider = WINDOWS_OS;
+
+      const result = await (daemon as any).canRunWorker();
+      expect(result.allowed).toBe(true);
+      expect(result.cpuGate).toBe('unavailable');
+    });
+
+    it('still enforces memory backpressure where the CPU gate is unavailable', async () => {
+      const daemon = new WorkerDaemon(tempDir, {
+        resourceThresholds: { maxCpuLoad: 0.001, minFreeMemoryPercent: 50 },
+      });
+      (daemon as any)._osProvider = { ...WINDOWS_OS, freemem: () => 1e9 }; // ~6% free
+
+      const result = await (daemon as any).canRunWorker();
+      expect(result.allowed).toBe(false);
+      expect(result.reason.toLowerCase()).toContain('memory');
+      expect(result.cpuGate).toBe('unavailable');
+    });
+
+    it('warns once, not once per dispatch', async () => {
+      const daemon = new WorkerDaemon(tempDir, {
+        resourceThresholds: { maxCpuLoad: 2.0, minFreeMemoryPercent: 5 },
+      });
+      (daemon as any)._osProvider = WINDOWS_OS;
+
+      const warnings: string[] = [];
+      daemon.on('log', (e: { level: string; message: string }) => {
+        if (e.level === 'warn') warnings.push(e.message);
+      });
+
+      await (daemon as any).canRunWorker();
+      await (daemon as any).canRunWorker();
+      await (daemon as any).canRunWorker();
+
+      expect(warnings).toHaveLength(1);
+      // The operator has to be able to tell WHICH threshold stopped applying.
+      expect(warnings[0]).toContain('win32');
+      expect(warnings[0]).toContain('maxCpuLoad=2');
+      expect(warnings[0]).toContain('minFreeMemoryPercent=5%');
+    });
+
+    it('reports cpuGate "measured" where a load average exists', async () => {
+      const daemon = new WorkerDaemon(tempDir, {
+        resourceThresholds: { maxCpuLoad: 9.6, minFreeMemoryPercent: 20 },
+      });
+      (daemon as any)._osProvider = {
+        loadavg: () => [3.5, 3.0, 2.5],
+        totalmem: () => 16e9,
+        freemem: () => 8e9,
+        platform: () => 'linux' as NodeJS.Platform,
+      };
+
+      const result = await (daemon as any).canRunWorker();
+      expect(result.allowed).toBe(true);
+      expect(result.cpuGate).toBe('measured');
+    });
+
+    it('blocks on CPU where a load average exists, and says so', async () => {
+      const daemon = new WorkerDaemon(tempDir, {
+        resourceThresholds: { maxCpuLoad: 2.0, minFreeMemoryPercent: 5 },
+      });
+      (daemon as any)._osProvider = {
+        loadavg: () => [5.0, 4.0, 3.0],
+        totalmem: () => 16e9,
+        freemem: () => 8e9,
+        platform: () => 'darwin' as NodeJS.Platform,
+      };
+
+      const result = await (daemon as any).canRunWorker();
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('CPU load too high: 5.00');
+      expect(result.cpuGate).toBe('measured');
+    });
+
+    it('treats a provider with no platform() as the host platform', async () => {
+      // Every fake written before #1358 omits `platform`. Those tests assumed
+      // the real host, so the CPU gate must still apply there — otherwise this
+      // change would silently disable it everywhere.
+      //
+      // The `process.platform` fork below is the legitimate case, not the
+      // anti-pattern: the behaviour under test IS "fall back to the host", so
+      // each CI leg asserts its own correct answer. Contrast the tests above,
+      // which pin the platform explicitly precisely so they are not dead code
+      // on two legs out of three.
+      const daemon = new WorkerDaemon(tempDir, {
+        resourceThresholds: { maxCpuLoad: 2.0, minFreeMemoryPercent: 5 },
+      });
+      (daemon as any)._osProvider = {
+        loadavg: () => [5.0, 4.0, 3.0],
+        totalmem: () => 16e9,
+        freemem: () => 8e9,
+      };
+
+      const result = await (daemon as any).canRunWorker();
+      const expected = process.platform === 'win32' ? 'unavailable' : 'measured';
+      expect(result.cpuGate).toBe(expected);
+      expect(result.allowed).toBe(process.platform === 'win32');
+    });
+  });
+
+  // =========================================================================
   // Config file reading
   // =========================================================================
   describe('config.json reading', () => {
