@@ -12,6 +12,12 @@
  * the boundary just as hard: tools that genuinely measure something must NOT
  * be labelled, or the marker degrades into noise.
  *
+ * Follow-up (#1353, #1354): most of the originally-labelled set is gone. Five
+ * tools were deleted outright and three were repaired, so `NOT_LABELLED` is now
+ * the longer list. Those transitions are asserted in
+ * `no-fabricated-fields.test.ts`; what stays here is the labeling machinery and
+ * the tools still awaiting one of the two exits.
+ *
  * Cross-platform (Rule #1): the only filesystem contact is a `mkdtemp` project
  * root built with `path.join`; no shell, no platform-specific path literal.
  */
@@ -33,14 +39,12 @@ import {
   SYNTHETIC_PREFIX,
 } from '../../mcp-tools/synthetic.js';
 import { getMofloVersion, UNKNOWN_VERSION } from '../../services/moflo-version.js';
-import { githubTools } from '../../mcp-tools/github-tools.js';
 import { performanceTools } from '../../mcp-tools/performance-tools.js';
 import { systemTools } from '../../mcp-tools/system-tools.js';
 import { neuralTools } from '../../mcp-tools/neural-tools.js';
 import { hooksTools } from '../../mcp-tools/hooks-tools.js';
 
 const ALL_TOOLS: MCPTool[] = [
-  ...githubTools,
   ...performanceTools,
   ...systemTools,
   ...neuralTools,
@@ -53,41 +57,39 @@ const byName = (name: string): MCPTool => {
   return tool;
 };
 
-/** Every tool #1324 + #1325 require to carry the marker. */
+/**
+ * Every tool still required to carry the marker.
+ *
+ * The list is much shorter than #1324/#1325 left it, and shrinking it is the
+ * point: a notice was always a holding position, and the two ways off the list
+ * are to stop fabricating (#1354) or to be deleted (#1353) — never to have the
+ * notice quietly dropped while the fabrication stays.
+ */
 const LABELLED = [
-  'github_repo_analyze',
-  'github_pr_manage',
-  'github_issue_track',
-  'github_metrics',
-  'performance_report',
-  'system_health',
-  'neural_train',
-  'neural_predict',
   'hooks_metrics',
   'hooks_intelligence',
   'hooks_intelligence-reset',
 ];
 
 /**
- * Tools in the same files that DO measure something. Labelling these would put
- * a SYNTHETIC banner on real results, which is the mirror-image failure.
+ * Tools that must NOT be labelled, because everything they return is measured
+ * or read from real local state. Labelling these would put a SYNTHETIC banner
+ * on real results, which is the mirror-image failure.
+ *
+ * The first three graduated here in #1354 by losing their invented fields.
  */
 const NOT_LABELLED = [
+  'performance_report',
+  'system_health',
+  'neural_predict',
   'performance_benchmark',
   'neural_patterns',
   'neural_status',
   'hooks_list',
 ];
 
-/** Handlers cheap enough to invoke — neural_predict is excluded deliberately. */
+/** Handlers cheap enough to invoke. */
 const CHEAP_HANDLER_CASES: Array<{ name: string; input: Record<string, unknown> }> = [
-  { name: 'github_repo_analyze', input: { owner: 'o', repo: 'r' } },
-  { name: 'github_pr_manage', input: { action: 'list' } },
-  { name: 'github_issue_track', input: { action: 'list' } },
-  { name: 'github_metrics', input: { metric: 'all' } },
-  { name: 'performance_report', input: { format: 'summary' } },
-  { name: 'system_health', input: {} },
-  { name: 'neural_train', input: { modelType: 'classifier', epochs: 1 } },
   { name: 'hooks_metrics', input: { period: '24h' } },
   { name: 'hooks_intelligence', input: { showStatus: true } },
   { name: 'hooks_intelligence-reset', input: {} },
@@ -204,56 +206,17 @@ describe('boundary — measured tools must stay unlabelled', () => {
   });
 });
 
-describe('#1324 — github_pr_manage', () => {
-  const tool = () => byName('github_pr_manage');
-
-  it('states at the call site that no GitHub API call is made', () => {
-    // The pre-fix description was the four words "Manage pull requests"; the
-    // no-API-calls contract lived only in a source header comment, which an
-    // agent selecting a tool never sees.
-    expect(tool().description.toLowerCase()).toContain('no github api call is made');
-    expect(tool().description).not.toBe('Manage pull requests');
-  });
-
-  it('marks a fabricated merge record', async () => {
-    const result = await tool().handler({ action: 'merge', prNumber: 42 }) as Record<string, unknown>;
-    expect(result.synthetic).toBe(true);
-    // Behaviour is unchanged — still reports merged, still returns success.
-    expect(result.action).toBe('merged');
-    expect(result.success).toBe(true);
-  });
-
-  it('marks a fabricated review approval', async () => {
-    const result = await tool().handler({ action: 'review', prNumber: 42 }) as Record<string, unknown>;
-    expect(result.synthetic).toBe(true);
-    expect((result.review as Record<string, unknown>).status).toBe('approved');
-  });
-
-  it('marks the honest list action too — local state is still not GitHub', async () => {
-    const result = await tool().handler({ action: 'list' }) as Record<string, unknown>;
-    expect(result.synthetic).toBe(true);
-    expect(result.success).toBe(true);
-    expect(Array.isArray(result.pullRequests)).toBe(true);
-  });
-
-  it('marks the unknown-action error path', async () => {
-    const result = await tool().handler({ action: 'nope' }) as Record<string, unknown>;
-    expect(result.success).toBe(false);
-    expect(result.synthetic).toBe(true);
-  });
-});
-
 describe('#1325 — no response claims authenticity it does not have', () => {
-  it('performance_report no longer returns _real in summary format', async () => {
-    const result = await byName('performance_report').handler({ format: 'summary' }) as Record<string, unknown>;
-    expect(result._real).toBeUndefined();
-    expect(result.synthetic).toBe(true);
-  });
-
-  it('performance_report no longer returns _real in detailed format', async () => {
-    const result = await byName('performance_report').handler({ format: 'detailed' }) as Record<string, unknown>;
-    expect(result._real).toBeUndefined();
-    expect(result.synthetic).toBe(true);
+  it('performance_report returns neither an authenticity claim nor a synthetic marker', async () => {
+    // #1325 removed its `_real: true`; #1354 removed the fabricated fields the
+    // synthetic notice was about. A fully-measured response needs neither.
+    const summary = await byName('performance_report').handler({ format: 'summary' }) as Record<string, unknown>;
+    const detailed = await byName('performance_report').handler({ format: 'detailed' }) as Record<string, unknown>;
+    for (const result of [summary, detailed]) {
+      expect(result._real).toBeUndefined();
+      expect(result.synthetic).toBeUndefined();
+      expect(result.syntheticNotice).toBeUndefined();
+    }
   });
 
   it('performance_report still reports the CPU and memory it genuinely measures', async () => {

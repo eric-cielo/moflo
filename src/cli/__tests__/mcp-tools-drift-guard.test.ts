@@ -100,10 +100,14 @@ const ALLOWLIST: Record<string, string> = {
   // the public surface — users invoke these from their own prompts/skills,
   // outside this repo's corpus. Re-wiring shipped consumers would mean
   // restoring the very agents #932 deleted.
+  //
+  // #1353 removed the four `github_*` entries that used to sit here, along
+  // with the tools themselves. "No consumer" was the accurate half of their
+  // justification; the half it papered over is that they made no GitHub API
+  // call, so every result they returned described nothing that happened. An
+  // allowlist entry is for a tool that works and lacks a caller — reaching for
+  // one to keep a fabricating tool registered is the failure mode to avoid.
   'neural_predict': 'public neural API: registered MCP tool callable from user prompts (consumers in retired #932 agents)',
-  'github_pr_manage': 'public GitHub API: registered MCP tool for PR ops (consumers in retired #932 agents)',
-  'github_issue_track': 'public GitHub API: registered MCP tool for issue tracking (consumers in retired #932 agents)',
-  'github_metrics': 'public GitHub API: registered MCP tool for repo metrics (consumers in retired #932 agents)',
   'coordination_sync': 'public coordination API: registered MCP tool for swarm/hive sync (consumers in retired #932 agents)',
 };
 

@@ -236,10 +236,9 @@ mcp__moflo__performance_benchmark {
   iterations: 10
 }
 
-// Analyze bottlenecks
+// Read this process's CPU / memory / heap usage
 mcp__moflo__performance_report {
-  component: "api-endpoint",
-  metrics: ["response-time", "memory-usage"]
+  format: "detailed"
 }
 ```
 

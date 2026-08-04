@@ -1,17 +1,18 @@
 /**
  * Neural MCP Tools for CLI
  *
- * V2 Compatibility - Neural network and ML tools
+ * Real embeddings via the cli's local embeddings module, plus pattern storage
+ * and search over genuine cosine similarity.
  *
- * Real embeddings via cli's local embeddings module; pattern storage and
- * search with cosine similarity; training progress tracked (actual model
- * training requires external tools).
+ * There is no training tool here. `neural_train` trained nothing — it slept
+ * 100ms and persisted a random accuracy — and was deleted by #1353; the
+ * `models` map it wrote survives only as read-only legacy state for consumers
+ * who called it before that.
  *
  * Note: For production neural features, use the inlined src/cli/neural module
  */
 
 import type { MCPTool } from './types.js';
-import { applySyntheticNotices } from './synthetic.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
@@ -172,118 +173,50 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
 const rawNeuralTools: MCPTool[] = [
   {
-    name: 'neural_train',
-    description: 'Register a model entry with a placeholder accuracy',
-    category: 'neural',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        modelId: { type: 'string', description: 'Model ID to train' },
-        modelType: { type: 'string', enum: ['moe', 'transformer', 'classifier', 'embedding'], description: 'Model type' },
-        epochs: { type: 'number', description: 'Number of training epochs' },
-        learningRate: { type: 'number', description: 'Learning rate' },
-        data: { type: 'object', description: 'Training data' },
-      },
-      required: ['modelType'],
-    },
-    handler: async (input) => {
-      const store = loadNeuralStore();
-      const modelId = (input.modelId as string) || `model-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const modelType = input.modelType as NeuralModel['type'];
-      const epochs = (input.epochs as number) || 10;
-
-      const model: NeuralModel = {
-        id: modelId,
-        name: `${modelType}-model`,
-        type: modelType,
-        status: 'training',
-        accuracy: 0,
-        epochs,
-        config: {
-          learningRate: input.learningRate || 0.001,
-          batchSize: 32,
-        },
-      };
-
-      store.models[modelId] = model;
-      saveNeuralStore(store);
-
-      // No training happens (#1325). The sleep below is not work, and the
-      // accuracy assigned after it is a random draw in [0.85, 0.95) — it is
-      // unrelated to `input.data`, `epochs` or `learningRate`, all of which
-      // are recorded and never used. Note this accuracy is PERSISTED, so
-      // `neural_status`'s avgAccuracy averages these placeholders too.
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      model.status = 'ready';
-      model.accuracy = 0.85 + Math.random() * 0.1;
-      model.trainedAt = new Date().toISOString();
-      saveNeuralStore(store);
-
-      return {
-        success: true,
-        modelId,
-        type: modelType,
-        status: model.status,
-        accuracy: model.accuracy,
-        epochs,
-        trainedAt: model.trainedAt,
-      };
-    },
-  },
-  {
     name: 'neural_predict',
-    description: 'Embed the input for real, and return placeholder predictions',
+    // #1354: the tool used to advertise "predictions". It never had a model to
+    // predict from — the labels were a fixed list with random confidences that
+    // ignored the input. What it always genuinely did is embed the input, so
+    // that is what it now says and all it now returns.
+    description: 'Compute a real embedding for the input text via the embedding service',
     category: 'neural',
     inputSchema: {
       type: 'object',
       properties: {
-        modelId: { type: 'string', description: 'Model ID to use' },
-        input: { type: 'string', description: 'Input text or data' },
-        topK: { type: 'number', description: 'Number of top predictions' },
+        input: { type: 'string', description: 'Input text to embed' },
+        preview: { type: 'number', description: 'How many leading embedding components to return (default 8, 0 for none)' },
       },
       required: ['input'],
     },
     handler: async (input) => {
-      const store = loadNeuralStore();
-      const modelId = input.modelId as string;
-      const inputText = input.input as string;
-      const topK = (input.topK as number) || 3;
-
-      // Find model or use default
-      const model = modelId ? store.models[modelId] : Object.values(store.models).find(m => m.status === 'ready');
-
-      if (model && model.status !== 'ready') {
-        return { success: false, error: 'Model not ready' };
+      const inputText = String(input.input ?? '');
+      // Refuse empty input rather than embed it. `generateEmbedding` treats a
+      // falsy string as "no text" and falls through to a `Math.random()`
+      // vector — which would hand back an invented embedding from the one tool
+      // this change certifies as measured (#1354). `required: ['input']` does
+      // not stop this: the empty string satisfies it.
+      if (inputText.length === 0) {
+        return { success: false, error: 'input must be a non-empty string — there is nothing to embed' };
       }
+      const previewLength = typeof input.preview === 'number' && input.preview >= 0
+        ? Math.floor(input.preview)
+        : 8;
 
-      // The labels are a fixed list and the confidences are random draws
-      // (#1325) — no model is consulted, and the ranking does not depend on
-      // `inputText`. The embedding computed below IS real; the predictions
-      // sitting beside it in the same response are not.
-      const predictions = [
-        { label: 'coder', confidence: 0.75 + Math.random() * 0.2 },
-        { label: 'researcher', confidence: 0.5 + Math.random() * 0.3 },
-        { label: 'reviewer', confidence: 0.3 + Math.random() * 0.4 },
-        { label: 'tester', confidence: 0.2 + Math.random() * 0.3 },
-      ]
-        .sort((a, b) => b.confidence - a.confidence)
-        .slice(0, topK);
-
-      // Generate real embedding for the input
       const startTime = performance.now();
       const embedding = await generateEmbedding(inputText, 128);
       const latency = Math.round(performance.now() - startTime);
 
+      // `provider` distinguishes the fastembed vector from the hash-based
+      // fallback. Both are deterministic functions of the input — neither is
+      // invented — but they are not interchangeable, and a caller comparing
+      // vectors across calls needs to know which one it got.
       return {
         success: true,
-        _realEmbedding: !!realEmbeddings,
-        modelId: model?.id || 'default',
+        provider: realEmbeddings ? 'embedding-service' : 'hash-based',
         input: inputText,
-        predictions,
-        embedding: embedding.slice(0, 8), // Preview of embedding
+        embedding: previewLength > 0 ? embedding.slice(0, previewLength) : [],
         embeddingDims: embedding.length,
-        latency,
+        latencyMs: latency,
       };
     },
   },
@@ -423,7 +356,12 @@ const rawNeuralTools: MCPTool[] = [
         if (!model) {
           return { success: false, error: 'Model not found' };
         }
-        return { success: true, model };
+        // `accuracy` is dropped rather than reported (#1354). `neural_train`
+        // was its only writer and drew it at random, so every value still on
+        // disk in a consumer's models.json is a placeholder. The record itself
+        // is a true statement about local state; that one field never was.
+        const { accuracy: _fabricated, ...rest } = model;
+        return { success: true, model: rest };
       }
 
       const models = Object.values(store.models);
@@ -436,13 +374,14 @@ const rawNeuralTools: MCPTool[] = [
       return {
         _realEmbeddings: !!real,
         embeddingProvider: real ? `cli/embeddings (${embeddingServiceName})` : 'hash-based (deterministic)',
+        // Counts of records left on disk by `neural_train` before #1353 removed
+        // it. Nothing writes here any more, so this is read-only legacy state —
+        // reported because the count is true, without `avgAccuracy`, which
+        // could only ever average the placeholders that tool persisted (#1354).
         models: {
           total: models.length,
           ready: models.filter(m => m.status === 'ready').length,
           training: models.filter(m => m.status === 'training').length,
-          avgAccuracy: models.length > 0
-            ? models.reduce((sum, m) => sum + m.accuracy, 0) / models.length
-            : 0,
         },
         patterns: {
           total: patterns.length,
@@ -464,17 +403,16 @@ const rawNeuralTools: MCPTool[] = [
 ];
 
 /**
- * `neural_patterns` and `neural_status` are left unlabelled: their embeddings
- * come from the real embedding service and their cosine similarity is really
- * computed, so blanket-labelling the file would put a SYNTHETIC banner on the
- * one part of it that measures something. `neural_status.avgAccuracy` is the
- * exception — it averages the placeholder accuracies `neural_train` persists —
- * which is called out at the assignment site rather than by mislabelling the
- * whole tool.
+ * No tool in this file carries a synthetic notice any more (#1353, #1354).
+ *
+ * `neural_train` — the one tool here that fabricated its entire output — is
+ * deleted, and `neural_predict`'s invented `predictions` are gone, leaving the
+ * real embedding it always computed. What remains is measured or read from
+ * local state: real embeddings, real cosine similarity, true record counts.
+ *
+ * The empty export is deliberate rather than absent: the labeling test asserts
+ * these tools are NOT marked, so the notice map staying visibly empty is the
+ * signal the work landed. Re-adding an entry here means a tool started
+ * fabricating again.
  */
-export const neuralTools: MCPTool[] = applySyntheticNotices(rawNeuralTools, {
-  neural_train:
-    'no model is trained. The call sleeps 100ms and assigns a random accuracy in [0.85, 0.95); `epochs`, `learningRate` and `data` are recorded but never used. The accuracy is persisted, so later readers inherit it.',
-  neural_predict:
-    'the returned `embedding` is real, computed by the embedding service. The `predictions` are not — the labels are a fixed list with random confidences and do not depend on the input.',
-});
+export const neuralTools: MCPTool[] = rawNeuralTools;

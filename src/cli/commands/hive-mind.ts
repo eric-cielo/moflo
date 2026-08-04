@@ -138,7 +138,6 @@ ${workerTypes.map(type => `• ${type}: ${workerGroups[type].length} agents`).jo
    mcp__moflo__memory_store           - Store collective knowledge
    mcp__moflo__memory_retrieve        - Access shared memory
    mcp__moflo__memory_search          - Search memory patterns
-   mcp__moflo__neural_train           - Learn from experiences
    mcp__moflo__hooks_intelligence_pattern-store - Store patterns
 
 📋 HIVE MIND EXECUTION PROTOCOL:

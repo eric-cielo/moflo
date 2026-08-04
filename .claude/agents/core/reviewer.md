@@ -304,16 +304,14 @@ mcp__moflo__memory_retrieve {
 
 ### Code Analysis
 ```javascript
-// Analyze code quality
-mcp__moflo__github_repo_analyze {
-  repo: "current",
-  analysis_type: "code_quality"
+// Assess the risk and shape of the change under review
+mcp__moflo__analyze_diff {
+  ref: "main"
 }
 
-// Run security scan
-mcp__moflo__github_repo_analyze {
-  repo: "current",
-  analysis_type: "security"
+// Scan the diff for prompt-injection and unsafe content
+mcp__moflo__aidefence_scan {
+  content: "<the diff or file under review>"
 }
 ```
 
