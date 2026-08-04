@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Windows worker daemon had no CPU backpressure (#1358)
+
+`os.loadavg()` is a Unix concept; Node documents it as always returning
+`[0, 0, 0]` on Windows. `WorkerDaemon.canRunWorker()` gated dispatch on
+`loadavg()[0] > maxCpuLoad`, and `maxCpuLoad` is validated `> 0`, so on Windows
+that branch was unreachable — the daemon dispatched workers regardless of load
+while still appearing to throttle, because the memory gate below it kept firing.
+
+**Behaviour change for Windows consumers.** The CPU gate is now explicitly
+skipped rather than accidentally satisfied, and the daemon logs one warn line
+per run naming the platform and the threshold that is no longer being applied.
+Memory backpressure is unchanged and still applies on every platform. Workers
+that previously always dispatched may now defer under memory pressure with a
+clearer reason attached.
+
+Substituting `os.cpus()` tick deltas was considered and rejected: they measure
+utilisation percentage where `maxCpuLoad` is run-queue depth (default
+`cores * 0.8`, scaled against cgroup quotas by `getEffectiveCpuCount()`), so
+feeding one into the other would silently re-scale every configured value.
+
+Three reporting surfaces stop printing a fabricated `0.00` on Windows and emit
+`null` / `not measured` instead — `flo performance metrics` (both text and
+`--format json`), and the built-in `performance` and `health` workers.
+
 ### Changed — Verify-before-done is now ON by default (#1294)
 
 `gates.verify_before_done` now defaults to **true** (was opt-in/false). Every
