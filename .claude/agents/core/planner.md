@@ -114,45 +114,67 @@ plan:
 ## MCP Tool Integration
 
 ### Task Orchestration
+
+Submit the breakdown to the coordinator. A task ID only exists once the
+coordinator has issued it — storing a breakdown in memory dispatches nothing,
+and polling an ID you invented yourself always comes back empty.
+
 ```javascript
-// Orchestrate complex tasks
-
-// Share task breakdown
-mcp__moflo__memory_store {
-    key: "swarm/planner/task-breakdown",
-  namespace: "coordination",
-  value: JSON.stringify({
-    main_task: "authentication",
-    subtasks: [
-      {id: "1", task: "Research auth libraries", assignee: "researcher"},
-      {id: "2", task: "Design auth flow", assignee: "architect"},
-      {id: "3", task: "Implement auth service", assignee: "coder"},
-      {id: "4", task: "Write auth tests", assignee: "tester"}
-    ],
-    dependencies: {"3": ["1", "2"], "4": ["3"]}
-  })
+// Submit the whole breakdown in one call. Tasks are load-balanced across
+// available agents; `type` must be one of research | analysis | coding |
+// testing | review | documentation | coordination | consensus | custom.
+mcp__moflo__task_orchestrate {
+  tasks: [
+    { type: "research",      description: "Research auth libraries",  priority: "high" },
+    { type: "analysis",      description: "Design auth flow",         priority: "high" },
+    { type: "coding",        description: "Implement auth service",   priority: "normal" },
+    { type: "testing",       description: "Write auth tests",         priority: "normal" }
+  ]
 }
+// → { success: true, submitted: 4, assigned: 3, queued: 1,
+//     tasks: [ { taskId: "task_...", status: "assigned", ... }, ... ] }
 
-// Monitor task progress
+// Poll an ID the coordinator returned — never one you named yourself.
 mcp__moflo__task_status {
-  taskId: "auth-implementation"
+  taskId: "<taskId from the response above>"
 }
+
+// Or survey everything in flight instead of polling one at a time.
+mcp__moflo__task_list { status: "running,queued" }
 ```
+
+Use `mcp__moflo__task_create` for a single task; it takes the same fields and
+returns the same projection, including the `taskId`.
+
+**Ordering lives on the native Task layer, not here.** `task_create` and
+`task_orchestrate` accept no dependency field — the coordinator load-balances
+what you submit. Express prerequisites with `TaskUpdate({ addBlockedBy: [...] })`
+on the native tasks, per *What → Native Tasks; How → MoFlo orchestration* in
+`.claude/guidance/moflo-claude-swarm-cohesion.md`.
 
 ### Memory Coordination
+
+Live task state belongs to the coordinator — read it with `task_status` /
+`task_list` rather than mirroring it into memory. Store what stays useful after
+this run: a decision and its rationale that a future agent would otherwise have
+to rediscover.
+
 ```javascript
-// Report planning status
+// Prose in `value` — it is what gets embedded, so a JSON blob retrieves badly.
+// Structure goes in `metadata`, which is stored verbatim and not embedded.
 mcp__moflo__memory_store {
-    key: "swarm/planner/status",
-  namespace: "coordination",
-  value: JSON.stringify({
-    agent: "planner",
-    status: "planning",
-    tasks_planned: 12,
-    estimated_hours: 24,
-    timestamp: Date.now()
-  })
+  namespace: "patterns",
+  key: "auth-rollout-sequencing",
+  value: "Auth work is sequenced research → design → implement → test because the library choice determines the flow design; parallelising design against research produced rework twice.",
+  metadata: {
+    plannedTasks: 12,
+    blockedOn: ["library selection"]
+  }
 }
 ```
 
-Remember: A good plan executed now is better than a perfect plan executed never. Focus on creating actionable, practical plans that drive progress. Always coordinate through memory.
+Use the namespaces named in this agent's operating context above — `patterns`
+for reusable approaches, `learnings` for decisions and gotchas. The `swarm-*`
+namespaces are the coordinator's own persistence; do not write to them.
+
+Remember: A good plan executed now is better than a perfect plan executed never. Focus on creating actionable, practical plans that drive progress. Dispatch through the coordinator; use memory for what outlives the run.

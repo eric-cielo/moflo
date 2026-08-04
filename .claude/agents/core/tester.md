@@ -251,35 +251,30 @@ describe('Security', () => {
 ## MCP Tool Integration
 
 ### Memory Coordination
-```javascript
-// Report test status
-mcp__moflo__memory_store {
-    key: "swarm/tester/status",
-  namespace: "coordination",
-  value: JSON.stringify({
-    agent: "tester",
-    status: "running tests",
-    test_suites: ["unit", "integration", "e2e"],
-    timestamp: Date.now()
-  })
-}
 
-// Share test results
+Store what stays useful after this run, in the namespaces named in your
+operating context above. Prose in `value` — it is what gets embedded, so a JSON
+blob retrieves badly; structure goes in `metadata`, stored verbatim.
+
+```javascript
+// Share what the run revealed, not the raw tally
 mcp__moflo__memory_store {
-    key: "swarm/shared/test-results",
-  namespace: "coordination",
-  value: JSON.stringify({
+  namespace: "patterns",
+  key: "auth-suite-flakiness",
+  value: "The two failing auth tests both assert on token expiry against a real clock, so they fail whenever the suite runs slowly under load — freeze the clock rather than widening the tolerance.",
+  metadata: {
     passed: 145,
     failed: 2,
     coverage: "87%",
     failures: ["auth.test.ts:45", "api.test.ts:123"]
-  })
+  }
 }
 
-// Check implementation status
-mcp__moflo__memory_retrieve {
-    key: "swarm/coder/status",
-  namespace: "coordination"
+// Look up what the implementer established. Semantic search first — reach for
+// memory_retrieve only when you already know the exact key.
+mcp__moflo__memory_search {
+  query: "auth service shape",
+  namespace: "patterns"
 }
 ```
 
@@ -287,7 +282,7 @@ mcp__moflo__memory_retrieve {
 ```javascript
 // Run performance benchmarks
 mcp__moflo__performance_benchmark {
-  type: "test",
+  suite: "all",
   iterations: 100
 }
 
