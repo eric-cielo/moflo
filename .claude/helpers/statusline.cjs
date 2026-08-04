@@ -657,13 +657,21 @@ function getUpgradeNotice() {
 // Signal 0 is a liveness probe, not a signal delivery — supported on Windows
 // as well as POSIX. EPERM means the pid exists but is owned by another user.
 // Cheap enough for a statusline; never shell out to ps/tasklist here.
+//
+// Unlike daemon-lock.ts:isDaemonProcess*, this does NOT defend against pid
+// reuse by matching the process cmdline — that costs a ps/tasklist spawn, which
+// a statusline repainted on every keystroke cannot afford. The exposure is one
+// recycled pid inside the notice's 5-minute TTL, and it degrades to "(updating…)"
+// on a notice whose launcher is gone: the pre-#1363 rendering, self-limiting at
+// TTL. Cheap and occasionally over-optimistic beats slow, and beats the red
+// false alarm this replaces.
 function isLauncherAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
   try {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return !!err && err.code === 'EPERM';
+    return err?.code === 'EPERM';
   }
 }
 
