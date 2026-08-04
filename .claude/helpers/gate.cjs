@@ -634,9 +634,16 @@ function fingerprintIncludes(rel, scope) {
 }
 
 /**
- * Paths reported by `git status --porcelain=v1 -uall -z`. Rename and copy
- * entries carry a second NUL-terminated token (the origin path) that must be
- * consumed, or it would be misread as the next entry's status bytes.
+ * Paths reported by `git status --porcelain=v1 -uall -z`, as
+ * `{ path, orig }` — `orig` set only for renames and copies.
+ *
+ * A rename emits `R  <new>\0<old>\0`: two NUL-terminated tokens for one entry.
+ * The origin token must be consumed or it is misread as the next entry's status
+ * bytes, AND it must be reported, because a rename means the old path no longer
+ * exists. Dropping it on the floor leaves the old path in the content map — the
+ * fingerprint would then carry a phantom entry that disappears the moment the
+ * rename is committed, expiring credit on a commit that changed no content.
+ * That is the same defect content-addressing was introduced to remove.
  */
 function parsePorcelainZ(raw) {
   var out = [];
@@ -644,9 +651,10 @@ function parsePorcelainZ(raw) {
   for (var i = 0; i < parts.length; i++) {
     var entry = parts[i];
     if (!entry || entry.length < 4) continue;
-    var xy = entry.slice(0, 2);
-    out.push(entry.slice(3));
-    if (xy.charAt(0) === 'R' || xy.charAt(0) === 'C') i++; // skip origin path
+    var xy = entry.charAt(0);
+    var rec = { path: entry.slice(3), orig: null };
+    if (xy === 'R' || xy === 'C') { rec.orig = parts[i + 1] || null; i++; }
+    out.push(rec);
   }
   return out;
 }
@@ -704,7 +712,11 @@ function computeCreditFingerprint(scope) {
     var changed = parsePorcelainZ(git(['status', '--porcelain=v1', '-uall', '-z']));
     var live = [];
     for (var j = 0; j < changed.length; j++) {
-      var rel = changed[j];
+      var rel = changed[j].path;
+      // A rename's origin path is gone from the content — drop it, or it
+      // lingers until the rename is committed and then vanishes, moving the
+      // fingerprint on a commit that changed nothing.
+      if (changed[j].orig) delete byPath[changed[j].orig];
       var abs = path.resolve(PROJECT_DIR, rel);
       var isFile = false;
       try { isFile = fs.statSync(abs).isFile(); } catch (e) { isFile = false; }

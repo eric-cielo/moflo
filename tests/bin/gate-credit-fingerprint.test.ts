@@ -140,6 +140,29 @@ describe('gate credit is pinned to the code it describes', () => {
     expect(r.status).toBe(0);
   });
 
+  it('handles a rename without expiring credit when the rename is committed', () => {
+    // `git status -z` emits a rename as two NUL-terminated tokens for one
+    // entry. If the origin token is consumed but not removed from the content
+    // map, the old path lingers as a phantom until the rename is committed and
+    // then vanishes — expiring credit on a commit that changed no content.
+    git('mv', 'src.js', 'renamed.js');
+    earnFullCredit(); // credit earned with the rename staged but uncommitted
+    git('commit', '-qm', 'commit the rename');
+
+    const r = gate('check-before-pr', PR_CMD);
+    expect(r.stderr).not.toContain('BLOCKED');
+    expect(r.status).toBe(0);
+  });
+
+  it('expires credit when a rename happens after it was earned', () => {
+    earnFullCredit();
+    git('mv', 'src.js', 'renamed.js');
+
+    const r = gate('check-before-pr', PR_CMD);
+    expect(r.stderr).toContain('BLOCKED');
+    expect(r.status).toBe(2);
+  });
+
   it('survives a branch switch that lands on identical content', () => {
     // Content-addressing, not ref-watching: the same code reached by a
     // different route is the same code, and the credit still describes it.
