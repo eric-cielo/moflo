@@ -941,4 +941,81 @@ export const hiveMindTools: MCPTool[] = [
       return { action, error: 'Unknown action' };
     },
   },
+  {
+    // #1349 — `flo hive-mind task` called this and it was never registered.
+    // Protected surface (CLAUDE.md): the task is submitted through the shared
+    // UnifiedSwarmCoordinator, and a consensus request goes out over the
+    // MessageBus — no synthetic task IDs, no file-based store.
+    name: 'hive-mind_task',
+    description: 'Submit a task to the hive, optionally gated on worker consensus',
+    category: 'hive-mind',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        description: { type: 'string', description: 'What the hive should do' },
+        priority: { type: 'string', description: 'critical | high | normal | low | background' },
+        requireConsensus: { type: 'boolean', description: 'Require a consensus vote before execution' },
+        timeout: { type: 'number', description: 'Task timeout in milliseconds' },
+      },
+      required: ['description'],
+    },
+    handler: async (input) => {
+      if (!hiveState.initialized) {
+        return { error: 'Hive-mind not initialized. Run hive-mind/init first.' };
+      }
+
+      const description = String(input.description ?? '').trim();
+      if (!description) {
+        return { error: 'description must be a non-empty string' };
+      }
+
+      const priority = String(input.priority ?? 'normal');
+      const requiresConsensus = input.requireConsensus === true;
+      const timeoutMs = typeof input.timeout === 'number' && input.timeout > 0
+        ? input.timeout
+        : SWARM_CONSTANTS.DEFAULT_TASK_TIMEOUT_MS;
+
+      const coordinator = await getSwarmCoordinator();
+      const taskId = await coordinator.submitTask({
+        type: 'coordination',
+        name: `hive-task-${randomBytes(4).toString('hex')}`,
+        description,
+        priority: priority as never,
+        dependencies: [],
+        input: null,
+        timeoutMs,
+        retries: 0,
+        maxRetries: 3,
+        metadata: { hiveId: hiveState.hiveId, requiresConsensus },
+      });
+
+      if (requiresConsensus) {
+        const bus = await getMessageBus();
+        await bus.broadcastUnified({
+          type: 'consensus',
+          from: hiveState.queen?.agentId ?? hiveState.hiveId,
+          payload: { taskId, description, priority },
+          content: `Consensus requested for task ${taskId}: ${description}`,
+          namespace: HIVE_NS,
+          priority: 'high',
+          requiresAck: false,
+          ttlMs: CONSENSUS_TTL_MS,
+        });
+      }
+
+      const created = coordinator.getTask(taskId);
+      // Report who the coordinator actually assigned, not who might pick it up.
+      const assignedTo = created?.assignedTo ? [created.assignedTo.id] : [];
+
+      return {
+        taskId,
+        description,
+        status: created?.status ?? 'queued',
+        assignedTo,
+        priority,
+        requiresConsensus,
+        estimatedTime: `${Math.round(timeoutMs / 1000)}s timeout`,
+      };
+    },
+  },
 ];

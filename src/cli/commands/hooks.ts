@@ -2548,7 +2548,7 @@ const coverageRouteCommand: Command = {
           reason: string;
         }>;
         routing: {
-          primaryAgent: string;
+          primaryAgent: string | null;
           confidence: number;
           reason: string;
           coverageImpact: string;
@@ -2559,7 +2559,7 @@ const coverageRouteCommand: Command = {
           totalGaps: number;
           criticalGaps: number;
           avgCoverage: number;
-        };
+        } | null;
       }>('hooks_coverage-route', {
         task,
         threshold,
@@ -2576,7 +2576,7 @@ const coverageRouteCommand: Command = {
       output.writeln();
       output.printBox(
         [
-          `Agent: ${output.highlight(result.routing.primaryAgent)}`,
+          `Agent: ${result.routing.primaryAgent ? output.highlight(result.routing.primaryAgent) : output.dim('none — no coverage data to route on')}`,
           `Confidence: ${(result.routing.confidence * 100).toFixed(1)}%`,
           `Coverage-Aware: ${result.coverageAware ? output.success('Yes') : output.dim('No coverage data')}`,
           `Reason: ${result.routing.reason}`
@@ -2601,7 +2601,7 @@ const coverageRouteCommand: Command = {
         });
       }
 
-      if (result.metrics.filesAnalyzed > 0) {
+      if (result.metrics && result.metrics.filesAnalyzed > 0) {
         output.writeln();
         output.writeln(output.bold('Coverage Metrics'));
         output.printList([
@@ -2691,7 +2691,7 @@ const coverageSuggestCommand: Command = {
           overallLineCoverage: number;
           overallBranchCoverage: number;
           filesBelowThreshold: number;
-        };
+        } | null;
         prioritizedFiles: string[];
         movectorAvailable: boolean;
       }>('hooks_coverage-suggest', {
@@ -2708,14 +2708,20 @@ const coverageSuggestCommand: Command = {
       }
 
       output.writeln();
+      // summary is null when no coverage artifact exists — print the absence
+      // rather than a block of zeros that reads as a real measurement (#1349).
       output.printBox(
         [
           `Path: ${output.highlight(result.path)}`,
-          `Files Analyzed: ${result.summary.totalFiles}`,
-          `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
-          `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
-          `Below Threshold: ${result.summary.filesBelowThreshold} files`,
-          `MoVector: ${result.movectorAvailable ? output.success('Available') : output.dim('Not installed')}`
+          ...(result.summary
+            ? [
+                `Files Analyzed: ${result.summary.totalFiles}`,
+                `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
+                `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
+                `Below Threshold: ${result.summary.filesBelowThreshold} files`,
+              ]
+            : []),
+          `Coverage Data: ${result.movectorAvailable ? output.success('Found') : output.dim('No coverage report')}`
         ].join('\n'),
         'Coverage Summary'
       );
@@ -2814,7 +2820,7 @@ const coverageGapsCommand: Command = {
           overallBranchCoverage: number;
           filesBelowThreshold: number;
           coverageThreshold: number;
-        };
+        } | null;
         agentAssignments: Record<string, string[]>;
         movectorAvailable: boolean;
       }>('hooks_coverage-gaps', {
@@ -2837,11 +2843,15 @@ const coverageGapsCommand: Command = {
       output.writeln();
       output.printBox(
         [
-          `Total Files: ${result.summary.totalFiles}`,
-          `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
-          `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
-          `Below ${result.summary.coverageThreshold}%: ${result.summary.filesBelowThreshold} files`,
-          `MoVector: ${result.movectorAvailable ? output.success('Available') : output.dim('Not installed')}`
+          ...(result.summary
+            ? [
+                `Total Files: ${result.summary.totalFiles}`,
+                `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
+                `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
+                `Below ${result.summary.coverageThreshold}%: ${result.summary.filesBelowThreshold} files`,
+              ]
+            : []),
+          `Coverage Data: ${result.movectorAvailable ? output.success('Found') : output.dim('No coverage report')}`
         ].join('\n'),
         'Coverage Gap Analysis'
       );
@@ -2869,7 +2879,14 @@ const coverageGapsCommand: Command = {
         });
       } else {
         output.writeln();
-        output.printSuccess('No coverage gaps found! All files meet threshold.');
+        // "All files meet threshold" and "we never found a coverage report"
+        // are different facts; reporting the first for the second is how a
+        // command claims a clean bill of health it never checked (#1349).
+        if (!result.movectorAvailable) {
+          output.printWarning('No coverage report found — run your test suite with coverage first.');
+        } else {
+          output.printSuccess('No coverage gaps found! All files meet threshold.');
+        }
       }
 
       if (groupByAgent && Object.keys(result.agentAssignments).length > 0) {
@@ -3946,239 +3963,6 @@ const modelStatsCommand: Command = {
   }
 };
 
-// Teammate Idle command - Agent Teams integration
-const teammateIdleCommand: Command = {
-  name: 'teammate-idle',
-  description: 'Handle idle teammate in Agent Teams - auto-assign tasks or notify lead',
-  options: [
-    {
-      name: 'auto-assign',
-      short: 'a',
-      description: 'Automatically assign pending tasks to idle teammate',
-      type: 'boolean',
-      default: true
-    },
-    {
-      name: 'check-task-list',
-      short: 'c',
-      description: 'Check shared task list for available work',
-      type: 'boolean',
-      default: true
-    },
-    {
-      name: 'teammate-id',
-      short: 't',
-      description: 'ID of the idle teammate',
-      type: 'string'
-    },
-    {
-      name: 'team-name',
-      description: 'Team name for context',
-      type: 'string'
-    }
-  ],
-  examples: [
-    { command: 'flo hooks teammate-idle --auto-assign true', description: 'Auto-assign tasks to idle teammate' },
-    { command: 'flo hooks teammate-idle -t worker-1 --check-task-list', description: 'Check tasks for specific teammate' }
-  ],
-  action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const autoAssign = ctx.flags.autoAssign !== false;
-    const checkTaskList = ctx.flags.checkTaskList !== false;
-    const teammateId = ctx.flags.teammateId as string;
-    const teamName = ctx.flags.teamName as string;
-
-    if (ctx.flags.format !== 'json') {
-      output.printInfo(`Teammate idle hook triggered${teammateId ? ` for: ${output.highlight(teammateId)}` : ''}`);
-    }
-
-    try {
-      const result = await callMCPTool<{
-        success: boolean;
-        teammateId: string;
-        action: 'assigned' | 'waiting' | 'notified';
-        taskAssigned?: {
-          taskId: string;
-          subject: string;
-          priority: string;
-        };
-        pendingTasks: number;
-        message: string;
-      }>('hooks_teammate-idle', {
-        autoAssign,
-        checkTaskList,
-        teammateId,
-        teamName,
-        timestamp: Date.now(),
-      });
-
-      if (ctx.flags.format === 'json') {
-        output.printJson(result);
-        return { success: true, data: result };
-      }
-
-      output.writeln();
-      if (result.action === 'assigned' && result.taskAssigned) {
-        output.printSuccess(`Task assigned: ${result.taskAssigned.subject}`);
-        output.printList([
-          `Task ID: ${result.taskAssigned.taskId}`,
-          `Priority: ${result.taskAssigned.priority}`,
-          `Pending tasks remaining: ${result.pendingTasks}`
-        ]);
-      } else if (result.action === 'waiting') {
-        output.printInfo('No pending tasks available - teammate waiting for work');
-      } else {
-        output.printInfo(`Team lead notified: ${result.message}`);
-      }
-
-      return { success: true, data: result };
-    } catch (error) {
-      // Graceful fallback - don't fail hard, just report
-      if (ctx.flags.format === 'json') {
-        output.printJson({ success: true, action: 'waiting', message: 'Teammate idle - no MCP server' });
-      } else {
-        output.printInfo('Teammate idle - awaiting task assignment');
-      }
-      return { success: true };
-    }
-  }
-};
-
-// Task Completed command - Agent Teams integration
-const taskCompletedCommand: Command = {
-  name: 'task-completed',
-  description: 'Handle task completion in Agent Teams - train patterns and notify lead',
-  options: [
-    {
-      name: 'task-id',
-      short: 'i',
-      description: 'ID of the completed task',
-      type: 'string',
-      required: true
-    },
-    {
-      name: 'train-patterns',
-      short: 'p',
-      description: 'Train neural patterns from successful task',
-      type: 'boolean',
-      default: true
-    },
-    {
-      name: 'notify-lead',
-      short: 'n',
-      description: 'Notify team lead of task completion',
-      type: 'boolean',
-      default: true
-    },
-    {
-      name: 'success',
-      short: 's',
-      description: 'Whether the task succeeded',
-      type: 'boolean',
-      default: true
-    },
-    {
-      name: 'quality',
-      short: 'q',
-      description: 'Quality score (0-1)',
-      type: 'number'
-    },
-    {
-      name: 'teammate-id',
-      short: 't',
-      description: 'ID of the teammate that completed the task',
-      type: 'string'
-    }
-  ],
-  examples: [
-    { command: 'flo hooks task-completed -i task-123 --train-patterns', description: 'Complete task and train patterns' },
-    { command: 'flo hooks task-completed -i task-456 --notify-lead --quality 0.95', description: 'Complete with quality score' }
-  ],
-  action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const taskId = ctx.args[0] || ctx.flags.taskId as string;
-    const trainPatterns = ctx.flags.trainPatterns !== false;
-    const notifyLead = ctx.flags.notifyLead !== false;
-    const success = ctx.flags.success !== false;
-    const quality = ctx.flags.quality as number;
-    const teammateId = ctx.flags.teammateId as string;
-
-    if (!taskId) {
-      output.printError('Task ID is required. Use --task-id or -i flag.');
-      return { success: false, exitCode: 1 };
-    }
-
-    if (ctx.flags.format !== 'json') {
-      output.printInfo(`Task completed: ${output.highlight(taskId)}`);
-    }
-
-    try {
-      const result = await callMCPTool<{
-        success: boolean;
-        taskId: string;
-        patternsLearned: number;
-        leadNotified: boolean;
-        metrics: {
-          duration: number;
-          quality: number;
-          learningUpdates: number;
-        };
-        nextTask?: {
-          taskId: string;
-          subject: string;
-        };
-      }>('hooks_task-completed', {
-        taskId,
-        trainPatterns,
-        notifyLead,
-        success,
-        quality,
-        teammateId,
-        timestamp: Date.now(),
-      });
-
-      if (ctx.flags.format === 'json') {
-        output.printJson(result);
-        return { success: true, data: result };
-      }
-
-      output.writeln();
-      output.printSuccess(`Task ${taskId} marked complete`);
-
-      output.writeln();
-      output.writeln(output.bold('Completion Metrics'));
-      output.printTable({
-        columns: [
-          { key: 'metric', header: 'Metric', width: 25 },
-          { key: 'value', header: 'Value', width: 20, align: 'right' }
-        ],
-        data: [
-          { metric: 'Patterns Learned', value: result.patternsLearned },
-          { metric: 'Quality Score', value: quality ? `${(quality * 100).toFixed(0)}%` : 'N/A' },
-          { metric: 'Lead Notified', value: result.leadNotified ? 'Yes' : 'No' },
-          { metric: 'Learning Updates', value: result.metrics?.learningUpdates || 0 }
-        ]
-      });
-
-      if (result.nextTask) {
-        output.writeln();
-        output.printInfo(`Next available task: ${result.nextTask.subject}`);
-      }
-
-      return { success: true, data: result };
-    } catch (error) {
-      // Graceful fallback
-      if (ctx.flags.format === 'json') {
-        output.printJson({ success: true, taskId, message: 'Task completed - patterns pending' });
-      } else {
-        output.printSuccess(`Task ${taskId} completed`);
-        if (trainPatterns) {
-          output.printInfo('Pattern training queued for next sync');
-        }
-      }
-      return { success: true };
-    }
-  }
-};
-
 // Learn subcommand — store a learning pattern
 const learnCommand: Command = {
   name: 'learn',
@@ -4414,8 +4198,6 @@ export const hooksCommand: Command = {
     preBashCommand,
     postBashCommand,
     // Agent Teams integration
-    teammateIdleCommand,
-    taskCompletedCommand,
     // Learning service commands
     learnCommand,
     patternsCommand,
@@ -4468,10 +4250,6 @@ export const hooksCommand: Command = {
       `${output.highlight('learn')}          - Store a learning pattern`,
       `${output.highlight('patterns')}       - List learned patterns`,
       `${output.highlight('consolidate')}    - Promote, prune, and deduplicate patterns`,
-      '',
-      output.bold('Agent Teams:'),
-      `${output.highlight('teammate-idle')}  - Handle idle teammate (auto-assign tasks)`,
-      `${output.highlight('task-completed')} - Handle task completion (train patterns)`
     ]);
     output.writeln();
     output.writeln('Run "flo hooks <subcommand> --help" for subcommand help');

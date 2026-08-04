@@ -130,10 +130,12 @@ describe('Command Definitions', () => {
       expectValidCommand(agentCommand, 'agent');
     });
 
-    it('should have 8 subcommands', () => {
-      expectHasSubcommands(agentCommand, 8);
+    // 'logs' was removed in #1349: it called the unregistered agent_logs
+    // tool and no agent-log source exists to back it.
+    it('should have 7 subcommands', () => {
+      expectHasSubcommands(agentCommand, 7);
       expectSubcommandNames(agentCommand, [
-        'spawn', 'list', 'status', 'stop', 'metrics', 'pool', 'health', 'logs',
+        'spawn', 'list', 'status', 'stop', 'metrics', 'pool', 'health',
       ]);
     });
 

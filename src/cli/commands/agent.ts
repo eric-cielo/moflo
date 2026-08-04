@@ -810,108 +810,6 @@ const healthCommand: Command = {
   }
 };
 
-// Agent logs subcommand
-const logsCommand: Command = {
-  name: 'logs',
-  description: 'Show agent activity logs',
-  options: [
-    {
-      name: 'id',
-      short: 'i',
-      description: 'Agent ID',
-      type: 'string'
-    },
-    {
-      name: 'tail',
-      short: 'n',
-      description: 'Number of recent entries',
-      type: 'number',
-      default: 50
-    },
-    {
-      name: 'level',
-      short: 'l',
-      description: 'Minimum log level',
-      type: 'string',
-      choices: ['debug', 'info', 'warn', 'error'],
-      default: 'info'
-    },
-    {
-      name: 'follow',
-      short: 'f',
-      description: 'Follow log output',
-      type: 'boolean',
-      default: false
-    },
-    {
-      name: 'since',
-      description: 'Show logs since (e.g., "1h", "30m")',
-      type: 'string'
-    }
-  ],
-  examples: [
-    { command: 'flo agent logs -i agent-001', description: 'Show agent logs' },
-    { command: 'flo agent logs -i agent-001 -f', description: 'Follow agent logs' },
-    { command: 'flo agent logs -l error --since 1h', description: 'Show errors from last hour' }
-  ],
-  action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const agentId = ctx.args[0] || ctx.flags.id as string;
-    const tail = ctx.flags.tail as number;
-    const level = ctx.flags.level as string;
-
-    if (!agentId) {
-      output.printError('Agent ID is required. Use --id or -i');
-      return { success: false, exitCode: 1 };
-    }
-
-    try {
-      const result = await callMCPTool<{
-        agentId: string;
-        entries: Array<{
-          timestamp: string;
-          level: 'debug' | 'info' | 'warn' | 'error';
-          message: string;
-          context?: Record<string, unknown>;
-        }>;
-        total: number;
-      }>('agent_logs', {
-        agentId,
-        tail,
-        level,
-        since: ctx.flags.since,
-      });
-
-      if (ctx.flags.format === 'json') {
-        output.printJson(result);
-        return { success: true, data: result };
-      }
-
-      output.writeln();
-      output.writeln(output.bold(`Logs for ${agentId}`));
-      output.writeln(output.dim(`Showing ${result.entries.length} of ${result.total} entries`));
-      output.writeln();
-
-      for (const entry of result.entries) {
-        const time = new Date(entry.timestamp).toLocaleTimeString();
-        const levelStr = formatLogLevel(entry.level);
-        output.writeln(`${output.dim(time)} ${levelStr} ${entry.message}`);
-        if (entry.context && Object.keys(entry.context).length > 0) {
-          output.writeln(output.dim(`  ${JSON.stringify(entry.context)}`));
-        }
-      }
-
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof MCPClientError) {
-        output.printError(`Logs error: ${error.message}`);
-      } else {
-        output.printError(`Unexpected error: ${String(error)}`);
-      }
-      return { success: false, exitCode: 1 };
-    }
-  }
-};
-
 function formatLogLevel(level: string): string {
   switch (level) {
     case 'debug':
@@ -931,7 +829,7 @@ function formatLogLevel(level: string): string {
 export const agentCommand: Command = {
   name: 'agent',
   description: 'Agent management commands',
-  subcommands: [spawnCommand, listCommand, statusCommand, stopCommand, metricsCommand, poolCommand, healthCommand, logsCommand],
+  subcommands: [spawnCommand, listCommand, statusCommand, stopCommand, metricsCommand, poolCommand, healthCommand],
   options: [],
   examples: [
     { command: 'flo agent spawn -t coder', description: 'Spawn a coder agent' },

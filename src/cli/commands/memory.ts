@@ -769,12 +769,6 @@ const cleanupCommand: Command = {
       default: false
     },
     {
-      name: 'low-quality',
-      short: 'l',
-      description: 'Delete low quality patterns (threshold)',
-      type: 'number'
-    },
-    {
       name: 'namespace',
       short: 'n',
       description: 'Clean specific namespace only',
@@ -804,7 +798,7 @@ const cleanupCommand: Command = {
     output.printInfo('Analyzing memory for cleanup...');
 
     try {
-      const result = await callMCPTool<{
+      type CleanupResult = {
         dryRun: boolean;
         candidates: {
           expired: number;
@@ -814,23 +808,42 @@ const cleanupCommand: Command = {
         };
         deleted: {
           entries: number;
-          vectors: number;
-          patterns: number;
         };
         freed: {
           bytes: number;
           formatted: string;
         };
         duration: number;
-      }>('memory_cleanup', {
-        dryRun,
+      };
+
+      const cleanupArgs = {
         olderThan: ctx.flags.olderThan,
         expiredOnly: ctx.flags.expiredOnly,
-        lowQualityThreshold: ctx.flags.lowQuality,
         namespace: ctx.flags.namespace,
-      });
+      };
 
+      // Two-phase by design: this first call only counts. Nothing is deleted
+      // until the apply:true call below, so declining the prompt genuinely
+      // leaves the store untouched (#1349).
+      let result = await callMCPTool<CleanupResult>('memory_cleanup', cleanupArgs);
+
+      // JSON output implies a non-interactive caller, so never prompt on this
+      // path: report the candidates and require --force to actually delete.
       if (ctx.flags.format === 'json') {
+        if (dryRun || result.candidates.total === 0) {
+          output.printJson(result);
+          return { success: true, data: result };
+        }
+        if (!force) {
+          const pending = {
+            ...result,
+            applied: false,
+            reason: 'Confirmation required — re-run with --force to delete.',
+          };
+          output.printJson(pending);
+          return { success: true, data: pending };
+        }
+        result = await callMCPTool<CleanupResult>('memory_cleanup', { ...cleanupArgs, apply: true });
         output.printJson(result);
         return { success: true, data: result };
       }
@@ -845,33 +858,41 @@ const cleanupCommand: Command = {
         data: [
           { category: 'Expired (TTL)', count: result.candidates.expired },
           { category: 'Stale (unused)', count: result.candidates.stale },
-          { category: 'Low Quality', count: result.candidates.lowQuality },
+          { category: 'Unusable (no vector)', count: result.candidates.lowQuality },
           { category: output.bold('Total'), count: output.bold(String(result.candidates.total)) }
         ]
       });
 
-      if (!dryRun && result.candidates.total > 0 && !force) {
+      if (dryRun) return { success: true, data: result };
+
+      if (result.candidates.total === 0) {
+        output.writeln();
+        output.printInfo('Nothing to clean');
+        return { success: true, data: result };
+      }
+
+      if (!force) {
         const confirmed = await confirm({
-          message: `Delete ${result.candidates.total} entries (${result.freed.formatted})?`,
+          message: `Delete ${result.candidates.total} entries?`,
           default: false
         });
 
         if (!confirmed) {
-          output.printInfo('Cleanup cancelled');
+          output.printInfo('Cleanup cancelled — nothing was deleted');
           return { success: true, data: result };
         }
       }
 
-      if (!dryRun) {
-        output.writeln();
-        output.printSuccess(`Cleaned ${result.deleted.entries} entries`);
-        output.printList([
-          `Vectors removed: ${result.deleted.vectors}`,
-          `Patterns removed: ${result.deleted.patterns}`,
-          `Space freed: ${result.freed.formatted}`,
-          `Duration: ${result.duration}ms`
-        ]);
-      }
+      result = await callMCPTool<CleanupResult>('memory_cleanup', { ...cleanupArgs, apply: true });
+
+      output.writeln();
+      // Report what the apply call actually removed, not the count the user
+      // was shown — an entry can expire between the two phases.
+      output.printSuccess(`Cleaned ${result.deleted.entries} entries`);
+      output.printList([
+        `Space freed: ${result.freed.formatted}`,
+        `Duration: ${result.duration}ms`
+      ]);
 
       return { success: true, data: result };
     } catch (error) {
@@ -907,19 +928,6 @@ const compressCommand: Command = {
       default: 'all'
     },
     {
-      name: 'quantize',
-      short: 'z',
-      description: 'Enable vector quantization (reduces memory 4-32x)',
-      type: 'boolean',
-      default: false
-    },
-    {
-      name: 'bits',
-      description: 'Quantization bits (4, 8, 16)',
-      type: 'number',
-      default: 8
-    },
-    {
       name: 'rebuild-index',
       short: 'r',
       description: 'Rebuild HNSW index after compression',
@@ -929,19 +937,17 @@ const compressCommand: Command = {
   ],
   examples: [
     { command: 'flo memory compress', description: 'Balanced compression' },
-    { command: 'flo memory compress --quantize --bits 4', description: '4-bit quantization (32x reduction)' },
-    { command: 'flo memory compress -l max -t vectors', description: 'Max compression on vectors' }
+    { command: 'flo memory compress -l max', description: 'Max compression (checkpoints the WAL first)' },
+    { command: 'flo memory compress --no-rebuild-index', description: 'Compact without dropping the HNSW index' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const level = ctx.flags.level as string || 'balanced';
     const target = ctx.flags.target as string || 'all';
-    const quantize = ctx.flags.quantize as boolean;
-    const bits = ctx.flags.bits as number || 8;
     const rebuildIndex = ctx.flags.rebuildIndex as boolean ?? true;
 
     output.writeln();
     output.writeln(output.bold('Memory Compression'));
-    output.writeln(output.dim(`Level: ${level}, Target: ${target}, Quantize: ${quantize ? `${bits}-bit` : 'no'}`));
+    output.writeln(output.dim(`Level: ${level}, Target: ${target}`));
     output.writeln();
 
     const spinner = output.createSpinner({ text: 'Analyzing current storage...', spinner: 'dots' });
@@ -971,16 +977,14 @@ const compressCommand: Command = {
           indexRebuilt: boolean;
         };
         performance: {
-          searchLatencyBefore: number;
-          searchLatencyAfter: number;
+          searchLatencyBefore: number | null;
+          searchLatencyAfter: number | null;
           searchSpeedup: string;
         };
         duration: number;
       }>('memory_compress', {
         level,
         target,
-        quantize,
-        bits,
         rebuildIndex,
       });
 
@@ -1014,7 +1018,6 @@ const compressCommand: Command = {
         [
           `Compression Ratio: ${result.compression.ratio.toFixed(2)}x`,
           `Space Saved: ${result.compression.formattedSaved}`,
-          `Quantization: ${result.compression.quantizationApplied ? `Yes (${bits}-bit)` : 'No'}`,
           `Index Rebuilt: ${result.compression.indexRebuilt ? 'Yes' : 'No'}`,
           `Duration: ${(result.duration / 1000).toFixed(1)}s`
         ].join('\n'),
@@ -1022,10 +1025,14 @@ const compressCommand: Command = {
       );
 
       if (result.performance) {
+        // A probe that threw reports null, not 0 — "unavailable" beats
+        // rendering a failure as 0.00ms (infinitely fast).
+        const fmtLatency = (ms: number | null): string =>
+          ms === null ? 'unavailable' : `${ms.toFixed(2)}ms`;
         output.writeln();
         output.writeln(output.bold('Performance Impact'));
         output.printList([
-          `Search latency: ${result.performance.searchLatencyBefore.toFixed(2)}ms → ${result.performance.searchLatencyAfter.toFixed(2)}ms`,
+          `Search latency: ${fmtLatency(result.performance.searchLatencyBefore)} → ${fmtLatency(result.performance.searchLatencyAfter)}`,
           `Speedup: ${output.success(result.performance.searchSpeedup)}`
         ]);
       }
@@ -1177,12 +1184,24 @@ const importCommand: Command = {
           patterns: number;
         };
         skipped: number;
+        failed: number;
+        errors: string[];
         duration: number;
       }>('memory_import', {
         inputPath,
         merge: ctx.flags.merge ?? true,
         namespace: ctx.flags.namespace,
       });
+
+      // An import where nothing landed is not a success, and entries the
+      // store refused must not be reported as skipped duplicates (#1349).
+      if (result.failed > 0) {
+        output.printError(`Import failed for ${result.failed} entr${result.failed === 1 ? 'y' : 'ies'}`);
+        for (const err of result.errors ?? []) output.printError(`  ${err}`);
+        if (result.imported.entries === 0) {
+          return { success: false, exitCode: 1, data: result };
+        }
+      }
 
       output.printSuccess(`Imported from ${result.inputPath}`);
       output.printList([

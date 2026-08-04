@@ -341,7 +341,7 @@ async function getMemoryFunctions() {
 /**
  * Ensure memory database is initialized and migrate legacy data if needed
  */
-async function ensureInitialized(): Promise<void> {
+export async function ensureInitialized(): Promise<void> {
   const { initializeMemoryDatabase, checkMemoryInitialization, storeEntry } = await getMemoryFunctions();
 
   // Check if already initialized

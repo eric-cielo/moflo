@@ -11,7 +11,9 @@
 // Caching for Performance
 // ============================================================================
 
-import { mofloImport } from '../services/moflo-require.js';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { isAbsolute, join, normalize, resolve } from 'node:path';
 
 /**
  * Cache for coverage data (1 minute TTL)
@@ -361,6 +363,49 @@ export interface CoverageGapsOptions extends CoverageRouteOptions {
   groupByAgent?: boolean;
 }
 
+export type GapSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+/**
+ * Bucket a coverage shortfall by severity.
+ *
+ * Shares the 50/30/15 thresholds with `calculateFilePriority` below on
+ * purpose — the two answer the same question (how bad is this gap) and had
+ * drifted into separate copies once the MCP wrappers landed (#1349).
+ */
+export function classifyGap(gap: number): GapSeverity {
+  if (gap >= 50) return 'critical';
+  if (gap >= 30) return 'high';
+  if (gap >= 15) return 'medium';
+  return 'low';
+}
+
+/**
+ * Normalize a path fragment for cross-platform substring matching.
+ *
+ * Rule #1: Istanbul records absolute keys using the OS separator, so on
+ * Windows `byFile[].path` is `C:\repo\src\cli\foo.ts` while callers pass
+ * `src/cli`. A raw `includes` therefore matched nothing on Windows and
+ * everything on POSIX — `hooks_coverage-suggest` silently returned zero
+ * suggestions. Compare on a separator- and case-normalized form instead.
+ */
+export function normalizePathFragment(value: string): string {
+  return value.split(/[\\/]+/).join('/').toLowerCase();
+}
+
+/**
+ * Load the project's coverage report, or null when no coverage artifact exists.
+ *
+ * Exported for the MCP wrappers (#1349): `hooks_coverage-*` needs the report's
+ * `byType` totals for its summary, which the task-shaped helpers below don't
+ * surface.
+ */
+export async function loadCoverageReport(
+  projectRoot?: string,
+  skipCache?: boolean
+): Promise<CoverageReport | null> {
+  return loadProjectCoverage(projectRoot, skipCache);
+}
+
 /**
  * Route a task based on coverage analysis
  */
@@ -409,8 +454,10 @@ export async function coverageSuggest(
     };
   }
 
-  // Filter files matching the path
-  const matchingFiles = coverage.byFile.filter(f => f.path.includes(path));
+  // Filter files matching the path (separator/case-normalized — see
+  // normalizePathFragment; a raw `includes` never matched on Windows).
+  const needle = normalizePathFragment(path);
+  const matchingFiles = coverage.byFile.filter(f => normalizePathFragment(f.path).includes(needle));
   const belowThreshold = matchingFiles.filter(f => f.lineCoverage < threshold);
 
   const suggestions = belowThreshold
@@ -484,8 +531,6 @@ export async function coverageGaps(
  * Returns null if path is invalid or attempts traversal
  */
 function validateProjectPath(inputPath: string | undefined): string | null {
-  const { resolve, normalize, isAbsolute } = require('path');
-
   // Default to cwd if not provided
   const basePath = inputPath || process.cwd();
 
@@ -531,10 +576,6 @@ async function loadProjectCoverage(projectRoot?: string, skipCache?: boolean): P
       return cached.report;
     }
   }
-
-  const { existsSync } = require('fs');
-  const { readFile } = require('fs/promises');
-  const { join, normalize } = require('path');
 
   // Try common coverage locations (all relative to validated root)
   const coverageLocations = [

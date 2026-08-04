@@ -83,6 +83,11 @@
       "notes": "MCP handlers funnel through chokepoint"
     },
     {
+      "file": "src/cli/mcp-tools/memory-admin-tools.ts",
+      "classification": "daemon-offline",
+      "notes": "#1349 export/import/cleanup/detailed-stats use db.exec only for SELECTs and route every delete through the deleteEntry chokepoint. memory_compress is the sole direct mutation (VACUUM + wal_checkpoint) and self-enforces the offline precondition: it reads the daemon lock and refuses with an explicit error when a live daemon owns the DB, rather than racing it."
+    },
+    {
       "file": "src/cli/swarm/swarm-persistence.ts",
       "classification": "daemon-rpc",
       "notes": "Cross-process; DI'd through chokepoint"

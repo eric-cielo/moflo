@@ -2,7 +2,10 @@
  * Diff Classifier for Change Analysis
  */
 
-import { mofloImport } from '../services/moflo-require.js';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 export interface DiffClassifierConfig {
   maxDiffSize: number;
@@ -392,7 +395,6 @@ export function getGitDiffNumstat(ref: string = 'HEAD'): DiffFile[] {
     return cached.files;
   }
 
-  const { execFileSync } = require('child_process');
   try {
     // SECURITY: Use execFileSync with args array instead of shell string
     // This prevents command injection via the ref parameter
@@ -467,19 +469,18 @@ export async function getGitDiffNumstatAsync(ref: string = 'HEAD'): Promise<Diff
     return cached.files;
   }
 
-  const { execFile } = require('child_process');
-  const { promisify } = require('util');
-  const execFileAsync = promisify(execFile);
-
   try {
     // SECURITY: Use execFile with args array instead of shell string
+    // windowsHide matches the sync twin above — without it Windows flashes
+    // a console window per git call, and analyze_diff runs these from the
+    // MCP server where there is no terminal to flash into.
     const { stdout: numstatOutput } = await execFileAsync('git', [
       'diff', '--numstat', '--diff-filter=ACDMRTUXB', ref
-    ], { maxBuffer: 10 * 1024 * 1024 });
+    ], { maxBuffer: 10 * 1024 * 1024, windowsHide: true });
 
     const { stdout: statusOutput } = await execFileAsync('git', [
       'diff', '--name-status', ref
-    ], { maxBuffer: 10 * 1024 * 1024 });
+    ], { maxBuffer: 10 * 1024 * 1024, windowsHide: true });
 
     const stdout = numstatOutput + '---STATUS---' + statusOutput;
 
