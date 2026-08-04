@@ -10,6 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { errorDetail } from '../../shared/utils/error-detail.js';
+import { readLoadAverage } from '../../shared/utils/load-average.js';
 
 // ============================================================================
 // Security Constants
@@ -997,9 +998,9 @@ export function createPerformanceWorker(projectRoot: string): WorkerHandler {
     const freeMem = os.freemem();
     const memPct = Math.round((1 - freeMem / totalMem) * 100);
 
-    // CPU load
+    // CPU load — null where the platform has none (#1358), never "0.00"
     const cpus = os.cpus();
-    const loadAvg = os.loadavg()[0];
+    const loadAvg = readLoadAverage(os.loadavg(), os.platform());
 
     return {
       worker: 'performance',
@@ -1014,7 +1015,7 @@ export function createPerformanceWorker(projectRoot: string): WorkerHandler {
         },
         cpu: {
           cores: cpus.length,
-          loadAvg: loadAvg.toFixed(2),
+          loadAvg: loadAvg === null ? null : loadAvg[0].toFixed(2),
         },
         speedup: '1.0x',  // Placeholder
       },
@@ -1031,7 +1032,9 @@ export function createHealthWorker(projectRoot: string): WorkerHandler {
     const memPct = Math.round((1 - freeMem / totalMem) * 100);
 
     const uptime = os.uptime();
-    const loadAvg = os.loadavg();
+    // null where the platform has none (#1358) — three zeros would read as an
+    // idle machine rather than as an absent reading.
+    const loadAvg = readLoadAverage(os.loadavg(), os.platform());
 
     // Disk space (cross-platform approximation)
     let diskPct = 0;
@@ -1058,7 +1061,7 @@ export function createHealthWorker(projectRoot: string): WorkerHandler {
         disk: { usedPct: diskPct, free: diskFree },
         system: {
           uptime: Math.round(uptime / 3600),
-          loadAvg: loadAvg.map(l => l.toFixed(2)),
+          loadAvg: loadAvg === null ? null : loadAvg.map(l => l.toFixed(2)),
           platform: os.platform(),
           arch: os.arch(),
         },

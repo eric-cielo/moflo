@@ -46,6 +46,7 @@ import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { calculateDelay } from '../production/retry.js';
 import { CircuitBreaker } from '../production/circuit-breaker.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { readLoadAverage } from '../shared/utils/load-average.js';
 import { readMofloEnv } from './env-compat.js';
 
 // Worker types matching hooks-tools.ts. `audit`, `predict`, `document`
@@ -194,8 +195,20 @@ export class WorkerDaemon extends EventEmitter {
   // during state restoration (R1: constructor config takes priority over stale state)
   private originalConfig?: Partial<DaemonConfig>;
 
-  // Injectable OS provider for testing (avoids ESM module namespace issues)
-  private _osProvider?: { loadavg: () => number[]; totalmem: () => number; freemem: () => number };
+  // Injectable OS provider for testing (avoids ESM module namespace issues).
+  // `platform` is optional so every fake written before #1358 keeps working —
+  // when absent the real `process.platform` decides, which is what those tests
+  // already assumed.
+  private _osProvider?: {
+    loadavg: () => number[];
+    totalmem: () => number;
+    freemem: () => number;
+    platform?: () => NodeJS.Platform;
+  };
+
+  // canRunWorker() runs on every dispatch, so the "no load average here" notice
+  // is latched to one line per daemon rather than one per worker (#1358).
+  private _warnedCpuGateUnavailable = false;
 
   // Detach callback returned by attachSignalHandlers; calling it removes the
   // SIGTERM/SIGINT/SIGHUP handlers this daemon registered. Without this,
@@ -399,22 +412,49 @@ export class WorkerDaemon extends EventEmitter {
   }
 
   /**
-   * Check if system resources allow worker execution
+   * Check if system resources allow worker execution.
+   *
+   * `cpuGate` reports whether the CPU threshold was actually applied. Windows
+   * has no load average — `os.loadavg()` returns `[0, 0, 0]` there — and
+   * `maxCpuLoad` is validated `> 0` in both places that accept it, so before
+   * #1358 the CPU branch was unreachable on Windows: the daemon dispatched
+   * with no CPU backpressure while still *looking* like it throttled, because
+   * the memory gate below kept firing.
+   *
+   * Skipping is a stated decision, not a substitution. `os.cpus()` tick deltas
+   * would give a cross-platform number, but they measure *utilisation
+   * percentage* where `maxCpuLoad` is a *run-queue depth* — a threshold whose
+   * default is `cores * 0.8` and which `getEffectiveCpuCount()` deliberately
+   * scales against cgroup quotas. Feeding a 0–100 percentage into that key
+   * would silently re-scale every consumer's configured value, which is a
+   * second wrong number stacked on the first. So: skip, and say so.
    */
-  private async canRunWorker(): Promise<{ allowed: boolean; reason?: string }> {
+  private async canRunWorker(): Promise<{
+    allowed: boolean;
+    reason?: string;
+    cpuGate: 'measured' | 'unavailable';
+  }> {
     const os = this._osProvider ?? await import('os');
-    const cpuLoad = os.loadavg()[0];
+    const platform = os.platform?.() ?? process.platform;
+    const loadAvg = readLoadAverage(os.loadavg(), platform);
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const freePercent = (freeMem / totalMem) * 100;
+    const cpuGate = loadAvg === null ? 'unavailable' as const : 'measured' as const;
 
-    if (cpuLoad > this.config.resourceThresholds.maxCpuLoad) {
-      return { allowed: false, reason: `CPU load too high: ${cpuLoad.toFixed(2)}` };
+    if (loadAvg === null) {
+      if (!this._warnedCpuGateUnavailable) {
+        this._warnedCpuGateUnavailable = true;
+        this.log('warn', `CPU load gate disabled: ${platform} reports no load average, so maxCpuLoad=${this.config.resourceThresholds.maxCpuLoad} is not enforced. Memory backpressure (minFreeMemoryPercent=${this.config.resourceThresholds.minFreeMemoryPercent}%) still applies.`);
+      }
+    } else if (loadAvg[0] > this.config.resourceThresholds.maxCpuLoad) {
+      return { allowed: false, reason: `CPU load too high: ${loadAvg[0].toFixed(2)}`, cpuGate };
     }
+
     if (freePercent < this.config.resourceThresholds.minFreeMemoryPercent) {
-      return { allowed: false, reason: `Memory too low: ${freePercent.toFixed(1)}% free` };
+      return { allowed: false, reason: `Memory too low: ${freePercent.toFixed(1)}% free`, cpuGate };
     }
-    return { allowed: true };
+    return { allowed: true, cpuGate };
   }
 
   /**

@@ -7,6 +7,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { readLoadAverage, NOT_MEASURED } from '../shared/utils/load-average.js';
 
 // Benchmark subcommand - REAL measurements
 const benchmarkCommand: Command = {
@@ -357,7 +358,10 @@ const metricsCommand: Command = {
     const memUsage = process.memoryUsage();
     const cpuUsage = process.cpuUsage();
     const uptime = process.uptime();
-    const loadAvg = os.loadavg();
+    // null where the platform has none (#1358). Rendered as "not measured"
+    // below rather than as 0.00 — a reading that does not exist must not read
+    // as an idle machine.
+    const loadAvg = readLoadAverage(os.loadavg(), os.platform());
     const freeMem = os.freemem();
     const totalMem = os.totalmem();
 
@@ -514,7 +518,10 @@ const metricsCommand: Command = {
     });
 
     output.writeln();
-    output.writeln(output.dim(`Load Average: ${loadAvg.map(l => l.toFixed(2)).join(', ')}`));
+    const loadAvgLine = loadAvg === null
+      ? `${NOT_MEASURED} (${os.platform()} has no load average)`
+      : loadAvg.map(l => l.toFixed(2)).join(', ');
+    output.writeln(output.dim(`Load Average: ${loadAvgLine}`));
     output.writeln(output.dim(`CPUs: ${os.cpus().length} | Platform: ${os.platform()} ${os.release()}`));
 
     return { success: true };
