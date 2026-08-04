@@ -335,6 +335,17 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [
           // #1132 — check-bash-memory moved to PreToolUse (above).
           { type: 'command', command: gateHookCmd('record-test-run'), timeout: 2000 },
+          // #1338 follow-up — CLI half of the #952 swarm/hive init recorders.
+          // PostToolUse deliberately: it does not fire on a non-zero exit
+          // (#1322), so only an init that actually succeeded credits the gate.
+          //
+          // Cost: a 6th gate spawn on the Bash path (~30ms), on top of the 4
+          // PreToolUse + 1 PostToolUse already there. Folding it into
+          // record-test-run would save that spawn but make the case name lie
+          // AND make `flo swarm init` emit record-test-run's "no-op" crumb, so
+          // the separate, honestly-named hook wins. The handler early-rejects
+          // on two regexes, so the added work per Bash call is negligible.
+          { type: 'command', command: gateHookCmd('record-bash-swarm-init'), timeout: 2000 },
         ],
       },
       {

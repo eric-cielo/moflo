@@ -487,6 +487,9 @@ const REQUIRED_GATE_CASES = [
   'record-learnings-stored',
   'record-test-run',
   'record-skill-run',
+  // #1338 follow-up — CLI half of the #952 swarm/hive init recorders. A gate.cjs
+  // without it leaves an MCP-less session unable to satisfy the swarm gate.
+  'record-bash-swarm-init',
   // Story #1274 (Epic #1269) — verify-before-done gate + its recorder.
   'record-verify-run',
   'check-before-done',
