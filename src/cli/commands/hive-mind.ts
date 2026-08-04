@@ -962,12 +962,21 @@ const taskCommand: Command = {
         priority: string;
         requiresConsensus: boolean;
         estimatedTime: string;
+        error?: string;
       }>('hive-mind_task', {
         description,
         priority,
         requireConsensus,
         timeout,
       });
+
+      // An uninitialized hive comes back as { error }, not as a throw. Reading
+      // result.assignedTo.join() on that shape crashed with a TypeError
+      // instead of printing the actual problem (#1349).
+      if (result.error) {
+        output.printError(result.error);
+        return { success: false, exitCode: 1 };
+      }
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -995,87 +1004,6 @@ const taskCommand: Command = {
     } catch (error) {
       if (error instanceof MCPClientError) {
         output.printError(`Task submission error: ${error.message}`);
-      } else {
-        output.printError(`Unexpected error: ${String(error)}`);
-      }
-      return { success: false, exitCode: 1 };
-    }
-  }
-};
-
-// Optimize memory subcommand
-const optimizeMemoryCommand: Command = {
-  name: 'optimize-memory',
-  description: 'Optimize hive memory and patterns',
-  options: [
-    {
-      name: 'aggressive',
-      short: 'a',
-      description: 'Aggressive optimization',
-      type: 'boolean',
-      default: false
-    },
-    {
-      name: 'threshold',
-      description: 'Quality threshold for pattern retention',
-      type: 'number',
-      default: 0.7
-    }
-  ],
-  action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const aggressive = ctx.flags.aggressive as boolean;
-    const threshold = ctx.flags.threshold as number;
-
-    output.printInfo('Optimizing hive memory...');
-
-    const spinner = output.createSpinner({ text: 'Analyzing patterns...', spinner: 'dots' });
-    spinner.start();
-
-    try {
-      const result = await callMCPTool<{
-        optimized: boolean;
-        before: { patterns: number; memory: string };
-        after: { patterns: number; memory: string };
-        removed: number;
-        consolidated: number;
-        timeMs: number;
-      }>('hive-mind_optimize-memory', {
-        aggressive,
-        qualityThreshold: threshold,
-      });
-
-      spinner.succeed('Memory optimized');
-
-      if (ctx.flags.format === 'json') {
-        output.printJson(result);
-        return { success: true, data: result };
-      }
-
-      output.writeln();
-      output.printTable({
-        columns: [
-          { key: 'metric', header: 'Metric', width: 20 },
-          { key: 'before', header: 'Before', width: 15, align: 'right' },
-          { key: 'after', header: 'After', width: 15, align: 'right' }
-        ],
-        data: [
-          { metric: 'Patterns', before: result.before.patterns, after: result.after.patterns },
-          { metric: 'Memory', before: result.before.memory, after: result.after.memory }
-        ]
-      });
-
-      output.writeln();
-      output.printList([
-        `Patterns removed: ${result.removed}`,
-        `Patterns consolidated: ${result.consolidated}`,
-        `Optimization time: ${result.timeMs}ms`
-      ]);
-
-      return { success: true, data: result };
-    } catch (error) {
-      spinner.fail('Optimization failed');
-      if (error instanceof MCPClientError) {
-        output.printError(`Optimization error: ${error.message}`);
       } else {
         output.printError(`Unexpected error: ${String(error)}`);
       }
@@ -1286,7 +1214,7 @@ export const hiveMindCommand: Command = {
   name: 'hive-mind',
   aliases: ['hive'],
   description: 'Queen-led consensus-based multi-agent coordination',
-  subcommands: [initCommand, spawnCommand, statusCommand, taskCommand, joinCommand, leaveCommand, consensusCommand, broadcastCommand, memorySubCommand, optimizeMemoryCommand, shutdownCommand],
+  subcommands: [initCommand, spawnCommand, statusCommand, taskCommand, joinCommand, leaveCommand, consensusCommand, broadcastCommand, memorySubCommand, shutdownCommand],
   options: [],
   examples: [
     { command: 'flo hive-mind init -t hierarchical-mesh', description: 'Initialize hive' },
@@ -1311,7 +1239,6 @@ export const hiveMindCommand: Command = {
       `${output.highlight('consensus')}       - Manage consensus proposals`,
       `${output.highlight('broadcast')}       - Broadcast message to workers`,
       `${output.highlight('memory')}          - Access shared memory`,
-      `${output.highlight('optimize-memory')} - Optimize patterns and memory`,
       `${output.highlight('shutdown')}        - Shutdown the hive`
     ]);
     output.writeln();

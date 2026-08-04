@@ -26,6 +26,11 @@ import { performanceTools } from './mcp-tools/performance-tools.js';
 import { githubTools } from './mcp-tools/github-tools.js';
 import { coordinationTools } from './mcp-tools/coordination-tools.js';
 import { moflodbTools } from './mcp-tools/moflodb-tools.js';
+// #1349 — handlers for tool names shipped CLI commands were already calling.
+import { progressTools } from './mcp-tools/progress-tools.js';
+import { coverageTools } from './mcp-tools/coverage-tools.js';
+import { memoryAdminTools } from './mcp-tools/memory-admin-tools.js';
+import { analysisTools } from './mcp-tools/analysis-tools.js';
 import { errorDetail } from './shared/utils/error-detail.js';
 
 /**
@@ -58,6 +63,10 @@ registerTools([
   ...githubTools,
   ...coordinationTools,
   ...moflodbTools,
+  ...progressTools,
+  ...coverageTools,
+  ...memoryAdminTools,
+  ...analysisTools,
 ]);
 
 /**

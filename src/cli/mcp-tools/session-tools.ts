@@ -35,6 +35,11 @@ interface SessionRecord {
   };
 }
 
+/** Count keys in a session data bucket (memory/tasks/agents), 0 when absent. */
+function countOf(bucket: unknown): number {
+  return bucket && typeof bucket === 'object' ? Object.keys(bucket as object).length : 0;
+}
+
 function getSessionDir(): string {
   return storeDir(SESSION_DIR);
 }
@@ -317,6 +322,127 @@ export const sessionTools: MCPTool[] = [
         sessionId,
         deleted: false,
         error: 'Session not found',
+      };
+    },
+  },
+  {
+    // #1349 — `flo session export` with no ID called this to resolve "the
+    // current session"; it was never registered. The store has no explicit
+    // active-session marker, so "current" is defined as the most recently
+    // saved session. Throwing when there are none is what lets the CLI print
+    // "No active session" instead of exporting something arbitrary.
+    name: 'session_current',
+    description: 'Resolve the current session (the most recently saved one)',
+    category: 'session',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+    handler: async () => {
+      const sessions = listSessions();
+      if (sessions.length === 0) {
+        throw new Error('No sessions have been saved');
+      }
+      const [latest] = sessions.sort(
+        (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
+      );
+      return {
+        sessionId: latest.sessionId,
+        name: latest.name,
+        savedAt: latest.savedAt,
+        stats: latest.stats,
+      };
+    },
+  },
+  {
+    name: 'session_export',
+    description: 'Export a saved session as a portable object',
+    category: 'session',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Session to export' },
+        includeMemory: { type: 'boolean', description: 'Include the memory snapshot (default true)' },
+      },
+      required: ['sessionId'],
+    },
+    handler: async (input) => {
+      const sessionId = input.sessionId as string;
+      const session = loadSession(sessionId);
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`);
+      }
+
+      const includeMemory = input.includeMemory !== false;
+      const data: SessionRecord = includeMemory
+        ? session
+        : { ...session, data: { ...session.data, memory: undefined } };
+
+      return {
+        sessionId,
+        data,
+        stats: {
+          agentCount: session.stats?.agents ?? countOf(session.data?.agents),
+          taskCount: session.stats?.tasks ?? countOf(session.data?.tasks),
+          memoryEntries: includeMemory
+            ? session.stats?.memoryEntries ?? countOf(session.data?.memory)
+            : 0,
+        },
+      };
+    },
+  },
+  {
+    name: 'session_import',
+    description: 'Import a session object previously produced by session_export',
+    category: 'session',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        data: { type: 'object', description: 'The exported session object' },
+        name: { type: 'string', description: 'Name for the imported session' },
+        activate: { type: 'boolean', description: 'Make the imported session the current one' },
+      },
+      required: ['data'],
+    },
+    handler: async (input) => {
+      const incoming = (input.data ?? {}) as Partial<SessionRecord>;
+      if (!incoming || typeof incoming !== 'object') {
+        throw new Error('Import payload must be a session object');
+      }
+
+      const importedAt = new Date().toISOString();
+      // A fresh ID keeps an import from silently overwriting a local session
+      // that happens to share the source's ID.
+      const sessionId = `imported-${Date.now()}`;
+      const agentsImported = incoming.stats?.agents ?? countOf(incoming.data?.agents);
+      const tasksImported = incoming.stats?.tasks ?? countOf(incoming.data?.tasks);
+      const memoryEntriesImported =
+        incoming.stats?.memoryEntries ?? countOf(incoming.data?.memory);
+
+      const record: SessionRecord = {
+        sessionId,
+        name: (input.name as string) || incoming.name || sessionId,
+        description: incoming.description,
+        // `activate` makes this the newest session, which is what
+        // session_current resolves to.
+        savedAt: input.activate === true ? importedAt : incoming.savedAt || importedAt,
+        stats: {
+          tasks: tasksImported,
+          agents: agentsImported,
+          memoryEntries: memoryEntriesImported,
+          totalSize: incoming.stats?.totalSize ?? 0,
+        },
+        data: incoming.data,
+      };
+
+      saveSession(record);
+
+      return {
+        sessionId,
+        name: record.name,
+        importedAt,
+        stats: { agentsImported, tasksImported, memoryEntriesImported },
+        activated: input.activate === true,
       };
     },
   },

@@ -245,7 +245,13 @@ export const taskTools: MCPTool[] = [
 
       if (input.status) {
         const statuses = (input.status as string).split(',').map(s => s.trim());
-        tasks = tasks.filter(t => statuses.includes(t.status));
+        // 'all' is the documented "no filter" sentinel — `flo status tasks`
+        // and `flo task list --status all` both pass it. Matching it as a
+        // literal status made those commands report zero tasks while
+        // task_summary, reading the same coordinator, reported them (#1349).
+        if (!statuses.includes('all')) {
+          tasks = tasks.filter(t => statuses.includes(t.status));
+        }
       }
       if (input.type) {
         tasks = tasks.filter(t => t.type === input.type);
@@ -469,6 +475,102 @@ export const taskTools: MCPTool[] = [
       } catch (err) {
         return { success: false, taskId: v.taskId, error: (err as Error).message };
       }
+    },
+  },
+  {
+    // #1349 — `flo task retry` called this and it was never registered.
+    // Protected surface (CLAUDE.md): resubmission goes through
+    // coordinator.submitTask, never a JSON-store write.
+    name: 'task_retry',
+    description: 'Resubmit a finished task to the coordinator as a new task',
+    category: 'task',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'Task to retry' },
+        resetState: { type: 'boolean', description: 'Drop the original task input/result instead of carrying it over' },
+      },
+      required: ['taskId'],
+    },
+    handler: async (input) => {
+      const v = validateTaskId(input);
+      if (!v.ok) return { success: false, taskId: v.taskId, error: v.error };
+
+      const coordinator = await getSwarmCoordinator();
+      const previous = coordinator.getTask(v.taskId);
+      if (!previous) {
+        return { success: false, taskId: v.taskId, error: 'task_not_found' };
+      }
+
+      const resetState = input.resetState === true;
+      try {
+        const newTaskId = await coordinator.submitTask({
+          type: previous.type,
+          name: previous.name,
+          description: previous.description,
+          priority: previous.priority,
+          dependencies: [],
+          input: resetState ? null : previous.input ?? null,
+          timeoutMs: previous.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          retries: 0,
+          maxRetries: previous.maxRetries ?? DEFAULT_MAX_RETRIES,
+          metadata: {
+            ...(previous.metadata ?? {}),
+            retryOf: v.taskId,
+          },
+        });
+
+        const created = coordinator.getTask(newTaskId);
+        return {
+          success: true,
+          taskId: v.taskId,
+          newTaskId,
+          previousStatus: previous.status,
+          status: created?.status ?? 'queued',
+        };
+      } catch (err) {
+        return { success: false, taskId: v.taskId, error: (err as Error).message };
+      }
+    },
+  },
+  {
+    // #1349 — `flo status` called this on every run; because it was missing,
+    // the throw reached getSystemStatus's outer catch and the whole command
+    // rendered its all-zeros "not running" fallback regardless of real state.
+    name: 'task_summary',
+    description: 'Counts of tasks by status, as used by the status dashboard',
+    category: 'task',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+    handler: async () => {
+      const coordinator = await getSwarmCoordinator();
+      const tasks = coordinator.getAllTasks();
+
+      const counts = { total: tasks.length, pending: 0, running: 0, completed: 0, failed: 0 };
+      for (const task of tasks) {
+        switch (task.status) {
+          case 'created':
+          case 'queued':
+          case 'assigned':
+            counts.pending++;
+            break;
+          case 'running':
+          case 'paused':
+            counts.running++;
+            break;
+          case 'completed':
+            counts.completed++;
+            break;
+          case 'failed':
+          case 'timeout':
+          case 'cancelled':
+            counts.failed++;
+            break;
+        }
+      }
+      return counts;
     },
   },
 ];

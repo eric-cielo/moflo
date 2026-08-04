@@ -95,7 +95,7 @@ async function getSystemStatus(): Promise<{
     entries: number;
     size: string;
     backend: string;
-    performance: { searchTime: number; cacheHitRate: number };
+    performance: { searchTime: number | null };
   };
   tasks: {
     total: number;
@@ -131,13 +131,16 @@ async function getSystemStatus(): Promise<{
       // MCP not running
     }
 
-    // Get memory status
+    // #1349 — this used to call `memory_stats`, which returns none of
+    // `entries` / `size` / `performance`; dereferencing `.performance` threw
+    // and dropped the whole command into its all-zeros fallback. Use the
+    // detailed-stats tool, whose shape this actually needs.
     const memoryStatus = await callMCPTool<{
       entries: number;
       size: number;
       backend: string;
-      performance: { avgSearchTime: number; cacheHitRate: number };
-    }>('memory_stats', {});
+      performance: { avgSearchTime: number | null };
+    }>('memory_detailed-stats', {});
 
     // Get task status
     const taskStatus = await callMCPTool<{
@@ -168,8 +171,7 @@ async function getSystemStatus(): Promise<{
         size: formatBytes(memoryStatus.size),
         backend: memoryStatus.backend,
         performance: {
-          searchTime: memoryStatus.performance.avgSearchTime,
-          cacheHitRate: memoryStatus.performance.cacheHitRate
+          searchTime: memoryStatus.performance.avgSearchTime
         }
       },
       tasks: taskStatus,
@@ -195,7 +197,7 @@ async function getSystemStatus(): Promise<{
         entries: 0,
         size: '0 B',
         backend: 'none',
-        performance: { searchTime: 0, cacheHitRate: 0 }
+        performance: { searchTime: null }
       },
       tasks: { total: 0, pending: 0, running: 0, completed: 0, failed: 0 },
       performance: {
@@ -280,8 +282,8 @@ function displayStatus(status: Awaited<ReturnType<typeof getSystemStatus>>): voi
       { property: 'Backend', value: status.memory.backend },
       { property: 'Entries', value: status.memory.entries },
       { property: 'Size', value: status.memory.size },
-      { property: 'Search Time', value: `${status.memory.performance.searchTime.toFixed(2)}ms` },
-      { property: 'Cache Hit Rate', value: `${(status.memory.performance.cacheHitRate * 100).toFixed(1)}%` }
+      // null means the probe never ran — say so rather than print 0.00ms.
+      { property: 'Search Time', value: status.memory.performance.searchTime === null ? 'not measured' : `${status.memory.performance.searchTime.toFixed(2)}ms` }
     ]
   });
   output.writeln();
@@ -550,7 +552,7 @@ const tasksCommand: Command = {
     try {
       const result = await callMCPTool<{
         tasks: Array<{
-          id: string;
+          taskId: string;
           type: string;
           status: string;
           priority: string;
@@ -584,7 +586,9 @@ const tasksCommand: Command = {
           { key: 'progress', header: 'Progress', width: 10 }
         ],
         data: result.tasks.map(t => ({
-          id: t.id,
+          // task_list projects the coordinator id as `taskId`; reading `id`
+          // left the ID column blank on every row (#1349).
+          id: t.taskId,
           type: t.type,
           status: formatHealth(t.status),
           priority: t.priority,
@@ -617,12 +621,11 @@ const memoryCommand: Command = {
         size: number;
         namespaces: Array<{ name: string; entries: number }>;
         performance: {
-          avgSearchTime: number;
-          avgWriteTime: number;
-          cacheHitRate: number;
+          avgSearchTime: number | null;
           hnswEnabled: boolean;
+          indexedVectors: number;
         };
-      }>('memory_detailed-stats', {});
+      }>('memory_detailed-stats', { measureLatency: true });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -642,7 +645,7 @@ const memoryCommand: Command = {
           { property: 'Backend', value: result.backend },
           { property: 'Total Entries', value: result.entries.toLocaleString() },
           { property: 'Storage Size', value: formatBytes(result.size) },
-          { property: 'HNSW Index', value: result.performance.hnswEnabled ? 'Enabled' : 'Disabled' }
+          { property: 'HNSW Index', value: result.performance.hnswEnabled ? 'Active' : 'Not built (search falls back to scan)' }
         ]
       });
 
@@ -654,9 +657,10 @@ const memoryCommand: Command = {
           { key: 'value', header: 'Value', width: 20, align: 'right' }
         ],
         data: [
-          { metric: 'Avg Search Time', value: `${result.performance.avgSearchTime.toFixed(2)}ms` },
-          { metric: 'Avg Write Time', value: `${result.performance.avgWriteTime.toFixed(2)}ms` },
-          { metric: 'Cache Hit Rate', value: `${(result.performance.cacheHitRate * 100).toFixed(1)}%` }
+          // Only metrics the store actually measures — write latency and
+          // cache hit rate are not tracked anywhere, so they are not shown.
+          { metric: 'Avg Search Time', value: result.performance.avgSearchTime === null ? 'unavailable' : `${result.performance.avgSearchTime.toFixed(2)}ms` },
+          { metric: 'Indexed Vectors', value: result.performance.indexedVectors.toLocaleString() }
         ]
       });
 

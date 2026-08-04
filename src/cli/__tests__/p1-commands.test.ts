@@ -87,11 +87,13 @@ vi.mock('../mcp-client.js', () => ({
         entries: 100,
         size: 1024000,
         namespaces: [{ name: 'default', entries: 100 }],
+        // Mirrors the real memory_detailed-stats shape (#1349): write
+        // latency and cache hit rate are not tracked by the store, so the
+        // mock must not advertise them either.
         performance: {
           avgSearchTime: 0.5,
-          avgWriteTime: 1.2,
-          cacheHitRate: 0.85,
-          hnswEnabled: true
+          hnswEnabled: true,
+          indexedVectors: 100
         }
       };
     }
@@ -178,6 +180,7 @@ vi.mock('../mcp-client.js', () => ({
 
     if (toolName === 'task_retry') {
       return {
+        success: true,
         taskId: input.taskId,
         newTaskId: `task-retry-${Date.now()}`,
         previousStatus: 'failed',

@@ -703,14 +703,25 @@ const retryCommand: Command = {
 
     try {
       const result = await callMCPTool<{
+        success: boolean;
         taskId: string;
         newTaskId: string;
         previousStatus: string;
         status: string;
+        error?: string;
       }>('task_retry', {
         taskId,
         resetState
       });
+
+      // The handler reports an unknown/unretryable task by returning
+      // success:false, not by throwing — so the catch below never sees it.
+      // Without this check, `task retry does-not-exist` printed
+      // "Task retried / New task ID: undefined" and exited 0 (#1349).
+      if (!result.success) {
+        output.printError(`Failed to retry task: ${result.error ?? 'unknown error'}`);
+        return { success: false, exitCode: 1, data: result };
+      }
 
       output.writeln();
       output.printSuccess(`Task ${taskId} retried`);
