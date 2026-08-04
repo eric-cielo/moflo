@@ -145,7 +145,7 @@ export function getReferenceHookBlock(): HooksTree {
         // #1132 — check-bash-memory moved to PreToolUse (above).
         // #1171 — widened to cover `PowerShell` tool.
         matcher: '^(Bash|PowerShell)$',
-        hooks: [gateHook('record-test-run', 2000)],
+        hooks: [gateHook('record-test-run', 2000), gateHook('record-bash-swarm-init', 2000)],
       },
       { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000), gateHook('record-verify-run', 2000)] },
       { matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hooks: [gateHook('record-memory-searched', 3000)] },

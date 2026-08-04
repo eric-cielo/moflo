@@ -46,6 +46,11 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PostToolUse', pattern: 'record-learnings-stored' },
   { event: 'PostToolUse', pattern: 'check-bash-memory' },
   { event: 'PostToolUse', pattern: 'record-test-run' },
+  // #1338 follow-up — CLI half of the #952 swarm/hive init recorders. Listed
+  // here so an existing consumer picks it up via repairHookWiring on session
+  // start; without it, only consumers who re-run `flo init` would get the
+  // escape, and the deadlock would persist everywhere else.
+  { event: 'PostToolUse', pattern: 'record-bash-swarm-init' },
   { event: 'PostToolUse', pattern: 'record-skill-run' },
   // Story #1274 — record the native /verify skill run so check-before-done is satisfied.
   { event: 'PostToolUse', pattern: 'record-verify-run' },
@@ -101,6 +106,8 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // the same gates as Bash. Name kept as `check-bash-memory` for backwards compat.
   'check-bash-memory':        { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
   'record-test-run':          { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-test-run', timeout: 2000 } },
+  // #1338 follow-up — same Bash/PowerShell PostToolUse block as record-test-run.
+  'record-bash-swarm-init':   { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-bash-swarm-init', timeout: 2000 } },
   'record-skill-run':         { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-skill-run', timeout: 2000 } },
   // Story #1274 — record the native /verify skill run (same ^Skill$ matcher as record-skill-run).
   'record-verify-run':        { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-verify-run', timeout: 2000 } },

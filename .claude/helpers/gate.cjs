@@ -158,6 +158,10 @@ var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: f
 // mcp__moflo__memory_search there points the reader at the one thing that cannot
 // work; this CLI path credits the gate identically and needs no MCP.
 var MCP_FALLBACK_NOTE = 'If mcp__moflo__* tools are unavailable this session (MCP server not connected), this credits the gate too: npx flo memory search --query "<topic>" --namespace <ns>';
+// #1338 follow-up — the swarm/hive gate's equivalent. The CLI runs the same
+// in-process handler and persists the swarm, so it satisfies this gate for
+// real; it is recorded only on success (PostToolUse, #1322).
+var COORD_FALLBACK_NOTE = 'If mcp__moflo__* tools are unavailable this session (MCP server not connected), this satisfies the gate too:';
 
 // #1294 Finding 3 — reads/scans of EPHEMERAL files under the OS temp dir
 // (background-task output/transcripts, agent scratchpads) are transient tool
@@ -242,8 +246,13 @@ function commandBasename(tok) {
   return (cut >= 0 ? t.slice(cut + 1) : t).toLowerCase();
 }
 
-/** Does one shell segment invoke a moflo memory search? */
-function segmentCreditsMemorySearch(seg) {
+/**
+ * The moflo subcommand one shell segment invokes, as lowercased positional
+ * args (`['memory','search']`, `['swarm','init']`), or null when the segment
+ * does not invoke moflo at all. A dedicated search binary reports the
+ * subcommand it is — that is all `flo-search` does.
+ */
+function mofloSubcommand(seg) {
   var tokens = seg.trim().split(/\s+/).filter(Boolean);
   var i = 0;
   // Skip shell noise ahead of the entrypoint: env assignments (`FOO=bar flo …`),
@@ -255,18 +264,24 @@ function segmentCreditsMemorySearch(seg) {
     if (CREDIT_RUNNER_RE.test(commandBasename(tok))) { i++; continue; }
     break;
   }
-  if (i >= tokens.length) return false;
+  if (i >= tokens.length) return null;
   var entry = commandBasename(tokens[i]);
-  if (CREDIT_SEARCH_BIN_RE.test(entry)) return true;
-  if (!CREDIT_CLI_RE.test(entry)) return false;
+  if (CREDIT_SEARCH_BIN_RE.test(entry)) return ['memory', 'search'];
+  if (!CREDIT_CLI_RE.test(entry)) return null;
   // Positional args after the CLI entrypoint; flags carry no subcommand.
   var rest = [];
   for (var j = i + 1; j < tokens.length; j++) {
     if (tokens[j].charAt(0) !== '-') rest.push(tokens[j].toLowerCase());
   }
-  if (!rest.length) return false;
-  if (CREDIT_MEMORY_COMPOUND_RE.test(rest[0])) return true;
-  return rest[0] === 'memory' && rest.length > 1 && CREDIT_MEMORY_VERB_RE.test(rest[1]);
+  return rest;
+}
+
+/** Does one shell segment invoke a moflo memory search? */
+function segmentCreditsMemorySearch(seg) {
+  var sub = mofloSubcommand(seg);
+  if (!sub || !sub.length) return false;
+  if (CREDIT_MEMORY_COMPOUND_RE.test(sub[0])) return true;
+  return sub[0] === 'memory' && sub.length > 1 && CREDIT_MEMORY_VERB_RE.test(sub[1]);
 }
 
 /**
@@ -281,11 +296,50 @@ function creditsMemorySearch(rawCmd) {
   // entrypoint containing one of these — so non-matches cost one regex, not a
   // strip + split + tokenize.
   if (!CREDIT_HINT_RE.test(rawCmd || '')) return false;
-  var segments = stripQuotedAndHeredocs(rawCmd).split(/[;|&\n]+/);
+  return mofloSegments(rawCmd).some(segmentCreditsMemorySearch);
+}
+
+/** Shell segments of a command, quoted bodies stripped. */
+function mofloSegments(rawCmd) {
+  return stripQuotedAndHeredocs(rawCmd || '').split(/[;|&\n]+/);
+}
+
+/**
+ * #1338 follow-up — which protected-coordination init, if any, did this shell
+ * command run? Returns 'swarm', 'hive', or null.
+ *
+ * `flo swarm init` and `flo hive-mind init` are NOT second-class stand-ins for
+ * the MCP tools: the CLI dispatches in-process through the same TOOL_REGISTRY
+ * handler the MCP server exposes (`mcp-client.ts` callMCPTool), and the
+ * resulting swarm is persisted (#806 agents/topology, #1329 tasks), so a later
+ * process — including a restarted MCP server — hydrates the same swarm.
+ *
+ * This matters because Claude Code spawns stdio MCP servers once at session
+ * start and never respawns them. Before this, `record-swarm-init` fired only on
+ * `mcp__moflo__swarm_init`, so a session that lost its MCP server hit the #952
+ * gate with NO way to satisfy it: `/fl -s` blocked every Agent spawn and told
+ * the reader to call a tool that did not exist in that session. Unlike the
+ * memory gate, there was not even an unadvertised escape.
+ *
+ * Deliberately wired PostToolUse, not PreToolUse where the memory credit lives:
+ * Claude Code does not fire PostToolUse when a command exits non-zero (#1322),
+ * so only an init that actually SUCCEEDED credits the gate. A failed init must
+ * never open it — that would be the silent-degradation failure CLAUDE.md's
+ * protected-functionality rule exists to prevent.
+ */
+function bashCoordinationInit(rawCmd) {
+  // Cheap reject, same hot-path discipline as creditsMemorySearch: every
+  // crediting form names a moflo entrypoint AND the `init` subcommand.
+  if (!CREDIT_HINT_RE.test(rawCmd || '') || !/\binit\b/i.test(rawCmd)) return null;
+  var segments = mofloSegments(rawCmd);
   for (var i = 0; i < segments.length; i++) {
-    if (segmentCreditsMemorySearch(segments[i])) return true;
+    var sub = mofloSubcommand(segments[i]);
+    if (!sub || sub.length < 2 || sub[1] !== 'init') continue;
+    if (sub[0] === 'swarm') return 'swarm';
+    // `hive` is the registered alias for `hive-mind` (commands/hive-mind.ts).
+    if (sub[0] === 'hive-mind' || sub[0] === 'hive') return 'hive';
   }
-  return false;
+  return null;
 }
 // BLOCK: read-like Bash commands that bypass the existing check-before-read /
 // check-before-scan gates by going through the shell. Anchored to the start of
@@ -1033,6 +1087,7 @@ switch (command) {
       if (s.flMode === 'swarm' && !s.swarmInitialized) {
         process.stderr.write('BLOCKED: /fl was invoked with -s/--swarm but mcp__moflo__swarm_init has not been called.\n');
         process.stderr.write('Run mcp__moflo__swarm_init first, then mcp__moflo__agent_spawn for each role, then dispatch Agent.\n');
+        process.stderr.write(COORD_FALLBACK_NOTE + '  npx flo swarm init --topology hierarchical  (then: npx flo agent spawn --type <role>)\n');
         process.stderr.write('See .claude/skills/fl/execution-modes.md "SWARM mode" and CLAUDE.md "⛔ Protected functionality".\n');
         process.stderr.write('Disable via moflo.yaml: gates: swarm_invocation_gate: false\n');
         process.exit(2);
@@ -1040,6 +1095,7 @@ switch (command) {
       if (s.flMode === 'hive' && !s.hiveInitialized) {
         process.stderr.write('BLOCKED: /fl was invoked with -h/--hive but mcp__moflo__hive-mind_init has not been called.\n');
         process.stderr.write('Run mcp__moflo__hive-mind_init first, then dispatch Agent or hive-mind workers.\n');
+        process.stderr.write(COORD_FALLBACK_NOTE + '  npx flo hive-mind init  (then: npx flo hive-mind spawn)\n');
         process.stderr.write('See .claude/skills/fl/execution-modes.md "HIVE-MIND mode" and CLAUDE.md "⛔ Protected functionality".\n');
         process.stderr.write('Disable via moflo.yaml: gates: swarm_invocation_gate: false\n');
         process.exit(2);
@@ -1053,6 +1109,21 @@ switch (command) {
     var s = readState();
     if (!s.swarmInitialized) {
       s.swarmInitialized = true;
+      writeState(s);
+    }
+    break;
+  }
+  case 'record-bash-swarm-init': {
+    // #1338 follow-up — the CLI half of record-swarm-init / record-hive-init.
+    // Wired PostToolUse[Bash|PowerShell], so it only sees commands that
+    // succeeded (#1322). See bashCoordinationInit for why the CLI route is a
+    // real satisfaction of the #952 gate and not a stand-in.
+    var kind = bashCoordinationInit(process.env.TOOL_INPUT_command || '');
+    if (!kind) break;
+    var s = readState();
+    var flag = kind === 'swarm' ? 'swarmInitialized' : 'hiveInitialized';
+    if (!s[flag]) {
+      s[flag] = true;
       writeState(s);
     }
     break;

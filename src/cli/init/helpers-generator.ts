@@ -338,6 +338,8 @@ var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: f
 // #1338 — a session can outlive its moflo MCP connection (Claude Code spawns
 // stdio servers once, at session start). SYNC: mirrors bin/gate.cjs.
 var MCP_FALLBACK_NOTE = 'If mcp__moflo__* tools are unavailable this session (MCP server not connected), this credits the gate too: npx flo memory search --query "<topic>" --namespace <ns>';
+// #1338 follow-up — swarm/hive equivalent. SYNC: mirrors bin/gate.cjs.
+var COORD_FALLBACK_NOTE = 'If mcp__moflo__* tools are unavailable this session (MCP server not connected), this satisfies the gate too:';
 // #1348 — the pre-PR gates are order-dependent; naming only the missing one left
 // callers to rediscover the sequence by trial. SYNC: mirrors bin/gate.cjs.
 var ORDER_HINT = 'Order that satisfies all of them: tests green -> /flo-simplify (re-run tests if it edits) -> /verify -> its memory_store verdict -> gh pr create\\n';
@@ -382,7 +384,7 @@ function commandBasename(tok) {
   if (bs > cut) cut = bs;
   return (cut >= 0 ? t.slice(cut + 1) : t).toLowerCase();
 }
-function segmentCreditsMemorySearch(seg) {
+function mofloSubcommand(seg) {
   var tokens = seg.trim().split(/\\s+/).filter(Boolean);
   var i = 0;
   while (i < tokens.length) {
@@ -392,25 +394,42 @@ function segmentCreditsMemorySearch(seg) {
     if (CREDIT_RUNNER_RE.test(commandBasename(tok))) { i++; continue; }
     break;
   }
-  if (i >= tokens.length) return false;
+  if (i >= tokens.length) return null;
   var entry = commandBasename(tokens[i]);
-  if (CREDIT_SEARCH_BIN_RE.test(entry)) return true;
-  if (!CREDIT_CLI_RE.test(entry)) return false;
+  if (CREDIT_SEARCH_BIN_RE.test(entry)) return ['memory', 'search'];
+  if (!CREDIT_CLI_RE.test(entry)) return null;
   var rest = [];
   for (var j = i + 1; j < tokens.length; j++) {
     if (tokens[j].charAt(0) !== '-') rest.push(tokens[j].toLowerCase());
   }
-  if (!rest.length) return false;
-  if (CREDIT_MEMORY_COMPOUND_RE.test(rest[0])) return true;
-  return rest[0] === 'memory' && rest.length > 1 && CREDIT_MEMORY_VERB_RE.test(rest[1]);
+  return rest;
+}
+function mofloSegments(rawCmd) {
+  return stripQuotedAndHeredocs(rawCmd || '').split(/[;|&\\n]+/);
+}
+function segmentCreditsMemorySearch(seg) {
+  var sub = mofloSubcommand(seg);
+  if (!sub || !sub.length) return false;
+  if (CREDIT_MEMORY_COMPOUND_RE.test(sub[0])) return true;
+  return sub[0] === 'memory' && sub.length > 1 && CREDIT_MEMORY_VERB_RE.test(sub[1]);
 }
 function creditsMemorySearch(rawCmd) {
   if (!CREDIT_HINT_RE.test(rawCmd || '')) return false;
-  var segments = stripQuotedAndHeredocs(rawCmd).split(/[;|&\\n]+/);
+  return mofloSegments(rawCmd).some(segmentCreditsMemorySearch);
+}
+// #1338 follow-up — the CLI runs the SAME in-process handler the MCP tool does
+// and persists the swarm, so it satisfies the #952 gate for real. Recorded only
+// on success (PostToolUse, #1322). SYNC: bin/gate.cjs has the full rationale.
+function bashCoordinationInit(rawCmd) {
+  if (!CREDIT_HINT_RE.test(rawCmd || '') || !/\\binit\\b/i.test(rawCmd)) return null;
+  var segments = mofloSegments(rawCmd);
   for (var i = 0; i < segments.length; i++) {
-    if (segmentCreditsMemorySearch(segments[i])) return true;
+    var sub = mofloSubcommand(segments[i]);
+    if (!sub || sub.length < 2 || sub[1] !== 'init') continue;
+    if (sub[0] === 'swarm') return 'swarm';
+    if (sub[0] === 'hive-mind' || sub[0] === 'hive') return 'hive';
   }
-  return false;
+  return null;
 }
 var READ_LIKE_BASH_RE = /^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b|^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b|^\\s*sed\\s+-n\\b|^\\s*awk\\s+(?!.*<<)|^\\s*type\\s+\\S*[\\\\/.]|^\\s*(?:Get-Content|gc|Select-String|sls)\\b|^\\s*(?:Get-ChildItem|gci)\\b[^|]*-Recurse\\b|^\\s*dir\\b[^|]*\\s\\/[sS]\\b|^\\s*Format-Hex\\b/i;
 var BASH_CARVE_OUT_RE = /^\\s*(npm|npx|pnpm|yarn|bun|node|deno|tsx|ts-node)\\s|^\\s*(git|gh|hub)\\s|^\\s*(docker|kubectl|helm|terraform)\\s|^\\s*(curl|wget|http|fetch)\\s|^\\s*(jq|yq|xq)\\s|^\\s*(echo|printf|true|false|sleep|test|\\[)\\s|^\\s*cat\\s+(<<|<<<)|^\\s*cat\\s+[^|]*\\s*>|^\\s*tee\\b|^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b/;
@@ -711,6 +730,7 @@ switch (command) {
       if (s.flMode === 'swarm' && !s.swarmInitialized) {
         process.stderr.write('BLOCKED: /fl was invoked with -s/--swarm but mcp__moflo__swarm_init has not been called.\\n');
         process.stderr.write('Run mcp__moflo__swarm_init first, then mcp__moflo__agent_spawn for each role, then dispatch Agent.\\n');
+        process.stderr.write(COORD_FALLBACK_NOTE + '  npx flo swarm init --topology hierarchical  (then: npx flo agent spawn --type <role>)\\n');
         process.stderr.write('See .claude/skills/fl/execution-modes.md "SWARM mode" and CLAUDE.md "⛔ Protected functionality".\\n');
         process.stderr.write('Disable via moflo.yaml: gates: swarm_invocation_gate: false\\n');
         process.exit(2);
@@ -718,10 +738,22 @@ switch (command) {
       if (s.flMode === 'hive' && !s.hiveInitialized) {
         process.stderr.write('BLOCKED: /fl was invoked with -h/--hive but mcp__moflo__hive-mind_init has not been called.\\n');
         process.stderr.write('Run mcp__moflo__hive-mind_init first, then dispatch Agent or hive-mind workers.\\n');
+        process.stderr.write(COORD_FALLBACK_NOTE + '  npx flo hive-mind init  (then: npx flo hive-mind spawn)\\n');
         process.stderr.write('See .claude/skills/fl/execution-modes.md "HIVE-MIND mode" and CLAUDE.md "⛔ Protected functionality".\\n');
         process.stderr.write('Disable via moflo.yaml: gates: swarm_invocation_gate: false\\n');
         process.exit(2);
       }
+    }
+    break;
+  }
+  case 'record-bash-swarm-init': {
+    // #1338 follow-up — CLI half of record-swarm-init/record-hive-init. Wired
+    // PostToolUse so only a SUCCEEDED init credits (#1322). SYNC: bin/gate.cjs.
+    var kind = bashCoordinationInit(process.env.TOOL_INPUT_command || '');
+    if (kind) {
+      var sc = readState();
+      var flag = kind === 'swarm' ? 'swarmInitialized' : 'hiveInitialized';
+      if (!sc[flag]) { sc[flag] = true; writeState(sc); }
     }
     break;
   }
