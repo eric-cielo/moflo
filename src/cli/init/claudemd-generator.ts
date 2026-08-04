@@ -40,10 +40,10 @@ Your first tool call MUST be \`mcp__moflo__memory_search\` — before any Glob/G
 
 Search results carry a compact \`navigation\` crumb (parentDoc, prev/next, chunkTitle). For adjacent/sibling/hierarchical context use \`mcp__moflo__memory_get_neighbors\`; for full chunk content use \`mcp__moflo__memory_retrieve\`; \`Read\` the source doc only via \`parentPath\` when truly needed. Full protocol + worked examples per namespace: \`.claude/guidance/moflo-memory-protocol.md\`.
 
-### Auto-enforced gates
+### Gates
 
-- **TaskCreate-first**: Call \`TaskCreate\` before spawning the Agent tool
-- **Task Icons**: \`TaskCreate\` entries MUST use ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`
+- **Blocking** (hook exits non-zero): memory search before Glob/Grep/guidance Read; tests + \`/flo-simplify\` + learnings + \`/verify\` before \`gh pr create\`; \`swarm_init\`/\`hive-mind_init\` before Agent under \`/fl -s|-h\`.
+- **Advisory** (reminder only): \`TaskCreate\` before spawning the Agent tool, entries in ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`.
 
 ### Tools
 

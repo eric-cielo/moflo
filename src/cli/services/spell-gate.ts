@@ -6,7 +6,7 @@
  * Ported from a consumer project's .claude/scripts/spell-gate.mjs into MoFlo core.
  *
  * Gate types:
- *   check-before-agent     — blocks Agent tool if no TaskCreate or no memory search
+ *   check-before-agent     — reminds (never blocks) if no TaskCreate or no memory search
  *   check-before-scan      — blocks Glob/Grep if no memory search (deduplicated)
  *   check-before-read      — blocks Read on .claude/guidance/ if no memory search
  *   record-task-created     — records TaskCreate usage
@@ -205,7 +205,9 @@ export class GateService {
     if (this.config.task_create_first && !state.tasksCreated) {
       return {
         allowed: true,
-        message: 'REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.',
+        // Advisory wording only: this returns allowed:true, so a message that
+        // claimed the Agent tool was blocked would be false (#1326).
+        message: 'REMINDER: Use TaskCreate before spawning agents.',
       };
     }
 
@@ -377,7 +379,7 @@ export class GateService {
     const result: { reminder?: string; bracket?: string } = {};
 
     if (!state.tasksCreated) {
-      result.reminder = 'REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.';
+      result.reminder = 'REMINDER: Use TaskCreate before spawning agents.';
     }
 
     if (this.config.context_tracking) {

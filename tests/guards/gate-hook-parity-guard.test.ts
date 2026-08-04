@@ -1,5 +1,6 @@
 /**
- * Guard: the three copies of the gate bridge must be one file (#1322).
+ * Guard: the copies of the gate bridge — and of gate.cjs itself — must be one
+ * file (#1322, extended in #1326).
  *
  * `.claude/helpers/gate-hook.mjs` in a consumer project has **two** writers:
  * `flo init` writes `generateGateHookScript()`'s output, and the session-start
@@ -26,6 +27,8 @@ import { generateGateHookScript } from '../../src/cli/init/helpers-generator.js'
 const REPO_ROOT = resolve(__dirname, '../..');
 const BIN_BRIDGE = resolve(REPO_ROOT, 'bin/gate-hook.mjs');
 const DOGFOOD_BRIDGE = resolve(REPO_ROOT, '.claude/helpers/gate-hook.mjs');
+const BIN_GATE = resolve(REPO_ROOT, 'bin/gate.cjs');
+const DOGFOOD_GATE = resolve(REPO_ROOT, '.claude/helpers/gate.cjs');
 
 /** Line endings are normalised: git may check these out as CRLF on Windows. */
 function read(path: string): string {
@@ -39,6 +42,16 @@ describe('gate-hook.mjs parity', () => {
 
   it('the dogfood copy matches bin/ (the launcher syncs it — a diff means it is stale)', () => {
     expect(read(DOGFOOD_BRIDGE)).toBe(read(BIN_BRIDGE));
+  });
+
+  it('the dogfood gate.cjs matches bin/ — this is the file consumers receive (#1326)', () => {
+    // Not merely a dogfood copy. `flo init` writes a consumer's
+    // `.claude/helpers/gate.cjs` from the moflo package's OWN
+    // `.claude/helpers/gate.cjs` — not from `bin/`, and not from
+    // `generateGateScript()` (confirmed by sha1-matching an emitted file
+    // against every candidate on disk). So a stale copy here ships a stale
+    // gate to every freshly-inited project while `bin/` looks correct.
+    expect(read(DOGFOOD_GATE)).toBe(read(BIN_GATE));
   });
 
   it('forwards tool_response, without ever claiming an exit status (#1322)', () => {

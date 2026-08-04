@@ -684,8 +684,11 @@ function getChangedFilesVsBase() {
 
 switch (command) {
   case 'check-before-agent': {
-    // Advisory only — agent spawning is never blocked.
-    // Memory-first enforcement happens at the scan/read gate layer.
+    // Mostly advisory. The TaskCreate + memory reminders below go to stdout and
+    // never block — their wording must not claim otherwise (#1326). The one
+    // exception is the #952 swarm/hive check at the bottom of this case, which
+    // writes to stderr and exits 2.
+    // Memory-first enforcement otherwise happens at the scan/read gate layer.
     // SubagentStart hook injects guidance directive into subagent context.
     //
     // #931 — TaskCreate REMINDER and the namespace hint moved here from
@@ -694,7 +697,7 @@ switch (command) {
     // consumer.
     var s = readState();
     if (config.task_create_first && !s.tasksCreated) {
-      process.stdout.write('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.\n');
+      process.stdout.write('REMINDER: Use TaskCreate before spawning agents.\n');
     }
     if (config.memory_first && s.memoryRequired && !s.memorySearched) {
       process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
