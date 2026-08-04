@@ -183,6 +183,8 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
   private persistence?: SwarmPersistence;
   private topologyPersistScheduled = false;
   private taskPersistScheduled = false;
+  /** Agents that must never be written to the store — see `spawnAgent` (#1370). */
+  private ephemeralAgents = new Set<string>();
   /** Tasks mutated since the last flush. Keeps a flush O(changed), not O(all). */
   private dirtyTasks: Set<string> = new Set();
 
@@ -975,12 +977,14 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
 
   private async syncAgentToPersistence(agentId: string): Promise<void> {
     if (!this.persistence) return;
+    if (this.ephemeralAgents.has(agentId)) return;
     const agent = this.state.agents.get(agentId);
     if (!agent) return;
     await this.persistence.persistAgent(agent, this.agentDomainMap.get(agentId));
   }
 
   private async removeAgentFromPersistence(agentId: string): Promise<void> {
+    this.ephemeralAgents.delete(agentId);
     if (!this.persistence) return;
     await this.persistence.removeAgent(agentId);
   }
@@ -1014,6 +1018,16 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
    */
   private scheduleTaskPersist(taskId: string): void {
     if (!this.persistence) return;
+    // #1370 — an EPHEMERAL task is never durable. `flo doctor`'s swarm check
+    // submits a real task to prove `task_create` round-trips, and since #1329
+    // made task state durable that probe wrote a row on every run.
+    //
+    // Deliberately "never write it" rather than "write then delete it": the
+    // write is asynchronous past the promise the coordinator awaits (memory
+    // writes route through the daemon), so a delete issued after it can still
+    // lose the race and leave the row behind — observed, repeatedly, before
+    // this. Not persisting has no race to lose.
+    if (this.state.tasks.get(taskId)?.metadata?.ephemeral === true) return;
     this.dirtyTasks.add(taskId);
     if (this.taskPersistScheduled) return;
     this.taskPersistScheduled = true;
@@ -1913,6 +1927,19 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       topologyRole: options.type === 'queen' ? 'queen' : 'worker',
       connections: [],
     };
+
+    // #1370 — an agent marked `ephemeral` is never written to the store.
+    // `flo doctor` spawns a probe agent per run and terminates it, but the
+    // spawn's write is fire-and-forget and resolves on hand-off to the daemon
+    // rather than on commit, so the terminate's delete could not reliably beat
+    // it. A row was left every run until the agent cap was reached and the
+    // swarm check failed for good. Not writing has no race to lose.
+    //
+    // Marked BEFORE registering, since registration is what schedules the write
+    // (the MCP spawn surface always supplies a pre-generated id).
+    if (options.metadata?.ephemeral === true && options.id) {
+      this.ephemeralAgents.add(options.id);
+    }
 
     // Determine domain and agent number
     let domain: AgentDomain;

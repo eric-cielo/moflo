@@ -83,7 +83,13 @@ export async function checkSwarmFunctional(): Promise<FunctionalHealthCheck> {
   });
 
   // 2. agent_spawn registers an agent on the live coordinator.
-  const spawnOut = (await safeInvoke(agentTools, 'agent_spawn', { agentType: 'coder' }, details, {
+  // #1370 — `ephemeral` keeps the probe agent out of the store. Without it the
+  // spawn wrote a row every run and the terminate below could not reliably
+  // delete it, so the rows piled up until the coordinator's agent cap was
+  // reached and this very check started failing on every subsequent run.
+  const spawnOut = (await safeInvoke(agentTools, 'agent_spawn', {
+    agentType: 'coder', config: { ephemeral: true },
+  }, details, {
     id: 'agent_spawn.coordinator-backed',
     mcpTool: 'agent_spawn',
     expected: 'success=true with an agentId issued by coordinator.spawnAgent (not a JSON-store write)',
@@ -166,7 +172,12 @@ export async function checkSwarmFunctional(): Promise<FunctionalHealthCheck> {
 
   // 7. task_create round-trips through coordinator.submitTask.
   const taskOut = (await safeInvoke(taskTools, 'task_create', {
-    type: 'coding', description: 'doctor-functional-probe',
+    type: 'coding',
+    description: 'doctor-functional-probe',
+    // #1370 — health-check exhaust, not work: the coordinator must exercise the
+    // full submit/assign/complete path without leaving a durable row behind.
+    metadata: { ephemeral: true },
+    // (the probe agent opts out the same way, via agent_spawn's `config`)
   }, details, {
     id: 'task_create.coordinator-submit',
     mcpTool: 'task_create',
