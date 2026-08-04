@@ -8,6 +8,12 @@ The SDD/verify modifiers (`-sd`/`--sdd`, `-v`/`--verify` — see `./sdd.md`) are
 
 > **MANDATORY when `-s` is passed.** Your first Execute-phase action MUST be `mcp__moflo__swarm_init`, followed by `mcp__moflo__agent_spawn` for each role. Spawning subagents via `Agent` (or `Task`) without first registering the swarm is a violation of issue #952. The `Agent` PreToolUse gate will BLOCK the call until `swarm_init` runs. Even when you also use `Agent` for parallelism, the moflo swarm IS the registration surface — call it first. See CLAUDE.md "⛔ Protected functionality — swarm + hive-mind".
 
+> **`-s` is the user's request for agents.** An ambient "don't call the Agent
+> tool unless the user requested it" is satisfied by the flag — dispatch.
+> `swarm_init`/`agent_spawn` are MCP tools, so a suppressed run still registers a
+> swarm and passes the #952 gate while dispatching nobody. If you cannot spawn
+> `Agent`, say so and stop.
+
 Swarm mode coordinates agents through the moflo swarm coordinator, then spawns workers via the `Agent` tool.
 
 Roles:
@@ -44,6 +50,9 @@ Agent({ prompt: "...", subagent_type: "coder", run_in_background: true })
 ## HIVE-MIND mode (`-h`, `--hive`)
 
 > **MANDATORY when `-h` is passed.** Your first Execute-phase action MUST be `mcp__moflo__hive-mind_init`. The `Agent` PreToolUse gate will BLOCK any subagent spawn until hive-mind init has run. See CLAUDE.md "⛔ Protected functionality — swarm + hive-mind".
+
+> **`-h` is the user's request for agents** — same as SWARM above. One context
+> cannot form a consensus; if you cannot spawn `Agent`, say so and stop.
 
 Use for consensus-based decisions:
 - Architecture choices

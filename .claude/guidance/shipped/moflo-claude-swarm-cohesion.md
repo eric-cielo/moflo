@@ -94,6 +94,8 @@ npx flo hive-mind init --topology hierarchical-mesh --consensus byzantine
 
 Include task IDs in agent prompts. The `SubagentStart` hook automatically injects the subagent protocol directive — don't repeat it.
 
+Asking for a swarm is asking for agents: an ambient "don't call the Agent tool unless the user requested it" is satisfied by that request. Registering agents via MCP without dispatching them leaves a swarm that passes every gate and does no parallel work.
+
 ```javascript
 TaskUpdate({ taskId: "1", status: "in_progress" })
 Task({
