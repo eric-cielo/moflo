@@ -770,7 +770,6 @@ Hooks are shell commands that Claude Code runs automatically at specific points 
 | **PostToolUse: Bash** | `flo gate record-test-run` | Records test runs from Bash for the test-output gate | Yes |
 | **PostToolUse: Skill** | `flo gate record-skill-run` | Records that a skill was invoked (clears skill-related gates) | Yes |
 | **PostToolUse: memory_search** | `flo gate record-memory-searched` | Records that memory was searched (clears memory-first gate) | Yes |
-| **PostToolUse: TaskUpdate** | `flo gate check-task-transition` | Validates task state transitions (prevents skipping states) | Yes |
 | **PostToolUse: memory_store** | `flo gate record-learnings-stored` | Records that learnings were persisted to memory | Yes |
 | **UserPromptSubmit** | `prompt-hook.mjs` | Resets per-prompt gate state, tracks context bracket, routes task to agent | Yes |
 | **UserPromptSubmit** | `meditate-capture.mjs meditate-detect` | Auto-meditate: notices when a durable lesson emerges in the live session and queues it for distillation | Yes |

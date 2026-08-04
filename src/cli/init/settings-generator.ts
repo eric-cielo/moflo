@@ -358,10 +358,12 @@ function generateHooksConfig(config: HooksConfig): object {
         matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$',
         hooks: [{ type: 'command', command: gateHookCmd('record-memory-searched'), timeout: 3000 }],
       },
-      {
-        matcher: '^TaskUpdate$',
-        hooks: [{ type: 'command', command: gateCmd('check-task-transition'), timeout: 2000 }],
-      },
+      // #1331 — no `^TaskUpdate$` block. `check-task-transition` is a no-op
+      // (see the case in gate.cjs), so wiring it spawned gate-hook.mjs + gate.cjs
+      // on every TaskUpdate in every consumer to do nothing. The gate case is
+      // retained for consumers whose settings.json still references it; the
+      // wiring is not. Do not re-add it here without also re-adding it to
+      // hook-block-hash.ts and hook-wiring.ts, or the three copies drift.
       {
         matcher: '^mcp__moflo__memory_store$',
         hooks: [

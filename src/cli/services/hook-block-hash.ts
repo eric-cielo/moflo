@@ -149,7 +149,13 @@ export function getReferenceHookBlock(): HooksTree {
       },
       { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000), gateHook('record-verify-run', 2000)] },
       { matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hooks: [gateHook('record-memory-searched', 3000)] },
-      { matcher: '^TaskUpdate$',                  hooks: [gateCjs('check-task-transition', 2000)] },
+      // #1331 — no `^TaskUpdate$` block. Removing it here is what makes the
+      // removal stick: this reference block is what the session-start launcher
+      // regenerates settings.json against, so an entry left here would be
+      // re-grafted as "missing" on every consumer's next session start. It also
+      // makes an existing consumer's stale entry classify as `extra` and get
+      // swept by applyWholesaleRegeneration (the command still points at a
+      // moflo-owned helper basename, so it is dropped rather than preserved).
       // #1332 — record-verify-outcome routes via gateHook (not gateCjs): the
       // TOOL_INPUT_* env vars it reads are built by gate-hook.mjs from stdin.
       { matcher: '^mcp__moflo__memory_store$',    hooks: [gateCjs('record-learnings-stored', 2000), gateHook('record-verify-outcome', 2000)] },
