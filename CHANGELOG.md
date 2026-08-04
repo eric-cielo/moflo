@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the verify and simplify gates invalidated each other before a PR (#1348)
+
+Opening a PR needs both `/flo-simplify` and `/verify` to have run, and satisfying
+one could clear the other. Every individual block was correct, so the loop was
+invisible from any single message; the reporter escaped only by discovering an
+undocumented ordering by trial.
+
+Two mechanisms produced it. `reset-edit-gates` treated **any** `Write`/`Edit` as a
+code edit — including a scratch probe under the OS temp dir, which can never reach
+the branch diff — so a `/verify` run that jotted one cleared the `/flo-simplify`
+stamp it had nothing to do with. And `record-verify-outcome` wrote its verdict
+without checking the run was still live, so a store arriving after an edit-reset
+produced the self-contradictory `verifyRun: false` beside `verifyOutcome: 'PASS'`,
+a state `check-before-done`'s message chain has no branch for.
+
+Now: writes under the OS temp dir and into moflo's own gitignored `.moflo/` state
+directory no longer reset a gate (reusing the predicate the memory-first gate
+already trusts for these paths, #1294); a verdict for an invalidated run is refused
+with a stderr crumb instead of recorded; and both blocking gates print the working
+order — tests → `/flo-simplify` → `/verify` → its `memory_store` verdict → PR —
+rather than naming only whichever gate happens to be missing. The "ran but recorded
+no verdict" branch also states that re-invoking `/verify` clears the prior verdict
+(#1332, by design), which is why the obvious recovery used to land back in the same
+place.
+
+Consumers pick this up with the gate itself; no migration, and no `.moflo/` state
+changes shape.
+
 ### Fixed — the TaskCreate reminder claimed to block, and shipped that claim (#1326)
 
 `check-before-agent` printed *"Task tool is blocked until then"* on stdout with no

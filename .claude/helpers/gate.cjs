@@ -139,6 +139,14 @@ var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state
 // failures and "fixes" them with allow rules — which cannot override a hook
 // block at all (#1307 finding 5). Naming the gate makes the cause self-evident.
 var GATE_ORIGIN_NOTE = 'This is a moflo hook, not a Claude Code permission rule — allow-rules cannot override it.';
+
+// #1348 — the pre-PR gates are order-dependent and each block message named only
+// its own missing gate, so a caller could satisfy them one at a time forever:
+// /flo-simplify may edit code (which resets tests and verify), and /verify must
+// not, so simplify strictly precedes verify. Both blocking gates print this.
+// /verify's Step 5 memory_store carries the verdict AND stamps learnings, which
+// is why learnings has no separate step here.
+var ORDER_HINT = 'Order that satisfies all of them: tests green -> /flo-simplify (re-run tests if it edits) -> /verify -> its memory_store verdict -> gh pr create\n';
 var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: false';
 
 // #1294 Finding 3 — reads/scans of EPHEMERAL files under the OS temp dir
@@ -555,7 +563,13 @@ var EDIT_RESET_SKIP_BOTH_RE = /\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^
 // they shouldn't reset testsRun/simplifyRun the way a real source edit does.
 // Trailing terminator includes `.` so the single-file template form
 // `.github/PULL_REQUEST_TEMPLATE.md` matches alongside the directory form.
-var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\/])\.github[\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\/.]|$)/i;
+// #1348 — `.moflo/` joins them. It is moflo's own gitignored state directory
+// (daemon locks, memory db, SDD spec/plan artifacts), so nothing written there
+// can appear in the branch diff, and a spec edit invalidating the test run is
+// pure noise. Scoped to the reset only — deliberately NOT added to EXEMPT,
+// which would also un-gate reads of `.moflo/specs/**`, and those are indexed
+// guidance that memory-first should still route through a search.
+var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\/])\.github[\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\/.]|$)|(?:^|[\\\/])\.moflo[\\\/]/i;
 // Test files: invalidate the testing gate (tests are stale once test code changes)
 // but NOT the simplify gate — /simplify already reviewed the production code; touching
 // a test file or fixture doesn't expose new untested surface for code review (#908).
@@ -961,6 +975,17 @@ switch (command) {
       overall = 'UNVERIFIED';
     }
     var vs = readState();
+    // #1348 — refuse a verdict for a run that is no longer live. `verifyRun`
+    // false here means a code edit fired reset-edit-gates between the /verify
+    // invocation and this store, so the verdict describes pre-edit code.
+    // Recording it anyway produced the contradictory `verifyRun:false,
+    // verifyOutcome:'PASS'` state that check-before-done's four-way message
+    // chain has no branch for — it reports "a code edit invalidated the previous
+    // verification" while a PASS sits in state, which reads as a gate bug.
+    if (!vs.verifyRun) {
+      process.stderr.write('gate: record-verify-outcome — "' + mKey + '" arrived after a code edit invalidated the run; verdict not recorded (re-run /verify)\n');
+      break;
+    }
     vs.verifyOutcome = overall;
     writeState(vs);
     break;
@@ -971,6 +996,17 @@ switch (command) {
     // (.github/workflows/, .github/ISSUE_TEMPLATE/, .github/PULL_REQUEST_TEMPLATE/, #1176):
     // no gate reset — editing these doesn't expose new runtime surface.
     if (fp && (EDIT_RESET_SKIP_BOTH_RE.test(fp) || EDIT_RESET_SKIP_PATH_RE.test(fp))) break;
+    // #1348 — a scratchpad write under the OS temp dir is transient tool I/O and
+    // can never reach the branch diff, but it used to reset tests + simplify +
+    // verify like any source change: a /verify run that jotted a probe cleared
+    // the /flo-simplify stamp, and the two gates invalidated each other with no
+    // ordering that satisfied both. Reuses the predicate the memory-first gate
+    // already trusts for these paths (#1294) rather than a second one.
+    // Scope: tmp-only, NOT project-root containment — so a project rooted under
+    // tmp has its own edits skipped too (pinned in the #1348 tests). Containment
+    // is the more general rule, but it fails OPEN when the root can't be
+    // resolved, and a gate that silently stops resetting is the worse failure.
+    if (isEphemeralPath(fp)) break;
     var s = readState();
     // Test-only edits invalidate testsRun but preserve simplifyRun (#908).
     var isTestOnly = fp && EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE.test(fp);
@@ -1088,6 +1124,10 @@ switch (command) {
     if (s.lastResetBy && s.lastResetBy.file) {
       process.stderr.write('Last gate reset: ' + s.lastResetBy.file + ' (' + (s.lastResetBy.gates || []).join(', ') + ')\n');
     }
+    // #1348 — name the order, not just the missing gate. Satisfying one gate can
+    // invalidate another (/flo-simplify edits code, which resets tests + verify),
+    // so "what is missing" alone left callers rediscovering the sequence by trial.
+    process.stderr.write(ORDER_HINT);
     process.stderr.write('Disable per-gate via moflo.yaml:\n');
     process.stderr.write('  gates:\n    testing_gate: false\n    simplify_gate: false\n    learnings_gate: false\n');
     process.exit(2);
@@ -1138,7 +1178,12 @@ switch (command) {
       // recorded a structured outcome (interrupted, or it stored prose only).
       process.stderr.write('  - /verify ran but recorded no verdict — re-run it so it stores a structured result\n');
       process.stderr.write('    (Step 5 of the verify skill must pass metadata.overall to memory_store)\n');
+      // #1348 — the trap this state sets: re-invoking /verify CLEARS any prior
+      // verdict by design (#1332), so the obvious recovery lands right back here
+      // unless Step 5 completes. Say so, rather than letting it be rediscovered.
+      process.stderr.write('    Re-invoking /verify clears the prior verdict, so a re-run that skips Step 5 lands here again.\n');
     }
+    process.stderr.write(ORDER_HINT);
     process.stderr.write('Disable via moflo.yaml:\n');
     process.stderr.write('  gates:\n    verify_before_done: false\n');
     process.exit(2);
