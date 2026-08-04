@@ -93,6 +93,24 @@ function writeState(projectDir: string, state: Record<string, unknown>): void {
   writeFileSync(stateFile, JSON.stringify(state, null, 2));
 }
 
+/**
+ * Earn the testing credit through the real recorder, so it carries the content
+ * fingerprint check-before-pr requires. Hand-setting `testsRun: true` used to
+ * suffice; it no longer does, because a credit is now pinned to the code it
+ * describes and a bare flag carries no evidence about which code that was.
+ *
+ * Call this AFTER the test's edits — that is the real order (edit, run tests,
+ * open the PR). Crediting beforehand would correctly expire at the gate, and
+ * these tests are about the simplify path, not about stale test runs.
+ */
+function creditTests(env: Record<string, string>): void {
+  runGate('record-test-run', {
+    ...env,
+    TOOL_INPUT_command: 'npm test',
+    TOOL_RESPONSE_stdout: 'Test Files 2 passed (2)\nTests 12 passed (12)',
+  });
+}
+
 beforeEach(() => {
   tmpDir = makeTmpRepo();
 });
@@ -137,13 +155,13 @@ describe('gate snapshot path — TRIVIAL delta-since-simplify auto-passes', () =
     // normally fire (edit-reset-gates flips simplifyRun back to false).
     const s = readState(tmpDir) as any;
     s.simplifyRun = false;
-    s.testsRun = true;
     s.learningsStored = true;
     writeState(tmpDir, s);
 
     // Make a 2-line trivial edit and commit it
     writeFileSync(join(tmpDir, 'src.ts'), 'export const X = 1;\n// fix typo in comment\n');
     execSync('git add -A && git commit -q -m "typo"', { cwd: tmpDir });
+    creditTests(env);
 
     // gh pr create — should auto-pass via snapshot classifier
     env.TOOL_INPUT_command = 'gh pr create --title "fix typo"';
@@ -195,7 +213,8 @@ describe('gate baseline path — TRIVIAL whole-branch diff auto-passes', () => {
     execSync('git add -A && git commit -q -m "typo"', { cwd: tmpDir });
 
     // No /simplify ever ran — testsRun true, learningsStored true, simplifyRun false
-    writeState(tmpDir, { testsRun: true, simplifyRun: false, learningsStored: true });
+    writeState(tmpDir, { simplifyRun: false, learningsStored: true });
+    creditTests(env);
 
     env.TOOL_INPUT_command = 'gh pr create --title "typo"';
     const r = runGate('check-before-pr', env);
@@ -312,7 +331,6 @@ describe('gate SMALL review-fix shape — snapshot path (#1176)', () => {
     const s = readState(tmpDir) as any;
     expect(typeof s.simplifySnapshotSha, 'snapshot SHA must be stamped').toBe('string');
     s.simplifyRun = false; // simulate post-edit reset
-    s.testsRun = true;
     s.learningsStored = true;
     writeState(tmpDir, s);
 
@@ -322,6 +340,7 @@ describe('gate SMALL review-fix shape — snapshot path (#1176)', () => {
       Array(14).fill('// review fix: clarify intent').join('\n') + '\n';
     writeFileSync(join(tmpDir, 'src.ts'), tweaked);
     execSync('git add -A && git commit -q -m "apply review fixes"', { cwd: tmpDir });
+    creditTests(env);
 
     env.TOOL_INPUT_command = 'gh pr create --title "review fixes"';
     const r = runGate('check-before-pr', env);
