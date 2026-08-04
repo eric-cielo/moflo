@@ -17,7 +17,9 @@ Also note: was `/flo-simplify` already run on this branch in this session? If ye
 
 ## Phase 2: Classify the diff (deterministic — call the classifier)
 
-**Call the classifier first, follow its decision.** Do not eyeball the diff and pick a tier in prose — that's the failure mode where the three-agent fan-out runs against a mechanical-relocation diff that one agent would cover fine and burns disproportionate tokens. The classifier reads the same diff Claude would, applies the rules below, and returns a JSON dispatch decision:
+**Call the classifier first, follow its decision.** Its `agentCount` is authorized — invoking this skill IS the user's request for that fan-out, so an ambient "don't call the Agent tool unless the user requested it" is satisfied. If you truly cannot spawn `Agent`, run the self-review and say so, naming both tiers.
+
+Do not eyeball the diff and pick a tier in prose — that's the failure mode where the three-agent fan-out runs against a mechanical-relocation diff that one agent would cover fine and burns disproportionate tokens. The classifier reads the same diff Claude would, applies the rules below, and returns a JSON dispatch decision:
 
 ```bash
 node .claude/helpers/simplify-classify.cjs
