@@ -18,14 +18,22 @@ export interface FakeRow {
 export interface InMemoryPersistenceBackend {
   fns: SwarmMemoryFns;
   rows: Map<string, FakeRow>;
+  /**
+   * Every `storeEntry` call in order, including upserts over an existing key.
+   * `rows` only shows the end state, so this is what a debounce assertion has
+   * to count — write *volume* is the thing being bounded, not row count.
+   */
+  writes: Array<{ namespace: string; key: string }>;
 }
 
 export function createInMemoryPersistence(): InMemoryPersistenceBackend {
   const rows = new Map<string, FakeRow>();
+  const writes: Array<{ namespace: string; key: string }> = [];
   const compositeKey = (namespace: string, key: string) => `${namespace}::${key}`;
 
   const fns: SwarmMemoryFns = {
     async storeEntry(opts) {
+      writes.push({ namespace: opts.namespace, key: opts.key });
       rows.set(compositeKey(opts.namespace, opts.key), {
         key: opts.key,
         namespace: opts.namespace,
@@ -57,5 +65,5 @@ export function createInMemoryPersistence(): InMemoryPersistenceBackend {
     },
   };
 
-  return { fns, rows };
+  return { fns, rows, writes };
 }

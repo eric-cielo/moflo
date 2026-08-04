@@ -50,7 +50,12 @@ import { TopologyManager, createTopologyManager } from './topology-manager.js';
 import { MessageBus } from './message-bus.js';
 import { AgentPool, createAgentPool } from './agent-pool.js';
 import { ConsensusEngine, createConsensusEngine } from './consensus/index.js';
-import { SwarmPersistence, type PersistedAgent } from './swarm-persistence.js';
+import {
+  SwarmPersistence,
+  fromPersistedTask,
+  isTerminalTaskStatus,
+  type PersistedAgent,
+} from './swarm-persistence.js';
 
 // =============================================================================
 // Domain Types for 15-Agent Hierarchy
@@ -177,6 +182,9 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
   // Optional write-through persistence; missing-backend safe.
   private persistence?: SwarmPersistence;
   private topologyPersistScheduled = false;
+  private taskPersistScheduled = false;
+  /** Tasks mutated since the last flush. Keeps a flush O(changed), not O(all). */
+  private dirtyTasks: Set<string> = new Set();
 
   constructor(config: Partial<CoordinatorConfig> = {}) {
     super();
@@ -277,6 +285,9 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     this.state.tasks.clear();
     this.agentDomainMap.clear();
     this.taskAssignments.clear();
+    // Drop pending writes along with the tasks they describe. The persisted
+    // rows deliberately survive — that is what a restart hydrates from.
+    this.dirtyTasks.clear();
     for (const queue of this.domainTaskQueues.values()) {
       queue.length = 0;
     }
@@ -866,9 +877,9 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     this.persistence = persistence;
   }
 
-  /** Replay persisted agents + topology into the live coordinator. */
-  async hydrateFromPersistence(): Promise<{ agents: number; topology: boolean }> {
-    if (!this.persistence) return { agents: 0, topology: false };
+  /** Replay persisted agents + tasks + topology into the live coordinator. */
+  async hydrateFromPersistence(): Promise<{ agents: number; tasks: number; topology: boolean }> {
+    if (!this.persistence) return { agents: 0, tasks: 0, topology: false };
 
     let restoredAgents = 0;
     const records = await this.persistence.loadAgents();
@@ -883,8 +894,58 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       }
     }
 
+    const restoredTasks = await this.restoreTasks();
+
     const topology = await this.persistence.loadTopology();
-    return { agents: restoredAgents, topology: topology !== undefined };
+    return { agents: restoredAgents, tasks: restoredTasks, topology: topology !== undefined };
+  }
+
+  /**
+   * Replay persisted tasks (issue #1329).
+   *
+   * Restores state, it does **not** resume work: no `task_assign` message is
+   * re-sent, because the agent it would address has no live process after a
+   * restart. A restored task keeps exactly the status it was persisted with,
+   * and marks nothing dirty — the rows it came from are already current.
+   */
+  private async restoreTasks(): Promise<number> {
+    if (!this.persistence) return 0;
+
+    // Counters are derived from what actually lands in the map, so a record
+    // skipped as a duplicate or dropped as corrupt cannot inflate them.
+    let restored = 0;
+    let completed = 0;
+    let failed = 0;
+
+    for (const record of await this.persistence.loadTasks()) {
+      const taskId = record.id?.id;
+      // Repeat-safe, same as the agent hydrate above.
+      if (typeof taskId !== 'string' || this.state.tasks.has(taskId)) continue;
+      try {
+        const task = fromPersistedTask(record);
+        this.state.tasks.set(taskId, task);
+
+        // Re-link the owning agent. Without this `agent_status` would report no
+        // current task while `task_status` names that agent as assignee — two
+        // MCP tools contradicting each other about the same fact.
+        if (task.assignedTo && !isTerminalTaskStatus(task.status)) {
+          const agent = this.state.agents.get(task.assignedTo.id);
+          if (agent) agent.currentTask = task.id;
+        }
+
+        restored++;
+        if (task.status === 'completed') completed++;
+        else if (task.status === 'failed' || task.status === 'timeout') failed++;
+      } catch {
+        // Drop unrecoverable records rather than failing the whole hydrate.
+      }
+    }
+
+    this.state.metrics.totalTasks += restored;
+    this.state.metrics.completedTasks += completed;
+    this.state.metrics.failedTasks += failed;
+
+    return restored;
   }
 
   private async restoreAgent(record: PersistedAgent): Promise<void> {
@@ -941,6 +1002,46 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     });
   }
 
+  /**
+   * Task equivalent of `scheduleTopologyPersist` (issue #1329).
+   *
+   * Topology is a single snapshot key, so its debounce only needs a flag.
+   * Tasks are per-key, so the microtask collapse batches instead: mutations
+   * mark their task dirty and one flush drains the set. A submit burst
+   * (`task.created` → `task.assigned`) becomes one write, and a swarm holding
+   * many tasks pays for the few that changed rather than a walk over all of
+   * them.
+   */
+  private scheduleTaskPersist(taskId: string): void {
+    if (!this.persistence) return;
+    this.dirtyTasks.add(taskId);
+    if (this.taskPersistScheduled) return;
+    this.taskPersistScheduled = true;
+    queueMicrotask(() => {
+      this.taskPersistScheduled = false;
+      // Re-read locally — `shutdown()` could clear `this.persistence` between
+      // scheduling and flush.
+      const p = this.persistence;
+      if (!p) return;
+      void this.flushTaskPersist(p);
+    });
+  }
+
+  private async flushTaskPersist(p: SwarmPersistence): Promise<void> {
+    // Drain up front: a write that lands mid-flush must schedule a new pass
+    // rather than be swallowed by the set being cleared afterwards.
+    const pending = Array.from(this.dirtyTasks);
+    this.dirtyTasks.clear();
+
+    for (const taskId of pending) {
+      const task = this.state.tasks.get(taskId);
+      // Gone from the live set (shutdown cleared it) — nothing to write, and
+      // the persisted row is deliberately left alone for the next hydrate.
+      if (!task) continue;
+      await p.persistTask(task);
+    }
+  }
+
   private startBackgroundProcesses(): void {
     // Heartbeat monitoring
     this.heartbeatInterval = setInterval(() => {
@@ -973,6 +1074,14 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     }
   }
 
+  /**
+   * Deliberately schedules no task persist of its own (#1329). Every caller
+   * either emits a `task.*` event afterwards (`submitTask`) or has already
+   * marked the task dirty with the same `queued` status
+   * (`handleTaskFail`, `recoverAgent`), so a write here would only capture the
+   * intermediate state mid-`await` and then be superseded. A future caller
+   * that does neither must schedule for itself.
+   */
   private async assignTask(task: TaskDefinition): Promise<AgentState | undefined> {
     // Find best available agent
     const availableAgents = this.getAvailableAgents();
@@ -1103,6 +1212,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
         task.assignedTo = undefined;
         agent.currentTask = undefined;
         agent.status = 'idle';
+        this.scheduleTaskPersist(task.id.id);
 
         // Re-assign
         this.assignTask(task);
@@ -1175,6 +1285,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       if (task) {
         task.status = 'queued';
         task.assignedTo = undefined;
+        this.scheduleTaskPersist(task.id.id);
         await this.assignTask(task);
       }
     }
@@ -1255,6 +1366,14 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
 
     this.emit(type, event);
     this.emit('event', event);
+
+    // Single choke point for task write-through (#1329): every `task.*` emit
+    // follows a mutation of `state.tasks` and carries the id of the task it
+    // mutated. The handful of status changes that mutate without emitting
+    // schedule the flush themselves.
+    if (type.startsWith('task.') && typeof data.taskId === 'string') {
+      this.scheduleTaskPersist(data.taskId);
+    }
   }
 
   // ===== UTILITY METHODS =====
@@ -1512,6 +1631,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
         const task = this.state.tasks.get(taskId);
         if (task && task.status !== 'completed') {
           task.status = 'timeout';
+          this.scheduleTaskPersist(taskId);
         }
         resolve({
           taskId,
@@ -1546,6 +1666,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
         if (task) {
           task.status = 'timeout';
           task.completedAt = new Date();
+          this.scheduleTaskPersist(taskId);
           resolve(task);
         } else {
           reject(new Error(`Task ${taskId} timed out`));
