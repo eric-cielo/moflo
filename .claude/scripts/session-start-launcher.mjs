@@ -286,8 +286,9 @@ let upgradeNoticeContext = null;
 // functionally landed — means a kill during the best-effort tail leaves a
 // truthful terminal badge instead. A kill BEFORE this point deliberately
 // leaves 'in-progress': that upgrade really didn't land, and both the exit
-// handler (graceful) and the statusline's stalled-upgrade rendering (SIGKILL)
-// surface it honestly rather than claiming success.
+// handler (graceful) and the statusline's stranded-notice rendering (SIGKILL,
+// detected by probing the recorded pid) surface it honestly rather than
+// claiming success.
 function commitVersionStamp(stampPath, version) {
   try {
     mkdirSync(dirname(stampPath), { recursive: true });
@@ -305,10 +306,12 @@ function commitVersionStamp(stampPath, version) {
 
 // 5-min TTL is a safety net for zombie launchers (statusline ignores past-TTL
 // files). The 2-min "completed" TTL lets the user see the post-upgrade badge
-// briefly in the next session render (Claude Code renders the statusline only
-// AFTER the SessionStart hook returns, so the in-progress badge has effectively
-// zero visibility window). The next session-start's section 0-pre wipes any
-// leftover, so a stale completed notice can't linger past one session.
+// briefly. Do NOT reason about these windows as if the in-progress notice were
+// invisible: Claude Code repaints the statusline DURING this hook, so the
+// in-progress badge really is seen (#1363 follow-up — assuming otherwise is
+// what produced the false "upgrade interrupted" alarm). The next session-start's
+// section 0-pre wipes any leftover, so a stale notice can't linger past one
+// session.
 const UPGRADE_NOTICE_INPROGRESS_TTL_MS = 5 * 60 * 1000;
 const UPGRADE_NOTICE_COMPLETED_TTL_MS = 2 * 60 * 1000;
 const UPGRADE_NOTICE_PATH = () => join(mofloDir(projectRoot), 'upgrade-notice.json');
@@ -333,6 +336,12 @@ function buildAndWriteNotice(context, status) {
       at: new Date(now).toISOString(),
       expiresAt: new Date(now + ttlMs).toISOString(),
       changes: 0,
+      // #1363 follow-up: lets the statusline tell "work is genuinely running"
+      // from "the launcher died holding this notice" by probing the pid,
+      // instead of inferring it from the fact that it is rendering at all.
+      // Claude Code repaints DURING the SessionStart hook, so that inference
+      // flagged every healthy upgrade as interrupted.
+      pid: process.pid,
     };
     writeFileSync(UPGRADE_NOTICE_PATH(), JSON.stringify(notice, null, 2));
   } catch { /* non-fatal — statusline just won't show the segment */ }
@@ -990,11 +999,11 @@ try {
       // Open the statusline notice before the long-running upgrade work
       // (manifest sync, daemon recycle, embeddings migration). commitVersionStamp
       // flips it to a 2-min "completed" badge the moment the upgrade lands
-      // (#1363; TTL rationale at the constants above). Nothing paints while
-      // this value is live — Claude Code renders the statusline only after the
-      // hook returns — so 'in-progress' surviving to paint time means the
-      // launcher died before the sync finished, which is what the statusline's
-      // stalled-upgrade rendering reports.
+      // (#1363; TTL rationale at the constants above). This value IS painted —
+      // Claude Code repaints the statusline while this hook runs, and the window
+      // below (daemon stop + cherry-pick) is seconds wide. The statusline tells
+      // live work from a stranded notice by probing the pid recorded in it, not
+      // by assuming it can only observe one of the two (#1363 follow-up).
       writeUpgradeNotice('in-progress');
 
       // Stop the daemon BEFORE any DB writes (#851). It was started under the

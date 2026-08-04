@@ -13,7 +13,6 @@
  * - Shared settings cache across functions
  */
 
-/* eslint-disable @typescript-eslint/no-var-requires */
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -646,27 +645,59 @@ function getUpgradeNotice() {
     kind: data.kind === 'repair' ? 'repair' : 'upgrade',
     from: typeof data.from === 'string' ? data.from : '',
     to: typeof data.to === 'string' ? data.to : '',
+    // Absent on notices written by a pre-#1363-followup launcher.
+    pid: Number.isInteger(data.pid) && data.pid > 0 ? data.pid : null,
   };
 }
 
-// #1363: an 'upgrade' notice that still reads 'in-progress' when we render is
-// never live work. Claude Code paints the statusline only AFTER the SessionStart
-// hook returns, and the launcher flips the notice to 'completed' the moment the
-// upgrade functionally lands (commitVersionStamp) — so reaching this code with
-// 'in-progress' means the launcher died before finishing its sync: killed by the
-// 5s hook timeout via SIGKILL, or Windows TerminateProcess, neither of which runs
-// the launcher's cleanup handlers. Rendering "(updating…)" there advertises
-// progress nothing is making, and because the TTL is only evaluated when Claude
-// Code re-invokes this script, that badge stays frozen on screen until the next
-// repaint. Report the stall instead, and point at the fix.
+// Is the launcher that wrote an 'in-progress' notice still running?
+//   true  — alive, the work it announced is really in flight
+//   false — provably gone, so the notice is stranded
+//   null  — unknowable (no pid recorded); callers must treat this as "alive"
+// Signal 0 is a liveness probe, not a signal delivery — supported on Windows
+// as well as POSIX. EPERM means the pid exists but is owned by another user.
+// Cheap enough for a statusline; never shell out to ps/tasklist here.
+function isLauncherAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return !!err && err.code === 'EPERM';
+  }
+}
+
+// #1363 follow-up. #1363 assumed that an 'upgrade' notice still reading
+// 'in-progress' at render time was never live work — the reasoning being that
+// Claude Code paints the statusline only AFTER the SessionStart hook returns,
+// so only a launcher killed mid-sync could leave one behind. That premise is
+// false: Claude Code repaints the statusline WHILE the SessionStart hook is
+// still running, and the launcher's in-progress window (daemon stop + legacy
+// cherry-pick, everything between writeUpgradeNotice('in-progress') and
+// commitVersionStamp) is seconds wide. A perfectly healthy upgrade is therefore
+// routinely observed mid-flight, and #1363 painted a red "upgrade interrupted
+// (run /healer)" over it — an alarming lie, and because the TTL is only
+// evaluated on re-invocation, one that stayed frozen on screen until the next
+// repaint. Worse than the stale "(updating…)" it replaced.
 //
-// 'repair' notices are exempt: §0's bootstrap sentinel deliberately holds an
-// in-progress one open to keep the healer prompt in front of the user until §3h
-// resolves it, so there the in-flight state is the intended signal.
+// So don't infer liveness from the fact that we are rendering. Ask the OS: the
+// launcher stamps its pid into the notice and isLauncherAlive() probes it. Only
+// a provably dead launcher counts as stalled; an unknown pid (a notice written
+// by an older launcher — precisely the state during the upgrade that installs
+// this file) reads as live, so version skew can never manufacture a false alarm.
+//
+// Even when stalled, this is not an error the user must repair: the launcher
+// died before committing the version stamp, so the next session re-detects the
+// upgrade and re-runs it idempotently. Say what happens next; don't cry wolf.
+//
+// 'repair' notices are exempt from all of this: §0's bootstrap sentinel
+// deliberately holds an in-progress one open to keep the healer prompt in front
+// of the user until §3h resolves it, so there the in-flight state is intended.
 function formatUpgradeNoticeSegment(notice) {
   if (!notice) return '';
   const inFlight = notice.status === 'in-progress';
-  const stalledUpgrade = inFlight && notice.kind !== 'repair';
+  const stalledUpgrade =
+    inFlight && notice.kind !== 'repair' && isLauncherAlive(notice.pid) === false;
   const suffix = inFlight && !stalledUpgrade ? ` ${c.dim}(updating…)${c.reset}` : '';
   // Pick body text: repair > stalled upgrade > completed "upgraded to"
   // > bare "upgraded" fallback when no version is known.
@@ -674,7 +705,7 @@ function formatUpgradeNoticeSegment(notice) {
   if (notice.kind === 'repair') {
     body = 'install repaired';
   } else if (stalledUpgrade) {
-    return `${c.brightRed}📦 upgrade interrupted${c.reset} ${c.dim}(run /healer)${c.reset}`;
+    body = 'upgrade resumes next session';
   } else {
     const target = notice.to || notice.from || '';
     body = target ? `upgraded to ${target}` : 'upgraded';

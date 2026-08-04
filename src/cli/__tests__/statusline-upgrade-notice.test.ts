@@ -9,13 +9,19 @@
 //   #743 — statusline renders ONLY status='in-progress' notices. Stale legacy
 //          files cannot turn the segment into a permanent column.
 //   completed-state — section 3f writes status='completed' with 2-min TTL
-//          instead of deleting; gives the post-upgrade badge a real visibility
-//          window because Claude Code paints the statusline only AFTER the
-//          SessionStart hook returns. Section 0-pre still wipes any leftover
-//          at the next launcher run, capping lifetime at one session.
+//          instead of deleting, giving the post-upgrade badge a visibility
+//          window. Section 0-pre still wipes any leftover at the next launcher
+//          run, capping lifetime at one session.
+//   #1363 — the 'completed' flip moves up to commitVersionStamp, so a launcher
+//          killed during the best-effort tail still leaves a terminal state.
+//   #1363 follow-up — Claude Code repaints the statusline DURING the
+//          SessionStart hook, not only after it returns. #1363 assumed
+//          otherwise and rendered every mid-flight upgrade as "interrupted".
+//          In-flight vs. stranded is now decided by probing the launcher pid
+//          recorded in the notice.
 //
-// These tests pin both the #743 stale-file rejection and the new completed
-// contract.
+// These tests pin the #743 stale-file rejection, the completed contract, and
+// the three liveness cases (live pid / dead pid / no pid).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -85,6 +91,15 @@ function runStatusline(cwd: string, args: string[] = ['--json-compact']): RunRes
   };
 }
 
+// A pid that is guaranteed not to be running: spawn a trivial process, let it
+// exit, then reuse its pid. Portable (no /proc, no tasklist) and far safer than
+// picking an arbitrary high number, which can collide with a live process.
+function makeDeadPid(): number {
+  const probe = spawnSync(process.execPath, ['-e', ''], { encoding: 'utf-8', timeout: 25_000 });
+  if (!probe.pid) throw new Error('could not spawn probe process to obtain a dead pid');
+  return probe.pid;
+}
+
 function writeNotice(root: string, body: unknown) {
   const dir = join(root, '.moflo');
   mkdirSync(dir, { recursive: true });
@@ -93,8 +108,10 @@ function writeNotice(root: string, body: unknown) {
 
 describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
   let root: string;
+  let deadPid: number;
   beforeEach(() => {
     root = makeTempRoot();
+    deadPid = makeDeadPid();
   });
   afterEach(() => {
     cleanTempRoot(root);
@@ -126,17 +143,79 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     expect(plain).not.toContain('changes');
   });
 
-  // #1363 — this case used to assert "4.8.79 → 4.8.80 (updating…)". That
-  // wording is unreachable in practice and actively misleading: Claude Code
-  // paints the statusline only AFTER the SessionStart hook returns, and the
-  // launcher now flips the notice to 'completed' at commitVersionStamp — the
-  // moment the upgrade functionally lands. So an in-progress UPGRADE notice
-  // observed at render time always means the launcher died before finishing
-  // its sync (hook-timeout SIGKILL, Windows TerminateProcess — neither runs
-  // the cleanup handlers). Since the TTL is only evaluated on re-invocation,
-  // that badge then sat frozen on screen advertising progress nothing was
-  // making. It now reports the stall and points at the healer.
-  it('reports a stalled upgrade instead of claiming work is in flight', () => {
+  // #1363 follow-up — #1363 asserted here that an in-progress UPGRADE notice
+  // seen at render time always meant a dead launcher, on the premise that
+  // Claude Code paints only AFTER the SessionStart hook returns. It does not:
+  // it repaints DURING the hook, so a healthy upgrade is routinely observed
+  // inside the launcher's in-progress window and #1363 painted a red "upgrade
+  // interrupted (run /healer)" over it. Liveness now comes from probing the
+  // pid the launcher stamps into the notice, not from the act of rendering.
+  it('shows live progress while the launcher that wrote the notice is running', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'in-progress',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 5_000).toISOString(),
+      expiresAt: new Date(now + 5 * 60_000).toISOString(),
+      changes: 0,
+      pid: process.pid, // this test process stands in for a live launcher
+    });
+
+    const { stdout, status } = runStatusline(root);
+    expect(status).toBe(0);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toEqual({
+      status: 'in-progress',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      pid: process.pid,
+    });
+
+    const compact = runStatusline(root, ['--compact']);
+    // eslint-disable-next-line no-control-regex
+    const plain = compact.stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).toContain('upgraded to 4.8.80');
+    expect(plain).toContain('updating');
+    expect(plain).not.toContain('interrupted');
+    expect(plain).not.toContain('/healer');
+  });
+
+  // A launcher killed before commitVersionStamp (5s hook-timeout SIGKILL,
+  // Windows TerminateProcess — neither runs the cleanup handlers) strands the
+  // notice. That is reported as a stall, but NOT as an error: the version
+  // stamp was never written, so the next session re-detects the upgrade and
+  // re-runs it idempotently. Nothing for the user to repair.
+  it('reports a stranded notice as resuming, without raising an error', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'in-progress',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 5_000).toISOString(),
+      expiresAt: new Date(now + 5 * 60_000).toISOString(),
+      changes: 0,
+      pid: deadPid,
+    });
+
+    const compact = runStatusline(root, ['--compact']);
+    // eslint-disable-next-line no-control-regex
+    const plain = compact.stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).toContain('upgrade resumes next session');
+    expect(plain).not.toContain('interrupted');
+    expect(plain).not.toContain('/healer');
+    expect(plain).not.toContain('updating');
+    expect(plain).not.toContain('changes');
+  });
+
+  // Version skew (Rule #2): during the very upgrade that installs this
+  // statusline, the notice on disk was written by the PREVIOUS launcher, which
+  // records no pid. Unknown liveness must read as live — a pid-less notice
+  // must never be reported as stalled.
+  it('treats a pid-less notice from an older launcher as live, not stalled', () => {
     const now = Date.now();
     writeNotice(root, {
       status: 'in-progress',
@@ -148,24 +227,13 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
       changes: 0,
     });
 
-    const { stdout, status } = runStatusline(root);
-    expect(status).toBe(0);
-    const json = JSON.parse(stdout);
-    // The parsed notice is unchanged — only the rendering differs.
-    expect(json.upgradeNotice).toEqual({
-      status: 'in-progress',
-      kind: 'upgrade',
-      from: '4.8.79',
-      to: '4.8.80',
-    });
-
     const compact = runStatusline(root, ['--compact']);
     // eslint-disable-next-line no-control-regex
     const plain = compact.stdout.replace(/\x1B\[[0-9;]*m/g, '');
-    expect(plain).toContain('upgrade interrupted');
-    expect(plain).toContain('/healer');
-    expect(plain).not.toContain('updating');
-    expect(plain).not.toContain('changes');
+    expect(plain).toContain('upgraded to 4.8.80');
+    expect(plain).toContain('updating');
+    expect(plain).not.toContain('interrupted');
+    expect(plain).not.toContain('resumes');
   });
 
   // The stall rendering must not swallow the version-bump case where the
@@ -285,6 +353,8 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
       kind: 'upgrade',
       from: '4.8.79',
       to: '4.8.80',
+      // Notice written here without one; liveness is irrelevant once terminal.
+      pid: null,
     });
 
     const compact = runStatusline(root, ['--compact']);
