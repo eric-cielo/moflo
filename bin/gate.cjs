@@ -498,6 +498,53 @@ function applyPromptStateReset(state, promptText) {
 // and language-native test commands. The bare-runner arm is anchored so that
 // `npm install jest`, `grep -r vitest src/`, and similar don't false-positive.
 var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:test|t)(?:[:\s]|$)|\b(?:npx|pnpx)\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\b|(?:^|;|&&|\|\|)\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\s|\b(?:cargo|go|deno|dotnet|mvn)\s+test\b|\bgradle\w*\s+test\b/i;
+// #1322 — failure markers in a test runner's own OUTPUT.
+//
+// This is deliberately not an exit-code check: Claude Code's PostToolUse payload
+// carries no exit status, and PostToolUse does not fire at all when a command
+// exits non-zero — so an unmasked red suite already leaves testsRun false, by
+// accident of the hook lifecycle rather than by design. What DOES defeat the
+// gate is a masked exit (`npm test | tail -20`, `npm test || true`,
+// `npm test 2>&1 | grep -i fail`): the pipeline exits 0, PostToolUse fires with
+// a clean-looking response, and a red suite credits the gate. Output is the only
+// signal left, and it is genuinely weaker than a status — see the ticket.
+//
+// Every arm matches a SUMMARY shape a runner emits, never a bare "fail", which
+// occurs constantly in ordinary passing test names ("returns null when the
+// lookup failed"). The count arm excludes an explicit zero so jest's
+// `0 failed, 12 passed` cannot self-block.
+//
+// The count arm's trailing lookahead is what keeps a GREEN run from blocking
+// itself. Mocha's default spec reporter prints every passing test name, so
+// `npm test | tail -20` on a green suite legitimately contains lines like
+// `✓ handles 2 failed retries`. A real summary is followed by a delimiter or a
+// line end (`3 failed | 40 passed`, `1 failed, 2 passed`, `1 failing`), never by
+// more prose — so a lowercase word after the count means it is a sentence, not a
+// tally. `tests`/`test` is exempted because `2 failed tests` is a real summary.
+// Same-line whitespace only: at a line end there is nothing to disqualify.
+var TEST_FAILURE_RE = new RegExp([
+  '\\b(?!0\\b)\\d+\\s+(?:tests?\\s+)?(?:failed|failing|failures?)\\b(?![^\\S\\n]+(?!tests?\\b)[a-z])', // vitest/jest/pytest/mocha counts
+  '^\\s*(?:FAIL|FAILED)\\b',                                          // vitest + jest per-file, pytest FAILED
+  '^\\s*---\\s*FAIL:',                                                // go test
+  '\\btest result:\\s*FAILED\\b',                                     // cargo
+  '^npm ERR!',                                                        // npm wrapper around any of the above
+].join('|'), 'im');
+
+/**
+ * #1322 — why a just-fired record-test-run must NOT be credited, or null.
+ *
+ * Absent output is not evidence of failure: a quiet green `npm test > /dev/null`
+ * and a silently-masked red one are indistinguishable, and treating the pair as
+ * failures would block every consumer who redirects test output. Absent means
+ * unknown, and unknown keeps the pre-#1322 behaviour.
+ */
+function detectTestFailure() {
+  if (process.env.TOOL_RESPONSE_interrupted === 'true') return 'the run was interrupted';
+  var out = (process.env.TOOL_RESPONSE_stdout || '') + '\n' + (process.env.TOOL_RESPONSE_stderr || '');
+  if (!out.trim()) return null;
+  var hit = out.match(TEST_FAILURE_RE);
+  return hit ? 'output reports "' + hit[0].trim().slice(0, 40) + '"' : null;
+}
 // Edits to these don't change runtime behaviour, so they don't invalidate prior test/simplify runs.
 // Lock files and .gitignore are tracked but inert; package.json/*.yaml ARE source — they reset.
 var EDIT_RESET_SKIP_BOTH_RE = /\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\/])(CHANGELOG(?:\.md)?|\.env\.example|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb)$/i;
@@ -809,8 +856,17 @@ switch (command) {
   case 'record-test-run': {
     var cmd = process.env.TOOL_INPUT_command || '';
     if (TEST_RUNNER_RE.test(cmd)) {
+      // #1322 — a red run is evidence AGAINST the gate, so it also clears a
+      // flag an earlier green run earned. Without the reset, `npm test` (green)
+      // followed by an edit and `npm test | tail -20` (red) would leave the
+      // gate satisfied by the stale first run — the edit resets testsRun, but
+      // the masked red run would immediately set it back.
+      var failure = detectTestFailure();
       var s = readState();
-      if (!s.testsRun) {
+      if (failure) {
+        if (s.testsRun) { s.testsRun = false; writeState(s); }
+        process.stderr.write('gate: record-test-run not credited — ' + failure + '\n');
+      } else if (!s.testsRun) {
         s.testsRun = true;
         writeState(s);
       }
@@ -1018,7 +1074,7 @@ switch (command) {
       }
     }
     var missing = [];
-    if (config.testing_gate && !s.testsRun) missing.push('tests have not run since the last code edit (run npm test, vitest, jest, pytest, or similar)');
+    if (config.testing_gate && !s.testsRun) missing.push('tests have not run green since the last code edit (run npm test, vitest, jest, pytest, or similar — a run whose output reports failures does not count, #1322)');
     if (config.simplify_gate && !s.simplifyRun) missing.push('/flo-simplify (or /distill) has not run since the last code edit');
     if (config.learnings_gate && !s.learningsStored) missing.push('learnings have not been stored (call mcp__moflo__memory_store)');
     if (missing.length === 0) break;
