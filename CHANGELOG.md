@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a masked test failure satisfied the testing gate (#1322)
+
+`record-test-run` set `testsRun = true` from the submitted command string alone,
+never looking at what the run produced. `gate-hook.mjs` parsed the hook payload's
+`tool_response` and then discarded it, so no gate could observe an outcome.
+
+The exposure is narrower than it first appears, and the ticket was rewritten
+around a probe rather than the original filing. Claude Code's PostToolUse hook
+does not fire at all when a Bash command exits non-zero, so an ordinary red suite
+already left the flag false — by accident of the hook lifecycle, not by design.
+What did defeat the gate is a **masked** exit: `npm test | tail -20`,
+`npm test || true`, `npm test 2>&1 | grep -i fail`. The pipeline exits 0,
+PostToolUse fires with a clean-looking response, and a red suite credited the
+gate.
+
+`tool_response.stdout` / `.stderr` (tail-kept, bounded to 4 KB / 2 KB so the
+Windows ~32 KB environment-block limit is never risked — runners print their
+summary last) and `.interrupted` now reach `gate.cjs` as `TOOL_RESPONSE_*`. A
+matched test command whose output carries a failure summary is not credited, and
+**clears** a `testsRun` an earlier green run had earned.
+
+There is no exit status anywhere in the payload, so this is output inspection,
+not exit-code fidelity — a genuinely weaker signal, and the code says so. Only
+summary shapes count (`2 failed`, `1 failing`, line-start `FAIL`/`FAILED`,
+`--- FAIL:`, `test result: FAILED`, `npm ERR!`); a bare "fail" never does,
+because it occurs constantly in ordinary passing test names. An explicit
+`0 failed` does not match, and empty output still credits — a quiet green
+`npm test > /dev/null` is indistinguishable from a silently-masked red one, so
+absent stays unknown.
+
+Also fixes pre-existing drift in the third copy of the bridge: `flo init` wrote
+a `gate-hook.mjs` that never received #1332's structured-input forwarding and
+still shelled out via `execSync` string concatenation, so consumers ran one
+bridge after init and another after the next session start. The generator now
+emits `bin/gate-hook.mjs` byte-for-byte, pinned by
+`tests/guards/gate-hook-parity-guard.test.ts`.
+
 ### Fixed — Windows worker daemon had no CPU backpressure (#1358)
 
 `os.loadavg()` is a Unix concept; Node documents it as always returning

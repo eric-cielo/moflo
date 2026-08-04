@@ -556,6 +556,53 @@ function applyPromptStateReset(state, promptText) {
   state.activeSddSlug = null;
 }
 var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\\s+(?:run\\s+)?(?:test|t)(?:[:\\s]|$)|\\b(?:npx|pnpx)\\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\\b|(?:^|;|&&|\\|\\|)\\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\\s|\\b(?:cargo|go|deno|dotnet|mvn)\\s+test\\b|\\bgradle\\w*\\s+test\\b/i;
+// #1322 — failure markers in a test runner's own OUTPUT.
+//
+// This is deliberately not an exit-code check: Claude Code's PostToolUse payload
+// carries no exit status, and PostToolUse does not fire at all when a command
+// exits non-zero — so an unmasked red suite already leaves testsRun false, by
+// accident of the hook lifecycle rather than by design. What DOES defeat the
+// gate is a masked exit (\`npm test | tail -20\`, \`npm test || true\`,
+// \`npm test 2>&1 | grep -i fail\`): the pipeline exits 0, PostToolUse fires with
+// a clean-looking response, and a red suite credits the gate. Output is the only
+// signal left, and it is genuinely weaker than a status — see the ticket.
+//
+// Every arm matches a SUMMARY shape a runner emits, never a bare "fail", which
+// occurs constantly in ordinary passing test names ("returns null when the
+// lookup failed"). The count arm excludes an explicit zero so jest's
+// \`0 failed, 12 passed\` cannot self-block.
+//
+// The count arm's trailing lookahead is what keeps a GREEN run from blocking
+// itself. Mocha's default spec reporter prints every passing test name, so
+// \`npm test | tail -20\` on a green suite legitimately contains lines like
+// \`✓ handles 2 failed retries\`. A real summary is followed by a delimiter or a
+// line end (\`3 failed | 40 passed\`, \`1 failed, 2 passed\`, \`1 failing\`), never by
+// more prose — so a lowercase word after the count means it is a sentence, not a
+// tally. \`tests\`/\`test\` is exempted because \`2 failed tests\` is a real summary.
+// Same-line whitespace only: at a line end there is nothing to disqualify.
+var TEST_FAILURE_RE = new RegExp([
+  '\\\\b(?!0\\\\b)\\\\d+\\\\s+(?:tests?\\\\s+)?(?:failed|failing|failures?)\\\\b(?![^\\\\S\\\\n]+(?!tests?\\\\b)[a-z])', // vitest/jest/pytest/mocha counts
+  '^\\\\s*(?:FAIL|FAILED)\\\\b',                                          // vitest + jest per-file, pytest FAILED
+  '^\\\\s*---\\\\s*FAIL:',                                                // go test
+  '\\\\btest result:\\\\s*FAILED\\\\b',                                     // cargo
+  '^npm ERR!',                                                        // npm wrapper around any of the above
+].join('|'), 'im');
+
+/**
+ * #1322 — why a just-fired record-test-run must NOT be credited, or null.
+ *
+ * Absent output is not evidence of failure: a quiet green \`npm test > /dev/null\`
+ * and a silently-masked red one are indistinguishable, and treating the pair as
+ * failures would block every consumer who redirects test output. Absent means
+ * unknown, and unknown keeps the pre-#1322 behaviour.
+ */
+function detectTestFailure() {
+  if (process.env.TOOL_RESPONSE_interrupted === 'true') return 'the run was interrupted';
+  var out = (process.env.TOOL_RESPONSE_stdout || '') + '\\n' + (process.env.TOOL_RESPONSE_stderr || '');
+  if (!out.trim()) return null;
+  var hit = out.match(TEST_FAILURE_RE);
+  return hit ? 'output reports "' + hit[0].trim().slice(0, 40) + '"' : null;
+}
 var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
 // #1297 — path-inert dirs (.github/workflows etc.); SYNC: mirrors bin/gate.cjs EDIT_RESET_SKIP_PATH_RE.
 var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\\\\/])\\.github[\\\\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\\\\/.]|$)/i;
@@ -713,8 +760,14 @@ switch (command) {
   case 'record-test-run': {
     var cmd = process.env.TOOL_INPUT_command || '';
     if (TEST_RUNNER_RE.test(cmd)) {
+      // #1322 — a red run is evidence AGAINST the gate, so it also clears a
+      // flag an earlier green run earned.
+      var failure = detectTestFailure();
       var s = readState();
-      if (!s.testsRun) {
+      if (failure) {
+        if (s.testsRun) { s.testsRun = false; writeState(s); }
+        process.stderr.write('gate: record-test-run not credited — ' + failure + '\\n');
+      } else if (!s.testsRun) {
         s.testsRun = true;
         writeState(s);
       }
@@ -824,7 +877,7 @@ switch (command) {
     if (!/(?:^|&&\\s*|\\|\\|\\s*|;\\s*)\\s*(?:[A-Z_][A-Z0-9_]*=\\S+\\s+)*gh\\s+pr\\s+create\\b/.test(cmd)) break;
     var s = readState();
     var missing = [];
-    if (config.testing_gate && !s.testsRun) missing.push('tests have not run since the last code edit (run npm test, vitest, jest, pytest, or similar)');
+    if (config.testing_gate && !s.testsRun) missing.push('tests have not run green since the last code edit (run npm test, vitest, jest, pytest, or similar — a run whose output reports failures does not count, #1322)');
     if (config.simplify_gate && !s.simplifyRun) missing.push('/flo-simplify (or /distill) has not run since the last code edit');
     if (config.learnings_gate && !s.learningsStored) missing.push('learnings have not been stored (call mcp__moflo__memory_store)');
     if (missing.length === 0) break;
@@ -950,15 +1003,24 @@ switch (command) {
 
 /**
  * Generate gate-hook.mjs — ESM wrapper that reads Claude Code stdin JSON
- * and passes tool_name + tool_input to gate.cjs via environment variables.
+ * and passes tool_name + tool_input + tool_response to gate.cjs via env vars.
  *
  * Claude Code hooks receive context as JSON on stdin but don't set env vars
  * for tool input. This script bridges that gap. It also translates exit code 1
  * from gate.cjs into exit code 2 (which Claude Code requires to block tools).
+ *
+ * **This must stay byte-identical to `bin/gate-hook.mjs`** — the launcher syncs
+ * that file into the same `.claude/helpers/gate-hook.mjs` this generator writes,
+ * so any divergence means `flo init` emits one bridge and the next session start
+ * silently swaps in another. It had drifted exactly that way before #1322: the
+ * generated copy never received #1332's structured-input forwarding and still
+ * shelled out via `execSync` string concatenation. Parity is pinned by
+ * `tests/guards/gate-hook-parity-guard.test.ts` — when you change one, copy the
+ * whole file across; do not hand-merge.
  */
 export function generateGateHookScript(): string {
   return `#!/usr/bin/env node
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 
 var command = process.argv[2];
@@ -985,24 +1047,91 @@ try { if (stdinData.trim()) hookContext = JSON.parse(stdinData); } catch (e) {}
 var env = Object.assign({}, process.env);
 if (hookContext.tool_name) env.TOOL_NAME = hookContext.tool_name;
 // Forward Claude Code's session_id so gate.cjs can enforce memory-first
-// per-actor (#838) — each spawned subagent has its own session_id.
+// per-actor (#838) — each spawned subagent gets its own session_id, so a
+// shared workflow-state.json no longer lets one subagent's directive be
+// silently satisfied by the parent's earlier search.
 if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
   env.HOOK_SESSION_ID = hookContext.session_id;
 }
+// #1332: structured tool inputs are forwarded as JSON, not dropped.
+//
+// This previously forwarded ONLY string values, so any object-valued input was
+// invisible to gate.cjs. That blocked the verify-before-done gate from reading
+// \`/verify\`'s per-criterion verdict, which #1328 stores in memory_store's
+// \`metadata\` — an object. Parsing the verdict out of the prose \`value\` string
+// instead would re-create exactly the free-text dependency #1328 removed.
+//
+// Cross-platform (Rule #1): Windows caps a single environment variable at
+// ~32KB and the whole block at ~32K wide chars, and exceeding it fails the
+// spawn rather than truncating. Newly-forwarded values are therefore skipped
+// when oversized, not clipped — a truncated JSON blob would parse as malformed
+// on the far side and read as a corrupt record rather than an absent one.
+// \`metadata\` is capped at 64KB by memory_store, so a real verdict never nears
+// this. STRING values keep their previous uncapped behaviour byte-for-byte:
+// gate.cjs reads TOOL_INPUT_command, and dropping an oversized heredoc command
+// would silently stop check-dangerous-command from firing on the exact inputs
+// most worth checking.
+var MAX_STRUCTURED_LEN = 16384;
 if (hookContext.tool_input && typeof hookContext.tool_input === 'object') {
   Object.keys(hookContext.tool_input).forEach(function(key) {
-    if (typeof hookContext.tool_input[key] === 'string') {
-      env['TOOL_INPUT_' + key] = hookContext.tool_input[key];
+    var raw = hookContext.tool_input[key];
+    if (typeof raw === 'string') {
+      env['TOOL_INPUT_' + key] = raw;
+      return;
     }
+    var val;
+    if (typeof raw === 'number' || typeof raw === 'boolean') {
+      val = String(raw);
+    } else if (raw && typeof raw === 'object') {
+      try { val = JSON.stringify(raw); } catch (e) { return; }
+    } else {
+      return; // null/undefined/function — nothing meaningful to forward
+    }
+    if (val.length > MAX_STRUCTURED_LEN) return;
+    env['TOOL_INPUT_' + key] = val;
   });
+}
+
+// #1322: forward the parts of tool_response that actually exist, so a gate can
+// observe an OUTCOME rather than only the intent it was handed.
+//
+// Claude Code's PostToolUse payload carries NO exit status — probed on v2.1.220,
+// tool_response for a Bash call is {stdout, stderr, interrupted, isImage,
+// noOutputExpected}. PostToolUse also does not fire at all when the command
+// exits non-zero, so the only case a gate can still be fooled by is an exit code
+// MASKED by a pipe or \`|| true\`, where the response looks clean. The runner's
+// own output is the sole remaining signal; record-test-run reads it in gate.cjs.
+//
+// Tail, not head. Every test runner prints its pass/fail summary LAST, so
+// clipping the front of a long log would discard the exact lines this exists to
+// read. Bounds are deliberately tight — Windows caps the whole environment
+// block at ~32K wide chars and fails the spawn rather than truncating, and
+// TOOL_INPUT_command is already forwarded uncapped alongside these.
+var MAX_RESPONSE_STDOUT = 4096;
+var MAX_RESPONSE_STDERR = 2048;
+function tailOf(value, max) {
+  return value.length > max ? value.slice(value.length - max) : value;
+}
+if (hookContext.tool_response && typeof hookContext.tool_response === 'object') {
+  var resp = hookContext.tool_response;
+  if (typeof resp.stdout === 'string' && resp.stdout) {
+    env.TOOL_RESPONSE_stdout = tailOf(resp.stdout, MAX_RESPONSE_STDOUT);
+  }
+  if (typeof resp.stderr === 'string' && resp.stderr) {
+    env.TOOL_RESPONSE_stderr = tailOf(resp.stderr, MAX_RESPONSE_STDERR);
+  }
+  // Boolean — the string-typed forwarding above would drop it silently.
+  if (typeof resp.interrupted === 'boolean') {
+    env.TOOL_RESPONSE_interrupted = String(resp.interrupted);
+  }
 }
 
 // Run gate.cjs with the enriched environment
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
 try {
-  var output = execSync('node "' + gateScript + '" ' + command, {
-    env: env, encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe']
+  var output = execFileSync('node', [gateScript, command], {
+    env: env, encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true
   });
   if (output.trim()) process.stdout.write(output);
   process.exit(0);

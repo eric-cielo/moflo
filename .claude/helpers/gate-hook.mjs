@@ -71,6 +71,40 @@ if (hookContext.tool_input && typeof hookContext.tool_input === 'object') {
   });
 }
 
+// #1322: forward the parts of tool_response that actually exist, so a gate can
+// observe an OUTCOME rather than only the intent it was handed.
+//
+// Claude Code's PostToolUse payload carries NO exit status — probed on v2.1.220,
+// tool_response for a Bash call is {stdout, stderr, interrupted, isImage,
+// noOutputExpected}. PostToolUse also does not fire at all when the command
+// exits non-zero, so the only case a gate can still be fooled by is an exit code
+// MASKED by a pipe or `|| true`, where the response looks clean. The runner's
+// own output is the sole remaining signal; record-test-run reads it in gate.cjs.
+//
+// Tail, not head. Every test runner prints its pass/fail summary LAST, so
+// clipping the front of a long log would discard the exact lines this exists to
+// read. Bounds are deliberately tight — Windows caps the whole environment
+// block at ~32K wide chars and fails the spawn rather than truncating, and
+// TOOL_INPUT_command is already forwarded uncapped alongside these.
+var MAX_RESPONSE_STDOUT = 4096;
+var MAX_RESPONSE_STDERR = 2048;
+function tailOf(value, max) {
+  return value.length > max ? value.slice(value.length - max) : value;
+}
+if (hookContext.tool_response && typeof hookContext.tool_response === 'object') {
+  var resp = hookContext.tool_response;
+  if (typeof resp.stdout === 'string' && resp.stdout) {
+    env.TOOL_RESPONSE_stdout = tailOf(resp.stdout, MAX_RESPONSE_STDOUT);
+  }
+  if (typeof resp.stderr === 'string' && resp.stderr) {
+    env.TOOL_RESPONSE_stderr = tailOf(resp.stderr, MAX_RESPONSE_STDERR);
+  }
+  // Boolean — the string-typed forwarding above would drop it silently.
+  if (typeof resp.interrupted === 'boolean') {
+    env.TOOL_RESPONSE_interrupted = String(resp.interrupted);
+  }
+}
+
 // Run gate.cjs with the enriched environment
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
