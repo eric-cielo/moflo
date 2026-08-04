@@ -16,6 +16,8 @@ import { findProjectDaemonPids, getDaemonLockHolder } from '../services/daemon-l
 import { findProjectRoot, resolveStateRoot } from '../services/project-root.js';
 import { legacyMemoryDbPath, legacyMemoryDbBakPath, memoryDbPath, mofloDir } from '../services/moflo-paths.js';
 import { findZombieProcesses } from './doctor-zombies.js';
+import { loadToolArrays, getTool } from './doctor-checks-functional-shared.js';
+import { SWARM_AGENTS_NS } from '../swarm/swarm-persistence.js';
 import { inspectMcpConfigs } from './doctor-checks-config.js';
 import { installClaudeCode, runCommand } from './doctor-checks-runtime.js';
 import type { HealthCheck } from './doctor-types.js';
@@ -395,6 +397,94 @@ async function stopNestedDaemons(subRoot: string): Promise<{ stopped: number[]; 
  *   - POSIX: rename succeeds but the daemon's open FDs keep pointing at the
  *     inode; the daemon keeps writing to a now-archived path until it exits.
  */
+/**
+ * A persisted agent row is only a restart-recovery record — deleting one never
+ * terminates a live agent, it just drops the bookkeeping that would rehydrate
+ * it after a restart. That low blast radius is what makes a short window safe.
+ *
+ * Short matters: this prune only runs when the swarm check is ALREADY failing,
+ * which means the store is over-full relative to what the coordinator can use.
+ * An hour-long window would leave someone who hit the cap mid-session stuck for
+ * an hour; five minutes still comfortably outlives the seconds-long CLI process
+ * whose exit strands these rows.
+ */
+const STALE_AGENT_ROW_MS = 5 * 60 * 1000;
+
+/**
+ * Which agent rows are ghosts, given the current time. Pure, so the policy is
+ * testable without standing up the memory tool layer.
+ *
+ * `updatedAt` comes back as epoch ms or an ISO string depending on the store
+ * path; `Date` handles both. A missing or unparseable timestamp is KEPT — this
+ * deletes, so anything it cannot reason about is left alone.
+ */
+export function selectStaleAgentRows(
+  entries: Array<{ key: string; updatedAt?: string | number }>,
+  now: number,
+  windowMs: number = STALE_AGENT_ROW_MS,
+): Array<{ key: string; updatedAt?: string | number }> {
+  const cutoff = now - windowMs;
+  return entries.filter(e => {
+    const at = e.updatedAt === undefined ? NaN : new Date(e.updatedAt).getTime();
+    return Number.isFinite(at) && at < cutoff;
+  });
+}
+
+/**
+ * #1370 — prune ghost agent rows so an install already at the cap can recover.
+ *
+ * `flo doctor`'s swarm probe used to persist an agent per run and never remove
+ * it. Once 15 rows had accumulated, the coordinator's cap rejected the probe
+ * spawn and the swarm check failed on every subsequent run. The leak itself is
+ * fixed, but that does not help anyone whose store already holds the backlog:
+ * their check stays red until the rows go.
+ *
+ * This is a `--fix` rather than something the check does on its own precisely
+ * because it deletes: a hydrated row is indistinguishable from a live agent, so
+ * the destructive step should be one the user asked for.
+ */
+async function fixStaleSwarmAgentRows(): Promise<boolean> {
+  const mods = await loadToolArrays({ memoryTools: 'dist/src/cli/mcp-tools/memory-tools.js' });
+  if (!mods) {
+    output.writeln(output.warning('  Memory tools not built — cannot prune agent rows.'));
+    return false;
+  }
+  const list = getTool(mods.memoryTools, 'memory_list');
+  const del = getTool(mods.memoryTools, 'memory_delete');
+  if (!list?.handler || !del?.handler) {
+    output.writeln(output.warning('  memory_list/memory_delete unavailable — cannot prune agent rows.'));
+    return false;
+  }
+
+  try {
+    const listed = await list.handler({ namespace: SWARM_AGENTS_NS, limit: 500 }) as {
+      entries?: Array<{ key: string; updatedAt?: string | number }>;
+    };
+    const entries = listed?.entries ?? [];
+    const stale = selectStaleAgentRows(entries, Date.now());
+
+    if (stale.length === 0) {
+      output.writeln(output.dim(`  No stale agent rows (${entries.length} present).`));
+      return true;
+    }
+
+    let removed = 0;
+    for (const e of stale) {
+      try {
+        await del.handler({ key: e.key, namespace: SWARM_AGENTS_NS });
+        removed++;
+      } catch (err) {
+        output.writeln(output.warning(`  Failed to delete ${e.key}: ${errorDetail(err)}`));
+      }
+    }
+    output.writeln(`  Pruned ${removed} stale agent row(s); ${entries.length - removed} kept.`);
+    return removed === stale.length;
+  } catch (e) {
+    output.writeln(output.warning(`  Agent-row prune failed: ${errorDetail(e)}`));
+    return false;
+  }
+}
+
 async function fixNestedMofloIslands(): Promise<boolean> {
   // #1315 — `resolveStateRoot`, not `findProjectRoot`. The latter returns
   // `CLAUDE_PROJECT_DIR` unconditionally, so running the healer from a
@@ -866,6 +956,12 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     // includes an ISO timestamp so re-runs don't collide.
     'Nested .moflo/ Islands': async () => {
       return fixNestedMofloIslands();
+    },
+    // #1370 — the swarm check fails once accumulated agent rows hit the
+    // coordinator's cap. The leak is fixed, but an install that already has the
+    // backlog stays red until the ghost rows are pruned.
+    'Swarm Functional': async () => {
+      return fixStaleSwarmAgentRows();
     },
     // #1300 — rewrite a malformed moflo MCP permission rule in
     // .claude/settings.json. Claude Code has no MCP wildcards, so the stale
