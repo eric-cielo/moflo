@@ -808,8 +808,6 @@ const cleanupCommand: Command = {
         };
         deleted: {
           entries: number;
-          vectors: number;
-          patterns: number;
         };
         freed: {
           bytes: number;
@@ -829,7 +827,22 @@ const cleanupCommand: Command = {
       // leaves the store untouched (#1349).
       let result = await callMCPTool<CleanupResult>('memory_cleanup', cleanupArgs);
 
-      if (ctx.flags.format === 'json' && dryRun) {
+      // JSON output implies a non-interactive caller, so never prompt on this
+      // path: report the candidates and require --force to actually delete.
+      if (ctx.flags.format === 'json') {
+        if (dryRun || result.candidates.total === 0) {
+          output.printJson(result);
+          return { success: true, data: result };
+        }
+        if (!force) {
+          output.printJson({
+            ...result,
+            applied: false,
+            reason: 'Confirmation required — re-run with --force to delete.',
+          });
+          return { success: true, data: result };
+        }
+        result = await callMCPTool<CleanupResult>('memory_cleanup', { ...cleanupArgs, apply: true });
         output.printJson(result);
         return { success: true, data: result };
       }
@@ -871,12 +884,9 @@ const cleanupCommand: Command = {
 
       result = await callMCPTool<CleanupResult>('memory_cleanup', { ...cleanupArgs, apply: true });
 
-      if (ctx.flags.format === 'json') {
-        output.printJson(result);
-        return { success: true, data: result };
-      }
-
       output.writeln();
+      // Report what the apply call actually removed, not the count the user
+      // was shown — an entry can expire between the two phases.
       output.printSuccess(`Cleaned ${result.deleted.entries} entries`);
       output.printList([
         `Space freed: ${result.freed.formatted}`,
