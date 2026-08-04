@@ -367,9 +367,6 @@ export class CommandParser {
   }
 
   /**
-   * Get boolean flags scoped to a specific command/subcommand.
-   */
-  /**
    * Names declared as value-taking (non-boolean) by the resolved command or a
    * global, command winning. The mirror of `getScopedBooleanFlags`: that set
    * says "takes no value", this one says "REQUIRES one".
@@ -384,6 +381,9 @@ export class CommandParser {
     return flags;
   }
 
+  /**
+   * Get boolean flags scoped to a specific command/subcommand.
+   */
   private getScopedBooleanFlags(resolvedCmd?: Command): Set<string> {
     const flags = this.getBooleanFlags();
 
