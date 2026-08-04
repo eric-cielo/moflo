@@ -651,9 +651,15 @@ function parsePorcelainZ(raw) {
   for (var i = 0; i < parts.length; i++) {
     var entry = parts[i];
     if (!entry || entry.length < 4) continue;
-    var xy = entry.charAt(0);
+    // Check BOTH status columns, not just the staged one: git reports a rename
+    // as `R ` when staged and can report ` R` for one detected in the worktree.
+    // Missing the second form would leave the origin token unconsumed, and it
+    // would then be read as the next entry's status bytes — misaligning every
+    // entry after it. R and C always emit an origin token, so consuming one
+    // whenever either column shows them cannot over-consume.
+    var st = entry.slice(0, 2);
     var rec = { path: entry.slice(3), orig: null };
-    if (xy === 'R' || xy === 'C') { rec.orig = parts[i + 1] || null; i++; }
+    if (st.indexOf('R') >= 0 || st.indexOf('C') >= 0) { rec.orig = parts[i + 1] || null; i++; }
     out.push(rec);
   }
   return out;
