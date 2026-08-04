@@ -4,11 +4,16 @@ var fs = require('fs');
 var path = require('path');
 var cp = require('child_process');
 var os = require('os');
+var crypto = require('crypto');
 
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
+// testsFingerprint / simplifyFingerprint / verifyFingerprint pin each credit to
+// the code it describes, so a change made outside Write/Edit/MultiEdit (a Bash
+// write, a branch switch, the next issue in the same session) invalidates it.
+// See creditFingerprint() for why the boolean flags alone cannot.
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, testsFingerprint: null, simplifyRun: false, simplifySnapshotSha: null, simplifyFingerprint: null, verifyRun: false, verifyOutcome: null, verifyFingerprint: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -585,6 +590,194 @@ var SOURCE_FILE_RE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|java|kt|swift|c|cc|cp
 // — gives a more specific reason than "no source files" in that subset.
 var DOCS_ONLY_RE = /\.(md|markdown|txt|rst|adoc|html?|pdf|png|jpe?g|gif|svg|webp|ico|bmp)$/i;
 
+// ── Content-addressed gate credit ───────────────────────────────────────────
+// A boolean `testsRun`/`simplifyRun`/`verifyRun` answers "was an edit
+// observed?" — which is only equivalent to "does this credit still describe the
+// code?" if every mutation flows through Write/Edit/MultiEdit. It does not.
+// `node -e` with fs.writeFileSync, `sed -i`, shell redirection, `cp`, and every
+// git operation that moves the tree (checkout, pull, merge, rebase, apply)
+// change source without firing PostToolUse on those tools, so reset-edit-gates
+// never runs and credit earned beforehand survives the change. Demonstrated by
+// earning full credit, appending an execSync call to a source file via Bash,
+// and watching check-before-pr allow the PR. Multi-issue sessions have the same
+// shape: nothing is per-prompt, so issue B inherits issue A's credit.
+//
+// Every one of #908 / #1176 / #1322 / #1332 / #1348 refined WHICH tool call to
+// watch. None of them could close this, because the observer is the wrong
+// primitive. So stop observing mutations and fingerprint the code itself: HEAD
+// plus the content of every changed and untracked file. Recompute at check
+// time; any mismatch means the credit describes different code and is stale. No
+// tool can bypass it, because it watches no tools.
+//
+// Scope mirrors the reset predicates so their intentional exemptions survive.
+// Inert files (#1176) and `.github/` + `.moflo/` paths never contribute, so a
+// markdown or spec edit still leaves a test run standing. 'nontest' also drops
+// test files, preserving #908: touching a test does not invalidate /simplify.
+//
+// isEphemeralPath is deliberately NOT applied — it exists for agent scratchpads
+// outside the project, and `git status` cannot report those.
+// The gate's own state file must never contribute: recording a credit writes
+// it, which would change the very fingerprint the credit is pinned to and make
+// every credit instantly stale. It is gitignored in moflo's repo, but a
+// consumer project need not ignore it, and there the self-reference would
+// deadlock their gate permanently — so exclude it by name rather than trusting
+// .gitignore. Scoped to this one file: `.claude/` also holds real source
+// (helpers/, scripts/) that must keep counting.
+var FINGERPRINT_SELF_RE = /(?:^|[\\\/])\.claude[\\\/]workflow-state\.json$/i;
+
+function fingerprintIncludes(rel, scope) {
+  if (FINGERPRINT_SELF_RE.test(rel)) return false;
+  if (EDIT_RESET_SKIP_BOTH_RE.test(rel)) return false;
+  if (EDIT_RESET_SKIP_PATH_RE.test(rel)) return false;
+  if (scope === 'nontest' && EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE.test(rel)) return false;
+  return true;
+}
+
+/**
+ * Paths reported by `git status --porcelain=v1 -uall -z`, as
+ * `{ path, orig }` — `orig` set only for renames and copies.
+ *
+ * A rename emits `R  <new>\0<old>\0`: two NUL-terminated tokens for one entry.
+ * The origin token must be consumed or it is misread as the next entry's status
+ * bytes, AND it must be reported, because a rename means the old path no longer
+ * exists. Dropping it on the floor leaves the old path in the content map — the
+ * fingerprint would then carry a phantom entry that disappears the moment the
+ * rename is committed, expiring credit on a commit that changed no content.
+ * That is the same defect content-addressing was introduced to remove.
+ */
+function parsePorcelainZ(raw) {
+  var out = [];
+  var parts = String(raw).split('\0');
+  for (var i = 0; i < parts.length; i++) {
+    var entry = parts[i];
+    if (!entry || entry.length < 4) continue;
+    // Check BOTH status columns, not just the staged one: git reports a rename
+    // as `R ` when staged and can report ` R` for one detected in the worktree.
+    // Missing the second form would leave the origin token unconsumed, and it
+    // would then be read as the next entry's status bytes — misaligning every
+    // entry after it. R and C always emit an origin token, so consuming one
+    // whenever either column shows them cannot over-consume.
+    var st = entry.slice(0, 2);
+    var rec = { path: entry.slice(3), orig: null };
+    if (st.indexOf('R') >= 0 || st.indexOf('C') >= 0) { rec.orig = parts[i + 1] || null; i++; }
+    out.push(rec);
+  }
+  return out;
+}
+
+/**
+ * Fingerprint of the code a gate credit describes, or null when it cannot be
+ * computed (no git, no repo, no commits). Null is the fail-open signal: callers
+ * fall back to the flag alone, so non-git projects behave exactly as before.
+ */
+// Memoised per scope. check-before-pr tests three credits and check-before-done
+// a fourth, and each computation shells out to `git status -uall` over the whole
+// tree. The gate process is short-lived and single-shot — it exits before any
+// tool it gates can run — so nothing can change underneath the cache.
+var FINGERPRINT_CACHE = {};
+
+function creditFingerprint(scope) {
+  if (Object.prototype.hasOwnProperty.call(FINGERPRINT_CACHE, scope)) return FINGERPRINT_CACHE[scope];
+  var value = computeCreditFingerprint(scope);
+  FINGERPRINT_CACHE[scope] = value;
+  return value;
+}
+
+function computeCreditFingerprint(scope) {
+  var git = function (args) {
+    return cp.execFileSync('git', args, {
+      cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 10000, windowsHide: true,
+      maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  };
+  // Fingerprint the CONTENT of the working tree, never (HEAD + delta). Those
+  // are not the same thing: `git commit` moves changes from the working tree
+  // into HEAD without altering a single byte of code, and a HEAD-based
+  // fingerprint would expire every credit on commit — forcing a pointless
+  // re-run of the tests that just passed on exactly this code. Content-
+  // addressing also makes the fingerprint stable across amend, stash/pop, and
+  // any branch switch that lands on identical content, while still moving the
+  // moment real content differs.
+  //
+  // Unchanged files contribute git's own blob hashes (free, already computed);
+  // only files git reports as changed or untracked are hashed here.
+  var tracked;
+  try {
+    tracked = git(['ls-tree', '-r', '-z', 'HEAD']);
+  } catch (e) { return null; } // no git, no repo, or no commit yet
+  var byPath = Object.create(null);
+  var entries = String(tracked).split('\0');
+  for (var i = 0; i < entries.length; i++) {
+    // "<mode> <type> <object>\t<path>"
+    var tab = entries[i].indexOf('\t');
+    if (tab < 0) continue;
+    var meta = entries[i].slice(0, tab).split(' ');
+    byPath[entries[i].slice(tab + 1)] = meta[2];
+  }
+  try {
+    var changed = parsePorcelainZ(git(['status', '--porcelain=v1', '-uall', '-z']));
+    var live = [];
+    for (var j = 0; j < changed.length; j++) {
+      var rel = changed[j].path;
+      // A rename's origin path is gone from the content — drop it, or it
+      // lingers until the rename is committed and then vanishes, moving the
+      // fingerprint on a commit that changed nothing.
+      if (changed[j].orig) delete byPath[changed[j].orig];
+      var abs = path.resolve(PROJECT_DIR, rel);
+      var isFile = false;
+      try { isFile = fs.statSync(abs).isFile(); } catch (e) { isFile = false; }
+      // A path git reports but that is gone (or is not a regular file) is
+      // absent from the content, so it must leave the map entirely.
+      if (!isFile) { delete byPath[rel]; continue; }
+      if (rel.indexOf('\n') >= 0) { delete byPath[rel]; continue; } // unhashable via --stdin-paths
+      live.push(rel);
+    }
+    if (live.length) {
+      // `git hash-object` — NOT a raw sha1 of the bytes. A git blob id hashes
+      // "blob <size>\0" plus the content, and applies the same clean filters
+      // and core.autocrlf normalisation git would apply on checkin. Hashing the
+      // raw bytes here instead would produce a different string than ls-tree
+      // reports for identical content, so a file would appear to "change" the
+      // moment it was committed — and on Windows, whenever autocrlf rewrote its
+      // line endings. One batched call covers every changed path.
+      var hashed = cp.execFileSync('git', ['hash-object', '--stdin-paths'], {
+        cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 10000, windowsHide: true,
+        maxBuffer: 64 * 1024 * 1024, input: live.join('\n') + '\n',
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim().split('\n');
+      for (var m = 0; m < live.length; m++) {
+        if (hashed[m]) byPath[live[m]] = hashed[m].trim();
+      }
+    }
+  } catch (e) {
+    // status failed — fall back to the committed tree alone rather than null,
+    // so the fingerprint still tracks committed content.
+  }
+  var paths = Object.keys(byPath).filter(function (p) { return fingerprintIncludes(p, scope); });
+  paths.sort();
+  var h = crypto.createHash('sha1');
+  for (var k = 0; k < paths.length; k++) h.update(paths[k] + ':' + byPath[paths[k]] + '\n');
+  return h.digest('hex');
+}
+
+/**
+ * Is a credit still live? `flag` is the legacy boolean, `stored` the fingerprint
+ * captured when it was earned.
+ *
+ * Fail-open on an uncomputable fingerprint (non-git project) — the gate keeps
+ * its previous semantics there rather than blocking work it cannot reason about.
+ * Fail-CLOSED on a missing stored fingerprint: that is credit earned by a
+ * pre-upgrade gate, and it carries no evidence about which code it covered. The
+ * cost is re-running once on the first PR after upgrade, which self-heals.
+ */
+function creditIsLive(flag, stored, scope) {
+  if (!flag) return false;
+  var now = creditFingerprint(scope);
+  if (now === null) return true;
+  if (!stored) return false;
+  return stored === now;
+}
+
 // Classifier-aware simplify gate skip. Returns a string reason if the gate
 // can be auto-passed, or null if /simplify must run. Uses simplify-classify.cjs
 // so the gate's "trivial" definition matches the skill's exactly.
@@ -881,11 +1074,19 @@ switch (command) {
       var failure = detectTestFailure();
       var s = readState();
       if (failure) {
-        if (s.testsRun) { s.testsRun = false; writeState(s); }
+        if (s.testsRun) { s.testsRun = false; s.testsFingerprint = null; writeState(s); }
         process.stderr.write('gate: record-test-run not credited — ' + failure + '\n');
-      } else if (!s.testsRun) {
-        s.testsRun = true;
-        writeState(s);
+      } else {
+        // Re-stamp on every green run, not only the first: the tree may have
+        // moved since the last one, and this run is evidence about the tree as
+        // it is NOW. Gating on `!s.testsRun` would keep the older fingerprint
+        // and discard the fresher evidence.
+        var testsFp = creditFingerprint('all');
+        if (!s.testsRun || s.testsFingerprint !== testsFp) {
+          s.testsRun = true;
+          s.testsFingerprint = testsFp;
+          writeState(s);
+        }
       }
     } else if (cmd) {
       // #1176 — emit a stderr crumb when invoked with a non-empty command that
@@ -905,6 +1106,10 @@ switch (command) {
       var s = readState();
       var changed = false;
       if (!s.simplifyRun) { s.simplifyRun = true; changed = true; }
+      // 'nontest' scope: a later test-only edit must not invalidate this review
+      // (#908), so test files are excluded from what the credit is pinned to.
+      var simplifyFp = creditFingerprint('nontest');
+      if (s.simplifyFingerprint !== simplifyFp) { s.simplifyFingerprint = simplifyFp; changed = true; }
       // Snapshot HEAD so check-before-pr can classify delta-since-simplify and
       // skip a redundant /simplify re-run when only trivial fixes followed.
       // Non-fatal — gate falls through to current behaviour without the snapshot.
@@ -941,9 +1146,11 @@ switch (command) {
       // #1332: invoking /verify starts a verification; it does not conclude
       // one. Clear any prior verdict so the run in progress cannot inherit the
       // PASS from a previous issue and satisfy check-before-done on its own.
-      if (!s.verifyRun || s.verifyOutcome) {
+      var verifyFp = creditFingerprint('all');
+      if (!s.verifyRun || s.verifyOutcome || s.verifyFingerprint !== verifyFp) {
         s.verifyRun = true;
         s.verifyOutcome = null;
+        s.verifyFingerprint = verifyFp;
         writeState(s);
       }
     } else if (vName) {
@@ -1099,6 +1306,22 @@ switch (command) {
       }
     }
     var s = readState();
+    // Expire any credit whose fingerprint no longer matches the code before
+    // reading the flags. This is what catches the mutations reset-edit-gates
+    // structurally cannot see — Bash writes, git checkout/pull/merge, and the
+    // next issue in the same session — so the flags below mean "still true of
+    // THIS code", not merely "was true at some point this session".
+    var expired = [];
+    if (s.testsRun && !creditIsLive(s.testsRun, s.testsFingerprint, 'all')) {
+      s.testsRun = false; s.testsFingerprint = null; expired.push('tests');
+    }
+    if (s.simplifyRun && !creditIsLive(s.simplifyRun, s.simplifyFingerprint, 'nontest')) {
+      s.simplifyRun = false; s.simplifyFingerprint = null; expired.push('simplify');
+    }
+    if ((s.verifyRun || s.verifyOutcome) && !creditIsLive(s.verifyRun, s.verifyFingerprint, 'all')) {
+      s.verifyRun = false; s.verifyOutcome = null; s.verifyFingerprint = null; expired.push('verify');
+    }
+    if (expired.length) writeState(s);
     // Classifier-aware skip: if delta-since-snapshot or whole-branch diff is
     // TRIVIAL, satisfy the simplify gate silently. Reuses the same classifier
     // the skill uses — same "trivial" definition, no drift. Same threshold that
@@ -1120,6 +1343,13 @@ switch (command) {
     process.stderr.write('BLOCKED: gh pr create requires the following before opening a PR:\n');
     for (var i = 0; i < missing.length; i++) {
       process.stderr.write('  - ' + missing[i] + '\n');
+    }
+    if (expired.length) {
+      process.stderr.write(
+        'Expired because the code changed since they ran (' + expired.join(', ') +
+        ') — this includes changes made outside Write/Edit, e.g. a Bash write, ' +
+        'git checkout/pull, or moving on to a different change in the same session.\n',
+      );
     }
     if (s.lastResetBy && s.lastResetBy.file) {
       process.stderr.write('Last gate reset: ' + s.lastResetBy.file + ' (' + (s.lastResetBy.gates || []).join(', ') + ')\n');
@@ -1156,6 +1386,17 @@ switch (command) {
       }
     }
     var sd = readState();
+    // Expire a verdict that no longer describes the code, for the same reason
+    // check-before-pr does: a PASS earned before a Bash write, a branch switch,
+    // or the next change in this session is evidence about different code.
+    // #1332 made the gate read the outcome instead of attendance; this makes it
+    // read an outcome that is still ABOUT the thing being shipped.
+    var verifyStale = (sd.verifyRun || sd.verifyOutcome)
+      && !creditIsLive(sd.verifyRun, sd.verifyFingerprint, 'all');
+    if (verifyStale) {
+      sd.verifyRun = false; sd.verifyOutcome = null; sd.verifyFingerprint = null;
+      writeState(sd);
+    }
     // #1332: gate on the OUTCOME, not on attendance. Before this, `verifyRun`
     // alone opened the gate, so a /verify returning FAIL satisfied it exactly
     // as a PASS did — a failing verdict is still a successful tool invocation.
@@ -1165,7 +1406,11 @@ switch (command) {
     // rather than emitting one message that fits none of them.
     var invalidated = sd.lastResetBy && sd.lastResetBy.file
       && (sd.lastResetBy.gates || []).indexOf('verify') >= 0;
-    if (!sd.verifyRun && invalidated) {
+    if (verifyStale) {
+      process.stderr.write('  - the code changed since /verify ran — re-run /verify\n');
+      process.stderr.write('    (detected by content, so this covers changes made outside Write/Edit:\n');
+      process.stderr.write('     a Bash write, git checkout/pull, or a different change in the same session)\n');
+    } else if (!sd.verifyRun && invalidated) {
       process.stderr.write('  - a code edit invalidated the previous verification — re-run /verify\n');
       process.stderr.write('Last gate reset: ' + sd.lastResetBy.file + ' (verify)\n');
     } else if (!sd.verifyRun) {
