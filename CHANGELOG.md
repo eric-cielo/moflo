@@ -126,6 +126,136 @@ computed a speedup. `StatuslineData.performance.speedup: string` is replaced by
 `performance.loadAvg: string | null`; the shipped `statusline.cjs` never read
 this shape, so consumer statuslines are unaffected.
 
+### Removed — five MCP tools that fabricated their entire output (#1353)
+
+**Breaking for anyone calling these five.** `github_repo_analyze`,
+`github_pr_manage`, `github_issue_track`, `github_metrics`, and `neural_train`
+are deleted; the advertised registry goes 127 → 122.
+
+#1324/#1325 had labelled them with a synthetic-data notice, which was always a
+holding position: a notice is a *description*, so an agent that has already
+selected the tool and received `{"merged": true}` may never weight it. None of
+these five had an honest half to keep. The four `github_*` tools made no GitHub
+API call at all — they wrote local JSON and returned `Math.random()` counts, so
+`merged` / `approved` described nothing that had happened — and `neural_train`
+slept 100ms and persisted a random accuracy in [0.85, 0.95). `github-tools.ts`
+is gone entirely, along with the tools' drift-guard ALLOWLIST entries: an
+allowlist is for a tool that works and lacks a caller, not for keeping a
+fabricating one registered.
+
+**There is no replacement.** Use the `gh` CLI for GitHub work. If you called one
+of these, the result you were given was invented — treat prior output as
+unreliable rather than porting it forward.
+
+### Fixed — three MCP tools that mixed real data with invented data (#1354)
+
+Unlike the five above, these had a real half worth keeping, so the invented
+fields were removed rather than the tool.
+
+- **`system_health`** now probes. Every status but one was the literal
+  `'healthy'` and every latency a `Math.random()` draw, so a failing component
+  reported healthy. It calls `checkMemoryInitialization`, `getMCPServerStatus`,
+  `getDaemonLockHolder` and `isSwarmCoordinatorInitialized`, times each, and
+  reports what it observed. A dormant lazily-started component gets its own
+  `not-running` status instead of counting as a failure, and `score` is `null`
+  rather than `0` when nothing was judgeable. The `deep` and `fix` parameters —
+  both accepted and ignored — are gone.
+- **`neural_predict`** keeps the real embedding it always computed and drops
+  `predictions`: a fixed label list with random confidences that ignored the
+  input entirely.
+- **`performance_report`** keeps the measured CPU/memory/heap and drops the
+  seeded latency percentiles, the throughput counter that was counting calls to
+  this tool, the literal `errors: 0`, and the hardcoded `status: 'healthy'`.
+
+`neural_status.avgAccuracy` and the `accuracy` field on a returned model record
+also go — `neural_train` was their only writer, so they could only ever average
+the placeholders it had persisted.
+
+### Fixed — 23 CLI subcommands called MCP tools that were never registered (#1352)
+
+The failure was not uniform: 18 errored visibly, two swallowed the error and
+reported SUCCESS for work never performed, and three left `flo status` rendering
+a fabricated all-zeros fallback on every run.
+
+19 handlers are now registered over infrastructure that already existed — the
+wrapper had simply never been written (`coverage-router.ts` even carried a
+section headed *"Additional Exports for MCP Tools (coverage-tools.ts)"* for a
+file that did not exist): `progress_*`, `hooks_coverage-*`, `analyze_diff`,
+`mcp_status`, `memory_export`/`import`/`cleanup`/`compress`/`detailed-stats`,
+`session_current`/`export`/`import`, `task_retry`/`summary`, and
+`hive-mind_task`. Four surfaces with no backing at all are removed instead:
+`flo agent logs`, `flo hive-mind optimize-memory`, `flo hooks task-completed`,
+`flo hooks teammate-idle`.
+
+Found while verifying the above, each its own consumer-visible bug:
+
+- `movector/{coverage-router,diff-classifier}.ts` used CommonJS `require()` in an
+  ESM build, so every code path through them threw at runtime.
+- `task_list` treated the `'all'` sentinel as a literal status, so
+  `flo status tasks` reported none while `flo status` reported them.
+- `memory_cleanup` deleted on the same call that counted candidates — declining
+  *"Delete N entries?"* printed "cancelled" after the rows were already gone.
+  Deletion is now opt-in via `apply: true`; the CLI counts, prompts, then
+  applies. Its unusable-entry rule also keyed on `embedding IS NULL` with no age
+  gate, which matched **every row** on a project whose embedding model never
+  loaded; an explicit `--older-than` cutoff is now required.
+- `progress_*` would have reported "28/28 commands, 419 files" in consumer
+  projects with no `src/` at all, because `V3ProgressService` answers an
+  unreadable tree with invented values. The handlers now refuse instead.
+
+### Fixed — `flo config` wrote nothing, and the option parser made 45 flags unusable (#1346)
+
+`flo config` had no filesystem import at all: `init` printed *"Creating
+claude-flow.config.json…"*, a settings table, and `[OK] Configuration
+initialized`, then returned success without writing anything. The healer's
+`Config File` auto-fix took that exit code verbatim, so `--fix` reported
+`applied: true` on every run while the warning never cleared.
+
+Config now does real read/write through a new `.moflo/config.json` store shared
+with the doctor check, so the two cannot disagree about whether a config exists.
+The healer derives its verdict from the file existing rather than from an exit
+code.
+
+Verifying that fix surfaced the parser defects underneath it:
+
+- A command option now **shadows** a same-named global instead of stacking with
+  it. Stacking made all 45 collisions unsatisfiable — `--format yaml` had to
+  satisfy both the command's choices and the global's, so it failed with the
+  flag and without it. Unblocks `memory export --format csv`,
+  `analyze boundaries --format dot`, `session export --format yaml`, and others.
+- A global boolean redefined as value-taking is now parsed as value-taking.
+  `plugins install pkg --version 1.2.3` came out as `version: true` with
+  `'1.2.3'` stranded in positionals, which tripped the global `--version`
+  handler: it printed the moflo version and exited without installing anything.
+  Also affected `plugins upgrade` and `deployment deploy`/`rollback`.
+- 63 options declared a default contradicting their own type (26 booleans as the
+  truthy string `'false'`, 37 numbers as `'100'`). Dormant today, but they would
+  flip flags like `--force` ON the moment default-application widens. Guarded.
+- `embeddings chunk --file` was documented as the alternative to `--text` and
+  carried its own example, but `--text` was `required` so the example died at the
+  parser, and the action never read `ctx.flags.file` — it chunked the empty
+  string. It now reads the file, normalizing CRLF so a Windows-authored document
+  chunks identically to its POSIX twin.
+
+Command defaults are applied **only** where they shadow a global. The general
+"apply every command default" pass was deliberately not taken: 455 command
+options declare defaults the parser has never applied, and enabling them
+wholesale would change behaviour across the CLI.
+
+### Security — three advisories resolved via lockfile refresh (#1350)
+
+`hono` 4.12.27 → 4.13.0 (GHSA-8j4g-w8fx-2239), `brace-expansion` 5.0.8 → 5.0.9
+(GHSA-rgw5-rvv9-x895), `postcss` 8.5.20 → 8.5.25. Every patched version already
+satisfied its parent's existing range, so none of this needed an `overrides`
+pin, a major bump, or an upstream release — the lockfile was simply pinned below
+the fix.
+
+`hono` is the only one that reaches consumers, transitively via
+`@modelcontextprotocol/sdk`. `brace-expansion` arrives through eslint → minimatch
+and `postcss` through vitest → vite, so both are dev-only. `npm audit` goes from
+3 vulnerabilities (1 high, 2 moderate) to 0, both with and without `--omit=dev`.
+`package.json` is untouched.
+
 ### Changed — Verify-before-done is now ON by default (#1294)
 
 `gates.verify_before_done` now defaults to **true** (was opt-in/false). Every
