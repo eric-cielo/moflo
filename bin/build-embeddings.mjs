@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from 'fs';
 import { mofloInternalURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, hnswIndexPath, findProjectRoot } from './lib/moflo-paths.mjs';
 import { openBackend } from './lib/get-backend.mjs';
+import { PENDING_EMBEDDING_WHERE } from './lib/embedding-backlog.mjs';
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 const BRIDGE_CORE = 'dist/src/cli/memory/bridge-core.js';
 const HNSW_PERSISTENCE = 'dist/src/cli/memory/hnsw-persistence.js';
@@ -96,13 +97,17 @@ function saveDb(db) {
   db.save();
 }
 
+// The backlog clause is imported, not restated (#1383): the indexer gate asks
+// this exact question to decide whether to run this script at all, and a gate
+// that approximates its step's own query is how new chunks got left unembedded
+// in the first place. `PENDING_EMBEDDING_WHERE` already carries `status =
+// 'active'`, so the non-forced branch below replaces the base clause rather
+// than appending to it.
 function getEntriesNeedingEmbeddings(db, namespace, forceAll) {
-  let sql = `SELECT id, key, namespace, content FROM memory_entries WHERE status = 'active'`;
+  let sql = `SELECT id, key, namespace, content FROM memory_entries WHERE `
+    + (forceAll ? `status = 'active'` : PENDING_EMBEDDING_WHERE);
   const params = [];
 
-  if (!forceAll) {
-    sql += ` AND (embedding IS NULL OR embedding = '')`;
-  }
   if (namespace) {
     sql += ` AND namespace = ?`;
     params.push(namespace);

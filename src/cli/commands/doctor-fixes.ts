@@ -858,11 +858,19 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       // that the process is actually a moflo daemon (Windows PID
       // recycling is real — see daemon-lock.ts:isDaemonProcess).
       if (getDaemonLockHolder(process.cwd()) !== null) {
+        // #1383: "restart and the launcher will fix it" was the advice given
+        // while the launcher's own gate was skipping the repair, so a user
+        // could restart indefinitely and never converge. Name the direct
+        // command first — it is the one that always works — and keep the
+        // restart as the alternative rather than the instruction.
         output.writeln(output.dim(
-          '  Embedding hygiene is repaired automatically by the session-start launcher.',
+          '  A moflo daemon holds the DB, so the repair cannot run safely in-process here.',
         ));
         output.writeln(output.dim(
-          '  Restart Claude Code (or run `flo daemon stop` first) to apply.',
+          '  Run:  flo daemon stop && npx moflo embeddings init',
+        ));
+        output.writeln(output.dim(
+          '  Or restart Claude Code — the session-start launcher runs the same repair.',
         ));
         return false;
       }

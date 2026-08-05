@@ -114,11 +114,25 @@ export async function checkEmbeddingHygiene(): Promise<HealthCheck> {
   }
 
   // (2) Silent-failure marker — local + NULL embedding.
+  //
+  // #1383 asked whether this should be a `fail` rather than a `warn`, since
+  // these rows are not merely degraded in search — they are absent from it.
+  // `memory_search` is vector-only, so a row with no embedding can never be
+  // returned however well it matches, and the agent falls back to bulk `Read`.
+  //
+  // Deliberately kept at `warn`. `finalize()` exits 1 on any `fail` and
+  // `--allow-warn` cannot tolerate one, so elevating would hand every consumer
+  // a hard, un-suppressable CI failure for a state that is transient by
+  // construction: the first session-start after this upgrade repairs the
+  // backlog, but a consumer whose CI runs `flo doctor` before that session
+  // would go red with no escape hatch. The real defect was that the message
+  // named an internal marker instead of the consequence, so the message is
+  // what changed — it now says what the user loses.
   const localNull = groups.find((g) => g.model === 'local' && g.hasNullEmbedding);
   if (localNull && localNull.count > 0) {
     issues.push(
       `${localNull.count} row(s) with embedding_model='local' AND embedding IS NULL ` +
-        '(silent producer failure marker — see #649)',
+        '— these rows are invisible to memory_search until re-embedded (see #649, #1383)',
     );
   }
 

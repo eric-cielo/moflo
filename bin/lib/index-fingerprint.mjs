@@ -21,6 +21,13 @@
  * Bumping FINGERPRINT_VERSION invalidates older payloads (graceful migration
  * — first session post-upgrade runs every step once, then steady state).
  *
+ * Issue #1383 added a second, stronger signal for steps that can state their
+ * own precondition exactly: a work probe (see STEP_WORK_PROBES). A fingerprint
+ * answers "did the inputs change?"; a probe answers "is there work?". Where
+ * both exist the probe wins, because the failure it prevents — skipping a step
+ * that demonstrably had something to do — is silent and cumulative, while the
+ * failure it risks is one cheap redundant run.
+ *
  * Override: set `FLO_FORCE_INDEX=1` to bypass every gate (`flo doctor --fix`).
  *
  * Failure posture: any compute / read error returns null and forces the
@@ -40,6 +47,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { MOFLO_DIR, mofloDir, memoryDbPath, hnswIndexPath } from './moflo-paths.mjs';
 import { resolveGuidanceDirs } from './guidance-config.mjs';
+import { hasPendingEmbeddings } from './embedding-backlog.mjs';
 
 export const FINGERPRINT_FILE_NAME = 'index-step-fingerprints.json';
 export const LEGACY_FINGERPRINT_FILE_NAME = 'index-all-fingerprint.json';
@@ -60,6 +68,24 @@ function legacyFingerprintFilePath(projectRoot) {
 
 function safeMtime(path) {
   try { return statSync(path).mtimeMs; } catch { return 0; }
+}
+
+/**
+ * Newest mtime across the SQLite file set — main DB plus its write-ahead log.
+ *
+ * `moflo.db` alone is not a change signal (#1383): under `journal_mode=WAL`
+ * every row write lands in `moflo.db-wal` and the main file's mtime does not
+ * move until a checkpoint folds the log back in. A gate stat'ing only the
+ * main file therefore reports "unchanged" for writes that happened seconds
+ * ago — which is how newly-indexed chunks got left unembedded.
+ *
+ * `-shm` is deliberately excluded: it is shared memory for the WAL index and
+ * READERS touch it, so folding it in would invalidate the fingerprint on
+ * sessions that only read the DB and re-run the step forever.
+ */
+function newestDbMtime(projectRoot) {
+  const db = memoryDbPath(projectRoot);
+  return Math.max(safeMtime(db), safeMtime(`${db}-wal`));
 }
 
 // Lockfiles across the common JS package managers. Any install/upgrade rewrites
@@ -202,23 +228,57 @@ const STEP_FINGERPRINT_COMPUTERS = {
 
   'pretrain':       (projectRoot) => ({ sourceList: gitFileListHash(projectRoot, SOURCE_GLOBS) }),
 
-  // memory.db mtime is a coarse proxy for "rows that need embedding". It
-  // self-bumps when build-embeddings writes back: first post-upgrade session
-  // runs the step, the bump is captured into the POST fingerprint, equilibrium
-  // reached on the next session. Imprecise (mtime can bump without new
-  // NULL-embedding rows) but cheap; the step is a no-op on empty input.
+  // The DB mtime is only a secondary signal here — the authoritative one is
+  // the work probe below, which asks the database directly whether any row
+  // still needs embedding. The fingerprint remains so the step still refreshes
+  // its derived artifacts (vector-stats cache, sidecar) when the store changed
+  // but the backlog is empty.
+  //
+  // `dbFiles` (not `memoryDb`) both names what is actually stat'd and
+  // guarantees a mismatch against payloads written before #1383, so the first
+  // session after upgrade re-runs these two steps once and settles.
   'build-embeddings': (projectRoot) => ({
-    memoryDb: safeMtime(memoryDbPath(projectRoot)),
+    dbFiles: newestDbMtime(projectRoot),
   }),
 
-  // HNSW sidecar must be at least as fresh as memory.db. Tracking both mtimes
-  // means: sidecar deleted → mtime=0 → mismatch → run. memory.db newer than
-  // last-rebuild → mismatch → run. After a successful rebuild, the saved pair
+  // HNSW sidecar must be at least as fresh as the store. Tracking both means:
+  // sidecar deleted → mtime=0 → mismatch → run. Store written since the last
+  // rebuild → mismatch → run. After a successful rebuild the saved pair
   // captures the post-rebuild equilibrium.
+  //
+  // This step shared #1383's WAL blind spot: embeddings written into the WAL
+  // did not move `moflo.db`, so the sidecar was not resynced either and the
+  // new vectors stayed unsearchable even once they existed. `newestDbMtime`
+  // fixes both steps at once.
+  //
+  // The cost is that ANY write to the store now invalidates this step, so it
+  // runs far more often — every session with memory activity, in practice.
+  // That is affordable only because #1384 made the sidecar reconcile
+  // incrementally instead of rebuilding: measured on a 5,310-vector store, a
+  // no-change reconciliation is 0.07s versus 19.4s for the full rebuild this
+  // step used to perform. This change MUST NOT ship ahead of that one.
   'hnsw-rebuild': (projectRoot) => ({
-    memoryDb: safeMtime(memoryDbPath(projectRoot)),
-    sidecar:  safeMtime(hnswIndexPath(projectRoot)),
+    dbFiles: newestDbMtime(projectRoot),
+    sidecar: safeMtime(hnswIndexPath(projectRoot)),
   }),
+};
+
+/**
+ * Per-step "is there work?" probes — the exact condition a step exists to
+ * satisfy, asked of the real state rather than inferred from a file mtime.
+ *
+ * A probe returns `true` (work pending → run, no matter what the fingerprint
+ * says), `false` (no backlog → the fingerprint decides, since the step still
+ * refreshes derived artifacts), or `null` (unknowable → the fingerprint
+ * decides). Steps with no probe are fingerprint-only.
+ *
+ * A probe may only ever FORCE a run, never suppress one. That asymmetry is
+ * the point: an over-eager probe costs one cheap no-op run, whereas a probe
+ * trusted to veto would resurrect #1383's silent skip the moment it was
+ * wrong about the state.
+ */
+const STEP_WORK_PROBES = {
+  'build-embeddings': hasPendingEmbeddings,
 };
 
 /**
@@ -283,14 +343,35 @@ export function saveStepFingerprint(stepName, projectRoot, fp) {
 }
 
 /**
+ * Ask a step's work probe whether it has pending work. Any throw is swallowed
+ * to `null` — a gate must never be the thing that breaks session start.
+ *
+ * @returns {boolean | null}
+ */
+export function probeStepWork(stepName, projectRoot) {
+  const probe = STEP_WORK_PROBES[stepName];
+  if (!probe) return null;
+  try {
+    return probe(projectRoot);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Decide whether `stepName` needs to run. Returns one of:
  *   { skip: true,  reason: 'unchanged' }
- *   { skip: false, reason: 'forced' | 'no-saved-fingerprint' | 'inputs-changed' }
+ *   { skip: false, reason: 'forced' | 'work-pending' | 'no-saved-fingerprint' | 'inputs-changed' }
  *
  * The orchestrator computes a POST-run fingerprint after each successful run
  * and saves THAT — not the pre-run one — so steps that mutate the inputs they
- * gate on (e.g. build-embeddings bumping memory.db mtime) reach a stable
+ * gate on (e.g. build-embeddings writing embeddings back) reach a stable
  * equilibrium on the next session.
+ *
+ * `work-pending` is checked before the fingerprint and is not overridable by
+ * it (#1383). A step whose backlog is non-empty runs, full stop — the
+ * fingerprint's job is deciding when to run a step that has *nothing* obvious
+ * to do, and it is not allowed to answer a question the state answers exactly.
  */
 export function decideStepGate(stepName, projectRoot, env = process.env) {
   if (env[FORCE_ENV]) {
@@ -299,8 +380,18 @@ export function decideStepGate(stepName, projectRoot, env = process.env) {
   const current = computeStepFingerprint(stepName, projectRoot);
   const saved = readSavedStepFingerprint(stepName, projectRoot);
   if (!saved) return { skip: false, reason: 'no-saved-fingerprint' };
-  if (fingerprintsEqual(current, saved)) return { skip: true, reason: 'unchanged' };
-  return { skip: false, reason: 'inputs-changed' };
+  if (!fingerprintsEqual(current, saved)) return { skip: false, reason: 'inputs-changed' };
+
+  // The fingerprint says skip. That is exactly — and only — where #1383 went
+  // wrong, so this is where the state gets consulted. Probing last also keeps
+  // it off the hot path: the query runs on quiet sessions, not on the ones
+  // that were already going to do the work, and the fingerprint has been read
+  // before the probe's read-only open materialises `-wal`/`-shm`, so the
+  // probe cannot register its own side effect as an input change.
+  if (probeStepWork(stepName, projectRoot) === true) {
+    return { skip: false, reason: 'work-pending' };
+  }
+  return { skip: true, reason: 'unchanged' };
 }
 
 /**

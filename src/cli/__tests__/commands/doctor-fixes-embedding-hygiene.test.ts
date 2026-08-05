@@ -75,6 +75,29 @@ describe('Embedding hygiene auto-fix — daemon-aware skip (#1046)', () => {
     expect(mockMigrate).not.toHaveBeenCalled();
   });
 
+  // #1383: the daemon-held message used to say only "restart Claude Code and
+  // the launcher repairs it". That advice was given while the launcher's own
+  // gate was skipping the repair, so a user could restart indefinitely and
+  // never converge. The direct command must be named.
+  it('names `embeddings init` as the remedy, not just a restart (#1383)', async () => {
+    mockGetHolder.mockReturnValue(process.pid);
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: any) => {
+      written.push(String(chunk));
+      return true;
+    });
+
+    try {
+      await autoFixCheck(hygieneCheck);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const text = written.join('');
+    expect(text).toContain('npx moflo embeddings init');
+    expect(text).toContain('flo daemon stop');
+  });
+
   it('runs the migration in-process when no daemon is alive', async () => {
     mockGetHolder.mockReturnValue(null);
     mockMigrate.mockResolvedValue(true);

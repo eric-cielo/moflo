@@ -32,7 +32,20 @@ import './suppress-sqlite-warning.mjs';
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { createRequire } from 'node:module';
 import { memoryDbPath } from './moflo-paths.mjs';
+
+// `node:sqlite` is loaded lazily so importing this module stays cheap for the
+// scripts that only want `memoryDbPath`/`resolveBackend`. `createRequire` — not
+// `await import` — because {@link openBackendSync} must stay synchronous: the
+// per-step indexer gate (`index-fingerprint.decideStepGate`) is called from a
+// sync decision path and needs a real DB read, not a promise.
+const requireBuiltin = createRequire(import.meta.url);
+let _DatabaseSync = null;
+function databaseSyncCtor() {
+  if (_DatabaseSync === null) _DatabaseSync = requireBuiltin('node:sqlite').DatabaseSync;
+  return _DatabaseSync;
+}
 
 export const BACKEND_NODE_SQLITE = 'node-sqlite';
 
@@ -76,9 +89,30 @@ function ensureDir(filePath) {
  * @returns {Promise<object>} backend handle (see module doc)
  */
 export async function openBackend(projectRoot, opts = {}) {
+  return openBackendSync(projectRoot, opts);
+}
+
+/**
+ * Synchronous face of {@link openBackend}. Same implementation, same pragmas —
+ * `openBackend` is retained as an async wrapper only because every existing
+ * caller awaits it. Use this one from code that cannot await (the per-step
+ * indexer gate); prefer `openBackend` everywhere else so the diff against the
+ * TS twin stays obvious.
+ *
+ * @param {string} projectRoot
+ * @param {{ backend?: 'node-sqlite', create?: boolean, readOnly?: boolean,
+ *           dbPath?: string, busyTimeoutMs?: number }} [opts]
+ *   `busyTimeoutMs` applies to READ-ONLY opens only (writers always get the
+ *   15s WAL-trinity budget). Omit it to fail fast on contention.
+ * @returns {object} backend handle (see module doc)
+ */
+export function openBackendSync(projectRoot, opts = {}) {
   const dbPath = opts.dbPath || memoryDbPath(projectRoot);
   resolveBackend(opts); // throws on stale sql.js callers
-  ensureDir(dbPath);
+  // A read-only open must never materialise state: the indexer gate probes for
+  // a DB that may legitimately not exist yet, and creating `.moflo/` from a
+  // gate would be a side effect of asking a question.
+  if (opts.readOnly !== true) ensureDir(dbPath);
   return openNodeSqlite(dbPath, opts);
 }
 
@@ -91,11 +125,30 @@ export async function openBackend(projectRoot, opts = {}) {
 // we don't want N copies of the same message in one session.
 const _networkFsWarnedPaths = new Set();
 
-async function openNodeSqlite(dbPath, opts) {
-  const { DatabaseSync } = await import('node:sqlite');
+function openNodeSqlite(dbPath, opts) {
+  const DatabaseSync = databaseSyncCtor();
   const readOnly = opts.readOnly === true;
   const db = new DatabaseSync(dbPath, { readOnly });
-  if (!readOnly) {
+  if (readOnly) {
+    // A read-only handle skips the WAL trinity (it cannot change journal
+    // mode). It gets a retry budget ONLY when the caller asks for one.
+    //
+    // Applying the writer's 15s budget to every read-only open would be a
+    // silent behaviour change for the readers that already exist —
+    // `session-continuity.mjs` and `semantic-search.mjs` both open read-only
+    // inside the session-start chain, and both are written to fail fast and
+    // degrade. Turning an instant SQLITE_BUSY into a 15-second block for
+    // them serialises the chain behind whatever holds the lock. Opt in, with
+    // a budget sized to the caller's own patience.
+    const budget = Number(opts.busyTimeoutMs) || 0;
+    if (budget > 0) {
+      try {
+        db.exec(`PRAGMA busy_timeout = ${Math.floor(budget)}`);
+      } catch {
+        // Non-fatal: the handle is still usable, just without a retry budget.
+      }
+    }
+  } else {
     // Close the handle on any PRAGMA failure — node:sqlite opens forgivingly
     // (even non-SQLite files succeed in the constructor) and a PRAGMA that
     // throws later would otherwise leak the file handle across processes

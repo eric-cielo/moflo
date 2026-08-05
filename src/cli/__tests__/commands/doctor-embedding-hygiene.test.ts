@@ -100,7 +100,11 @@ describe('checkEmbeddingHygiene (#651)', () => {
     expect(result.fix).toContain('embeddings init');
   });
 
-  it("warns on the silent-failure marker (model='local' + embedding NULL)", async () => {
+  // #1383 kept this at `warn` (a `fail` is un-suppressable by --allow-warn and
+  // would hand consumers a hard CI failure for a transient state) but rewrote
+  // the message: it now names the consequence — the rows cannot be found —
+  // rather than an internal marker, which is why the old warning was ignorable.
+  it("warns on the silent-failure marker, naming the consequence (model='local' + embedding NULL)", async () => {
     seedDb((db) => {
       insert(db, 'a', CANONICAL_EMBEDDING_MODEL, true);
       insert(db, 'b', 'local', false);
@@ -111,6 +115,7 @@ describe('checkEmbeddingHygiene (#651)', () => {
     expect(result.status).toBe('warn');
     expect(result.message).toContain("embedding_model='local'");
     expect(result.message).toContain('AND embedding IS NULL');
+    expect(result.message).toContain('invisible to memory_search');
   });
 
   it('warns when more than one neural model is present in the active set', async () => {

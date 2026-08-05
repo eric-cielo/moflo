@@ -316,6 +316,11 @@
       "file": "bin/lib/get-backend.mjs",
       "classification": "daemon-offline",
       "notes": "JS-twin factory — every bin/ writer routes through openBackend(); defaults to node:sqlite as of Phase 4 (#1083), sql.js path deleted in Phase 5 (#1084)"
+    },
+    {
+      "file": "bin/lib/embedding-backlog.mjs",
+      "classification": "in-daemon",
+      "notes": "Read-only probe (#1383) — opens with readOnly:true and runs a single SELECT EXISTS; classified for completeness like entries-read.ts. Mutates nothing, so it is safe alongside a live daemon."
     }
   ]
 }
