@@ -295,6 +295,35 @@ sandbox:
   enabled: false                 # Set to true to wrap bash steps in an OS sandbox
   tier: auto                     # auto | denylist-only | full
 
+# Spend ceilings for spells that spawn \`claude -p\` from a bash step.
+#
+# These are RUNAWAY BACKSTOPS, not cost controls. Their job is to stop a loop
+# that spawns the model forever — not to tune your bill. Any per-run number is
+# somewhat arbitrary; what matters is that it is finite.
+#
+# An invocation is not a unit of spend: \`claude -p "say hi"\` and
+# \`claude -p "refactor this subsystem"\` both count as one. Treat the count as a
+# proxy, and \`dailyModelInvocations\` as the number that tracks your bill.
+#
+# Delete a key to make that ceiling unlimited.
+spells:
+  budget:
+    # Daemon-fired runs. Nobody is watching, so these are the tight ones.
+    scheduled:
+      maxModelInvocations: 30      # per run
+      maxWallClockMs: 2400000      # 40 min — longer than this unattended is stuck, not working
+      # Rolling 24h across ALL scheduled runs. A per-run ceiling bounds one bad
+      # run; this bounds a misconfigured schedule (a 5-min cron x 30 = 8,640/day,
+      # every one of which passes the per-run check).
+      dailyModelInvocations: 300
+
+    # \`flo spell cast\` / MCP cast. A human is present and can ctrl-C, so this is
+    # deliberately loose — raise it freely if it ever fires on you. Note it is
+    # per SPELL CAST, not per Claude Code session: long sessions never touch it.
+    interactive:
+      maxModelInvocations: 200
+      maxWallClockMs: 14400000     # 4 hours
+
 # Status line display (shown at bottom of Claude Code)
 # mode: "compact" (default), "single-line", or "dashboard" (full multi-line)
 status_line:

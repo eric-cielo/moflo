@@ -19,6 +19,8 @@ import {
   discoverGuidanceDirs,
   type MofloYamlConfig,
 } from '../init/moflo-yaml-template.js';
+import * as yaml from 'js-yaml';
+import { resolveSpellBudgetConfig } from '../spells/core/run-budget.js';
 
 function makeTempRoot(label: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `moflo-yaml-${label}-`));
@@ -322,5 +324,58 @@ describe('discovery walk safety', () => {
 
   it('detectExtensions falls back when src/ does not exist', () => {
     expect(detectExtensions(root, ['src'])).toEqual(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+  });
+});
+
+// ============================================================================
+// Spend ceilings (#1335 follow-up)
+// ============================================================================
+
+/**
+ * The budget block the template ships is a worked example that nothing else
+ * exercises: if a key name drifts, the block still parses as valid YAML and
+ * every generated project silently runs unbounded. These tests feed the
+ * rendered template through the same resolver the runner uses, so a typo
+ * fails here rather than in a consumer's bill.
+ */
+describe('renderMofloYaml — spend ceilings', () => {
+  let root: string;
+
+  beforeEach(() => { root = makeTempRoot('budget'); });
+  afterEach(() => { cleanRoot(root); });
+
+  function budgetOf(mode: 'scheduled' | 'interactive') {
+    const parsed = yaml.load(renderMofloYaml(defaultMofloYamlConfig(root))) as {
+      spells?: { budget?: Record<string, unknown> };
+    };
+    return resolveSpellBudgetConfig(parsed?.spells?.budget?.[mode]);
+  }
+
+  it('renders a scheduled ceiling the resolver actually recognises', () => {
+    expect(budgetOf('scheduled')).toEqual({
+      maxModelInvocations: 30,
+      maxWallClockMs: 2400000,
+      dailyModelInvocations: 300,
+    });
+  });
+
+  it('renders an interactive ceiling the resolver actually recognises', () => {
+    expect(budgetOf('interactive')).toEqual({
+      maxModelInvocations: 200,
+      maxWallClockMs: 14400000,
+    });
+  });
+
+  it('caps scheduled runs more tightly than interactive ones', () => {
+    const scheduled = budgetOf('scheduled')!;
+    const interactive = budgetOf('interactive')!;
+    // Unattended runs are the exposure; a template that shipped these the
+    // other way round would be worse than shipping neither.
+    expect(scheduled.maxModelInvocations!).toBeLessThan(interactive.maxModelInvocations!);
+    expect(scheduled.maxWallClockMs!).toBeLessThan(interactive.maxWallClockMs!);
+  });
+
+  it('bounds the daemon across runs, not only within one', () => {
+    expect(budgetOf('scheduled')!.dailyModelInvocations).toBeGreaterThan(0);
   });
 });
