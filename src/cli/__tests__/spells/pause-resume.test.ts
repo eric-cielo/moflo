@@ -22,6 +22,22 @@ import { builtinCommands } from '../../spells/commands/index.js';
 import { analyzeSpellPermissions } from '../../spells/core/permission-disclosure.js';
 import { recordAcceptance } from '../../spells/core/permission-acceptance.js';
 
+/**
+ * Observe the sandbox config load without replacing its behaviour — the fix
+ * under test is that `resumeSpell` consults it at all.
+ */
+const loadSandboxSpy = vi.fn();
+vi.mock('../../spells/core/platform-sandbox.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../spells/core/platform-sandbox.js')>();
+  return {
+    ...actual,
+    loadSandboxConfigFromProject: (root: string) => {
+      loadSandboxSpy(root);
+      return actual.loadSandboxConfigFromProject(root);
+    },
+  };
+});
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -355,5 +371,35 @@ describe('resumeSpell — project config', () => {
 
     expect(result.errors.some(e => e.code === 'BUDGET_EXCEEDED')).toBe(false);
     expect(result.success).toBe(true);
+  });
+
+  it('re-applies the project sandbox config to the resumed half', async () => {
+    // The other half of the same bug: a resumed run dropped `sandbox` for
+    // exactly the reason it dropped `budget`.
+    //
+    // Asserted by observing the load rather than its OS effect: whether
+    // `tier: full` engages or refuses depends on whether bwrap/sandbox-exec
+    // exists on the runner, which differs across the three platforms moflo
+    // ships to (Rule #1). What is platform-independent — and what was actually
+    // broken — is that the project's config was never consulted at all.
+    writeFileSync(
+      join(projectRoot, 'moflo.yaml'),
+      'sandbox:\n  enabled: true\n  tier: denylist-only\n',
+      'utf-8',
+    );
+    const memory = createMockMemory();
+    const definition: SpellDefinition = {
+      name: 'sandboxed-spell',
+      steps: [{ id: 's1', type: 'wait', config: { duration: 0 } }],
+    };
+    await preAccept(definition);
+    await persistPausedState(
+      buildPausedState('wf-sandbox', definition, 0, {}, [], {}),
+      memory,
+    );
+
+    await resumeSpell('wf-sandbox', { memory, projectRoot });
+
+    expect(loadSandboxSpy).toHaveBeenCalledWith(projectRoot);
   });
 });

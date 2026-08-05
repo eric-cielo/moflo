@@ -115,6 +115,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" record-test-run",
             "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" record-bash-swarm-init",
+            "timeout": 2000
           }
         ]
       },

@@ -22,6 +22,13 @@ import { SpellRunBudget } from '../../spells/core/run-budget.js';
 import type { RunBudgetAccessor } from '../../spells/core/run-budget.js';
 import { validateSpellDefinition } from '../../spells/schema/validator.js';
 import { bridgeExecuteSpell } from '../../spells/factory/runner-bridge.js';
+import { ledgerPathFor } from '../../spells/core/run-ledger.js';
+import { builtinCommands } from '../../spells/commands/index.js';
+import { analyzeSpellPermissions } from '../../spells/core/permission-disclosure.js';
+import { recordAcceptance } from '../../spells/core/permission-acceptance.js';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   CastingContext,
   CredentialAccessor,
@@ -481,6 +488,85 @@ describe('bridgeExecuteSpell spend ceiling', () => {
     expect(result.success).toBe(true);
     expect(result.steps.every(s => s.status === 'succeeded')).toBe(true);
     expect(memory.tasklist.at(-1)?.abortReason).toBeUndefined();
+  });
+
+  /**
+   * A spell with bash steps is "higher risk", so passing a `projectRoot`
+   * engages the first-run permission gate. Real scheduled spells are accepted
+   * once by their owner; these tests fabricate definitions, so they record the
+   * acceptance themselves rather than assert against a prompt.
+   */
+  async function preAccept(spell: SpellDefinition, projectRoot: string): Promise<void> {
+    const registry = new StepCommandRegistry();
+    for (const cmd of builtinCommands) registry.register(cmd, 'built-in');
+    const report = analyzeSpellPermissions(spell, registry);
+    await recordAcceptance(projectRoot, spell.name, report.permissionHash);
+  }
+
+  it('carries the daily ceiling from one real run into the next (#1380)', async () => {
+    // The property a per-run ceiling cannot have. Two separate
+    // bridgeExecuteSpell calls — as two consecutive scheduled fires would be —
+    // sharing only a project root. If the ledger did not reach the runner, the
+    // second run would succeed exactly like the first.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'moflo-daily-e2e-'));
+    try {
+      const spell: SpellDefinition = {
+        name: 'e2e-daily-spell',
+        steps: [
+          { id: 'call1', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+          { id: 'call2', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+        ],
+      };
+      await preAccept(spell, projectRoot);
+      const opts = { projectRoot, budget: { dailyModelInvocations: 3 } };
+
+      const first = await bridgeExecuteSpell(spell, {}, {
+        ...opts, spellId: 'scheduled-e2e-daily-1', memory: recordingMemory(),
+      });
+      expect(first.success).toBe(true);
+
+      // Two invocations spent; the ceiling is 3. The second run gets one more
+      // and is refused on its second step.
+      const memory = recordingMemory();
+      const second = await bridgeExecuteSpell(spell, {}, {
+        ...opts, spellId: 'scheduled-e2e-daily-2', memory,
+      });
+
+      expect(second.success).toBe(false);
+      expect(second.errors.map(e => e.code)).toContain('BUDGET_EXCEEDED');
+      expect(second.steps[0].status).toBe('succeeded');
+      expect(second.steps[1].status).toBe('failed');
+      expect(memory.tasklist.at(-1)).toMatchObject({
+        abortReason: 'budget-exceeded',
+        budgetBreach: { kind: 'daily-model-invocations', limit: 3, observed: 3 },
+      });
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves consecutive runs uncapped when only per-run ceilings are set', async () => {
+    // Guards the inverse: the ledger must not engage for a project that
+    // configured no daily ceiling, however many runs it performs.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'moflo-daily-off-'));
+    try {
+      const spell: SpellDefinition = {
+        name: 'e2e-perrun-only',
+        steps: [{ id: 'call1', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } }],
+      };
+      await preAccept(spell, projectRoot);
+      const opts = { projectRoot, budget: { maxModelInvocations: 5 } };
+
+      for (const n of [1, 2, 3]) {
+        const r = await bridgeExecuteSpell(spell, {}, {
+          ...opts, spellId: `scheduled-perrun-${n}`, memory: recordingMemory(),
+        });
+        expect(r.success).toBe(true);
+      }
+      expect(existsSync(ledgerPathFor(projectRoot))).toBe(false);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
   });
 });
 
