@@ -49,6 +49,7 @@ export {
   addToHNSWIndex,
   searchHNSWIndex,
   getHNSWStatus,
+  getEffectiveHNSWStatus,
   clearHNSWIndex,
 } from './hnsw-singleton.js';
 

@@ -26,7 +26,7 @@ import {
   getIntelligenceStats
 } from '../memory/intelligence.js';
 import {
-  getHNSWStatus,
+  getEffectiveHNSWStatus,
   batchCosineSim,
   flashAttentionSearch
 } from '../memory/memory-initializer.js';
@@ -242,9 +242,9 @@ async function runBenchmarks(): Promise<BenchmarkResults> {
 
   // HNSW Status
   console.log('\n3. HNSW Index Status...');
-  const hnswStatus = getHNSWStatus();
-  console.log(`   Entries indexed: ${hnswStatus.entryCount}`);
-  console.log(`   Initialized: ${hnswStatus.initialized}`);
+  const hnswStatus = getEffectiveHNSWStatus();
+  console.log(`   Entries indexed: ${hnswStatus.entryCount ?? 'unknown'}`);
+  console.log(`   Initialized: ${hnswStatus.initialized} (${hnswStatus.source})`);
 
   // Intelligence Stats
   console.log('\n4. Intelligence System Stats...');
@@ -265,7 +265,7 @@ async function runBenchmarks(): Promise<BenchmarkResults> {
       speedup
     },
     hnsw: {
-      entriesIndexed: hnswStatus.entryCount,
+      entriesIndexed: hnswStatus.entryCount ?? 0,
       searchTime: flashTime
     }
   };
@@ -297,10 +297,10 @@ async function showStatus(): Promise<void> {
   console.log(`  Patterns learned: ${stats.patternsLearned}`);
 
   // HNSW
-  const hnsw = getHNSWStatus();
+  const hnsw = getEffectiveHNSWStatus();
   console.log('\nHNSW Index:');
-  console.log(`  Initialized: ${hnsw.initialized}`);
-  console.log(`  Entries: ${hnsw.entryCount}`);
+  console.log(`  Initialized: ${hnsw.initialized} (${hnsw.source})`);
+  console.log(`  Entries: ${hnsw.entryCount ?? 'unknown'}`);
 
   console.log('\nEnvironment:');
   console.log(`  MOFLO_HEADLESS: ${readMofloEnv('HEADLESS') || 'not set'}`);

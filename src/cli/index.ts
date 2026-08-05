@@ -729,6 +729,7 @@ export {
   addToHNSWIndex,
   searchHNSWIndex,
   getHNSWStatus,
+  getEffectiveHNSWStatus,
   clearHNSWIndex,
   quantizeInt8,
   dequantizeInt8,

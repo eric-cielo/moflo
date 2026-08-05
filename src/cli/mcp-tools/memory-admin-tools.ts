@@ -545,7 +545,7 @@ export const memoryAdminTools: MCPTool[] = [
     },
     handler: async (input) => {
       await ensureInitialized();
-      const { getNamespaceCounts, getHNSWStatus, searchEntries } =
+      const { getNamespaceCounts, getEffectiveHNSWStatus, searchEntries } =
         await import('../memory/memory-initializer.js');
 
       const counts = await getNamespaceCounts();
@@ -565,10 +565,12 @@ export const memoryAdminTools: MCPTool[] = [
         }
       }
 
-      // Reports the in-process index as it stands. Without a probe it is
-      // legitimately "not built" — said plainly rather than forcing an
-      // expensive build just to make the status line look better.
-      const hnsw = getHNSWStatus();
+      // The index that will serve the search, not this process's own singleton.
+      // Reporting the singleton was true until #1058 routed reads through the
+      // daemon; after that it read "not built" precisely when the daemon was
+      // healthy, because a routed read never builds a local index (#1387).
+      // `hnswSource` tells the caller which one answered.
+      const hnsw = getEffectiveHNSWStatus();
 
       return {
         backend: BACKEND_LABEL,
@@ -581,7 +583,11 @@ export const memoryAdminTools: MCPTool[] = [
         performance: {
           avgSearchTime,
           hnswEnabled: hnsw.available && hnsw.initialized,
+          // null, not 0 — a sidecar with no readable manifest has an unknown
+          // vector count, and 0 renders as an empty index (the same inversion
+          // this field already avoids for `avgSearchTime`).
           indexedVectors: hnsw.entryCount,
+          hnswSource: hnsw.source,
         },
       };
     },
