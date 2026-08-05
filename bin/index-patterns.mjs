@@ -326,9 +326,15 @@ async function main() {
 
   // Trigger embedding generation in background. Register with the shared
   // ProcessManager (#886) so doctor's zombie scan allowlists it and the
-  // session-end / smoke-teardown drain reaps it. Stable label dedupes against
-  // the index-all chain's later `build-embeddings` step when both run within
-  // the same lock window.
+  // session-end / smoke-teardown drain reaps it.
+  //
+  // The label is namespace-scoped on purpose, and it does NOT dedupe against
+  // the sibling index steps or index-all's own `build-embeddings` — `pm.spawn`
+  // matches labels exactly, so those are four distinct labels. A shared label
+  // would dedupe, but by *skipping* the later run rather than queueing it,
+  // which would leave that namespace's rows unembedded until something else
+  // triggered a pass. The overlap is instead made safe at the point it
+  // actually hurts: `syncHnswSidecar` serialises sidecar writers (#1388).
   try {
     const embeddingScript = resolveMofloBin(
       projectRoot, 'flo-embeddings', 'build-embeddings.mjs', { includeDevFallback: true },
