@@ -24,6 +24,24 @@
  * The credential-refresh retry in `runner.ts` is a separate concern with its
  * own semantics and takes precedence; this never wraps it.
  *
+ * ## Why not `shared/resilience/retry.ts` or `production/retry.ts`
+ *
+ * Both already do exponential backoff, and neither fits — the mismatch is the
+ * failure protocol, not the math:
+ *
+ *   - Both retry on a **thrown** exception. A spell step signals failure by
+ *     *returning* `StepOutput.success === false`. Adapting would mean throwing
+ *     the failure away to re-raise it, losing the output, the error code, and
+ *     the rollback bookkeeping the executor already did.
+ *   - `shared/resilience` wraps every attempt in its own `withTimeout`. Steps
+ *     already own their timeout (`config.timeout` / `defaultStepTimeout`);
+ *     a second one would silently shorten it.
+ *   - Neither sleeps on an `AbortSignal`, which is precisely what lets a
+ *     wall-clock ceiling breach cut a backoff short here.
+ *
+ * The shared helpers stay right for their callers. Reach for them when
+ * retrying a promise that throws; reach for this when retrying a spell step.
+ *
  * Cross-platform (Rule #1): pure timers and `AbortSignal`, no shell, no
  * platform branches.
  */
