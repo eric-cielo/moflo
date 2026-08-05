@@ -37,6 +37,7 @@ function seedDb(dbPath: string): string[] {
     namespace TEXT,
     content TEXT,
     embedding TEXT,
+    updated_at INTEGER,
     status TEXT
   )`);
 
@@ -46,17 +47,17 @@ function seedDb(dbPath: string): string[] {
     ids.push(id);
     const vec = Array.from({ length: DIM }, (_, j) => Math.sin(i * 0.7 + j * 0.3));
     db.run(
-      `INSERT INTO memory_entries (id, key, namespace, content, embedding, status)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, `key-${i}`, 'patterns', `content ${i}`, JSON.stringify(vec), 'active'],
+      `INSERT INTO memory_entries (id, key, namespace, content, embedding, updated_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, `key-${i}`, 'patterns', `content ${i}`, JSON.stringify(vec), 1_700_000_000_000, 'active'],
     );
   }
 
   // Mix in one entry with no embedding (must be ignored by buildAndWriteHnswSidecar).
   db.run(
-    `INSERT INTO memory_entries (id, key, namespace, content, embedding, status)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    ['row-no-embedding', 'no-embed', 'patterns', 'skipped', null, 'active'],
+    `INSERT INTO memory_entries (id, key, namespace, content, embedding, updated_at, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ['row-no-embedding', 'no-embed', 'patterns', 'skipped', null, 1_700_000_000_000, 'active'],
   );
 
   db.close();

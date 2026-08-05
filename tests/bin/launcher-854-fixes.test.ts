@@ -134,7 +134,9 @@ describe('bin/build-embeddings.mjs — HNSW rebuild on the all-embedded fast pat
     expect(src).toMatch(/async\s+function\s+ensureHnswSidecar\s*\(/);
     const fn = src.match(/async\s+function\s+ensureHnswSidecar\s*\([^)]*\)\s*\{[\s\S]*?\n\}/);
     expect(fn, 'ensureHnswSidecar must exist').toBeTruthy();
-    expect(fn![0]).toMatch(/buildAndWriteHnswSidecar\(/);
+    // #1384 replaced the unconditional rebuild with reconciliation; the
+    // helper still converges the sidecar, it just no longer reconstructs it.
+    expect(fn![0]).toMatch(/syncHnswSidecar\(/);
     expect(fn![0]).toMatch(/existsSync\([^)]*hnswIndexPath\(/);
   });
 
@@ -159,12 +161,15 @@ describe('bin/build-embeddings.mjs — HNSW rebuild on the all-embedded fast pat
     expect(idxCache, 'writeVectorStatsCache must run after the HNSW build').toBeGreaterThan(idxBuild);
   });
 
-  it('post-embedding finalize calls ensureHnswSidecar with alwaysRebuild', () => {
-    // After embedding generation, freshly-embedded rows invalidate the
-    // existing sidecar, so the post-embedding path must force a rebuild
-    // (not just rebuild-if-missing). The early-return path uses the
-    // default rebuild-if-missing semantic.
-    expect(src).toMatch(/ensureHnswSidecar\(\s*stats\s*,\s*\{\s*alwaysRebuild:\s*true\s*\}/);
+  it('post-embedding finalize never forces a wholesale rebuild (#1384)', () => {
+    // #854 made this path pass `{ alwaysRebuild: true }` on the premise that
+    // freshly-embedded rows invalidate the sidecar. They don't — they need to
+    // be ADDED to it. Because `HnswLite.add()` scans every existing vector,
+    // that premise turned "embed one row" into a re-index of the whole store.
+    // The convergence #854 wanted survives via syncHnswSidecar; the
+    // reconstruction does not.
+    expect(src).not.toMatch(/alwaysRebuild/);
+    expect(src).toMatch(/await\s+ensureHnswSidecar\(stats\)/);
   });
 });
 

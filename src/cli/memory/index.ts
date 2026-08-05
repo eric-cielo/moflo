@@ -193,7 +193,7 @@ export { RvfBackend } from './rvf-backend.js';
 export type { RvfBackendConfig } from './rvf-backend.js';
 export { HnswLite, cosineSimilarity } from './hnsw-lite.js';
 export type { HnswSearchResult } from './hnsw-lite.js';
-export { buildAndWriteHnswSidecar, tryLoadHnswSidecar } from './hnsw-persistence.js';
+export { buildAndWriteHnswSidecar, syncHnswSidecar, tryLoadHnswSidecar } from './hnsw-persistence.js';
 export type { HnswBuildOptions, HnswBuildResult } from './hnsw-persistence.js';
 export { HNSWIndex } from './hnsw-index.js';
 export { CacheManager, TieredCacheManager } from './cache-manager.js';

@@ -30,6 +30,35 @@ export class HnswLite {
     return this.vectors.size;
   }
 
+  /**
+   * Construction parameters, exposed read-only so persistence code can decide
+   * whether a loaded sidecar is compatible with the index it was asked for
+   * (#1384). A dimension/metric/m/efConstruction mismatch makes incremental
+   * reconciliation meaningless — the caller must rebuild from scratch.
+   */
+  get params(): Readonly<{ dimensions: number; m: number; efConstruction: number; metric: HnswMetric }> {
+    return {
+      dimensions: this.dimensions,
+      m: this.maxNeighbors,
+      efConstruction: this.efConstruction,
+      metric: this.metric,
+    };
+  }
+
+  /**
+   * Read-only enumeration of the ids currently in the graph. Reconciliation
+   * (#1384) diffs this against the DB's id set, so it must not expose the
+   * backing map — `keys()` hands out an iterator over strings only.
+   */
+  ids(): IterableIterator<string> {
+    return this.vectors.keys();
+  }
+
+  /** Whether `id` currently has a vector in the graph. */
+  has(id: string): boolean {
+    return this.vectors.has(id);
+  }
+
   add(id: string, vector: Float32Array): void {
     this.vectors.set(id, vector);
 
