@@ -2171,12 +2171,26 @@ const rebuildIndexCommand: Command = {
     // (no-work-needed early return and post-embedding completion). Throws
     // are caught here to surface a clean CommandResult; the index-all.mjs
     // hnsw-rebuild step relies on the non-zero exit when this fails.
+    //
+    // #1384: reconcile rather than rebuild. `--force` still reconstructs the
+    // graph from scratch — that is what the flag asks for — but the default
+    // path applies only the difference, so the session-start chain no longer
+    // re-inserts every vector each time a single row gets embedded.
     const writeSidecarOrFail = async (showBytes: boolean): Promise<CommandResult | null> => {
-      const { buildAndWriteHnswSidecar } = await import('../memory/hnsw-persistence.js');
+      const { syncHnswSidecar } = await import('../memory/hnsw-persistence.js');
       try {
-        const result = await buildAndWriteHnswSidecar(dbPath, cwd);
+        const result = await syncHnswSidecar(dbPath, cwd, { force: forceAll });
         const tail = showBytes ? ` (${(result.bytes / 1024).toFixed(1)} KB)` : '';
-        output.writeln(`  HNSW sidecar:    ${result.vectorCount} vectors → ${result.sidecarPath}${tail}`);
+        const detail = result.mode === 'unchanged'
+          ? ' (already current)'
+          : ` (+${result.added} / -${result.removed}${result.mode === 'full' ? `, full rebuild: ${result.reason}` : ''})`;
+        output.writeln(`  HNSW sidecar:    ${result.vectorCount} vectors${detail} → ${result.sidecarPath}${tail}`);
+        if (result.skippedIds.length > 0) {
+          output.writeln(output.dim(
+            `  Skipped ${result.skippedIds.length} row(s) with malformed or wrong-dimension embeddings: ` +
+            `${result.skippedIds.slice(0, 20).join(', ')}${result.skippedIds.length > 20 ? ', …' : ''}`,
+          ));
+        }
         if (!fs.existsSync(result.sidecarPath)) {
           output.printError(`HNSW sidecar missing after write: ${result.sidecarPath}`);
           return { success: false, exitCode: 1 };
