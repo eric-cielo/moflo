@@ -151,6 +151,50 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     }
   });
 
+  it('trims a run record and its token rollup as one unit (#1333)', async () => {
+    // The rollup lives INSIDE the tasklist record rather than in a namespace of
+    // its own, and this is the property that buys: the existing trim reclaims
+    // both together, so there is no window in which a rollup outlives the run
+    // it describes and becomes an orphan needing its own retention rules.
+    const withTokens = (i: number) =>
+      JSON.stringify({
+        status: 'completed',
+        success: true,
+        startedAt: 1_700_000_000_000 + i,
+        sessionId: 'sess-abc',
+        tokens: { input: 10 * i, output: i, cacheCreate: 0, cacheRead: 0, total: 11 * i, transcripts: 1, messages: 2, parseErrors: 0 },
+      });
+
+    const dbPath = await makeTmpDb((db) => {
+      const base = 1_700_000_000_000;
+      for (let i = 0; i < 5; i++) {
+        db.run(
+          `INSERT INTO memory_entries (id, key, namespace, content, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)`,
+          [`run-${i}`, `flo-${i}-${base + i}`, 'tasklist', withTokens(i), base + i * 1000],
+        );
+      }
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath, tasklistRetentionCap: 2 });
+    expect(result.trimmed).toBe(3);
+
+    const db = openDaemonDatabase(dbPath);
+    try {
+      const rows = db.exec(`SELECT content FROM memory_entries WHERE namespace = 'tasklist' ORDER BY created_at ASC`);
+      const contents = (rows[0]?.values ?? []).map(r => JSON.parse(String(r[0])));
+      expect(contents).toHaveLength(2);
+      // Survivors keep their rollups; nothing was left behind by the trimmed rows.
+      for (const c of contents) expect(c.tokens.total).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
+
+    // No sibling namespace was created to hold rollups separately — that is
+    // what would have required orphan handling.
+    expect(countByNamespace(dbPath, 'tokens')).toBe(0);
+    expect(countByNamespace(dbPath, 'run-tokens')).toBe(0);
+  });
+
   it('is idempotent: a clean DB returns zero counts and preserves rows', async () => {
     const dbPath = await makeTmpDb((db) => {
       db.run(

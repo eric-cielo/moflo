@@ -17,6 +17,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { WorkerDaemon } from './worker-daemon.js';
 import type { MemoryAccessor } from '../spells/types/step-command.types.js';
 import type { FloRunContext } from '../spells/types/runner.types.js';
+import type { RunTokenRollup } from './run-token-rollup.js';
 import type { SchedulerErrorCode } from '../spells/scheduler/scheduler.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import {
@@ -451,13 +452,31 @@ export function buildFloRunContext(opts: {
 /**
  * Store a flo run record to the tasklist namespace for dashboard display.
  * Used by non-spell-engine /flo invocations (ticket, research, epic).
+ *
+ * This is the ONE writer of `flo-*` run records (#1333). It used to be dead
+ * code shadowed by a hand-copied schema in `.claude/skills/fl/phases.md`, which
+ * told the model to `memory_store` the same shape itself; compliance across the
+ * retained corpus was 1 record. `flo run start` / `flo run finalize` now call
+ * through here, so the schema has a single home and the write is not contingent
+ * on an agent remembering to perform it.
  */
 export async function storeFloRunRecord(
   memory: MemoryAccessor,
   runId: string,
   context: FloRunContext,
   status: 'running' | 'completed' | 'failed',
-  extra?: { startedAt?: number; duration?: number; error?: string },
+  extra?: {
+    startedAt?: number;
+    duration?: number;
+    error?: string;
+    /** Claude Code session id — the join key from run record to transcript (#1333). */
+    sessionId?: string;
+    /**
+     * Token rollup for the run. Snapshotted at finalize rather than joined on
+     * read, because Claude Code prunes transcripts — see `run-token-rollup.ts`.
+     */
+    tokens?: RunTokenRollup;
+  },
 ): Promise<void> {
   try {
     const record: Record<string, unknown> = {
@@ -468,6 +487,12 @@ export async function storeFloRunRecord(
     };
     if (extra?.startedAt) record.startedAt = extra.startedAt;
     if (extra?.duration != null) record.duration = extra.duration;
+    if (extra?.sessionId) record.sessionId = extra.sessionId;
+    if (extra?.tokens) record.tokens = extra.tokens;
+    // `success` means "the run reached a terminal state without reporting an
+    // error". It is NOT a verification that the work was correct — no such
+    // signal exists (#1322: hook payloads carry no exit code). Do not rename
+    // this to anything that reads as a verified outcome.
     if (status === 'completed') record.success = true;
     if (status === 'failed') {
       record.success = false;

@@ -4,44 +4,25 @@ Phase-by-phase notes for the full `/flo <issue>` run. Phase 2 (Ticket) lives in 
 
 ## Phase 0: Record run start (Flo Runs dashboard)
 
-Before research, write a row to the `tasklist` namespace so the Luminarium "Flo Runs" tab shows this run live and after the next session restart (#968). Skip this phase ONLY when `--epic-branch` is set — the epic orchestrator owns the parent record and the per-story spell engine writes its own row.
+Before research, open a run record so the Luminarium "Flo Runs" tab shows this run live and after the next session restart (#968), and so Phase 5.5 can price it. Skip this phase ONLY when `--epic-branch` is set — the epic orchestrator owns the parent record and the per-story spell engine writes its own row.
 
-Compute and **remember** for Phase 5:
-- `runId` — `flo-<issue-number-or-"new">-<startedAt-ms>` (sortable, unique).
-- `startedAt` — `Date.now()` snapshot (ms since epoch).
+One command. It builds the record, derives the run id, and picks up the session id `gate.cjs` stamped on this prompt:
 
-Pick the matching `context.type`:
-| Mode | type | label format |
-|------|------|--------------|
-| Full / ticket on existing issue | `ticket` | `#<n> — <title>` |
-| `-r` research | `research` | `#<n> — Research` |
-| `-t` with title (no issue # yet) | `new-ticket` | `New: <title>` |
-| Epic detected | `epic` | `Epic #<n> — <title> (0/<total> stories)` |
-| `-wf <spell>` | `spell` | `<spell-name> → <args>` |
-
-Then call once:
-
-```
-mcp__moflo__memory_store
-  namespace: "tasklist"
-  key: "<runId>"
-  upsert: true
-  value: {
-    "status": "running",
-    "context": {
-      "type": "<ticket|research|new-ticket|epic|spell>",
-      "label": "<computed label>",
-      "issueNumber": <n | omit>,
-      "issueTitle": "<title | omit>",
-      "execMode": "<normal|swarm|hive>"
-    },
-    "spellName": "<same as label>",
-    "startedAt": <startedAt>,
-    "updatedAt": "<new Date().toISOString()>"
-  }
+```bash
+flo runs start --issue <n> --title "<issue title>" --exec-mode <normal|swarm|hive>
 ```
 
-The schema mirrors `storeFloRunRecord` in `src/cli/services/daemon-dashboard.ts` — keep it in sync if you ever change one. The session-start launcher retains the most recent ~200 tasklist rows so this record outlives the session and renders in the Flo Runs tab on subsequent restarts.
+Flag the mode when it isn't a plain ticket run: `--research` (`-r`), `--new-ticket --title "<t>"` (`-t` with no issue yet), `--epic`, or `--spell <name>` (`-wf`). It prints one JSON line — **remember the `runId` for Phase 5.5**:
+
+```
+[INFO] {"runId":"flo-1333-1785891035226","startedAt":1785891035226,"sessionId":"52d160f9-…"}
+```
+
+`sessionId: null` means no session id was stamped (the gate has not seen a prompt yet, or you are outside Claude Code). The run still records; only its token cost will be unmeasurable.
+
+Do **not** hand-write a `memory_store` call for this. The record shape lives in `storeFloRunRecord` (`src/cli/services/daemon-dashboard.ts`) and `flo runs start` is its only caller — #1333 replaced a copy of the schema that lived here in prose, which produced exactly one record across the whole retained corpus because it depended on remembering to perform it.
+
+The session-start launcher retains the most recent ~200 tasklist rows, so this record outlives the session and renders in the Flo Runs tab on subsequent restarts.
 
 ## Phase 1: Research (also `-r`)
 
@@ -240,6 +221,20 @@ flo epic checkoff <epic-number> <story-number>
 ```
 
 Idempotent and safe to skip when there is no back-reference. `--epic-branch` runs skip it — the epic orchestrator owns checklist state there. The box flips when the work is delivered (PR opened), matching the orchestrator; if a PR is later rejected, reopen the epic manually.
+
+### 5.5 Close the run record
+
+Close the record Phase 0 opened, using the `runId` it printed. This is what snapshots the run's token cost — `finalize` reads the session transcript for the run's window and stores the rollup **in the same record**, so cost and outcome finally share a key (#1333):
+
+```bash
+flo runs finalize --run-id <runId>            # or: --status failed --error "<summary>"
+```
+
+Run it after the PR is open (5.3) so the rollup covers the whole run. Skipped under `--epic-branch` along with Phase 0.
+
+Snapshot rather than compute-on-read because Claude Code prunes `~/.claude/projects/**` — measured at roughly two days of history, so a cost joined at read time would be correct today and zero next week.
+
+`tokens.transcripts: 0` in the stored record means the run's cost could **not** be measured (no transcript, or no session id was stamped), which is not the same as a run that cost nothing. `success` means the run reached a terminal state without reporting an error — it is not a verification that the work was correct, and nothing here should be described as one (#1322).
 
 ### 5.3b Auto-merge the PR (`mergeMode` / `merge.auto`)
 

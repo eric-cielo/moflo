@@ -79,6 +79,9 @@ const commandLoaders: Record<string, CommandLoader> = {
   sdd: () => import('./sdd.js'),
   // GitHub Repository Setup
   github: () => import('./github.js'),
+  // /flo run ledger + per-run token rollup (#1333).
+  // Named `runs`, not `run`: `cast` already claims `run` as a global alias.
+  runs: () => import('./runs.js'),
 };
 
 // Cache for loaded commands
