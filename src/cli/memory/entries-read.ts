@@ -348,8 +348,15 @@ export async function getEntry(options: {
     namespace: string;
     content: string;
     accessCount: number;
-    createdAt: string;
-    updatedAt: string;
+    /**
+     * Epoch ms, as stored on disk. Declared `string` until #1396 — but every
+     * path that reads `created_at`/`updated_at` off a row returns the INTEGER
+     * column verbatim (the sql.js fallback below merely casts it away), so the
+     * old signature described no real caller. Widened rather than coerced:
+     * `memory_retrieve` has always emitted the number.
+     */
+    createdAt: number | string;
+    updatedAt: number | string;
     hasEmbedding: boolean;
     tags: string[];
     metadata?: string;

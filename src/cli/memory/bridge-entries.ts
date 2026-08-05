@@ -33,6 +33,40 @@ function makeEntryCacheKey(namespace: string, key: string): string {
   return `entry:${safeNs}:${safeKey}`;
 }
 
+/**
+ * The canonical shape of an entry-cache value — identical to what
+ * {@link bridgeGetEntry} returns, because a cache hit returns it verbatim.
+ *
+ * #1396: every writer that warms this cache MUST produce the full shape. An
+ * omitted field is not merely absent on read — the cache-hit branch substitutes
+ * a *default that reads as real data*: `tags: []`, `accessCount: 0`, and
+ * timestamps defaulting to "now", i.e. RETRIEVAL time. The store paths warmed
+ * the cache with `{id,key,namespace,content,embedding,metadata}` only, so for
+ * the cache's 5-minute TTL after any write, `memory_retrieve` reported a row
+ * with no tags, a zero access count, and a `storedAt` equal to the moment it
+ * was read. The row on disk was correct throughout — the loss was read-side and
+ * temporary, never a failed write.
+ *
+ * `metadata` was added to the store-path cache value by #1064 for exactly this
+ * reason; the remaining fields were not, which is why metadata survived and
+ * tags did not. `cacheSet` takes this type rather than `any`, so the next field
+ * added to the read shape cannot be half-wired the same way — an incomplete
+ * writer is a compile error rather than a silent read-side fabrication.
+ */
+interface CachedEntry {
+  id: string;
+  key: string;
+  namespace: string;
+  content: string;
+  accessCount: number;
+  /** Epoch ms, as stored on disk — not an ISO string. */
+  createdAt: number | string;
+  updatedAt: number | string;
+  hasEmbedding: boolean;
+  tags: string[];
+  metadata?: string;
+}
+
 /** Normalise `metadata` for the `metadata` TEXT column; `undefined` → `'{}'` (#1064). */
 export function serialiseMetadata(metadata: Record<string, unknown> | string | undefined): string {
   if (metadata == null) return '{}';
@@ -95,7 +129,8 @@ async function cacheGet(registry: any, cacheKey: string): Promise<any | null> {
   return (await cache.get(cacheKey)) ?? null;
 }
 
-async function cacheSet(registry: any, cacheKey: string, value: any): Promise<void> {
+/** Typed on purpose (#1396) — a partial cache value is a compile error, not a silent read-side data loss. */
+async function cacheSet(registry: any, cacheKey: string, value: CachedEntry): Promise<void> {
   const cache = registry.get('tieredCache');
   if (!cache) return;
   await cache.set(cacheKey, value);
@@ -325,9 +360,18 @@ export async function bridgeStoreEntry(options: {
       // Without this, chunk-row producers writing through the chokepoint would
       // get `{}` back from cache and the full metadata from disk — exactly the
       // divergence the cache is supposed to mask.
+      //
+      // #1396 — and the same argument applies to every other column the reader
+      // returns. Warm the FULL CachedEntry shape, not just the embedding and
+      // metadata, or a retrieve inside the cache TTL reports empty tags, a zero
+      // access count, and a storedAt of "now".
       await cacheSet(registry, cacheKey, {
         id, key, namespace, content: value,
-        embedding: embeddingJson,
+        accessCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        hasEmbedding: !!embeddingJson,
+        tags,
         metadata: metadataJson,
       });
     } catch (err) {
@@ -397,7 +441,7 @@ export async function bridgeStoreEntries(items: Array<{
      * the cache would be warm with rows that never reached disk — the
      * exact divergence #982 is fixing in the single-store path. Defer.
      */
-    const deferredBookkeeping: Array<{ cacheKey: string; cacheValue: unknown; entryId: string; entryKey: string; namespace: string; hasEmbedding: boolean }> = [];
+    const deferredBookkeeping: Array<{ cacheKey: string; cacheValue: CachedEntry; entryId: string; entryKey: string; namespace: string; hasEmbedding: boolean }> = [];
     let anyEmbedded = false;
     let anyWritten = false;
 
@@ -469,10 +513,14 @@ export async function bridgeStoreEntries(items: Array<{
 
       deferredBookkeeping.push({
         cacheKey: makeEntryCacheKey(namespace, key),
-        // #1064 — keep cache shape in sync with disk (see single-store path).
+        // #1064 / #1396 — keep cache shape in sync with disk (see single-store path).
         cacheValue: {
           id, key, namespace, content: value,
-          embedding: embeddingJson,
+          accessCount: 0,
+          createdAt: now,
+          updatedAt: now,
+          hasEmbedding: !!embeddingJson,
+          tags,
           metadata: metadataJson,
         },
         entryId: id,
@@ -744,18 +792,8 @@ export async function bridgeGetEntry(options: {
 }): Promise<{
   success: boolean;
   found: boolean;
-  entry?: {
-    id: string;
-    key: string;
-    namespace: string;
-    content: string;
-    accessCount: number;
-    createdAt: string;
-    updatedAt: string;
-    hasEmbedding: boolean;
-    tags: string[];
-    metadata?: string;
-  };
+  /** Exactly the cached shape — a cache hit returns the stored value verbatim (#1396). */
+  entry?: CachedEntry;
   cacheHit?: boolean;
   error?: string;
 } | null> {
@@ -764,24 +802,71 @@ export async function bridgeGetEntry(options: {
 
     const cacheKey = makeEntryCacheKey(namespace, key);
     const cached = await cacheGet(registry, cacheKey);
-    if (cached && cached.content) {
-      return {
-        success: true,
-        found: true,
-        cacheHit: true,
-        entry: {
-          id: String(cached.id || ''),
-          key: cached.key || key,
-          namespace: cached.namespace || namespace,
-          content: cached.content || '',
-          accessCount: cached.accessCount ?? 0,
-          createdAt: cached.createdAt || new Date().toISOString(),
-          updatedAt: cached.updatedAt || new Date().toISOString(),
-          hasEmbedding: !!cached.embedding,
-          tags: cached.tags || [],
-          metadata: cached.metadata || undefined,
-        },
+
+    // A value written by a pre-#1396 build carries only
+    // `{id,key,namespace,content,embedding,metadata}`. Serving it means
+    // fabricating the absent columns — which IS the bug — so treat a partial
+    // value as a miss and fall through to the disk read, which returns the true
+    // row and re-caches the full shape. Self-heals on the first read after an
+    // in-place upgrade, and since the L1 cache is in-memory only, nothing
+    // outlives the process anyway.
+    // `content !== undefined` rather than a truthy test: a row whose content is
+    // legitimately `''` would otherwise fail this check on every read, be
+    // re-fetched from disk, re-cached as `''`, and fail again — a permanent
+    // cache bypass for that key. Pre-existing, but this is the condition it
+    // lives in.
+    const usableCache = cached
+      && cached.content !== undefined
+      && cached.createdAt !== undefined
+      && cached.hasEmbedding !== undefined
+      && Array.isArray(cached.tags);
+
+    if (usableCache) {
+      // #1396 — a cache hit is still an access. The access_count bump used to
+      // live only on the disk path below, so a row read repeatedly inside the
+      // cache TTL reported the same count forever — and `accessCount` is an
+      // orderable field (query-builder's `sortBy('accessCount')`) plus a stats
+      // input, so the hottest rows ranked as the coldest.
+      //
+      // ACCEPTED TRADE-OFF: this makes a cache hit perform one indexed write.
+      // The alternative — bump only the cached copy — keeps hits read-only but
+      // leaves the PERSISTED counter undercounting exactly the hot rows, which
+      // is the defect being fixed, since ordering and stats read the column and
+      // not the cache. A hit is still cheaper than the disk read it replaces
+      // (no SELECT, no tag/metadata parse), and the pre-cache code issued this
+      // same UPDATE on every read. Debouncing is the lever if it ever shows up
+      // in a profile.
+      //
+      // The UPDATE is `access_count + 1` evaluated by SQLite, so the stored
+      // counter stays correct under concurrency; only the cached copy can lose
+      // a racing increment, and the next disk read resyncs it. No persist call
+      // here on purpose — the disk path below has never had one either, because
+      // #1058 removed the read-side `db.export()` writeback that clobbered
+      // concurrent writers. Under node:sqlite the UPDATE is durable regardless.
+      const accessCount = (cached.accessCount ?? 0) + 1;
+      try {
+        ctx.db.prepare(
+          `UPDATE memory_entries SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
+        ).run([Date.now(), String(cached.id || '')]);
+      } catch {
+        // Non-fatal
+      }
+
+      const entry: CachedEntry = {
+        id: String(cached.id || ''),
+        key: cached.key || key,
+        namespace: cached.namespace || namespace,
+        content: cached.content,
+        accessCount,
+        createdAt: cached.createdAt,
+        updatedAt: cached.updatedAt,
+        hasEmbedding: cached.hasEmbedding,
+        tags: cached.tags,
+        metadata: cached.metadata || undefined,
       };
+      await cacheSet(registry, cacheKey, entry);
+
+      return { success: true, found: true, cacheHit: true, entry };
     }
 
     let row: any;

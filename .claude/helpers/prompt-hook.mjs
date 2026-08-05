@@ -23,6 +23,15 @@ try { if (stdinData.trim()) hookContext = JSON.parse(stdinData); } catch (e) {}
 var userPrompt = hookContext.user_prompt || hookContext.prompt || '';
 var env = Object.assign({}, process.env, { CLAUDE_USER_PROMPT: userPrompt });
 
+// #1397 — forward Claude Code's session_id, same contract as gate-hook.mjs:33.
+// `prompt-reminder` stamps it onto workflow-state.json (gate.cjs), which is the
+// only place `flo runs start` can read it from; without it every run record got
+// sessionId:null and a zeroed token rollup. prompt-reminder is invoked through
+// THIS wrapper, not gate-hook.mjs, so the id has to be forwarded here too.
+if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
+  env.HOOK_SESSION_ID = hookContext.session_id;
+}
+
 // Run prompt-reminder via gate.cjs
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
