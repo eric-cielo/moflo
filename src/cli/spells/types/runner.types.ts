@@ -57,6 +57,14 @@ export interface StepResult {
   readonly rollbackError?: string;
   /** The interpolated config that was actually executed (for rollback). */
   readonly interpolatedConfig?: Record<string, unknown>;
+  /**
+   * How many attempts this step took, counting the first (Issue #1336).
+   *
+   * Present only when the step declared a `retry` block, so a step that
+   * succeeded on attempt 3 is distinguishable from one that succeeded
+   * immediately — and so records for every existing spell stay byte-identical.
+   */
+  readonly attempts?: number;
 }
 
 // ============================================================================

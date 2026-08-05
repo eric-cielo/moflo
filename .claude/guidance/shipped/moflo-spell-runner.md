@@ -93,6 +93,40 @@ const result = loadSpellByName('deploy-staging', { /* same options */ });
 
 **Set `continueOnError: true` on a step to keep running after failure.** The failed step is recorded in results but execution continues. Without this flag, a step failure triggers rollback of completed steps and terminates the spell.
 
+### retry
+
+**Add a `retry` block to a step that can fail transiently — a flaky HTTP call, a rate limit, a momentary network drop.** Without it, one transient failure discards every completed step in the run. This matters most on the scheduled path, where a run dying at step 7 of 9 at 3am produces a failed record and no work.
+
+```yaml
+- id: fetch-report
+  type: http
+  retry:
+    attempts: 3          # total attempts INCLUDING the first
+    backoffMs: 1000      # base delay before attempt 2; doubles thereafter
+    maxDelayMs: 30000    # optional: ceiling on any single delay
+    maxTotalDelayMs: 60000  # optional: ceiling on the sum of all delays
+```
+
+**Retry is opt-in per step and never applied by default.** Blanket retry is wrong for non-idempotent work — silently re-running a step that posts to Slack or writes a file is worse than failing. A step with no `retry` block runs exactly once, exactly as before.
+
+**Only non-deterministic failures are retried.**
+
+| Failure | Retried? | Why |
+|---------|----------|-----|
+| Step returned failure / threw | Yes | The classic transient case |
+| Step timed out | Yes | May succeed when the upstream recovers |
+| Capability violation, unknown step type, invalid config | No | Deterministic — N attempts produce one outcome at N times the cost |
+| Auth-shaped error (401, expired token) | No | Owned by the credential-refresh path below, which can actually fix it |
+| Cancelled | No | The run is already tearing down |
+
+**Backoff is bounded twice and interruptible.** Each delay is capped by `maxDelayMs`, their sum by `maxTotalDelayMs` (60s default) — so `attempts: 50` cannot stall a scheduled run. Once the aggregate budget is spent, remaining attempts run back-to-back rather than being cancelled. The wait also aborts on the run's signal, so a wall-clock ceiling breach (`spells.budget.*.maxWallClockMs`) cuts a backoff short instead of being served after it. Delays carry ±10% jitter so a `parallel` block of steps hitting the same rate limit does not retry in lockstep.
+
+**Each attempt is billed independently.** A retried step that spawns `claude -p` consumes one `maxModelInvocations` reservation per attempt — retry and the spend ceiling compose, and the ceiling wins.
+
+**`attempts` appears in the step result** only when the step declared a `retry` block, so a step that succeeded on attempt 3 is distinguishable from one that succeeded immediately, and records for existing spells are unchanged.
+
+An unrecognised key inside `retry` is a validation error, not a silent "no retry" — the same failure direction the budget block uses.
+
 ---
 
 ## Pause and Resume
