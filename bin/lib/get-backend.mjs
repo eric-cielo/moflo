@@ -100,7 +100,10 @@ export async function openBackend(projectRoot, opts = {}) {
  * TS twin stays obvious.
  *
  * @param {string} projectRoot
- * @param {{ backend?: 'node-sqlite', create?: boolean, readOnly?: boolean, dbPath?: string }} [opts]
+ * @param {{ backend?: 'node-sqlite', create?: boolean, readOnly?: boolean,
+ *           dbPath?: string, busyTimeoutMs?: number }} [opts]
+ *   `busyTimeoutMs` applies to READ-ONLY opens only (writers always get the
+ *   15s WAL-trinity budget). Omit it to fail fast on contention.
  * @returns {object} backend handle (see module doc)
  */
 export function openBackendSync(projectRoot, opts = {}) {
@@ -127,16 +130,23 @@ function openNodeSqlite(dbPath, opts) {
   const readOnly = opts.readOnly === true;
   const db = new DatabaseSync(dbPath, { readOnly });
   if (readOnly) {
-    // A read-only handle skips the WAL trinity (it cannot change journal mode)
-    // but still needs the retry budget. Without it a reader that lands while
-    // another process briefly holds the EXCLUSIVE lock `journal_mode=WAL`
-    // takes (#1097) gets an immediate SQLITE_BUSY and its caller degrades to
-    // "cannot tell" — and a live daemon writing is exactly when a read-only
-    // probe is most worth answering.
-    try {
-      db.exec('PRAGMA busy_timeout = 15000');
-    } catch {
-      // Non-fatal: the handle is still usable, just without a retry budget.
+    // A read-only handle skips the WAL trinity (it cannot change journal
+    // mode). It gets a retry budget ONLY when the caller asks for one.
+    //
+    // Applying the writer's 15s budget to every read-only open would be a
+    // silent behaviour change for the readers that already exist —
+    // `session-continuity.mjs` and `semantic-search.mjs` both open read-only
+    // inside the session-start chain, and both are written to fail fast and
+    // degrade. Turning an instant SQLITE_BUSY into a 15-second block for
+    // them serialises the chain behind whatever holds the lock. Opt in, with
+    // a budget sized to the caller's own patience.
+    const budget = Number(opts.busyTimeoutMs) || 0;
+    if (budget > 0) {
+      try {
+        db.exec(`PRAGMA busy_timeout = ${Math.floor(budget)}`);
+      } catch {
+        // Non-fatal: the handle is still usable, just without a retry budget.
+      }
     }
   } else {
     // Close the handle on any PRAGMA failure — node:sqlite opens forgivingly

@@ -31,6 +31,9 @@ import { memoryDbPath } from './moflo-paths.mjs';
  * embedding is absent — either NULL (never written) or empty string (a
  * producer that failed and wrote a placeholder).
  */
+/** Retry budget for the probe's read-only open. See {@link hasPendingEmbeddings}. */
+const PROBE_BUSY_TIMEOUT_MS = 2000;
+
 export const PENDING_EMBEDDING_WHERE =
   `status = 'active' AND (embedding IS NULL OR embedding = '')`;
 
@@ -66,7 +69,12 @@ export function hasPendingEmbeddings(projectRoot, opts = {}) {
 
   let db;
   try {
-    db = openBackendSync(projectRoot, { dbPath, readOnly: true });
+    // A small retry budget, not the writer's 15s. The probe races a live
+    // daemon often enough that failing instantly would answer `null` at the
+    // moment it matters most, but it sits in the session-start critical path
+    // and the fingerprint backstops a `null` — so it waits a beat, not a
+    // quarter of a minute.
+    db = openBackendSync(projectRoot, { dbPath, readOnly: true, busyTimeoutMs: PROBE_BUSY_TIMEOUT_MS });
   } catch {
     return null;
   }

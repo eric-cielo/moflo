@@ -499,6 +499,48 @@ describe('probe under cross-process contention (#1383)', () => {
   }, 30_000);
 });
 
+/**
+ * A read-only open must not acquire a retry budget it was not asked for.
+ *
+ * `session-continuity.mjs` and `semantic-search.mjs` both open read-only
+ * inside the session-start chain and are written to fail fast and degrade.
+ * Blanket-applying the writer's 15s budget to every read-only open turned
+ * their instant SQLITE_BUSY into a 15-second block, serialising the chain
+ * behind whatever held the lock — which is how `flo doctor` hit its 60s
+ * timeout on the Windows populated smoke while every POSIX job stayed green.
+ */
+describe('read-only busy budget is opt-in (#1383)', () => {
+  it('get-backend only sets busy_timeout on a read-only open when asked', () => {
+    const src = readFileSync(resolve(__dirname, '..', '..', 'bin', 'lib', 'get-backend.mjs'), 'utf-8');
+    const readOnlyBranch = src.slice(
+      src.indexOf('if (readOnly) {'),
+      src.indexOf('} else {', src.indexOf('if (readOnly) {')),
+    );
+    expect(readOnlyBranch).toContain('busyTimeoutMs');
+    // No unconditional budget in the read-only branch.
+    expect(readOnlyBranch).not.toMatch(/PRAGMA busy_timeout = \d+/);
+  });
+
+  it('a read-only handle opened without a budget still works', () => {
+    const { root, writer } = makeRoot();
+    insertRow(writer, 'embedded-1', JSON.stringify([0.9]));
+    const reader = openBackendSync(root, { dbPath: dbPathOf(root), readOnly: true });
+    openHandles.push(reader);
+    const rows = reader.exec(`SELECT COUNT(*) AS n FROM memory_entries`);
+    expect(Number(rows[0].values[0][0])).toBe(1);
+  });
+
+  it('the probe asks for a budget, and a short one', async () => {
+    const src = readFileSync(resolve(__dirname, '..', '..', 'bin', 'lib', 'embedding-backlog.mjs'), 'utf-8');
+    expect(src).toMatch(/busyTimeoutMs:\s*PROBE_BUSY_TIMEOUT_MS/);
+    const budget = Number(/PROBE_BUSY_TIMEOUT_MS\s*=\s*(\d+)/.exec(src)?.[1]);
+    expect(budget).toBeGreaterThan(0);
+    // Sits in the session-start critical path — must stay well under the
+    // writer's 15s, which is sized for a very different job.
+    expect(budget).toBeLessThanOrEqual(5000);
+  });
+});
+
 describe('gate/producer predicate parity (#1383)', () => {
   it('build-embeddings selects on the exported clause rather than restating it', () => {
     const src = readFileSync(resolve(__dirname, '..', '..', 'bin', 'build-embeddings.mjs'), 'utf-8');
