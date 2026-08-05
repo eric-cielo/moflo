@@ -116,14 +116,16 @@ sandbox:
   enabled: false                  # Set to true to wrap bash steps in an OS sandbox
   tier: auto                      # auto | denylist-only | full
 
-# Spell spend ceilings (OPTIONAL — omit for unbounded runs, which is the default)
+# Spell spend ceilings (written by `flo init`; delete a key for unlimited)
 spells:
   budget:
     scheduled:                    # Daemon-scheduled runs (cron/interval/at)
-      maxModelInvocations: 20     # Max `claude -p` spawns per run
-      maxWallClockMs: 1800000     # Max run duration (30 min)
-    interactive:                  # Session-attached runs — omit to leave uncapped
-      maxModelInvocations: 50
+      maxModelInvocations: 30     # Max `claude -p` spawns per run
+      maxWallClockMs: 2400000     # Max run duration (40 min)
+      dailyModelInvocations: 300  # Rolling 24h across ALL scheduled runs
+    interactive:                  # Session-attached runs — a human is watching
+      maxModelInvocations: 200
+      maxWallClockMs: 14400000    # 4 hours
 
 # Auto-update on session start (refreshes consumer assets when moflo upgrades)
 auto_update:
@@ -146,12 +148,23 @@ If your `moflo.yaml` predates the `sandbox:` or `auto_update:` blocks, they are 
 
 | Key | Counts | On breach |
 |-----|--------|-----------|
-| `maxModelInvocations` | `claude -p` spawns detected in bash steps | The next spawn is refused **before** the process starts, and the run aborts |
+| `maxModelInvocations` | `claude -p` spawns detected in bash steps, this run | The next spawn is refused **before** the process starts, and the run aborts |
 | `maxWallClockMs` | Elapsed time since the run started | The in-flight step is aborted and the run ends |
+| `dailyModelInvocations` | `claude -p` spawns across **all** runs sharing this project root in a trailing 24h | The next spawn is refused before the process starts, and the run aborts |
 
-**Both keys are optional and both default to unlimited.** Omitting the `spells:` block entirely leaves every run exactly as it behaves without this setting.
+**Treat these as runaway backstops, not cost controls.** An invocation is not a unit of spend — `claude -p "say hi"` and `claude -p "refactor this subsystem"` each count as one. The per-run keys catch a loop that spawns the model forever; `dailyModelInvocations` is the one that tracks a bill.
 
-**`scheduled` and `interactive` are configured separately, and neither inherits from the other.** Setting `scheduled` never caps a `flo spell cast` you run yourself — session-attached runs stay uncapped until you add `interactive` explicitly.
+**Pick `dailyModelInvocations` deliberately — a per-run ceiling cannot bound a schedule.** A five-minute cron under a 30-invocation per-run cap still permits 8,640 invocations a day, and every one of them satisfies the per-run check. Only the rolling window notices.
+
+The rolling count lives in `.moflo/spell-invocation-ledger.json`, bucketed by clock hour, so the window covers between 23 and 24 hours depending on where "now" falls. That granularity is deliberate: it keeps the file bounded at ~24 entries however high the volume, and it is ample for catching an order-of-magnitude overrun. Delete the file to reset the window. An unreadable or corrupt ledger **fails open** — a safety ceiling must never block runs that would otherwise work.
+
+**Every key is optional and each defaults to unlimited.** Deleting a key restores unbounded behavior for that dimension; deleting the `spells.budget` block restores it for all of them.
+
+**`scheduled` and `interactive` are configured separately, and neither inherits from the other.** Setting `scheduled` never caps a `flo spell cast` you run yourself, and vice versa. The `interactive` values `flo init` writes are deliberately loose — a human is present who can interrupt the run — so raise them freely if one ever fires on you. Note `interactive` applies per **spell cast**, not per Claude Code session: a long session with compaction between tasks never touches it.
+
+**A resumed spell re-applies the `interactive` ceiling with a fresh wall clock.** Time spent suspended does not count against it.
+
+`flo init` writes this block into new projects. Existing projects are **not** modified on upgrade — add the block yourself to opt in.
 
 A spell may also declare its own `budget:` block; the effective ceiling is the **stricter** of the two, so a project cap can tighten a spell and a spell can tighten itself further, but neither can loosen the other:
 

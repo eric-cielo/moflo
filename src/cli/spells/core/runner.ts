@@ -281,7 +281,12 @@ export class SpellCaster {
     // one to return.
     const budget = createRunBudget(
       mergeSpellBudgets(options.budget, definition.budget),
-      { parentSignal: options.signal },
+      {
+        ...(options.signal ? { parentSignal: options.signal } : {}),
+        // Where the rolling-window ledger lives. Absent projectRoot leaves the
+        // daily ceiling inert — the per-run ceilings still apply.
+        ...(options.projectRoot ? { ledgerDir: options.projectRoot } : {}),
+      },
     );
     const runOptions: RunnerOptions = budget
       ? { ...options, signal: budget.signal }

@@ -111,7 +111,7 @@ export function validateBudget(def: SpellDefinition, errors: ValidationError[]):
     return;
   }
 
-  const known = ['maxModelInvocations', 'maxWallClockMs'] as const;
+  const known = ['maxModelInvocations', 'maxWallClockMs', 'dailyModelInvocations'] as const;
   const rec = budget as Record<string, unknown>;
 
   for (const key of Object.keys(rec)) {

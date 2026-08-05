@@ -11,6 +11,8 @@ import type { SpellResult, StepResult } from '../types/runner.types.js';
 import { createRunner, noopMemory } from './runner-factory.js';
 import { validateSpellDefinition } from '../schema/validator.js';
 import { sanitizeObjectKeys } from '../core/interpolation.js';
+import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
+import { loadSpellBudgetFromProject } from '../core/run-budget.js';
 
 // ============================================================================
 // Types
@@ -40,6 +42,15 @@ export interface ResumeOptions {
   readonly variables?: Record<string, unknown>;
   /** Memory accessor for reading paused state and storing progress. */
   readonly memory?: MemoryAccessor;
+  /**
+   * Project root, used to re-apply the project's sandbox config (#878) and
+   * spend ceiling (#1335) to the resumed half of the run.
+   *
+   * Without it a resumed spell runs with neither, which made
+   * suspend-then-resume an escape hatch from both — the remaining steps ran
+   * unsandboxed and uncapped no matter what `moflo.yaml` said.
+   */
+  readonly projectRoot?: string;
 }
 
 const PAUSE_NAMESPACE = 'spell-paused';
@@ -160,14 +171,36 @@ export async function resumeSpell(
   const variables = { ...state.variables, ...options.variables };
 
   // Create runner and execute remaining steps
-  const runner = createRunner({ memory });
+  const { projectRoot } = options;
+  const runner = createRunner({ memory, ...(projectRoot ? { projectRoot } : {}) });
   const remainingDefinition: SpellDefinition = {
     ...definition,
     steps: definition.steps.slice(state.nextStepIndex),
   };
 
+  // Re-apply the project's sandbox + ceiling to the resumed half. This path
+  // calls `runner.run` directly rather than going through
+  // `runSpellFromContent`, so it does not inherit that function's auto-load —
+  // it has to do the same work itself or the remaining steps run unprotected.
+  //
+  // The ceiling comes from the `interactive` slot and starts fresh: a resumed
+  // run is a new run with its own wall clock, and time spent paused (up to 24h
+  // by default) must not count against it.
+  const sandboxConfig = projectRoot
+    ? await loadSandboxConfigFromProject(projectRoot)
+    : undefined;
+  const budget = projectRoot
+    ? await loadSpellBudgetFromProject(projectRoot, 'interactive')
+    : undefined;
+
   const startTime = Date.now();
-  const result = await runner.run(remainingDefinition, state.args, { spellId, initialVariables: variables });
+  const result = await runner.run(remainingDefinition, state.args, {
+    spellId,
+    initialVariables: variables,
+    ...(sandboxConfig ? { sandboxConfig } : {}),
+    ...(budget ? { budget } : {}),
+    ...(projectRoot ? { projectRoot } : {}),
+  });
 
   // Clean up paused state on completion
   await memory.write(PAUSE_NAMESPACE, spellId, null);

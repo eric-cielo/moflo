@@ -4,7 +4,10 @@
  * Story #140: Tests for spell pause/resume mechanism.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { MemoryAccessor } from '../../spells/types/step-command.types.js';
 import type { StepResult } from '../../spells/types/runner.types.js';
 import type { SpellDefinition } from '../../spells/types/spell-definition.types.js';
@@ -14,6 +17,23 @@ import {
   resumeSpell,
   cleanupStalePaused,
 } from '../../spells/factory/pause-resume.js';
+import { MODEL_SHAPED_COMMAND, preAcceptSpell } from './helpers.js';
+
+/**
+ * Observe the sandbox config load without replacing its behaviour — the fix
+ * under test is that `resumeSpell` consults it at all.
+ */
+const loadSandboxSpy = vi.fn();
+vi.mock('../../spells/core/platform-sandbox.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../spells/core/platform-sandbox.js')>();
+  return {
+    ...actual,
+    loadSandboxConfigFromProject: (root: string) => {
+      loadSandboxSpy(root);
+      return actual.loadSandboxConfigFromProject(root);
+    },
+  };
+});
 
 // ============================================================================
 // Helpers
@@ -231,5 +251,131 @@ describe('cleanupStalePaused', () => {
     expect(cleaned).toBe(1);
     expect(await memory.read('spell-paused', 'wf-stale')).toBeNull();
     expect(await memory.read('spell-paused', 'wf-fresh')).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// Project config on the resumed half (#1335 follow-up)
+// ============================================================================
+
+describe('resumeSpell — project config', () => {
+  let projectRoot: string;
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(tmpdir(), 'moflo-resume-budget-'));
+  });
+
+  afterEach(() => {
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  async function pausedTwoModelSteps(memory: MemoryAccessor) {
+    const definition: SpellDefinition = {
+      name: 'model-spell',
+      steps: [
+        { id: 'm1', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+        { id: 'm2', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+      ],
+    };
+    await preAcceptSpell(definition, projectRoot);
+    await persistPausedState(
+      buildPausedState('wf-budget', definition, 0, {}, [], {}),
+      memory,
+    );
+  }
+
+  it('applies the interactive ceiling to the resumed half when projectRoot is given', async () => {
+    writeFileSync(
+      join(projectRoot, 'moflo.yaml'),
+      'spells:\n  budget:\n    interactive:\n      maxModelInvocations: 1\n',
+      'utf-8',
+    );
+    const memory = createMockMemory();
+    await pausedTwoModelSteps(memory);
+
+    const result = await resumeSpell('wf-budget', { memory, projectRoot });
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some(e => e.code === 'BUDGET_EXCEEDED')).toBe(true);
+  });
+
+  it('runs uncapped when projectRoot is omitted — the pre-fix behaviour, now opt-out not default', async () => {
+    writeFileSync(
+      join(projectRoot, 'moflo.yaml'),
+      'spells:\n  budget:\n    interactive:\n      maxModelInvocations: 1\n',
+      'utf-8',
+    );
+    const memory = createMockMemory();
+    await pausedTwoModelSteps(memory);
+
+    // No projectRoot ⇒ nothing to load from ⇒ both steps run.
+    const result = await resumeSpell('wf-budget', { memory });
+
+    expect(result.errors.some(e => e.code === 'BUDGET_EXCEEDED')).toBe(false);
+  });
+
+  it('does not cap a resumed run when the project configures no ceiling', async () => {
+    writeFileSync(join(projectRoot, 'moflo.yaml'), 'spells:\n  userDirs: []\n', 'utf-8');
+    const memory = createMockMemory();
+    await pausedTwoModelSteps(memory);
+
+    const result = await resumeSpell('wf-budget', { memory, projectRoot });
+
+    expect(result.errors.some(e => e.code === 'BUDGET_EXCEEDED')).toBe(false);
+  });
+
+  it('starts the resumed wall clock fresh rather than counting time spent paused', async () => {
+    // Paused 10 minutes ago, ceiling is 1 minute. A resumed run that inherited
+    // the original start time would breach immediately; a fresh one must not.
+    writeFileSync(
+      join(projectRoot, 'moflo.yaml'),
+      'spells:\n  budget:\n    interactive:\n      maxWallClockMs: 60000\n',
+      'utf-8',
+    );
+    const memory = createMockMemory();
+    const definition: SpellDefinition = {
+      name: 'quick-spell',
+      steps: [{ id: 's1', type: 'wait', config: { duration: 0 } }],
+    };
+    const state = {
+      ...buildPausedState('wf-clock', definition, 0, {}, [], {}),
+      pausedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    };
+    await persistPausedState(state, memory);
+
+    const result = await resumeSpell('wf-clock', { memory, projectRoot });
+
+    expect(result.errors.some(e => e.code === 'BUDGET_EXCEEDED')).toBe(false);
+    expect(result.success).toBe(true);
+  });
+
+  it('re-applies the project sandbox config to the resumed half', async () => {
+    // The other half of the same bug: a resumed run dropped `sandbox` for
+    // exactly the reason it dropped `budget`.
+    //
+    // Asserted by observing the load rather than its OS effect: whether
+    // `tier: full` engages or refuses depends on whether bwrap/sandbox-exec
+    // exists on the runner, which differs across the three platforms moflo
+    // ships to (Rule #1). What is platform-independent — and what was actually
+    // broken — is that the project's config was never consulted at all.
+    writeFileSync(
+      join(projectRoot, 'moflo.yaml'),
+      'sandbox:\n  enabled: true\n  tier: denylist-only\n',
+      'utf-8',
+    );
+    const memory = createMockMemory();
+    const definition: SpellDefinition = {
+      name: 'sandboxed-spell',
+      steps: [{ id: 's1', type: 'wait', config: { duration: 0 } }],
+    };
+    await preAcceptSpell(definition, projectRoot);
+    await persistPausedState(
+      buildPausedState('wf-sandbox', definition, 0, {}, [], {}),
+      memory,
+    );
+
+    await resumeSpell('wf-sandbox', { memory, projectRoot });
+
+    expect(loadSandboxSpy).toHaveBeenCalledWith(projectRoot);
   });
 });

@@ -46,6 +46,17 @@ describe('yaml-upgrader', () => {
       expect(keys).toContain('sandbox');
     });
 
+    it('does NOT register spells — spend ceilings must not switch on during an upgrade (#1380)', () => {
+      // `flo init` writes `spells.budget` into NEW projects. Registering it
+      // here would append it to every existing consumer's moflo.yaml on their
+      // next session start, activating ceilings for projects that never asked.
+      // A scheduled spell legitimately making 40 model calls at 3am would start
+      // failing because its owner ran `npm install`. Opting in stays the
+      // owner's decision; see moflo-yaml-reference.md.
+      const keys = REQUIRED_SECTIONS.map((s: any) => s.key);
+      expect(keys).not.toContain('spells');
+    });
+
     it('each section has a key and a block that starts with a comment', () => {
       for (const section of REQUIRED_SECTIONS) {
         expect(typeof section.key).toBe('string');
