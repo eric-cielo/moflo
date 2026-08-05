@@ -1772,6 +1772,14 @@ switch (command) {
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
     applyPromptStateReset(s, prompt);
     s.interactionCount = (s.interactionCount || 0) + 1;
+    // Record the MAIN-LOOP session id so `flo run finalize` can attribute
+    // transcript token usage to a run (#1333). UserPromptSubmit fires only for
+    // the top-level session — subagents never submit a user prompt — so unlike
+    // the per-actor `memorySearchedBy` map this is unambiguously the session
+    // whose transcript carries the run. Survives applyPromptStateReset by being
+    // written after it; refreshed every prompt, so a /clear that mints a new id
+    // is picked up on the next turn rather than going stale.
+    if (process.env.HOOK_SESSION_ID) s.sessionId = process.env.HOOK_SESSION_ID;
     writeState(s);
     // Announce the resolved /flo run modifiers. The gate already parsed
     // moflo.yaml in THIS process (fresh per prompt — a git pull or a mid-session

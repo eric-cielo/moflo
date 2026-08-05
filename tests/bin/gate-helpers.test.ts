@@ -931,6 +931,53 @@ describe('gate.cjs: prompt-reminder', () => {
     expect(readState(tmpDir).memoryRequired).toBe(false);
   });
 
+  // #1333 — `flo run finalize` attributes transcript token usage to a run, and
+  // needs the MAIN-LOOP session id to do it. UserPromptSubmit is the one hook
+  // that only the top-level session triggers, which is why the stamp lives here
+  // rather than alongside the per-actor `memorySearchedBy` map.
+  it('stamps the main-loop session id for run token attribution', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the token rollup for flo runs';
+    env.HOOK_SESSION_ID = 'sess-main-1333';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).sessionId).toBe('sess-main-1333');
+  });
+
+  it('refreshes the stamped session id when a new session submits a prompt', () => {
+    // A /clear mints a new session id; the stale one must not stick, or the
+    // rollup would read the previous session's transcript.
+    writeState(tmpDir, { sessionId: 'sess-old' });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'continue the work on the rollup';
+    env.HOOK_SESSION_ID = 'sess-new';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).sessionId).toBe('sess-new');
+  });
+
+  it('leaves a previously stamped session id alone when the host sends none', () => {
+    // Older Claude Code hosts (and direct CLI invocations) forward no
+    // session_id. Clearing the stamp there would silently disable attribution
+    // for the rest of the session.
+    writeState(tmpDir, { sessionId: 'sess-kept' });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'keep going with the implementation work';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).sessionId).toBe('sess-kept');
+  });
+
+  it('survives the per-prompt state reset', () => {
+    // applyPromptStateReset runs first and wipes per-prompt flags; the stamp is
+    // written after it precisely so attribution outlives the reset.
+    writeState(tmpDir, { memorySearched: true, sessionId: 'sess-persist' });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'fix the authentication bug in the login page';
+    env.HOOK_SESSION_ID = 'sess-persist';
+    runGate('prompt-reminder', env);
+    const s = readState(tmpDir);
+    expect(s.memorySearched).toBe(false); // reset did run
+    expect(s.sessionId).toBe('sess-persist');
+  });
+
   it('classifies "ok" as directive (no memory)', () => {
     const env = baseEnv(tmpDir);
     env.CLAUDE_USER_PROMPT = 'ok';

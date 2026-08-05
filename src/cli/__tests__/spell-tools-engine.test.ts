@@ -7,17 +7,48 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { spellTools, invalidateRegistry } from '../mcp-tools/spell-tools.js';
+import { _resetSharedMemoryAccessorForTest } from '../services/daemon-dashboard.js';
+import { _resetStateRootCacheForTest } from '../services/project-root.js';
 
 // Disable sandbox at the engine layer so the bash steps below run unsandboxed
 // regardless of host capability. Without this, sandbox.enabled=true in the
 // project's moflo.yaml + Windows-without-Docker makes the engine bail out on
 // the prerequisite check before any step runs.
 const ORIGINAL_SANDBOX_ENV = process.env.MOFLO_SANDBOX_DISABLED;
-beforeAll(() => { process.env.MOFLO_SANDBOX_DISABLED = '1'; });
+
+// These specs drive the REAL engine, and a completed cast writes a `tasklist`
+// row via `SpellRunner.storeProgress`. Without an anchor of its own that lands
+// in the developer's actual `.moflo/moflo.db`: measured at 96 of 97 rows in this
+// repo's live store, which buried genuine /flo run records well inside the
+// 200-row retention cap (#1333). `resolveStateRoot()` treats an existing
+// CLAUDE_PROJECT_DIR as authoritative, so pointing it at a scratch dir sends the
+// whole memory stack — DB path and moflo.yaml backend resolution alike — there.
+const ORIGINAL_PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR;
+let scratchRoot: string;
+
+beforeAll(() => {
+  process.env.MOFLO_SANDBOX_DISABLED = '1';
+  scratchRoot = mkdtempSync(join(tmpdir(), 'moflo-spell-engine-'));
+  process.env.CLAUDE_PROJECT_DIR = scratchRoot;
+  // Both caches memoise on the pre-override anchor; drop them so the accessor
+  // this file builds resolves against the scratch dir.
+  _resetStateRootCacheForTest();
+  _resetSharedMemoryAccessorForTest();
+});
+
 afterAll(() => {
   if (ORIGINAL_SANDBOX_ENV === undefined) delete process.env.MOFLO_SANDBOX_DISABLED;
   else process.env.MOFLO_SANDBOX_DISABLED = ORIGINAL_SANDBOX_ENV;
+
+  if (ORIGINAL_PROJECT_DIR === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+  else process.env.CLAUDE_PROJECT_DIR = ORIGINAL_PROJECT_DIR;
+  _resetStateRootCacheForTest();
+  _resetSharedMemoryAccessorForTest();
+  try { rmSync(scratchRoot, { recursive: true, force: true }); } catch { /* best-effort */ }
 });
 
 function findTool(name: string) {
