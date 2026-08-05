@@ -67,6 +67,51 @@ interface CachedEntry {
   metadata?: string;
 }
 
+/**
+ * What actually goes into the cache: the returned entry plus access-throttle
+ * bookkeeping (#1402).
+ *
+ * These two fields MUST NOT reach a caller. `bridgeGetEntry` builds the returned
+ * `CachedEntry` separately and spreads it into the record, so `memory_retrieve`
+ * and `memory_get_neighbors` never see them.
+ */
+interface CachedEntryRecord extends CachedEntry {
+  /** Cache hits counted for this key since the last `access_count` flush. */
+  pendingAccessDelta?: number;
+  /** Epoch ms of the last `access_count` write for this key. */
+  lastAccessFlushAt?: number;
+}
+
+/**
+ * Minimum gap between `access_count` writes for a single key (#1402).
+ *
+ * #1396 made a cache hit bump `access_count`, which is correct — the counter
+ * feeds `sortBy('accessCount')` and stats, so a row read repeatedly inside the
+ * cache TTL must not look untouched. But `bridgeGetEntry` is called in fan-out
+ * loops, not once per user retrieve: the dashboard's `/api/schedules` and
+ * `/api/spells` handlers issue up to 300 `getEntry` calls between them, and the
+ * browser polls both every 5s — ~60 writes/sec against the same hot keys, where
+ * before the fix it was zero I/O.
+ *
+ * A global debounce timer would need a flush-on-exit hook, and moflo's
+ * short-lived CLI processes would silently drop counts on exit — the same
+ * "observability that quietly lies" failure #1396 existed to remove. Throttling
+ * per key needs no timer and no exit hook: the delta rides on the cached record
+ * itself, which every hit already touches.
+ *
+ * KNOWN RESIDUAL — not lossless, and deliberately so. If the cache evicts a
+ * record (5-minute TTL, or LRU at 10k entries) while its delta is unflushed,
+ * those accesses are gone; likewise a process crash mid-interval. Draining on
+ * eviction would mean issuing async DB work from `CacheManager.evictLRU`, a
+ * synchronous path in a different module — real blast radius on the memory
+ * chokepoint to recover at most one interval's counts for a key that, by virtue
+ * of being evicted, is not in a hot read loop. The keys this throttle exists
+ * for flush every interval, well inside the TTL. `access_count` feeds ordering
+ * and stats, not accounting, so a bounded undercount on cold keys is the right
+ * trade; a systematic undercount of HOT keys — the #1396 defect — is not.
+ */
+const ACCESS_FLUSH_INTERVAL_MS = 30_000;
+
 /** Normalise `metadata` for the `metadata` TEXT column; `undefined` → `'{}'` (#1064). */
 export function serialiseMetadata(metadata: Record<string, unknown> | string | undefined): string {
   if (metadata == null) return '{}';
@@ -130,7 +175,7 @@ async function cacheGet(registry: any, cacheKey: string): Promise<any | null> {
 }
 
 /** Typed on purpose (#1396) — a partial cache value is a compile error, not a silent read-side data loss. */
-async function cacheSet(registry: any, cacheKey: string, value: CachedEntry): Promise<void> {
+async function cacheSet(registry: any, cacheKey: string, value: CachedEntryRecord): Promise<void> {
   const cache = registry.get('tieredCache');
   if (!cache) return;
   await cache.set(cacheKey, value);
@@ -828,43 +873,78 @@ export async function bridgeGetEntry(options: {
       // orderable field (query-builder's `sortBy('accessCount')`) plus a stats
       // input, so the hottest rows ranked as the coldest.
       //
-      // ACCEPTED TRADE-OFF: this makes a cache hit perform one indexed write.
-      // The alternative — bump only the cached copy — keeps hits read-only but
-      // leaves the PERSISTED counter undercounting exactly the hot rows, which
-      // is the defect being fixed, since ordering and stats read the column and
-      // not the cache. A hit is still cheaper than the disk read it replaces
-      // (no SELECT, no tag/metadata parse), and the pre-cache code issued this
-      // same UPDATE on every read. Debouncing is the lever if it ever shows up
-      // in a profile.
+      // #1402 — the write is THROTTLED per key. Every hit still increments the
+      // count the caller sees; the DB write is coalesced to at most one per
+      // ACCESS_FLUSH_INTERVAL_MS, because this function runs inside fan-out
+      // loops (see the constant's docstring) where a write-per-hit is ~60
+      // writes/sec against the same handful of keys.
       //
-      // The UPDATE is `access_count + 1` evaluated by SQLite, so the stored
-      // counter stays correct under concurrency; only the cached copy can lose
-      // a racing increment, and the next disk read resyncs it. No persist call
-      // here on purpose — the disk path below has never had one either, because
-      // #1058 removed the read-side `db.export()` writeback that clobbered
-      // concurrent writers. Under node:sqlite the UPDATE is durable regardless.
-      const accessCount = (cached.accessCount ?? 0) + 1;
-      try {
-        ctx.db.prepare(
-          `UPDATE memory_entries SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
-        ).run([Date.now(), String(cached.id || '')]);
-      } catch {
-        // Non-fatal
+      // The UPDATE adds the accumulated delta and is evaluated by SQLite, so
+      // the stored counter stays correct under concurrency and never depends on
+      // a client-computed absolute. No persist call here on purpose — the disk
+      // path below has never had one either, because #1058 removed the
+      // read-side `db.export()` writeback that clobbered concurrent writers.
+      // Under node:sqlite the UPDATE is durable regardless.
+      const now = Date.now();
+
+      // MUTATE THE CACHED RECORD IN PLACE — do not rebuild it.
+      //
+      // The guarantee this rests on is OBJECT IDENTITY, not synchrony:
+      // `TieredCacheManager.get` is async, but it hands back the stored object
+      // unchanged from `CacheManager.get`, which returns `node.value.data` with
+      // no clone. So every concurrent reader of this key holds the SAME object,
+      // and the two lines below are a read-modify-write with no `await` between
+      // the read and the write — atomic under Node's single thread.
+      //
+      // Building a replacement record and writing it back with `cacheSet`
+      // instead reintroduces a lost update: both callers read the same delta
+      // across the await boundary and the second write clobbers the first,
+      // permanently dropping an access. That interleaving is reachable on the
+      // very workload this throttle is for — the neighbour fan-out fetches
+      // adjacent chunk keys in parallel and two hits can share a neighbour.
+      //
+      // If the cache ever starts cloning on read, the delta stops accumulating
+      // and this silently under-persists. `loses no counts when the same key is
+      // read concurrently` is the test that would catch it.
+      cached.accessCount = (cached.accessCount ?? 0) + 1;
+      cached.pendingAccessDelta = (cached.pendingAccessDelta ?? 0) + 1;
+
+      // A record with no flush stamp (pre-#1402 shape, or one this process has
+      // never flushed) flushes immediately rather than waiting out the interval.
+      const lastFlushAt = cached.lastAccessFlushAt ?? 0;
+      if (now - lastFlushAt >= ACCESS_FLUSH_INTERVAL_MS) {
+        try {
+          ctx.db.prepare(
+            `UPDATE memory_entries SET access_count = access_count + ?, last_accessed_at = ? WHERE id = ?`,
+          ).run([cached.pendingAccessDelta, now, String(cached.id || '')]);
+          // Clear ONLY after the write lands. Clearing on a throw would discard
+          // the accumulated hits outright — the throttle defers writes, it does
+          // not drop them.
+          cached.pendingAccessDelta = 0;
+          cached.lastAccessFlushAt = now;
+        } catch {
+          // Non-fatal — the delta rides along to the next attempt.
+        }
       }
 
+      // Built field-by-field from the cached record rather than spread from it,
+      // so the throttle bookkeeping can never surface in an MCP response.
       const entry: CachedEntry = {
         id: String(cached.id || ''),
         key: cached.key || key,
         namespace: cached.namespace || namespace,
         content: cached.content,
-        accessCount,
+        accessCount: cached.accessCount,
         createdAt: cached.createdAt,
         updatedAt: cached.updatedAt,
         hasEmbedding: cached.hasEmbedding,
         tags: cached.tags,
         metadata: cached.metadata || undefined,
       };
-      await cacheSet(registry, cacheKey, entry);
+
+      // No `cacheSet` here: the record above IS the cached object and was
+      // updated in place, so writing a copy back would be redundant work on the
+      // hot path — and would reopen the lost-update window this branch closes.
 
       return { success: true, found: true, cacheHit: true, entry };
     }
@@ -891,10 +971,15 @@ export async function bridgeGetEntry(options: {
 
     if (!row) return { success: true, found: false };
 
+    // The disk path writes its own +1 immediately (it is by definition not a
+    // repeat read), so it doubles as this key's flush point: stamp `now` below
+    // and start the delta at 0 so the next cache hit begins a fresh interval
+    // rather than re-counting this access (#1402).
+    const diskReadAt = Date.now();
     try {
       ctx.db.prepare(
         `UPDATE memory_entries SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
-      ).run([Date.now(), row.id]);
+      ).run([diskReadAt, row.id]);
     } catch {
       // Non-fatal
     }
@@ -917,7 +1002,11 @@ export async function bridgeGetEntry(options: {
       metadata: row.metadata != null ? String(row.metadata) : undefined,
     };
 
-    await cacheSet(registry, cacheKey, entry);
+    await cacheSet(registry, cacheKey, {
+      ...entry,
+      pendingAccessDelta: 0,
+      lastAccessFlushAt: diskReadAt,
+    });
 
     return { success: true, found: true, cacheHit: false, entry };
   });
