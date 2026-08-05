@@ -50,6 +50,10 @@ import {
 } from './platform-sandbox.js';
 import { checkAcceptance, recordAcceptance } from './permission-acceptance.js';
 import { analyzeSpellPermissions, formatSpellPermissionReport } from './permission-disclosure.js';
+import {
+  createRunBudget, mergeSpellBudgets,
+  type BudgetBreach, type RunBudgetAccessor,
+} from './run-budget.js';
 
 /** Spell engine version. Story #285 (epic #287) — workflow-test constant. */
 export const ENGINE_VERSION = '1.0.0';
@@ -270,6 +274,19 @@ export class SpellCaster {
     const completedSteps: CompletedStep[] = [];
     let cancelled = false;
 
+    // Spend ceiling (#1335). Null — and therefore an untouched code path —
+    // whenever neither the caller nor the definition configured a limit.
+    // When present, its signal replaces the caller's for the whole run so a
+    // wall-clock breach interrupts an in-flight step instead of waiting for
+    // one to return.
+    const budget = createRunBudget(
+      mergeSpellBudgets(options.budget, definition.budget),
+      { parentSignal: options.signal },
+    );
+    const runOptions: RunnerOptions = budget
+      ? { ...options, signal: budget.signal }
+      : options;
+
     const credentialPatterns = buildCredentialPatterns(options.credentialValues ?? []);
     const credentialNames = collectCredentialNames(definition.steps);
     const resolvedCredentials: Record<string, unknown> = {};
@@ -284,13 +301,14 @@ export class SpellCaster {
     }
 
     const state: StepExecutionState = {
-      variables, resolvedArgs, spellId, options,
+      variables, resolvedArgs, spellId, options: runOptions,
       credentialPatterns, resolvedCredentials,
       spellMofloLevel: definition.mofloLevel,
       parentMofloLevel: options.parentMofloLevel,
       nestingDepth: options.nestingDepth ?? 0,
       maxNestingDepth: options.maxNestingDepth ?? DEFAULT_MAX_NESTING_DEPTH,
       effectiveSandbox,
+      ...(budget ? { budget } : {}),
     };
 
     try {
@@ -314,7 +332,16 @@ export class SpellCaster {
         break;
       }
 
-      if (options.signal?.aborted) {
+      // Checked before the abort check below, because a wall-clock breach
+      // aborts the signal — reading the signal first would report the run as
+      // a plain cancellation and lose the reason.
+      budget?.checkWallClock();
+      if (budget?.breach) {
+        this.markRemaining(definition, i, 'skipped', stepResults);
+        break;
+      }
+
+      if (runOptions.signal?.aborted) {
         cancelled = true;
         this.markRemaining(definition, i, 'cancelled', stepResults);
         break;
@@ -432,16 +459,42 @@ export class SpellCaster {
           break;
         }
       }
+
+      // A ceiling a step can opt out of is not a ceiling — this deliberately
+      // ignores `continueOnError`. Reached when the step that tripped the
+      // budget declared `continueOnError: true`, or when it succeeded and the
+      // breach came from elsewhere. Rollback is left to the terminal block
+      // below so the breach path rolls back exactly once.
+      if (budget?.breach) {
+        this.markRemaining(definition, i + 1, 'skipped', stepResults);
+        break;
+      }
     }
 
-    if (cancelled) {
+    const breach: BudgetBreach | null = budget?.breach ?? null;
+
+    if (cancelled || breach) {
       if (completedSteps.length > 0) await this.doRollback(completedSteps, state, stepResults);
+    }
+    if (cancelled && !breach) {
       errors.push({ code: 'SPELL_CANCELLED', message: 'Spell was cancelled' });
     }
+    if (breach) {
+      // Pushed last so it reads as the reason the run stopped, ahead of the
+      // step failure the denial itself produced.
+      errors.push({ code: 'BUDGET_EXCEEDED', message: breach.message });
+    }
 
-    const finalStatus = cancelled ? 'cancelled' : errors.length > 0 ? 'failed' : 'completed';
+    // A breach reports as `failed`, not `cancelled`, even when the wall-clock
+    // abort surfaced through a cancelled step: `cancelled` in this engine means
+    // "the caller stopped it", and a ceiling breach is moflo stopping a run
+    // that overran. Dashboards and oncall need to tell those apart.
+    const finalStatus = breach
+      ? 'failed'
+      : cancelled ? 'cancelled' : errors.length > 0 ? 'failed' : 'completed';
     await this.storeProgress(spellId, finalStatus, stepResults.length, definition.steps.length, {
       spellName: definition.name, startedAt: startTime, errors, steps: stepResults, context,
+      ...(breach ? { budgetBreach: breach } : {}),
     });
 
     const outputs: Record<string, unknown> = {};
@@ -451,9 +504,13 @@ export class SpellCaster {
       }
     }
 
-    return { spellId, success: errors.length === 0 && !cancelled,
-      steps: stepResults, outputs, errors, duration: Date.now() - startTime, cancelled };
+    return { spellId, success: errors.length === 0 && !cancelled && !breach,
+      steps: stepResults, outputs, errors, duration: Date.now() - startTime,
+      cancelled: breach ? false : cancelled };
     } finally {
+      // Release the budget's deadline timer and parent-signal listener before
+      // anything else — it is the only thing here holding a live timer.
+      budget?.dispose();
       // Dispose any connectors that were lazily initialized during step execution
       if (this.connectorAccessor) {
         await this.connectorAccessor.disposeAll();
@@ -524,7 +581,7 @@ export class SpellCaster {
     state: StepExecutionState, index: number,
   ) {
     const ctxBuilder = (v: Record<string, unknown>, a: Record<string, unknown>, sid: string, si: number, sig?: AbortSignal) =>
-      this.buildContext(v, a, sid, si, sig, state.effectiveSandbox);
+      this.buildContext(v, a, sid, si, sig, state.effectiveSandbox, state.budget);
     return executeSingleStep(step, state, index, this.registry, ctxBuilder);
   }
 
@@ -726,18 +783,24 @@ export class SpellCaster {
   private buildContext(
     variables: Record<string, unknown>, args: Record<string, unknown>,
     spellId: string, stepIndex: number, signal?: AbortSignal,
-    sandbox?: EffectiveSandbox,
+    sandbox?: EffectiveSandbox, budget?: RunBudgetAccessor,
   ): CastingContext {
     return { variables, args, credentials: this.credentials, memory: this.memory,
       taskId: `${spellId}-step-${stepIndex}`, spellId, stepIndex, abortSignal: signal,
       gateway: DENY_ALL_GATEWAY,
       ...(this.connectorAccessor ? { tools: this.connectorAccessor } : {}),
-      ...(sandbox ? { sandbox } : {}) };
+      ...(sandbox ? { sandbox } : {}),
+      ...(budget ? { budget } : {}) };
   }
 
   private async storeProgress(
     wfId: string, status: string, done: number, total: number,
-    extra?: { spellName?: string; startedAt?: number; errors?: SpellError[]; steps?: StepResult[]; context?: FloRunContext },
+    extra?: {
+      spellName?: string; startedAt?: number; errors?: SpellError[];
+      steps?: StepResult[]; context?: FloRunContext;
+      /** Ceiling that stopped this run (#1335) — absent on every other path. */
+      budgetBreach?: BudgetBreach;
+    },
   ) {
     try {
       const now = Date.now();
@@ -757,6 +820,17 @@ export class SpellCaster {
       // Include error summary on terminal states
       if (extra?.errors && extra.errors.length > 0 && (status === 'failed' || status === 'cancelled')) {
         record.error = extra.errors.map(e => e.message).join('; ');
+      }
+      // Why the run stopped, structured (#1335). `error` above carries the
+      // same thing as prose; a reader asking "did a ceiling stop this" should
+      // not have to grep a message for it.
+      if (extra?.budgetBreach) {
+        record.abortReason = 'budget-exceeded';
+        record.budgetBreach = {
+          kind: extra.budgetBreach.kind,
+          limit: extra.budgetBreach.limit,
+          observed: extra.budgetBreach.observed,
+        };
       }
       // Include per-step results for dashboard diagnostics
       if (extra?.steps && extra.steps.length > 0) {

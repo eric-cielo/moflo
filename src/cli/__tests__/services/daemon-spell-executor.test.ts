@@ -45,6 +45,7 @@ function makeEngine(): EngineModule & {
   bridgeExecuteSpell: Mock;
   bridgeCancelSpell: Mock;
   loadSandboxConfigFromProject: Mock;
+  loadSpellBudgetFromProject: Mock;
 } {
   const emptySandbox: SandboxConfig = {
     enabled: false,
@@ -66,6 +67,8 @@ function makeEngine(): EngineModule & {
     SpellScheduler: vi.fn() as unknown as EngineModule['SpellScheduler'],
     runSpellFromContent: vi.fn(),
     loadSandboxConfigFromProject: vi.fn().mockResolvedValue(emptySandbox),
+    // Default: no ceiling configured — the behaviour every install has today.
+    loadSpellBudgetFromProject: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -373,5 +376,114 @@ describe('DaemonSpellExecutor — yaml reload (real Grimoire)', () => {
     const [secondDef] = engine.bridgeExecuteSpell.mock.calls[1];
     expect(secondDef.version).toBe('2.0');
     expect(secondDef.steps[0].config.command).toBe('echo after');
+  });
+
+  // ── Spend ceiling (#1335) ───────────────────────────────────────────────
+
+  describe('spend ceiling', () => {
+    it('passes the scheduled ceiling from moflo.yaml to the engine', async () => {
+      const registry = makeRegistry({ 'my-spell': makeDefinition({ name: 'my-spell' }) });
+      engine.loadSpellBudgetFromProject.mockResolvedValue({ maxModelInvocations: 7 });
+      const exec = new DaemonSpellExecutor({ registry, projectRoot: '/p', engine });
+
+      await exec.execute('my-spell', {});
+
+      expect(engine.loadSpellBudgetFromProject).toHaveBeenCalledWith('/p', 'scheduled');
+      const [, , opts] = engine.bridgeExecuteSpell.mock.calls[0];
+      expect(opts.budget).toEqual({ maxModelInvocations: 7 });
+    });
+
+    it('omits budget entirely when nothing is configured', async () => {
+      // Issue #1335 AC3: unset means today's behaviour exactly. A `budget:
+      // undefined` key would still be a shape change for anything reading the
+      // options object, so the key must be absent, not present-and-empty.
+      const registry = makeRegistry({ 'my-spell': makeDefinition({ name: 'my-spell' }) });
+      const exec = new DaemonSpellExecutor({ registry, projectRoot: '/p', engine });
+
+      await exec.execute('my-spell', {});
+
+      const [, , opts] = engine.bridgeExecuteSpell.mock.calls[0];
+      expect(Object.keys(opts)).not.toContain('budget');
+    });
+
+    it('prefers an explicitly injected ceiling over moflo.yaml', async () => {
+      const registry = makeRegistry({ 'my-spell': makeDefinition({ name: 'my-spell' }) });
+      const exec = new DaemonSpellExecutor({
+        registry, projectRoot: '/p', engine,
+        budgetConfig: { maxWallClockMs: 1234 },
+      });
+
+      await exec.execute('my-spell', {});
+
+      expect(engine.loadSpellBudgetFromProject).not.toHaveBeenCalled();
+      const [, , opts] = engine.bridgeExecuteSpell.mock.calls[0];
+      expect(opts.budget).toEqual({ maxWallClockMs: 1234 });
+    });
+
+    it('re-reads the ceiling on every fire, so a yaml edit lands without restart', async () => {
+      const registry = makeRegistry({ 'my-spell': makeDefinition({ name: 'my-spell' }) });
+      engine.loadSpellBudgetFromProject
+        .mockResolvedValueOnce({ maxModelInvocations: 2 })
+        .mockResolvedValueOnce({ maxModelInvocations: 9 });
+      const exec = new DaemonSpellExecutor({ registry, projectRoot: '/p', engine });
+
+      await exec.execute('my-spell', {});
+      await exec.execute('my-spell', {});
+
+      expect(engine.bridgeExecuteSpell.mock.calls[0][2].budget).toEqual({ maxModelInvocations: 2 });
+      expect(engine.bridgeExecuteSpell.mock.calls[1][2].budget).toEqual({ maxModelInvocations: 9 });
+    });
+
+    it('logs a breach so it reaches the daemon log, not only the run record', async () => {
+      // A ceiling that fires silently in an unattended process is
+      // indistinguishable from the runaway it prevented.
+      const registry = makeRegistry({ 'my-spell': makeDefinition({ name: 'my-spell' }) });
+      engine.bridgeExecuteSpell.mockResolvedValue({
+        spellId: 'scheduled-my-spell-1',
+        success: false,
+        steps: [],
+        outputs: {},
+        errors: [{ code: 'BUDGET_EXCEEDED', message: 'ceiling of 2 exceeded' }],
+        duration: 12,
+        cancelled: false,
+      } satisfies SpellResult);
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const exec = new DaemonSpellExecutor({ registry, projectRoot: '/p', engine });
+        const result = await exec.execute('my-spell', {});
+
+        expect(result.success).toBe(false);
+        expect(warn).toHaveBeenCalledTimes(1);
+        const line = String(warn.mock.calls[0][0]);
+        expect(line).toContain('spend ceiling');
+        expect(line).toContain('my-spell');
+        expect(line).toContain('ceiling of 2 exceeded');
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('stays quiet for an ordinary failure', async () => {
+      const registry = makeRegistry({ 'my-spell': makeDefinition({ name: 'my-spell' }) });
+      engine.bridgeExecuteSpell.mockResolvedValue({
+        spellId: 'scheduled-my-spell-1',
+        success: false,
+        steps: [],
+        outputs: {},
+        errors: [{ code: 'STEP_EXECUTION_FAILED', message: 'boom' }],
+        duration: 12,
+        cancelled: false,
+      } satisfies SpellResult);
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const exec = new DaemonSpellExecutor({ registry, projectRoot: '/p', engine });
+        await exec.execute('my-spell', {});
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
   });
 });

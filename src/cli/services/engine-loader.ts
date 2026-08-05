@@ -20,6 +20,7 @@ import type {
   RegistryOptions,
 } from '../spells/registry/spell-registry.js';
 import type { SandboxConfig } from '../spells/core/platform-sandbox.js';
+import type { SpellBudgetConfig, SpellBudgetMode } from '../spells/core/run-budget.js';
 import type {
   SpellScheduler,
   SpellExecutor,
@@ -33,6 +34,7 @@ export type { SpellDefinition };
 export type { Grimoire };
 export type { PreflightWarning, PreflightWarningDecision, PreflightWarningHandler };
 export type { SandboxConfig };
+export type { SpellBudgetConfig, SpellBudgetMode };
 export type { SpellScheduler, SpellExecutor, SchedulerOptions };
 
 /**
@@ -48,6 +50,7 @@ export interface EngineModule {
       projectRoot?: string;
       memory?: unknown;
       sandboxConfig?: SandboxConfig;
+      budget?: SpellBudgetConfig;
       forceCredentialReprompt?: boolean;
     },
   ) => Promise<SpellResult>;
@@ -59,6 +62,7 @@ export interface EngineModule {
       projectRoot?: string;
       memory?: unknown;
       sandboxConfig?: SandboxConfig;
+      budget?: SpellBudgetConfig;
       forceCredentialReprompt?: boolean;
     },
   ) => Promise<SpellResult>;
@@ -77,6 +81,10 @@ export interface EngineModule {
     options?: Record<string, unknown>,
   ) => Promise<SpellResult>;
   loadSandboxConfigFromProject: (projectRoot: string) => Promise<SandboxConfig>;
+  loadSpellBudgetFromProject: (
+    projectRoot: string,
+    mode: SpellBudgetMode,
+  ) => Promise<SpellBudgetConfig | undefined>;
   registerTTYPauser: (pauser: () => { release: () => void }) => () => void;
 }
 

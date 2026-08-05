@@ -51,6 +51,8 @@ export interface StepExecutionState {
   readonly maxNestingDepth: number;
   /** Resolved sandbox state for this spell run (Issue #410). */
   readonly effectiveSandbox?: import('./platform-sandbox.js').EffectiveSandbox;
+  /** Spend ceiling for this run, when one is configured (Issue #1335). */
+  readonly budget?: import('./run-budget.js').RunBudgetAccessor;
 }
 
 /**

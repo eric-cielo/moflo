@@ -116,6 +116,15 @@ sandbox:
   enabled: false                  # Set to true to wrap bash steps in an OS sandbox
   tier: auto                      # auto | denylist-only | full
 
+# Spell spend ceilings (OPTIONAL — omit for unbounded runs, which is the default)
+spells:
+  budget:
+    scheduled:                    # Daemon-scheduled runs (cron/interval/at)
+      maxModelInvocations: 20     # Max `claude -p` spawns per run
+      maxWallClockMs: 1800000     # Max run duration (30 min)
+    interactive:                  # Session-attached runs — omit to leave uncapped
+      maxModelInvocations: 50
+
 # Auto-update on session start (refreshes consumer assets when moflo upgrades)
 auto_update:
   enabled: true                          # Master toggle for version-change auto-sync
@@ -130,6 +139,35 @@ skills:
 ```
 
 If your `moflo.yaml` predates the `sandbox:` or `auto_update:` blocks, they are auto-appended on the next session start — you never need to re-run `moflo init` after a version bump.
+
+### Bounding Spell Spend with `spells.budget`
+
+**Set `spells.budget.scheduled` on any project whose spells invoke `claude -p` from a cron or interval schedule.** A scheduled spell runs unattended, so a loop step or a mistyped cron can invoke the model repeatedly with nothing observing the spend until the bill arrives. The ceiling bounds worst-case exposure.
+
+| Key | Counts | On breach |
+|-----|--------|-----------|
+| `maxModelInvocations` | `claude -p` spawns detected in bash steps | The next spawn is refused **before** the process starts, and the run aborts |
+| `maxWallClockMs` | Elapsed time since the run started | The in-flight step is aborted and the run ends |
+
+**Both keys are optional and both default to unlimited.** Omitting the `spells:` block entirely leaves every run exactly as it behaves without this setting.
+
+**`scheduled` and `interactive` are configured separately, and neither inherits from the other.** Setting `scheduled` never caps a `flo spell cast` you run yourself — session-attached runs stay uncapped until you add `interactive` explicitly.
+
+A spell may also declare its own `budget:` block; the effective ceiling is the **stricter** of the two, so a project cap can tighten a spell and a spell can tighten itself further, but neither can loosen the other:
+
+```yaml
+# my-spell.yaml — this spell should never call the model more than twice
+name: my-spell
+budget:
+  maxModelInvocations: 2
+steps:
+  - id: analyze
+    type: bash
+    config:
+      command: claude -p "summarize the diff"
+```
+
+A breach ends the run with a `BUDGET_EXCEEDED` error, records `abortReason: budget-exceeded` plus a structured `budgetBreach` (`kind`, `limit`, `observed`) in the run's record, and — on the daemon path — writes a warning line to the daemon log. `continueOnError` does not suppress it.
 
 ### Narrowing Installed Skills with `skills.categories`
 
@@ -259,4 +297,5 @@ Global registration is useful for ad-hoc projects where you don't want to commit
 - `.claude/guidance/moflo-core-guidance.md` — Hub: getting started, anti-drift defaults, troubleshooting
 - `.claude/guidance/moflo-cli-reference.md` — Commands, agents, hooks, hive-mind, ruvector — the surfaces this config gates
 - `.claude/guidance/moflo-spell-sandboxing.md` — What `sandbox:` actually does at the bash-step boundary, with capability/permission interaction
+- `.claude/guidance/moflo-spell-scheduling.md` — Where `scheduler:` and `spells.budget.scheduled` take effect: the unattended run loop
 - `.claude/guidance/moflo-settings-injection.md` — What moflo writes into `.claude/settings.json` (the hook wiring; complementary to `moflo.yaml` toggles)

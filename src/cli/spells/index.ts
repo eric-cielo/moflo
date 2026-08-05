@@ -109,6 +109,20 @@ export {
 } from './core/platform-sandbox.js';
 
 export {
+  createRunBudget,
+  resolveSpellBudgetConfig,
+  mergeSpellBudgets,
+  hasBudgetLimit,
+  loadSpellBudgetFromProject,
+  SpellRunBudget,
+  type SpellBudgetConfig,
+  type SpellBudgetMode,
+  type BudgetBreach,
+  type BudgetLimitKind,
+  type RunBudgetAccessor,
+} from './core/run-budget.js';
+
+export {
   resolveScopePath,
   type SandboxWrapResult,
 } from './core/sandbox-utils.js';

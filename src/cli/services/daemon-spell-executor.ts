@@ -22,6 +22,7 @@ import {
   loadSpellEngine,
   type EngineModule,
   type SandboxConfig,
+  type SpellBudgetConfig,
 } from './engine-loader.js';
 
 export interface DaemonSpellExecutorOptions {
@@ -37,6 +38,12 @@ export interface DaemonSpellExecutorOptions {
   readonly engine?: EngineModule;
   /** Optional sandbox config override (else auto-loaded from moflo.yaml). */
   readonly sandboxConfig?: SandboxConfig;
+  /**
+   * Optional spend-ceiling override (#1335). When omitted, the executor loads
+   * `spells.budget.scheduled` from moflo.yaml. Absent from both ⇒ no ceiling,
+   * which is the behaviour every install has today.
+   */
+  readonly budgetConfig?: SpellBudgetConfig;
 }
 
 export class DaemonSpellExecutor implements SpellExecutor {
@@ -45,6 +52,7 @@ export class DaemonSpellExecutor implements SpellExecutor {
   private readonly memory?: MemoryAccessor;
   private readonly defaultMofloLevel?: MofloLevel;
   private readonly explicitSandbox?: SandboxConfig;
+  private readonly explicitBudget?: SpellBudgetConfig;
   private engine?: EngineModule;
 
   constructor(opts: DaemonSpellExecutorOptions) {
@@ -54,6 +62,7 @@ export class DaemonSpellExecutor implements SpellExecutor {
     this.defaultMofloLevel = opts.defaultMofloLevel;
     this.engine = opts.engine;
     this.explicitSandbox = opts.sandboxConfig;
+    this.explicitBudget = opts.budgetConfig;
   }
 
   exists(spellName: string): boolean {
@@ -103,12 +112,29 @@ export class DaemonSpellExecutor implements SpellExecutor {
     try {
       const sandboxConfig = this.explicitSandbox
         ?? await engine.loadSandboxConfigFromProject(this.projectRoot);
-      return await engine.bridgeExecuteSpell(definition, args, {
+      // Spend ceiling for the unattended path (#1335). Loaded per execute so a
+      // moflo.yaml edit reaches the next fire without a daemon restart — the
+      // same reason `registry.invalidate()` runs above.
+      const budget = this.explicitBudget
+        ?? await engine.loadSpellBudgetFromProject(this.projectRoot, 'scheduled');
+      const result = await engine.bridgeExecuteSpell(definition, args, {
         spellId,
         projectRoot: this.projectRoot,
         memory: this.memory,
         sandboxConfig,
+        ...(budget ? { budget } : {}),
       });
+      // Surface a breach on stderr so it lands in the daemon log, not only in
+      // the run's tasklist record. A ceiling that fires silently in an
+      // unattended process is indistinguishable from the runaway it prevented.
+      const budgetErr = result.errors.find(e => e.code === 'BUDGET_EXCEEDED');
+      if (budgetErr) {
+        console.warn(
+          `[daemon-spell-executor] spend ceiling aborted "${loaded.definition.name}" ` +
+          `(${spellId}): ${budgetErr.message}`,
+        );
+      }
+      return result;
     } catch (err) {
       return failedResult(
         spellId,

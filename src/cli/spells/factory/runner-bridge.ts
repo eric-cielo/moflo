@@ -13,6 +13,7 @@ import type { SpellResult } from '../types/runner.types.js';
 import type { CredentialAccessor, MemoryAccessor } from '../types/step-command.types.js';
 import type { SandboxConfig } from '../core/platform-sandbox.js';
 import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
+import type { SpellBudgetConfig } from '../core/run-budget.js';
 import { createRunner, runSpellFromContent } from './runner-factory.js';
 import { getDefaultCredentialStore } from '../credentials/default-store.js';
 
@@ -50,6 +51,7 @@ export async function bridgeRunSpell(
     credentials?: CredentialAccessor;
     projectRoot?: string;
     sandboxConfig?: SandboxConfig;
+    budget?: SpellBudgetConfig;
     forceCredentialReprompt?: boolean;
   } = {},
 ): Promise<SpellResult> {
@@ -70,6 +72,7 @@ export async function bridgeRunSpell(
       forceCredentialReprompt: options.forceCredentialReprompt,
       ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
       ...(sandboxConfig ? { sandboxConfig } : {}),
+      ...(options.budget ? { budget: options.budget } : {}),
     });
     return result;
   } finally {
@@ -89,6 +92,7 @@ export async function bridgeExecuteSpell(
     credentials?: CredentialAccessor;
     projectRoot?: string;
     sandboxConfig?: SandboxConfig;
+    budget?: SpellBudgetConfig;
     forceCredentialReprompt?: boolean;
   } = {},
 ): Promise<SpellResult> {
@@ -106,6 +110,7 @@ export async function bridgeExecuteSpell(
       forceCredentialReprompt: options.forceCredentialReprompt,
       ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
       ...(sandboxConfig ? { sandboxConfig } : {}),
+      ...(options.budget ? { budget: options.budget } : {}),
     });
   } finally {
     activeSpells.delete(spellId);
