@@ -30,6 +30,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { InvocationLedger, ledgerPathFor } from './run-ledger.js';
 
 type YamlModule = { load: (s: string) => unknown; default?: { load: (s: string) => unknown } };
 
@@ -46,10 +47,20 @@ export interface SpellBudgetConfig {
   readonly maxModelInvocations?: number;
   /** Max wall-clock duration of the run, in ms. Unset ⇒ unlimited. */
   readonly maxWallClockMs?: number;
+  /**
+   * Max detected `claude -p` spawns across ALL runs sharing this project root
+   * in a trailing 24h. Unset ⇒ unlimited.
+   *
+   * This is the ceiling that tracks a bill. The per-run ceilings above bound
+   * one bad run; only this one bounds a misconfigured schedule, which can
+   * satisfy a per-run ceiling thousands of times a day. Requires a project
+   * root to be enforceable — see {@link RunBudgetOptions.ledgerDir}.
+   */
+  readonly dailyModelInvocations?: number;
 }
 
 /** Which ceiling was hit. */
-export type BudgetLimitKind = 'model-invocations' | 'wall-clock';
+export type BudgetLimitKind = 'model-invocations' | 'wall-clock' | 'daily-model-invocations';
 
 /**
  * A latched ceiling breach. Carries the numbers rather than only a message so
@@ -116,11 +127,19 @@ export function resolveSpellBudgetConfig(raw?: unknown): SpellBudgetConfig | und
     rec.maxModelInvocations ?? rec.max_model_invocations,
   );
   const maxWallClockMs = positiveLimit(rec.maxWallClockMs ?? rec.max_wall_clock_ms);
+  const dailyModelInvocations = positiveLimit(
+    rec.dailyModelInvocations ?? rec.daily_model_invocations,
+  );
 
-  if (maxModelInvocations === undefined && maxWallClockMs === undefined) return undefined;
+  if (
+    maxModelInvocations === undefined
+    && maxWallClockMs === undefined
+    && dailyModelInvocations === undefined
+  ) return undefined;
   return {
     ...(maxModelInvocations !== undefined ? { maxModelInvocations } : {}),
     ...(maxWallClockMs !== undefined ? { maxWallClockMs } : {}),
+    ...(dailyModelInvocations !== undefined ? { dailyModelInvocations } : {}),
   };
 }
 
@@ -144,17 +163,25 @@ export function mergeSpellBudgets(
 
   const maxModelInvocations = pick(a.maxModelInvocations, b.maxModelInvocations);
   const maxWallClockMs = pick(a.maxWallClockMs, b.maxWallClockMs);
-  if (maxModelInvocations === undefined && maxWallClockMs === undefined) return undefined;
+  const dailyModelInvocations = pick(a.dailyModelInvocations, b.dailyModelInvocations);
+  if (
+    maxModelInvocations === undefined
+    && maxWallClockMs === undefined
+    && dailyModelInvocations === undefined
+  ) return undefined;
   return {
     ...(maxModelInvocations !== undefined ? { maxModelInvocations } : {}),
     ...(maxWallClockMs !== undefined ? { maxWallClockMs } : {}),
+    ...(dailyModelInvocations !== undefined ? { dailyModelInvocations } : {}),
   };
 }
 
 /** True when the config carries at least one enforceable ceiling. */
 export function hasBudgetLimit(config?: SpellBudgetConfig): boolean {
   if (!config) return false;
-  return config.maxModelInvocations !== undefined || config.maxWallClockMs !== undefined;
+  return config.maxModelInvocations !== undefined
+    || config.maxWallClockMs !== undefined
+    || config.dailyModelInvocations !== undefined;
 }
 
 /**
@@ -208,6 +235,17 @@ export interface RunBudgetOptions {
   readonly parentSignal?: AbortSignal;
   /** Clock injection point for tests. Defaults to `Date.now`. */
   readonly now?: () => number;
+  /**
+   * Project root whose `.moflo/` holds the rolling-window ledger. Required for
+   * `dailyModelInvocations` to do anything — without it there is nowhere to
+   * persist a count that outlives the run, so the daily ceiling is silently
+   * inert. Every path that configures a daily ceiling also has a project root
+   * (the daemon and `runSpellFromContent` both do), so this is a wiring
+   * invariant rather than a user-facing constraint.
+   */
+  readonly ledgerDir?: string;
+  /** Pre-built ledger, for tests. Overrides `ledgerDir` when both are given. */
+  readonly ledger?: InvocationLedger;
 }
 
 /**
@@ -228,11 +266,17 @@ export class SpellRunBudget implements RunBudgetAccessor {
   private parentSignal: AbortSignal | undefined;
   private invocations = 0;
   private latched: BudgetBreach | null = null;
+  private readonly ledger: InvocationLedger | null;
 
   constructor(
     private readonly config: SpellBudgetConfig,
     options: RunBudgetOptions = {},
   ) {
+    this.ledger = config.dailyModelInvocations !== undefined
+      ? options.ledger ?? (options.ledgerDir
+        ? new InvocationLedger(ledgerPathFor(options.ledgerDir), { ...(options.now ? { now: options.now } : {}) })
+        : null)
+      : null;
     this.now = options.now ?? Date.now;
     this.startedAt = this.now();
     this.deadlineAt = config.maxWallClockMs !== undefined
@@ -275,9 +319,16 @@ export class SpellRunBudget implements RunBudgetAccessor {
   tryConsumeModelInvocation(): boolean {
     if (this.latched) return false;
 
+    // Daily ceiling first. It is the broader constraint — being inside the
+    // per-run allowance is irrelevant when the project has already spent its
+    // day — and checking it first means the breach a user sees names the
+    // ceiling that actually stopped them.
+    if (!this.tryConsumeDaily()) return false;
+
     const max = this.config.maxModelInvocations;
     if (max === undefined) {
       this.invocations++;
+      this.ledger?.record();
       return true;
     }
 
@@ -301,7 +352,37 @@ export class SpellRunBudget implements RunBudgetAccessor {
     }
 
     this.invocations = attempt;
+    this.ledger?.record();
     return true;
+  }
+
+  /**
+   * Check the rolling-window ceiling, latching a breach when it is spent.
+   * Returns true when there is no daily ceiling configured or room remains.
+   *
+   * Like the per-run invocation ceiling and unlike the wall clock, this does
+   * NOT abort the signal — the caller is about to return a step failure, and
+   * aborting here would race the rollback the runner is about to run.
+   */
+  private tryConsumeDaily(): boolean {
+    const limit = this.config.dailyModelInvocations;
+    if (limit === undefined || !this.ledger) return true;
+
+    const used = this.ledger.count();
+    if (used < limit) return true;
+
+    this.latched = {
+      kind: 'daily-model-invocations',
+      limit,
+      observed: used,
+      message:
+        `Project exceeded its rolling 24h model-invocation ceiling: ${limit} ` +
+        `allowed, ${used} already spent across scheduled runs. This run was ` +
+        `stopped before spawning. Raise ` +
+        `\`spells.budget.scheduled.dailyModelInvocations\` in moflo.yaml, or ` +
+        `check whether a schedule is firing more often than intended.`,
+    };
+    return false;
   }
 
   /**
