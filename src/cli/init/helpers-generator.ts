@@ -1309,6 +1309,12 @@ try { if (stdinData.trim()) hookContext = JSON.parse(stdinData); } catch (e) {}
 var userPrompt = hookContext.user_prompt || hookContext.prompt || '';
 var env = Object.assign({}, process.env, { CLAUDE_USER_PROMPT: userPrompt });
 
+// #1397 — forward session_id so prompt-reminder can stamp it onto
+// workflow-state.json; \`flo runs start\` has no other source for it.
+if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
+  env.HOOK_SESSION_ID = hookContext.session_id;
+}
+
 // Run prompt-reminder via gate.cjs
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
