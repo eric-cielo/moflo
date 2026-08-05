@@ -21,6 +21,7 @@ import { StepCommandRegistry } from '../../spells/core/step-command-registry.js'
 import { SpellRunBudget } from '../../spells/core/run-budget.js';
 import type { RunBudgetAccessor } from '../../spells/core/run-budget.js';
 import { validateSpellDefinition } from '../../spells/schema/validator.js';
+import { bridgeExecuteSpell } from '../../spells/factory/runner-bridge.js';
 import type {
   CastingContext,
   CredentialAccessor,
@@ -422,6 +423,63 @@ describe('SpellCaster spend ceiling', () => {
 
     expect(result.success).toBe(true);
     expect(result.errors).toEqual([]);
+    expect(memory.tasklist.at(-1)?.abortReason).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// End to end, through the bridge the daemon actually calls
+// ============================================================================
+
+describe('bridgeExecuteSpell spend ceiling', () => {
+  it('aborts a real spell whose bash steps exhaust the invocation ceiling', async () => {
+    // The daemon path is DaemonSpellExecutor → bridgeExecuteSpell → SpellCaster
+    // → bashCommand. The unit tests above cover each link; this covers the
+    // seam between them, using the real runner and the real bash step so a
+    // ceiling that never reaches the runner cannot pass.
+    const memory = recordingMemory();
+    const spell: SpellDefinition = {
+      name: 'e2e-budget-spell',
+      steps: [
+        { id: 'call1', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+        { id: 'call2', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+      ],
+    };
+
+    const result = await bridgeExecuteSpell(spell, {}, {
+      spellId: 'scheduled-e2e-budget-spell-1',
+      memory,
+      budget: { maxModelInvocations: 1 },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errors.map(e => e.code)).toContain('BUDGET_EXCEEDED');
+    // Step 1 was allowed to run; step 2 was refused before spawning.
+    expect(result.steps[0].status).toBe('succeeded');
+    expect(result.steps[1].status).toBe('failed');
+    expect(memory.tasklist.at(-1)).toMatchObject({
+      abortReason: 'budget-exceeded',
+      budgetBreach: { kind: 'model-invocations', limit: 1, observed: 2 },
+    });
+  });
+
+  it('runs the same spell to completion with no ceiling configured', async () => {
+    const memory = recordingMemory();
+    const spell: SpellDefinition = {
+      name: 'e2e-unbudgeted-spell',
+      steps: [
+        { id: 'call1', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+        { id: 'call2', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
+      ],
+    };
+
+    const result = await bridgeExecuteSpell(spell, {}, {
+      spellId: 'scheduled-e2e-unbudgeted-spell-1',
+      memory,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.steps.every(s => s.status === 'succeeded')).toBe(true);
     expect(memory.tasklist.at(-1)?.abortReason).toBeUndefined();
   });
 });
