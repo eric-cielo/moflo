@@ -1039,6 +1039,120 @@ function getChangedFilesVsBase() {
   } catch (e) { return null; }
 }
 
+// #1374 — the missing half of the TaskCreate reminder.
+//
+// moflo nags you to OPEN a task list (check-before-agent) and then never looks
+// again: `taskCount` only counts up, so a run that creates four tasks and closes
+// none satisfies every gate. That is the exact shape of an abandoned list.
+//
+// The ledger is read from the session TRANSCRIPT, and both alternatives were
+// rejected on evidence rather than taste:
+//
+//   - A `^TaskUpdate$` PostToolUse observer feeding a counter is the wiring
+//     #1331 removed as pure hot-path overhead. It would also have to survive
+//     applyPromptStateReset, whereas a transcript read holds no state to reset.
+//   - Claude Code's own task store (`~/.claude/tasks/session-<id>/`) is ground
+//     truth but unreachable: measured on v2.1.220, the id keying that directory
+//     does NOT rotate on `/clear`, so a session whose transcript is <A> writes
+//     its tasks under the pre-clear id <B> — and <A> is what the bridge forwards
+//     as HOOK_SESSION_ID. There is no path from the hook environment to the dir.
+//
+// Cost lands only where it is already justified: the sole caller runs after
+// check-before-pr's `gh pr create` match, i.e. once per PR attempt, never on the
+// per-tool path.
+//
+// Returns null when the transcript is missing, oversized, unreadable, or records
+// no TaskCreate at all — the caller then stays silent rather than guessing.
+// Sized against measurement, not a round number: a 3.4MB transcript (the largest
+// in a week of local sessions) costs ~55ms to scan, so ~16ms/MB. 16MB is ~4x the
+// worst observed session and lands near 260ms — a chunk of the hook's 2000ms
+// budget, but a bounded one. Past the cap the ledger goes silent rather than
+// risking the timeout, since a hook that times out is worse than one that
+// declines to comment. Unrelated to `TRANSCRIPT_TAIL_BYTES` in bin/lib/meditate.mjs
+// despite the similar name — that one truncates to a tail window, which cannot
+// work here (a TaskCreate from early in the session falls outside any tail).
+var TRANSCRIPT_MAX_BYTES = 16 * 1024 * 1024;
+function readTaskLedger() {
+  var tp = process.env.HOOK_TRANSCRIPT_PATH || '';
+  if (!tp) return null;
+  var raw;
+  try {
+    var st = fs.statSync(tp);
+    if (!st.isFile() || st.size > TRANSCRIPT_MAX_BYTES) return null;
+    raw = fs.readFileSync(tp, 'utf-8');
+  } catch (e) { return null; }
+  var created = 0;                       // TaskCreate CALLS seen
+  var pendingCreates = {};               // tool_use id → awaiting its result
+  var createdIds = {};                   // task ids this transcript actually opened
+  var createdIdCount = 0;
+  var latest = {};                       // task id → most recent status seen
+  // Walked by newline index rather than raw.split('\n'): the split would hold a
+  // second full-size copy of a multi-MB transcript alongside the first, and the
+  // scan needs one line at a time.
+  var pos = 0;
+  while (pos <= raw.length) {
+    var nl = raw.indexOf('\n', pos);
+    var line = nl < 0 ? raw.slice(pos) : raw.slice(pos, nl);
+    pos = nl < 0 ? raw.length + 1 : nl + 1;
+    // Cheap pre-filter. A multi-MB transcript has a handful of task lines and
+    // tens of thousands of others; JSON.parse on every line is the whole cost.
+    if (line.indexOf('TaskCreate') < 0 && line.indexOf('TaskUpdate') < 0
+      && line.indexOf('created successfully') < 0) continue;
+    var entry;
+    try { entry = JSON.parse(line); } catch (e) { continue; }
+    var content = entry && entry.message && entry.message.content;
+    if (!Array.isArray(content)) continue;
+    for (var j = 0; j < content.length; j++) {
+      var block = content[j];
+      if (!block) continue;
+      // The created ids come from TaskCreate's RESULT, because the call itself
+      // carries no id. Without them `created` (a count of calls) and the closed
+      // set (a set of ids) are different units: a TaskUpdate naming a task from
+      // before this transcript — one carried across `/clear`, which is exactly
+      // what Claude Code's task store does — would discount a task it never
+      // opened, and the advisory would under-report the open list.
+      if (block.type === 'tool_result') {
+        if (!pendingCreates[block.tool_use_id]) continue;
+        delete pendingCreates[block.tool_use_id];
+        var text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
+        var m = /Task #(\S+) created successfully/.exec(text || '');
+        if (m && !createdIds[m[1]]) { createdIds[m[1]] = true; createdIdCount++; }
+        continue;
+      }
+      // Structural, not substring. A line that merely MENTIONS TaskCreate — this
+      // ticket's own discussion, a guidance excerpt, a shell command echoing the
+      // phrase — is text, and counting it would inflate the created total on
+      // exactly the sessions most likely to reach a PR gate. Correlating on
+      // tool_use_id is what keeps such an echo out of the created ids too.
+      if (block.type !== 'tool_use') continue;
+      if (block.name === 'TaskCreate') {
+        created++;
+        if (block.id) pendingCreates[block.id] = true;
+        continue;
+      }
+      if (block.name !== 'TaskUpdate') continue;
+      var input = block.input || {};
+      var id = input.taskId != null ? input.taskId : input.task_id;
+      var status = input.status;
+      if (id == null || typeof status !== 'string' || !status) continue;
+      // Last write wins — transcript order is chronological, so a task reopened
+      // after completion is correctly counted as open again.
+      latest[String(id)] = status;
+    }
+  }
+  if (created === 0) return null;
+  // A create whose result never landed (interrupted call, truncated transcript)
+  // is counted OPEN: it was opened, and nothing observed it being closed.
+  var open = created - createdIdCount;
+  Object.keys(createdIds).forEach(function(id) {
+    // `deleted` closes the loop as legitimately as `completed`: a task removed
+    // because it no longer applies is not an abandoned one.
+    if (latest[id] !== 'completed' && latest[id] !== 'deleted') open++;
+  });
+  if (open > created) open = created;
+  return { created: created, closed: created - open, open: open };
+}
+
 switch (command) {
   case 'check-before-agent': {
     // Mostly advisory. The TaskCreate + memory reminders below go to stdout and
@@ -1457,6 +1571,27 @@ switch (command) {
     // optional ENV=val prefix segment catches `GH_TOKEN=x gh pr create`.
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;
+    // #1374 — close the loop the TaskCreate reminder opens. Advisory: stdout,
+    // no exit, and worded as a reminder, because a message may only claim to
+    // block when it blocks (#1326). An open task list is a reporting failure,
+    // not a quality failure — blocking the PR on it would be a new deadlock.
+    //
+    // Deliberately ABOVE the no-source exemption below: a docs-only PR can
+    // abandon a list exactly like a source PR can, and the exemption is about
+    // testing/simplify/learnings, not about whether the run told the user what
+    // it did. Gated on the same `task_create_first` flag as the reminder itself
+    // so the two halves are always consistent — a project that turned the nag
+    // off is not then nagged about the other end of it.
+    if (config.task_create_first) {
+      var ledger = readTaskLedger();
+      if (ledger && ledger.open > 0) {
+        process.stdout.write(
+          'REMINDER: ' + ledger.created + ' task' + (ledger.created === 1 ? '' : 's') +
+          ' created this session, ' + ledger.open + ' still open. Close them with ' +
+          'TaskUpdate (status: completed), or delete the ones that no longer apply, ' +
+          'so the run does not report done over an unfinished list.\n');
+      }
+    }
     // No-source-files exemption (#1176, supersedes the original docs-only path).
     // If every file changed vs the merge-base is either a docs/image file or a
     // path-inert file (.github/workflows/, ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE/)

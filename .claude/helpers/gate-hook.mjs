@@ -32,6 +32,15 @@ if (hookContext.tool_name) env.TOOL_NAME = hookContext.tool_name;
 if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
   env.HOOK_SESSION_ID = hookContext.session_id;
 }
+// #1374 — forward the transcript path so a gate can read what the session
+// actually DID, not only what workflow-state.json was told about it. Used by
+// check-before-pr to count TaskCreate calls against terminal TaskUpdate calls;
+// the alternative — a `^TaskUpdate$` PostToolUse observer — is the wiring #1331
+// removed as pure hot-path overhead, and the transcript already holds the answer.
+// Absent on hosts that don't send it: gates treat that as "unknown" and stay silent.
+if (typeof hookContext.transcript_path === 'string' && hookContext.transcript_path) {
+  env.HOOK_TRANSCRIPT_PATH = hookContext.transcript_path;
+}
 // #1332: structured tool inputs are forwarded as JSON, not dropped.
 //
 // This previously forwarded ONLY string values, so any object-valued input was

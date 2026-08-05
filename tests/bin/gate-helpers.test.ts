@@ -52,6 +52,10 @@ function baseEnv(projectDir: string): Record<string, string> {
     // bucket they target (#931). Tests that exercise per-session emission
     // override HOOK_SESSION_ID after building env.
     HOOK_SESSION_ID: '',
+    // Same reason (#1374): the open-task ledger reads the transcript the bridge
+    // forwards, and an inherited path from the outer session would make the
+    // "silent when absent" cases pass or fail depending on who ran the suite.
+    HOOK_TRANSCRIPT_PATH: '',
   };
 }
 
@@ -1727,6 +1731,251 @@ describe('end-to-end: spell lifecycle', () => {
     });
   });
 
+  // #1374 — the completion half of the TaskCreate reminder. moflo used to push
+  // `TaskCreate` and then never look again, so a run that opened four tasks and
+  // closed none satisfied every gate. These pin the reporting side: the ledger
+  // comes from the session transcript (no `^TaskUpdate$` observer — that wiring
+  // is what #1331 removed as hot-path overhead), it counts CALLS not mentions,
+  // and it reminds without ever claiming to block (#1326).
+  describe('open-task advisory at the PR gate (#1374)', () => {
+    /** One transcript line as Claude Code writes it: a tool_use block. */
+    function toolUse(name: string, input: Record<string, unknown>, id = 'toolu_x'): string {
+      return JSON.stringify({
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] },
+      });
+    }
+
+    /**
+     * A TaskCreate CALL plus the tool_result that names the id it was assigned —
+     * both lines, because the call itself carries no id and the ledger has to
+     * correlate them to know which ids this transcript actually opened.
+     */
+    function taskCreate(taskId: string): string[] {
+      const useId = `toolu_create_${taskId}`;
+      return [
+        toolUse('TaskCreate', { subject: `task ${taskId}`, description: 'd' }, useId),
+        JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: useId, content: `Task #${taskId} created successfully: task ${taskId}` }],
+          },
+        }),
+      ];
+    }
+
+    /** Write a JSONL transcript into the temp project and point the env at it. */
+    function withTranscript(env: Record<string, string>, lines: string[], eol = '\n'): void {
+      const p = join(tmpDir, 'transcript.jsonl');
+      writeFileSync(p, lines.join(eol) + eol);
+      env.HOOK_TRANSCRIPT_PATH = p;
+    }
+
+    /** All blocking gates satisfied, so only the advisory can appear. */
+    function prReady(env: Record<string, string>): void {
+      writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: true });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+    }
+
+    it('reports the open count when tasks were created and not closed', () => {
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        ...taskCreate('1'),
+        ...taskCreate('2'),
+        ...taskCreate('3'),
+        toolUse('TaskUpdate', { taskId: '1', status: 'completed' }),
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).toContain('3 tasks created this session, 2 still open');
+      // Advisory, not a gate: it must never change the exit code (#1326).
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).not.toContain('BLOCKED');
+    });
+
+    it('stays silent when every created task reached a terminal status', () => {
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        ...taskCreate('1'),
+        ...taskCreate('2'),
+        toolUse('TaskUpdate', { taskId: '1', status: 'in_progress' }),
+        toolUse('TaskUpdate', { taskId: '1', status: 'completed' }),
+        toolUse('TaskUpdate', { taskId: '2', status: 'deleted' }),
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).not.toContain('still open');
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('counts a task reopened after completion as open again', () => {
+      // Last write wins — the transcript is chronological, so a completed task
+      // moved back to in_progress is genuinely unfinished at PR time.
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        ...taskCreate('1'),
+        toolUse('TaskUpdate', { taskId: '1', status: 'completed' }),
+        toolUse('TaskUpdate', { taskId: '1', status: 'in_progress' }),
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).toContain('1 task created this session, 1 still open');
+    });
+
+    it('does not let a task carried across /clear discount this session', () => {
+      // The bug this pins: counting CREATE CALLS against a SET OF CLOSED IDS
+      // mixes units. Claude Code's task store survives `/clear`, so closing a
+      // task from before this transcript is routine — and it must not cancel out
+      // a task this session opened and left open.
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        toolUse('TaskUpdate', { taskId: '7', status: 'completed' }),  // stale, pre-/clear
+        ...taskCreate('9'),
+        toolUse('TaskUpdate', { taskId: '8', status: 'deleted' }),    // stale, pre-/clear
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).toContain('1 task created this session, 1 still open');
+    });
+
+    it('counts a create whose result never landed as open', () => {
+      // Interrupted call or truncated transcript: it was opened, and nothing
+      // observed it closing. Reporting it open is the conservative read.
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        ...taskCreate('1'),
+        toolUse('TaskUpdate', { taskId: '1', status: 'completed' }),
+        toolUse('TaskCreate', { subject: 'orphan', description: 'd' }, 'toolu_orphan'),
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).toContain('2 tasks created this session, 1 still open');
+    });
+
+    it('reads a snake_case task_id as well as taskId', () => {
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        ...taskCreate('1'),
+        toolUse('TaskUpdate', { task_id: '1', status: 'completed' }),
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).not.toContain('still open');
+    });
+
+    it('reads a CRLF transcript (Rule #1 — Windows checkouts and hosts)', () => {
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [...taskCreate('1'), ...taskCreate('2'),
+        toolUse('TaskUpdate', { taskId: '1', status: 'completed' })], '\r\n');
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).toContain('2 tasks created this session, 1 still open');
+    });
+
+    it('counts tool CALLS, not text that merely mentions the tool names', () => {
+      // The failure this pins: a substring scan would count this ticket's own
+      // discussion — and a transcript that talks about TaskCreate is exactly the
+      // kind of session that then reaches a PR gate.
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        JSON.stringify({
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'moflo nags TaskCreate but never observes TaskUpdate' }] },
+        }),
+        // A Bash call that PRINTS the phrase — e.g. this ticket's own transcript
+        // analysis. Correlating on tool_use_id is what keeps it out of the ledger.
+        JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_some_bash', content: 'Task #1 created successfully (TaskCreate)' }] },
+        }),
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).not.toContain('still open');
+    });
+
+    it('survives the per-prompt state reset that made the previous gate a no-op', () => {
+      // AC of #1374: a counter in workflow-state would have to be exempted from
+      // applyPromptStateReset by hand. The transcript holds no state to reset,
+      // so a fresh prompt between TaskCreate and `gh pr create` changes nothing.
+      const env = baseEnv(tmpDir);
+      withTranscript(env, [...taskCreate('1'), ...taskCreate('2')]);
+      env.CLAUDE_USER_PROMPT = 'now open the pull request please';
+      runGate('prompt-reminder', env);
+      prReady(env);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).toContain('2 tasks created this session, 2 still open');
+    });
+
+    it('still reports while the PR is blocked for another reason', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: false, simplifyRun: true, learningsStored: true });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      withTranscript(env, taskCreate('1'));
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stdout).toContain('1 task created this session, 1 still open');
+    });
+
+    it('is silent when task_create_first is off — both halves or neither', () => {
+      // The reminder to OPEN a list and the reminder to CLOSE it are one
+      // feature. A project that turned the nag off must not get the other end.
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  task_create_first: false\n');
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [toolUse('TaskCreate', { subject: 'a', description: 'a' })]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).not.toContain('still open');
+    });
+
+    it('is silent when the host forwards no transcript path', () => {
+      // Older Claude Code builds: unknown is not the same as zero, so say nothing.
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      env.HOOK_TRANSCRIPT_PATH = '';
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).not.toContain('still open');
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('is silent when the transcript path does not exist', () => {
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      env.HOOK_TRANSCRIPT_PATH = join(tmpDir, 'no-such-transcript.jsonl');
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).not.toContain('still open');
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('tolerates malformed transcript lines without failing the gate', () => {
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      withTranscript(env, [
+        '{not json at all',
+        '',
+        ...taskCreate('1'),
+        '{"message":{"content":"TaskUpdate as a bare string"}}',
+      ]);
+      const r = runGate('check-before-pr', env);
+      expect(r.stdout).toContain('1 task created this session, 1 still open');
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('never reads the transcript for a non-PR command', () => {
+      // The cost argument in #1374 AC5: the ledger sits behind the `gh pr create`
+      // match, so the per-tool Bash path never touches the file. Pointed at a
+      // directory — a read would throw or hang; the gate must not even try.
+      const env = baseEnv(tmpDir);
+      prReady(env);
+      env.TOOL_INPUT_command = 'npm test';
+      env.HOOK_TRANSCRIPT_PATH = tmpDir;
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).not.toContain('still open');
+    });
+  });
+
   // Story #1274 (Epic #1269) + #1294 — verify-before-done gate. ON by default:
   // #1294 ships a real /verify skill and has /flo delegate to it, so the default
   // path must ENFORCE (an unset toggle blocks an unverified `gh pr create`).
@@ -2310,6 +2559,47 @@ describe('gate-hook.mjs: session_id forwarding (#838)', () => {
     const s = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
     expect(s.memorySearched).toBe(true);
     expect(s.memorySearchedBy['subagent-Z']).toBe(true);
+  });
+});
+
+// #1374 — the bridge must hand the gate the transcript path, or check-before-pr
+// has no ledger to read and silently reports nothing. Exercised end-to-end
+// through gate-hook.mjs (not by setting the env directly) because the
+// forwarding step is the part that can regress.
+describe('gate-hook.mjs: transcript_path forwarding (#1374)', () => {
+  it('forwards transcript_path so the PR gate can count open tasks', async () => {
+    writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: true });
+    const transcript = join(tmpDir, 'transcript.jsonl');
+    writeFileSync(transcript, [
+      JSON.stringify({ message: { content: [{ type: 'tool_use', id: 'tu_1', name: 'TaskCreate', input: { subject: 'a', description: 'a' } }] } }),
+      JSON.stringify({ message: { content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: 'Task #1 created successfully: a' }] } }),
+      JSON.stringify({ message: { content: [{ type: 'tool_use', id: 'tu_2', name: 'TaskCreate', input: { subject: 'b', description: 'b' } }] } }),
+      JSON.stringify({ message: { content: [{ type: 'tool_result', tool_use_id: 'tu_2', content: 'Task #2 created successfully: b' }] } }),
+      JSON.stringify({ message: { content: [{ type: 'tool_use', name: 'TaskUpdate', input: { taskId: '1', status: 'completed' } }] } }),
+    ].join('\n') + '\n');
+
+    const r = await runEsmWithStdin(GATE_HOOK, ['check-before-pr'], {
+      session_id: 'sess-1',
+      transcript_path: transcript,
+      tool_name: 'Bash',
+      tool_input: { command: 'gh pr create --title "test"' },
+      hook_event_name: 'PreToolUse',
+    }, baseEnv(tmpDir));
+
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain('2 tasks created this session, 1 still open');
+  });
+
+  it('is silent when the host sends no transcript_path', async () => {
+    writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: true });
+    const r = await runEsmWithStdin(GATE_HOOK, ['check-before-pr'], {
+      session_id: 'sess-1',
+      tool_name: 'Bash',
+      tool_input: { command: 'gh pr create --title "test"' },
+      hook_event_name: 'PreToolUse',
+    }, baseEnv(tmpDir));
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).not.toContain('still open');
   });
 });
 
