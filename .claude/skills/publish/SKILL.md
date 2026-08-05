@@ -154,31 +154,92 @@ PUBLISH_SHA=$(git rev-parse HEAD)
 # so the dispatched run is unambiguously bound to this commit.
 gh workflow run release-smoke.yml --ref main -f sha="$PUBLISH_SHA"
 
-# Give GitHub a moment to register the dispatched run.
-sleep 10
+# Find the dispatched run, block until it finishes, then PROVE it green.
+#
+# `gh run watch --exit-status` is NOT the gate. It has been observed to exit 0
+# while most of the matrix was still in progress (moflo@4.12.4-rc.7 publish:
+# exit 0 with 7 of 9 jobs unfinished), which would publish against an unproven
+# matrix. It is used here only to block cheaply — the verdict comes from an
+# explicit status/conclusion read afterwards. Same rule
+# `.claude/skills/fl/phases.md` Phase 5.3b already states for
+# `gh pr checks --watch`: a green exit code is not proof.
+#
+# The run lookup retries instead of guessing a fixed delay, and matches on
+# head_sha so a concurrent dispatch (a manual UI retry from another tab) can
+# never be mistaken for ours — never `--limit 1` alone.
+node -e '
+const { execFileSync } = require("node:child_process");
+const sha = process.argv[1];
+const gh = (args) => execFileSync("gh", args, { encoding: "utf8" }).trim();
+// Synchronous by design: this script does nothing but wait, and a blocking
+// sleep keeps the control flow linear. Do not "fix" it into setTimeout.
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const deadline = Date.now() + 60 * 60 * 1000;
+const WATCH_TIMEOUT_MS = 10 * 60 * 1000;
 
-# Find the run we just dispatched by matching head_sha. This is robust against
-# concurrent dispatches (e.g. a manual UI retry from another tab) — never use
-# `--limit 1` alone, which would race against any unrelated in-flight run.
-RUN_ID=$(gh run list --workflow=release-smoke.yml --branch main \
-  --json databaseId,headSha \
-  --jq ".[] | select(.headSha == \"$PUBLISH_SHA\") | .databaseId" \
-  | head -1)
+let runId = "";
+while (!runId && Date.now() < deadline) {
+  const rows = JSON.parse(gh(["run", "list", "--workflow=release-smoke.yml", "--branch", "main",
+                              "--json", "databaseId,headSha"]));
+  const hit = rows.find((r) => r.headSha === sha);
+  if (hit) { runId = String(hit.databaseId); break; }
+  sleep(5000);
+}
+if (!runId) {
+  console.error("ERROR: no release-smoke run found for SHA " + sha +
+    ". Check https://github.com/eric-cielo/moflo/actions/workflows/release-smoke.yml");
+  process.exit(1);
+}
+console.log("release-smoke run " + runId + " bound to " + sha);
 
-if [ -z "$RUN_ID" ]; then
-  echo "ERROR: no release-smoke run found for SHA $PUBLISH_SHA. Wait a few seconds and retry, or check https://github.com/eric-cielo/moflo/actions/workflows/release-smoke.yml" >&2
-  exit 1
-fi
+for (;;) {
+  // Blocks while the run is live; may also return early and prematurely green.
+  // Capped so a stalled watch cannot outlive the deadline below — on timeout we
+  // simply fall through to the authoritative status read and watch again.
+  try {
+    execFileSync("gh", ["run", "watch", runId, "--exit-status"],
+                 { stdio: "inherit", timeout: WATCH_TIMEOUT_MS });
+  } catch (err) {
+    // Expected when the run failed (watch exits non-zero) or when the cap above
+    // fired. Surfaced rather than swallowed so a real fault — gh missing, auth
+    // expired, rate limit — is visible instead of looking like a slow run.
+    console.error("gh run watch: " + ((err && err.message) || err));
+  }
+  const state = JSON.parse(gh(["run", "view", runId, "--json", "status,conclusion"]));
+  if (state.status === "completed") {
+    if (state.conclusion !== "success") {
+      console.error("ERROR: release-smoke concluded " + state.conclusion +
+        " — inspect: gh run view " + runId + " --log-failed");
+      process.exit(1);
+    }
+    break;
+  }
+  if (Date.now() > deadline) {
+    console.error("ERROR: release-smoke still " + state.status + " after 60m — run " + runId);
+    process.exit(1);
+  }
+  sleep(15000);
+}
 
-# Block until the run completes. Exits non-zero on failure.
-gh run watch "$RUN_ID" --exit-status
+// Every leg, not just the rollup — a skipped or cancelled job is not a pass.
+const jobs = JSON.parse(gh(["run", "view", runId, "--json", "jobs"])).jobs;
+const bad = jobs.filter((j) => j.conclusion !== "success");
+if (bad.length > 0) {
+  console.error("ERROR: " + bad.length + " job(s) not success: " +
+    bad.map((j) => j.name + "=" + (j.conclusion || "incomplete")).join(", "));
+  process.exit(1);
+}
+console.log("release-smoke GREEN — " + jobs.length + " jobs, run " + runId);
+' "$PUBLISH_SHA"
 ```
 
 `release-smoke.yml` runs full consumer + populated smoke on Ubuntu/macOS/Windows, plus file-sync smoke on all three filesystems. Per-PR CI is intentionally Ubuntu-only to keep recurring cost manageable — the full cross-platform matrix is paid once here, at publish time, against the exact commit we're about to publish.
 
 **Wall time expectations**: typical run is ~15-20 min once caches are warm. **The first dispatch after `release-smoke.yml` lands will have cold caches on every leg** (no prior runs of this workflow exist to populate the `consumer-warm` and `fastembed` caches per-OS). Expect ~25-35 min on that first dispatch — the macOS leg is the long pole. Subsequent dispatches reuse the cache and settle to the typical ~15 min.
 
-**If `gh run watch` exits non-zero**: stop immediately. Inspect the failed leg with `gh run view "$RUN_ID" --log-failed`, fix the underlying issue, push the fix, then re-run this step (no need to rerun Steps 0–8 — the bump commit is already on main, and the SHA-filtered lookup will pick up the new dispatched run against the same SHA only after `cancel-in-progress: false` lets the previous run drain). Do not proceed to `npm publish` until release-smoke is green for the SHA you intend to publish.
+**Never publish on `gh run watch`'s exit code alone.** The block above treats it as a cheap way to block, not as the verdict — it can return 0 with the matrix still running. The gate is the explicit `status == "completed"` + `conclusion == "success"` read, plus a per-job sweep so a cancelled or skipped leg cannot pass as green.
+
+**If the block above exits non-zero**: stop immediately. It prints the run id and, on a real failure, the conclusion. Inspect the failed leg with `gh run view <run-id> --log-failed`, fix the underlying issue, push the fix, then re-run this step (no need to rerun Steps 0–8 — the bump commit is already on main, and the SHA-filtered lookup will pick up the new dispatched run against the same SHA only after `cancel-in-progress: false` lets the previous run drain). Do not proceed to `npm publish` until release-smoke is green for the SHA you intend to publish.
 
 ### Step 9: Verify npm Authentication
 
