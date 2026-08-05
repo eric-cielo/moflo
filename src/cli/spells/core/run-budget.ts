@@ -244,8 +244,24 @@ export interface RunBudgetOptions {
    * invariant rather than a user-facing constraint.
    */
   readonly ledgerDir?: string;
-  /** Pre-built ledger, for tests. Overrides `ledgerDir` when both are given. */
-  readonly ledger?: InvocationLedger;
+}
+
+/**
+ * Build the ledger backing a daily ceiling, or null when there is nothing to
+ * enforce (no daily limit configured) or nowhere to persist it (no project
+ * root). Extracted from the constructor because inlining it there produced a
+ * three-level ternary that read as if the two null cases were related.
+ */
+function ledgerFor(
+  config: SpellBudgetConfig,
+  options: RunBudgetOptions,
+): InvocationLedger | null {
+  if (config.dailyModelInvocations === undefined) return null;
+  if (!options.ledgerDir) return null;
+  return new InvocationLedger(
+    ledgerPathFor(options.ledgerDir),
+    { ...(options.now ? { now: options.now } : {}) },
+  );
 }
 
 /**
@@ -272,11 +288,7 @@ export class SpellRunBudget implements RunBudgetAccessor {
     private readonly config: SpellBudgetConfig,
     options: RunBudgetOptions = {},
   ) {
-    this.ledger = config.dailyModelInvocations !== undefined
-      ? options.ledger ?? (options.ledgerDir
-        ? new InvocationLedger(ledgerPathFor(options.ledgerDir), { ...(options.now ? { now: options.now } : {}) })
-        : null)
-      : null;
+    this.ledger = ledgerFor(config, options);
     this.now = options.now ?? Date.now;
     this.startedAt = this.now();
     this.deadlineAt = config.maxWallClockMs !== undefined
