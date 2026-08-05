@@ -161,10 +161,12 @@ The `check-before-pr` gate blocks `gh pr create` until `/flo-simplify` has run s
 git add <specific files>
 git commit -m "type(scope): description
 
-Closes #<issue-number>
-
-Co-Authored-By: moflo <noreply@cielolimitada.com>"
+Closes #<issue-number>"
 ```
+
+**No attribution trailer.** Do not add `Co-Authored-By:`, `Generated with …`, or any
+other tool-attribution line to commits or PR bodies (#1398). This is the consumer's
+repository and their git history is permanent — moflo does not sign their commits.
 
 ### 5.1b Verify-before-done (default; skipped only with `--no-verify`)
 **Delegate to the `/verify` skill** — `Skill({ skill: "verify" })`, passing the issue number or spec slug. That skill owns the mechanics (locate acceptance criteria → reuse Phase 4's already-green tests, no double verify → map each criterion → run only uncovered checks → record the outcome). Don't restate them here or verify in prose — *invoking* `/verify` is what records the run and satisfies the `check-before-done` gate.

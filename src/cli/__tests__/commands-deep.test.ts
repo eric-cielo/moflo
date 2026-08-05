@@ -1473,9 +1473,12 @@ describe('Init System', () => {
       expect(perms.deny).toBeDefined();
     });
 
-    it('should include attribution', () => {
+    it('should NOT include attribution (#1398)', () => {
+      // moflo does not sign a consumer's commits. The generator used to write a
+      // Co-Authored-By trailer and a "Generated with moflo" PR banner here;
+      // nothing read the key, and the attribution itself is unwanted.
       const settings = generateSettings(DEFAULT_INIT_OPTIONS) as Record<string, unknown>;
-      expect(settings.attribution).toBeDefined();
+      expect(settings.attribution).toBeUndefined();
     });
 
     it('should include env with agent teams enabled', () => {

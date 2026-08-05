@@ -132,6 +132,26 @@ function readMofloYaml() {
 }
 var MOFLO_YAML = readMofloYaml();
 
+// #1394 — is the hook that transcribes /verify's verdict into workflow-state.json
+// actually wired? Distinguishes "the agent skipped Step 5" from "nothing exists
+// to record the verdict", which need opposite remedies: the first is fixed by
+// re-running /verify, the second cannot be.
+//
+// Deliberately NOT hoisted to module scope like MOFLO_YAML: this is only ever
+// consulted on an already-blocked check-before-done path, so reading it eagerly
+// would add a syscall to every Write/Edit to answer a question almost no gate
+// invocation asks. Substring match (not a JSON walk) so it holds regardless of
+// which matcher block a consumer's hook lives in, or how they hand-edited it.
+// Unreadable/malformed settings → true, so a parse failure falls back to the
+// pre-existing generic message rather than asserting a wiring bug that may not
+// exist.
+function isVerifyOutcomeHookWired() {
+  try {
+    return fs.readFileSync(path.join(PROJECT_DIR, '.claude', 'settings.json'), 'utf-8')
+      .indexOf('record-verify-outcome') >= 0;
+  } catch (e) { return true; }
+}
+
 var config = loadGateConfig();
 var sddConf = loadSddConfig();
 var mergeConf = loadMergeConfig();
@@ -724,7 +744,22 @@ var EDIT_RESET_SKIP_BOTH_RE = /\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^
 // pure noise. Scoped to the reset only — deliberately NOT added to EXEMPT,
 // which would also un-gate reads of `.moflo/specs/**`, and those are indexed
 // guidance that memory-first should still route through a search.
-var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\/])\.github[\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\/.]|$)|(?:^|[\\\/])\.moflo[\\\/]/i;
+// #1395 — `.claude/` CONFIG joins them, by the same "doesn't expose new runtime
+// surface" reasoning: hook wiring, skills and guidance are not the code under
+// verification. This is the stronger case, in fact — it is the directory a user
+// edits *because a gate told them to*. Before this, fixing hook wiring on a
+// gate's own instruction reset verifyRun and invalidated the verification the
+// fix existed to let through, so the recovery was: fix wiring → verification
+// invalidated → restart session → re-run /verify → retry (#1392 field report).
+//
+// Scoped to config, NOT all of `.claude/**`: `scripts/` and `helpers/` hold
+// executable runtime surface (gate.cjs itself lives there), and editing
+// executable code SHOULD still invalidate a verification. Listing the config
+// subdirectories explicitly keeps that invariant intact.
+//
+// Both separators in every alternative — a bare `/` here would silently no-op
+// on Windows, where TOOL_INPUT paths arrive backslashed (Rule #1).
+var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\/])\.github[\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\/.]|$)|(?:^|[\\\/])\.moflo[\\\/]|(?:^|[\\\/])\.claude[\\\/](?:settings(?:\.local)?\.json$|skills[\\\/]|guidance[\\\/]|agents[\\\/])/i;
 // Test files: invalidate the testing gate (tests are stale once test code changes)
 // but NOT the simplify gate — /simplify already reviewed the production code; touching
 // a test file or fixture doesn't expose new untested surface for code review (#908).
@@ -1728,14 +1763,25 @@ switch (command) {
       process.stderr.write('  - /verify ran and returned ' + sd.verifyOutcome + ' — fix the failing criteria, then re-run /verify\n');
       process.stderr.write('    (a FAIL is a real result, not a gate error; the PR is blocked because the change did not meet its acceptance criteria)\n');
     } else {
-      // Ran, but no verdict reached the gate: /verify was invoked and never
-      // recorded a structured outcome (interrupted, or it stored prose only).
-      process.stderr.write('  - /verify ran but recorded no verdict — re-run it so it stores a structured result\n');
-      process.stderr.write('    (Step 5 of the verify skill must pass metadata.overall to memory_store)\n');
-      // #1348 — the trap this state sets: re-invoking /verify CLEARS any prior
-      // verdict by design (#1332), so the obvious recovery lands right back here
-      // unless Step 5 completes. Say so, rather than letting it be rediscovered.
-      process.stderr.write('    Re-invoking /verify clears the prior verdict, so a re-run that skips Step 5 lands here again.\n');
+      // Ran, but no verdict reached the gate. TWO very different causes, and
+      // #1394 exists because they used to share one message that fit only the
+      // first: either /verify never recorded a structured outcome, or the hook
+      // that TRANSCRIBES the outcome is not wired, in which case a perfectly
+      // correct verdict was stored and nothing could carry it to the gate.
+      // Blaming the agent for the second case sends the user into an unbounded
+      // retry loop — re-running /verify cannot fix absent wiring.
+      if (!isVerifyOutcomeHookWired()) {
+        process.stderr.write('  - `record-verify-outcome` is not wired in .claude/settings.json — the verdict cannot be recorded\n');
+        process.stderr.write('    /verify may well have passed; nothing exists to transcribe its result, so re-running it will not help.\n');
+        process.stderr.write('    Fix: run `flo doctor --fix`, restart the session (Claude Code loads hooks only at start), then re-run /verify.\n');
+      } else {
+        process.stderr.write('  - /verify ran but recorded no verdict — re-run it so it stores a structured result\n');
+        process.stderr.write('    (Step 5 of the verify skill must pass metadata.overall to memory_store)\n');
+        // #1348 — the trap this state sets: re-invoking /verify CLEARS any prior
+        // verdict by design (#1332), so the obvious recovery lands right back here
+        // unless Step 5 completes. Say so, rather than letting it be rediscovered.
+        process.stderr.write('    Re-invoking /verify clears the prior verdict, so a re-run that skips Step 5 lands here again.\n');
+      }
     }
     process.stderr.write(ORDER_HINT);
     process.stderr.write('Disable via moflo.yaml:\n');

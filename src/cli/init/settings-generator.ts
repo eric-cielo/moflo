@@ -44,11 +44,11 @@ export function generateSettings(options: InitOptions): object {
     ],
   };
 
-  // Add claude-flow attribution for git commits and PRs
-  settings.attribution = {
-    commit: 'Co-Authored-By: moflo <noreply@cielolimitada.com>',
-    pr: '🤖 Generated with [moflo](https://github.com/eric-cielo/moflo)',
-  };
+  // #1398 — no attribution block. moflo used to write a `Co-Authored-By` trailer
+  // and a "Generated with moflo" PR banner into every consumer's settings.json.
+  // Nothing ever read the key (the /flo skill hardcoded the literal instead), and
+  // stamping a tool's identity into someone else's permanent git history is not
+  // moflo's call to make. Do not reintroduce — see issue #1398.
 
   // Note: Claude Code expects 'model' to be a string, not an object
   // Model preferences are stored in moflo settings instead

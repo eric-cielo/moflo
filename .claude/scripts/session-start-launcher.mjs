@@ -1591,6 +1591,18 @@ try {
             settingsChanges.push(`repaired ${plural(repaired.length, 'hook wiring')}`);
           }
         }
+        // #1398 — strip the legacy attribution block. Claude Code reads this key
+        // and injects it into the agent's instructions, so an upgraded consumer
+        // keeps stamping moflo's identity into their commits until it is removed;
+        // dropping it from the generator alone only fixes fresh installs.
+        // `typeof` guard so an older installed moflo without the export is a
+        // silent no-op rather than a session-start crash.
+        if (typeof mod.removeLegacyAttribution === 'function') {
+          if (mod.removeLegacyAttribution(settings)) {
+            dirty = true;
+            settingsChanges.push('removed legacy attribution block');
+          }
+        }
       }
     } catch (err) {
       emitWarning(`hook-wiring repair skipped (${errMessage(err)})`);

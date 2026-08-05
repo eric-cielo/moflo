@@ -63,8 +63,9 @@ style nit, and not limited to shipped code — git history is permanent.
 and the fix gets written up citing where the bug was seen. Writing `Symptoms in the wild
 (<their-project>/code)` into a regression test's header feels like good provenance and is exactly
 how 38 files got contaminated — including 9 runtime `output.writeln` banners that printed a client
-domain into every consumer's terminal, and the `Co-Authored-By` trailer `flo init` stamps into
-every consumer's `.claude/settings.json`.
+domain into every consumer's terminal, and the `Co-Authored-By` trailer `flo init` used to stamp
+into every consumer's `.claude/settings.json` (removed outright in #1398 — moflo no longer writes
+any attribution; see the note below).
 
 **When resolving an issue or PR that originated outside moflo, never record the reporter's
 identity.** Cite the issue number — that is the durable, non-leaking reference.
@@ -82,6 +83,13 @@ themselves trip the guard.
 
 Applies to every surface: runtime strings, JSDoc headers, test fixture names and paths, commit
 trailers, and `docs/internal/**` post-mortems.
+
+**No attribution trailers at all (#1398).** Separate from the leak rule above: moflo does not add
+`Co-Authored-By:`, `Generated with …`, or any other tool-attribution line to commits or PR bodies —
+not in consumer projects and not in this repo. A consumer's git history is theirs and is permanent;
+signing it is not moflo's call. The `attribution` block is no longer written by `flo init`, is
+stripped from existing projects on session start, and the `git-commit` safety hook defaults to
+adding nothing. Do not reintroduce any of it.
 
 **Enforced by** `tests/guards/client-name-leak-guard.test.ts`, which matches the *shapes* these
 identifiers take (project dir under a home path, contact domain in an email, domain on an

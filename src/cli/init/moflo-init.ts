@@ -32,7 +32,7 @@ import {
   computeHookBlockDrift,
   isHookBlockLocked,
 } from '../services/hook-block-hash.js';
-import { rewriteIncorrectHookWiring } from '../services/hook-wiring.js';
+import { rewriteIncorrectHookWiring, removeLegacyAttribution } from '../services/hook-wiring.js';
 
 export { discoverTestDirs };
 
@@ -333,11 +333,19 @@ function generateHooks(root: string, force?: boolean, _answers?: MofloInitAnswer
     preserved = extraCount - removed;
   }
 
-  // Ensure statusLine + permissions/env/attribution scaffold is present —
-  // mirrors the existing moflo-init.ts UX but no longer overwrites user
-  // values that are already set.
+  // #1398 — strip the legacy attribution block on this path too, so `flo init`
+  // on an existing project and `doctor --fix` heal it as well as session start.
+  // NOT inert: Claude Code reads `settings.attribution` and injects it into the
+  // agent's instructions, so leaving it keeps moflo's trailer on the consumer's
+  // commits regardless of what the generator now emits.
+  const strippedAttribution = removeLegacyAttribution(existing);
+
+  // Ensure statusLine + permissions/env scaffold is present — mirrors the
+  // existing moflo-init.ts UX but no longer overwrites user values that are
+  // already set. `attribution` is deliberately absent from the scaffold list:
+  // the generator no longer emits it, so it could only ever copy `undefined`.
   const canonical = generateSettings({ ...DEFAULT_INIT_OPTIONS, targetDir: root, force: true }) as Record<string, unknown>;
-  const scaffoldKeys = ['statusLine', 'permissions', 'env', 'attribution'] as const;
+  const scaffoldKeys = ['statusLine', 'permissions', 'env'] as const;
   const scaffoldAdded: string[] = [];
   for (const key of scaffoldKeys) {
     if (existing[key] == null && canonical[key] != null) {
@@ -346,7 +354,8 @@ function generateHooks(root: string, force?: boolean, _answers?: MofloInitAnswer
     }
   }
 
-  const dirty = rewroteCommands > 0 || added > 0 || removed > 0 || scaffoldAdded.length > 0;
+  const dirty = rewroteCommands > 0 || added > 0 || removed > 0 || scaffoldAdded.length > 0
+    || strippedAttribution;
   if (!dirty) {
     return { name: '.claude/settings.json', status: 'skipped', detail: 'already at canonical reference' };
   }
@@ -361,6 +370,7 @@ function generateHooks(root: string, force?: boolean, _answers?: MofloInitAnswer
   if (preserved > 0) parts.push(`✓${preserved} preserved`);
   if (rewroteCommands > 0) parts.push(`↻${rewroteCommands} rewrites`);
   if (scaffoldAdded.length > 0) parts.push(`+scaffold (${scaffoldAdded.join(',')})`);
+  if (strippedAttribution) parts.push('-attribution (#1398)');
   return { name: '.claude/settings.json', status: 'updated', detail: parts.join(', ') };
 }
 

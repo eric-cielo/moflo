@@ -16,6 +16,47 @@ interface HookEntry {
   timeout: number;
 }
 
+/**
+ * #1398 — remove the legacy `attribution` block from a consumer's settings.json.
+ *
+ * This is NOT cosmetic cleanup. `settings.attribution` is read by Claude Code
+ * itself, which injects `attribution.commit` / `attribution.pr` into the agent's
+ * instructions — which is how the `Co-Authored-By: moflo …` trailer and the
+ * "Generated with moflo" PR banner actually reached commits. No moflo code reads
+ * the key, so it looks inert from inside this repo; it is not.
+ *
+ * Consequence: dropping the block from `settings-generator.ts` fixes FRESH
+ * installs only. Every project that upgrades keeps the key it was given at init
+ * and keeps stamping moflo's identity into its own permanent git history. The
+ * generator edit without this one is precisely the fresh-install-only change
+ * `internal/upgrade-contract.md` § "Design for the upgrade path first" warns about.
+ *
+ * Deletes only the exact keys moflo wrote. A consumer who set their own
+ * `attribution` deliberately keeps it — we remove ours, not theirs.
+ *
+ * @returns true when the settings object was modified.
+ */
+export function removeLegacyAttribution(settings: Record<string, unknown>): boolean {
+  const attribution = settings.attribution as Record<string, unknown> | undefined;
+  // Array.isArray guard: `typeof [] === 'object'`, so a bogus array value would
+  // otherwise fall through to the empty-object check below and be reported as a
+  // change we didn't make — a spurious settings.json write on every session start.
+  if (!attribution || typeof attribution !== 'object' || Array.isArray(attribution)) return false;
+
+  const MOFLO_COMMIT = 'Co-Authored-By: moflo <noreply@cielolimitada.com>';
+  const MOFLO_PR = '\u{1F916} Generated with [moflo](https://github.com/eric-cielo/moflo)';
+
+  let changed = false;
+  if (attribution.commit === MOFLO_COMMIT) { delete attribution.commit; changed = true; }
+  if (attribution.pr === MOFLO_PR) { delete attribution.pr; changed = true; }
+
+  // Drop the now-empty container so the key doesn't linger as a puzzle for the
+  // next reader. A block still holding consumer-set values is left alone.
+  if (Object.keys(attribution).length === 0) { delete settings.attribution; changed = true; }
+
+  return changed;
+}
+
 interface HookEntryMapping {
   event: string;
   matcher: string;
@@ -51,9 +92,30 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   // start; without it, only consumers who re-run `flo init` would get the
   // escape, and the deadlock would persist everywhere else.
   { event: 'PostToolUse', pattern: 'record-bash-swarm-init' },
+  // #1393 (found by the generator-parity guard) — the MCP halves that #1338
+  // left behind. check-before-agent hard-blocks every Agent spawn under
+  // `/fl -s` until `swarmInitialized` (gate.cjs:1201) and under `/fl -h` until
+  // `hiveInitialized` (gate.cjs:1209); these are the hooks that set them.
+  // #1338 added only the CLI half above, so on an UPGRADED consumer the
+  // primary path — the skill calling mcp__moflo__swarm_init — credited
+  // nothing and swarm/hive runs deadlocked exactly like #1392's verify gate.
+  // Routed via gate.cjs (not gate-hook.mjs) to match getReferenceHookBlock()
+  // in hook-block-hash.ts:164-165 — if the two disagree the drift detector
+  // fights the repair path every session start.
+  { event: 'PostToolUse', pattern: 'record-swarm-init' },
+  { event: 'PostToolUse', pattern: 'record-hive-init' },
   { event: 'PostToolUse', pattern: 'record-skill-run' },
   // Story #1274 — record the native /verify skill run so check-before-done is satisfied.
   { event: 'PostToolUse', pattern: 'record-verify-run' },
+  // #1393 — the transcriber that turns /verify's stored verdict into
+  // `verifyOutcome` on workflow-state.json. #1332 tightened check-before-done to
+  // require verifyOutcome === 'PASS' but wired this hook in settings-generator
+  // ONLY, so every project that UPGRADED (rather than re-running `flo init`) got
+  // a verify-before-done gate that could not be satisfied — /verify stored a
+  // correct PASS, nothing transcribed it, and the sole escape was
+  // `gates: verify_before_done: false`. Listed here so repairHookWiring grafts
+  // it in on next session start.
+  { event: 'PostToolUse', pattern: 'record-verify-outcome' },
   { event: 'PostToolUse', pattern: 'reset-edit-gates' },
   // First UserPromptSubmit hook (prompt-hook.mjs internally calls
   // `gate.cjs prompt-reminder`). Substring check tolerates either the
@@ -109,8 +171,21 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // #1338 follow-up — same Bash/PowerShell PostToolUse block as record-test-run.
   'record-bash-swarm-init':   { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-bash-swarm-init', timeout: 2000 } },
   'record-skill-run':         { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-skill-run', timeout: 2000 } },
+  // #1393 — MCP halves of the swarm/hive init recorders. gate.cjs (not
+  // gate-hook.mjs) and these exact matchers mirror hook-block-hash.ts:164-165
+  // and settings-generator.ts; all four copies must agree or the drift
+  // detector and repairHookWiring undo each other on every session start.
+  'record-swarm-init':        { event: 'PostToolUse',      matcher: '^mcp__moflo__swarm_init$',   hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-swarm-init', timeout: 2000 } },
+  'record-hive-init':         { event: 'PostToolUse',      matcher: '^mcp__moflo__hive-mind_init$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-hive-init', timeout: 2000 } },
   // Story #1274 — record the native /verify skill run (same ^Skill$ matcher as record-skill-run).
   'record-verify-run':        { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-verify-run', timeout: 2000 } },
+  // #1393 — shares the ^mcp__moflo__memory_store$ block with record-learnings-stored;
+  // repairHookWiring appends it there rather than creating a second block.
+  // MUST route through gate-hook.mjs, NOT gate.cjs: the TOOL_INPUT_* env vars
+  // gate.cjs reads are built by gate-hook.mjs from the hook's stdin payload, so a
+  // direct gate.cjs invocation would see neither the key nor the `metadata` object
+  // carrying the verdict — the hook would fire and record nothing.
+  'record-verify-outcome':    { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_store$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-verify-outcome', timeout: 2000 } },
   'reset-edit-gates':         { event: 'PostToolUse',      matcher: '^(Write|Edit|MultiEdit)$',   hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" reset-edit-gates', timeout: 2000 } },
   // #931 — Agent-time advisory; never blocks. Pulled the TaskCreate REMINDER
   // and namespace hint out of prompt-reminder so they fire only when Claude is

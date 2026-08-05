@@ -309,10 +309,6 @@
       "Read(./.env.*)"
     ]
   },
-  "attribution": {
-    "commit": "Co-Authored-By: moflo <noreply@cielolimitada.com>",
-    "pr": "🤖 Generated with [moflo](https://github.com/eric-cielo/moflo)"
-  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "MOFLO_V3_ENABLED": "true",
