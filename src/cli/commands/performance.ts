@@ -41,7 +41,7 @@ const benchmarkCommand: Command = {
       generateEmbedding,
       batchCosineSim,
       flashAttentionSearch,
-      getHNSWStatus,
+      getEffectiveHNSWStatus,
       storeEntry,
       searchEntries,
     } = await import('../memory/memory-initializer.js');
@@ -123,9 +123,13 @@ const benchmarkCommand: Command = {
     // 3. HNSW Search Benchmark
     if (suite === 'all' || suite === 'search') {
       spinner.setText('Benchmarking HNSW search...');
-      const hnswStatus = getHNSWStatus();
+      // The searches below go through `searchEntries`, which since #1058 is
+      // served by the daemon — so gate on the index that answers them, not on
+      // this process's own singleton, which a routed read never builds (#1387).
+      const hnswStatus = getEffectiveHNSWStatus();
+      const indexedVectors = hnswStatus.entryCount ?? 0;
 
-      if (hnswStatus.available && hnswStatus.entryCount > 0) {
+      if (hnswStatus.available && indexedVectors > 0) {
         const searchTimes: number[] = [];
         const testQueries = [
           'error handling patterns',
@@ -151,10 +155,10 @@ const benchmarkCommand: Command = {
         const mean = searchTimes.reduce((a, b) => a + b, 0) / searchTimes.length;
         // Brute force baseline: ~0.5μs per vector comparison, 1000 vectors = 0.5ms
         // HNSW is O(log n) approximate-nearest-neighbor (ANN) search
-        const baselineBruteForce = hnswStatus.entryCount * 0.0005;
+        const baselineBruteForce = indexedVectors * 0.0005;
         const speedup = baselineBruteForce / (mean / 1000);
         results.push({
-          operation: `HNSW Search (n=${hnswStatus.entryCount})`,
+          operation: `HNSW Search (n=${indexedVectors})`,
           mean: `${mean.toFixed(2)}ms`,
           p95: `${percentile(searchTimes, 95).toFixed(2)}ms`,
           p99: `${percentile(searchTimes, 99).toFixed(2)}ms`,
@@ -377,9 +381,9 @@ const metricsCommand: Command = {
     let cacheHitRate = 'N/A';
     let hnswEntries = 0;
     try {
-      const { getHNSWStatus } = await import('../memory/memory-initializer.js');
-      const status = getHNSWStatus();
-      hnswEntries = status?.entryCount || 0;
+      const { getEffectiveHNSWStatus } = await import('../memory/memory-initializer.js');
+      const status = getEffectiveHNSWStatus();
+      hnswEntries = status?.entryCount ?? 0;
     } catch { /* HNSW not initialized */ }
 
     // Try to get real cache stats

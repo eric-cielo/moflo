@@ -416,13 +416,13 @@ const statusCommand: Command = {
     try {
       // Import real implementations
       const { getIntelligenceStats, initializeIntelligence, benchmarkAdaptation } = await import('../memory/intelligence.js');
-      const { getHNSWStatus, loadEmbeddingModel } = await import('../memory/memory-initializer.js');
+      const { getEffectiveHNSWStatus, loadEmbeddingModel } = await import('../memory/memory-initializer.js');
       const training = await import('../services/movector-training.js');
 
       // Initialize if needed and get real stats
       await initializeIntelligence();
       const stats = getIntelligenceStats();
-      const hnswStatus = getHNSWStatus();
+      const hnswStatus = getEffectiveHNSWStatus();
 
       // Quick benchmark for actual adaptation time
       const adaptBench = benchmarkAdaptation(100);
@@ -474,7 +474,7 @@ const statusCommand: Command = {
             component: 'HNSW Index',
             status: hnswStatus.available ? output.success('Ready') : output.dim('Not loaded'),
             details: hnswStatus.available
-              ? `${hnswStatus.entryCount} vectors, ${hnswStatus.dimensions}-dim`
+              ? `${hnswStatus.entryCount ?? 'unknown'} vectors, ${hnswStatus.dimensions}-dim`
               : 'Not initialized',
           },
           {
