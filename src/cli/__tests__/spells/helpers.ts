@@ -10,6 +10,11 @@ import type {
   MemoryAccessor,
 } from '../../spells/types/step-command.types.js';
 import type { ICapabilityGateway } from '../../spells/core/capability-gateway.js';
+import type { SpellDefinition } from '../../spells/types/spell-definition.types.js';
+import { StepCommandRegistry } from '../../spells/core/step-command-registry.js';
+import { builtinCommands } from '../../spells/commands/index.js';
+import { analyzeSpellPermissions } from '../../spells/core/permission-disclosure.js';
+import { recordAcceptance } from '../../spells/core/permission-acceptance.js';
 
 /** Allow-all gateway for tests — no capability is denied. */
 export const ALLOW_ALL_GATEWAY: ICapabilityGateway = {
@@ -86,4 +91,30 @@ export function createMockContext(overrides?: Partial<CastingContext>): CastingC
     gateway: ALLOW_ALL_GATEWAY,
     ...overrides,
   };
+}
+
+/**
+ * A bash command that matches the runner's `claude -p` detection regex without
+ * invoking a billed model: `echo` consumes the rest as literal arguments. Lets
+ * a test assert both halves — that a permitted reservation really does spawn,
+ * and that a denied one really does not.
+ */
+export const MODEL_SHAPED_COMMAND = 'echo claude -p hello';
+
+/**
+ * Record the permission acceptance a spell would have received at cast time.
+ *
+ * Any run given a `projectRoot` passes the first-run permission gate
+ * (`runner.ts` keys it on `options.projectRoot`), and a spell with bash steps
+ * is "higher risk" so it is not auto-accepted. Real spells are accepted once by
+ * their owner; tests that fabricate definitions record it themselves.
+ */
+export async function preAcceptSpell(
+  definition: SpellDefinition,
+  projectRoot: string,
+): Promise<void> {
+  const registry = new StepCommandRegistry();
+  for (const cmd of builtinCommands) registry.register(cmd, 'built-in');
+  const report = analyzeSpellPermissions(definition, registry);
+  await recordAcceptance(projectRoot, definition.name, report.permissionHash);
 }

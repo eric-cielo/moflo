@@ -23,9 +23,6 @@ import type { RunBudgetAccessor } from '../../spells/core/run-budget.js';
 import { validateSpellDefinition } from '../../spells/schema/validator.js';
 import { bridgeExecuteSpell } from '../../spells/factory/runner-bridge.js';
 import { ledgerPathFor } from '../../spells/core/run-ledger.js';
-import { builtinCommands } from '../../spells/commands/index.js';
-import { analyzeSpellPermissions } from '../../spells/core/permission-disclosure.js';
-import { recordAcceptance } from '../../spells/core/permission-acceptance.js';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,19 +33,11 @@ import type {
   StepCommand,
 } from '../../spells/types/step-command.types.js';
 import type { SpellDefinition } from '../../spells/types/spell-definition.types.js';
-import { createMockContext } from './helpers.js';
+import { createMockContext, MODEL_SHAPED_COMMAND, preAcceptSpell } from './helpers.js';
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * A command that matches `CLAUDE_HEADLESS_RE` but is harmless to run: `echo`
- * consumes the rest as literal arguments. Lets a test assert both halves —
- * that a permitted reservation really does spawn, and that a denied one
- * really does not — without invoking a billed model.
- */
-const MODEL_SHAPED_COMMAND = 'echo claude -p hello';
 
 function budgetSpy(allow: boolean): RunBudgetAccessor & { calls: number } {
   return {
@@ -490,19 +479,6 @@ describe('bridgeExecuteSpell spend ceiling', () => {
     expect(memory.tasklist.at(-1)?.abortReason).toBeUndefined();
   });
 
-  /**
-   * A spell with bash steps is "higher risk", so passing a `projectRoot`
-   * engages the first-run permission gate. Real scheduled spells are accepted
-   * once by their owner; these tests fabricate definitions, so they record the
-   * acceptance themselves rather than assert against a prompt.
-   */
-  async function preAccept(spell: SpellDefinition, projectRoot: string): Promise<void> {
-    const registry = new StepCommandRegistry();
-    for (const cmd of builtinCommands) registry.register(cmd, 'built-in');
-    const report = analyzeSpellPermissions(spell, registry);
-    await recordAcceptance(projectRoot, spell.name, report.permissionHash);
-  }
-
   it('carries the daily ceiling from one real run into the next (#1380)', async () => {
     // The property a per-run ceiling cannot have. Two separate
     // bridgeExecuteSpell calls — as two consecutive scheduled fires would be —
@@ -517,7 +493,7 @@ describe('bridgeExecuteSpell spend ceiling', () => {
           { id: 'call2', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
         ],
       };
-      await preAccept(spell, projectRoot);
+      await preAcceptSpell(spell, projectRoot);
       const opts = { projectRoot, budget: { dailyModelInvocations: 3 } };
 
       const first = await bridgeExecuteSpell(spell, {}, {
@@ -554,7 +530,7 @@ describe('bridgeExecuteSpell spend ceiling', () => {
         name: 'e2e-perrun-only',
         steps: [{ id: 'call1', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } }],
       };
-      await preAccept(spell, projectRoot);
+      await preAcceptSpell(spell, projectRoot);
       const opts = { projectRoot, budget: { maxModelInvocations: 5 } };
 
       for (const n of [1, 2, 3]) {

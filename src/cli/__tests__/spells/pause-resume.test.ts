@@ -17,10 +17,7 @@ import {
   resumeSpell,
   cleanupStalePaused,
 } from '../../spells/factory/pause-resume.js';
-import { StepCommandRegistry } from '../../spells/core/step-command-registry.js';
-import { builtinCommands } from '../../spells/commands/index.js';
-import { analyzeSpellPermissions } from '../../spells/core/permission-disclosure.js';
-import { recordAcceptance } from '../../spells/core/permission-acceptance.js';
+import { MODEL_SHAPED_COMMAND, preAcceptSpell } from './helpers.js';
 
 /**
  * Observe the sandbox config load without replacing its behaviour — the fix
@@ -261,12 +258,6 @@ describe('cleanupStalePaused', () => {
 // Project config on the resumed half (#1335 follow-up)
 // ============================================================================
 
-/**
- * A bash command that matches the runner's `claude -p` detection regex without
- * spawning anything billed. Same device the #1335 enforcement tests use.
- */
-const MODEL_SHAPED_COMMAND = 'echo claude -p hello';
-
 describe('resumeSpell — project config', () => {
   let projectRoot: string;
 
@@ -278,21 +269,6 @@ describe('resumeSpell — project config', () => {
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
-  /**
-   * Threading `projectRoot` also subjects a resumed spell to the permission
-   * acceptance gate (`runner.ts:119` keys it on `options.projectRoot`), which
-   * is correct — it re-checks the permission hash of a definition that came
-   * back off disk, matching the tamper-defense re-validation already in
-   * `resumeSpell`. A real resume inherits the acceptance recorded at cast
-   * time; these tests fabricate paused state directly, so they record it here.
-   */
-  async function preAccept(definition: SpellDefinition): Promise<void> {
-    const registry = new StepCommandRegistry();
-    for (const cmd of builtinCommands) registry.register(cmd, 'built-in');
-    const report = analyzeSpellPermissions(definition, registry);
-    await recordAcceptance(projectRoot, definition.name, report.permissionHash);
-  }
-
   async function pausedTwoModelSteps(memory: MemoryAccessor) {
     const definition: SpellDefinition = {
       name: 'model-spell',
@@ -301,7 +277,7 @@ describe('resumeSpell — project config', () => {
         { id: 'm2', type: 'bash', config: { command: MODEL_SHAPED_COMMAND } },
       ],
     };
-    await preAccept(definition);
+    await preAcceptSpell(definition, projectRoot);
     await persistPausedState(
       buildPausedState('wf-budget', definition, 0, {}, [], {}),
       memory,
@@ -392,7 +368,7 @@ describe('resumeSpell — project config', () => {
       name: 'sandboxed-spell',
       steps: [{ id: 's1', type: 'wait', config: { duration: 0 } }],
     };
-    await preAccept(definition);
+    await preAcceptSpell(definition, projectRoot);
     await persistPausedState(
       buildPausedState('wf-sandbox', definition, 0, {}, [], {}),
       memory,
