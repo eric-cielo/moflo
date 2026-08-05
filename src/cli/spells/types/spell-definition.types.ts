@@ -6,6 +6,7 @@
 
 import type { CapabilityType, MofloLevel } from './step-command.types.js';
 import type { PermissionLevel } from '../core/permission-resolver.js';
+import type { SpellBudgetConfig } from '../core/run-budget.js';
 import type { ScheduleDefinition } from '../scheduler/schedule.types.js';
 
 // ============================================================================
@@ -222,6 +223,13 @@ export interface SpellDefinition {
    * global `sandbox` config in `moflo.yaml` under "more strict wins".
    */
   readonly sandbox?: SandboxRequirement;
+  /**
+   * Per-spell spend ceilings (issue #1335). Composes with `spells.budget.*`
+   * in `moflo.yaml` under "more strict wins" — a spell that knows it should
+   * never call the model more than twice can say so, and a project ceiling
+   * can still tighten it further.
+   */
+  readonly budget?: SpellBudgetConfig;
 }
 
 // ============================================================================

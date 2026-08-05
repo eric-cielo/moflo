@@ -95,6 +95,46 @@ export function validateSandbox(def: SpellDefinition, errors: ValidationError[])
   }
 }
 
+/**
+ * Validate a spell's optional `budget` block (issue #1335).
+ *
+ * A typo here is silent and expensive in the wrong direction: an unrecognised
+ * key means "no ceiling", so a spell the author believed was capped would run
+ * unbounded on the daemon. Reject the shape at parse time instead.
+ */
+export function validateBudget(def: SpellDefinition, errors: ValidationError[]): void {
+  const budget = (def as { budget?: unknown }).budget;
+  if (budget === undefined) return;
+
+  if (budget === null || typeof budget !== 'object' || Array.isArray(budget)) {
+    errors.push({ path: 'budget', message: 'budget must be an object' });
+    return;
+  }
+
+  const known = ['maxModelInvocations', 'maxWallClockMs'] as const;
+  const rec = budget as Record<string, unknown>;
+
+  for (const key of Object.keys(rec)) {
+    if (!(known as readonly string[]).includes(key)) {
+      errors.push({
+        path: `budget.${key}`,
+        message: `unknown budget key "${key}". Valid keys: ${known.join(', ')}`,
+      });
+    }
+  }
+
+  for (const key of known) {
+    const value = rec[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      errors.push({
+        path: `budget.${key}`,
+        message: `budget.${key} must be a number greater than 0`,
+      });
+    }
+  }
+}
+
 /** Check whether a value matches a declared ArgumentType. */
 export function matchesArgumentType(value: unknown, type: ArgumentType): boolean {
   switch (type) {

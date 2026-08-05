@@ -176,6 +176,24 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       };
     }
 
+    // ── Spend ceiling (#1335) ────────────────────────────────────────
+    // Reserve against the run's model-invocation budget before spawning a
+    // billed `claude -p`. Placed last among the pre-spawn checks so nothing
+    // that would bail anyway — a denylist hit, an already-aborted run — burns
+    // a reservation, and still before the spawn so a denial costs nothing.
+    // Absent budget ⇒ untouched path.
+    if (context.budget && CLAUDE_HEADLESS_RE.test(command)) {
+      if (!context.budget.tryConsumeModelInvocation()) {
+        return {
+          success: false,
+          data: { stdout: '', stderr: '', exitCode: -1 },
+          error: context.budget.breach?.message
+            ?? 'Spell run exceeded its model-invocation ceiling',
+          duration: Date.now() - start,
+        };
+      }
+    }
+
     const elapsed = () => `${((Date.now() - start) / 1000).toFixed(1)}s`;
     const cmdPreview = redactSensitiveFlags(command.length > 80 ? command.slice(0, 77) + '...' : command);
 

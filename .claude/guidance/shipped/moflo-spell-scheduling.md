@@ -87,6 +87,29 @@ Practical floors:
 
 ---
 
+## Bounding Spend on Unattended Runs
+
+**Set `spells.budget.scheduled` before scheduling any spell that invokes `claude -p`.** A scheduled run is unattended: nothing observes how many times it calls the model, so a loop step or a too-frequent cron can spend without a signal until the bill arrives. The ceiling is opt-in and absent by default.
+
+```yaml
+spells:
+  budget:
+    scheduled:
+      maxModelInvocations: 20     # `claude -p` spawns allowed per run
+      maxWallClockMs: 1800000     # 30 minutes end to end
+```
+
+| Ceiling | Enforced | On breach |
+|---------|----------|-----------|
+| `maxModelInvocations` | Reservation before the process spawns | The spawn is refused — a denied invocation is never billed |
+| `maxWallClockMs` | Deadline timer on the run's abort signal | The in-flight step is aborted |
+
+**A breach aborts the run and ignores `continueOnError`.** It surfaces three ways: a `BUDGET_EXCEEDED` error on the result, `abortReason: budget-exceeded` plus a structured `budgetBreach` in the run's `tasklist` record, and a warning line in the daemon log.
+
+**This is a proxy for spend, not a measurement of it.** moflo counts invocations, not tokens — metering would require changing what a bash step returns to downstream steps. Use `spells.budget.interactive` (configured separately, never inherited from `scheduled`) to cap session-attached runs, and a per-spell `budget:` block to tighten a single spell. Full key reference: `.claude/guidance/moflo-yaml-reference.md`.
+
+---
+
 ## Storage Namespaces
 
 **Two memory namespaces back the scheduler.** Both are project-scoped — schedules and history don't leak across projects.
@@ -221,5 +244,6 @@ If step 5 is empty, jump straight to the failure-modes table above — don't loo
 - `.claude/guidance/moflo-spell-engine.md` — Definition format, step types, variable interpolation
 - `.claude/guidance/moflo-spell-runner.md` — Execution lifecycle, dry-run, layering, errors
 - `.claude/guidance/moflo-spell-sandboxing.md` — Capability levels (`read`/`hooks`/`swarm`) referenced by the `mofloLevel` cap
+- `.claude/guidance/moflo-yaml-reference.md` — Full `spells.budget` key reference and the per-spell `budget:` block
 - `.claude/guidance/moflo-spell-troubleshooting.md` — Broader spell failure-mode catalog beyond scheduling
 - `.claude/guidance/moflo-core-guidance.md` — CLI, hooks, daemon, MCP reference hub

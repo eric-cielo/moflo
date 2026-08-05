@@ -17,6 +17,7 @@ import { parseSpell } from '../schema/parser.js';
 import { validateSpellDefinition } from '../schema/validator.js';
 import { SpellConnectorRegistry } from '../registry/connector-registry.js';
 import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
+import { loadSpellBudgetFromProject } from '../core/run-budget.js';
 import { errorDetail } from '../../shared/utils/error-detail.js';
 import { getDefaultCredentialStore } from '../credentials/default-store.js';
 
@@ -124,6 +125,17 @@ export async function runSpellFromContent(
   if (!runnerOptions.sandboxConfig && runnerOptions.projectRoot) {
     const autoCfg = await loadSandboxConfigFromProject(runnerOptions.projectRoot);
     (runnerOptions as { sandboxConfig?: typeof autoCfg }).sandboxConfig = autoCfg;
+  }
+
+  // Same auto-load for the spend ceiling (#1335), but from the `interactive`
+  // slot: everything reaching this function is a session-attached run (CLI
+  // cast, MCP cast). The daemon path builds its options explicitly and passes
+  // the `scheduled` ceiling. Absent config ⇒ undefined ⇒ no budget at all.
+  if (!runnerOptions.budget && runnerOptions.projectRoot) {
+    const autoBudget = await loadSpellBudgetFromProject(runnerOptions.projectRoot, 'interactive');
+    if (autoBudget) {
+      (runnerOptions as { budget?: typeof autoBudget }).budget = autoBudget;
+    }
   }
 
   return runner.run(definition, args, runnerOptions);

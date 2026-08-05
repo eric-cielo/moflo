@@ -8,6 +8,7 @@ import type { StepOutput, ValidationError, MofloLevel, PrerequisiteResult } from
 import type { PermissionLevel, ResolvedPermissions } from '../core/permission-resolver.js';
 import type { PermissionWarning, RiskLevel } from '../core/permission-disclosure.js';
 import type { SandboxConfig } from '../core/platform-sandbox.js';
+import type { SpellBudgetConfig } from '../core/run-budget.js';
 import type { PreflightResolution } from './spell-definition.types.js';
 
 // ============================================================================
@@ -35,6 +36,7 @@ export type SpellErrorCode =
   | 'MISSING_CREDENTIAL'
   | 'CREDENTIAL_LIKELY_STALE'
   | 'SANDBOX_REQUIRED'
+  | 'BUDGET_EXCEEDED'
   | 'SPELL_CANCELLED';
 
 // ============================================================================
@@ -184,6 +186,13 @@ export interface RunnerOptions {
 
   /** OS-level sandbox configuration from moflo.yaml. */
   readonly sandboxConfig?: SandboxConfig;
+
+  /**
+   * Spend ceilings for this run (issue #1335). Composed with the spell
+   * definition's own `budget` block under "most strict wins". Omit — or pass
+   * a config with no limits — for today's unbounded behaviour.
+   */
+  readonly budget?: SpellBudgetConfig;
 
   /** Project root for acceptance gate storage (.moflo/accepted-permissions/). */
   readonly projectRoot?: string;

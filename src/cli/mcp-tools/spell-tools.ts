@@ -106,12 +106,17 @@ async function executeAndTrack(
   const tracked = trackStart(spellId, definition.name, definition.description);
 
   try {
-    const sandboxConfig = await engine.loadSandboxConfigFromProject(findProjectRoot());
+    const projectRoot = findProjectRoot();
+    const sandboxConfig = await engine.loadSandboxConfigFromProject(projectRoot);
+    // Session-attached cast: only the `interactive` ceiling applies, and only
+    // when the project configured one (#1335 AC5).
+    const budget = await engine.loadSpellBudgetFromProject(projectRoot, 'interactive');
     const memory = await getSharedMemoryAccessor();
     const result = await engine.bridgeExecuteSpell(definition, args, {
       spellId,
       sandboxConfig,
       forceCredentialReprompt: options.forceCredentialReprompt,
+      ...(budget ? { budget } : {}),
       ...(memory ? { memory } : {}),
     });
     trackResult(tracked, result);
@@ -272,9 +277,12 @@ export const spellTools: MCPTool[] = [
 
       // Run from raw content via bridge
       const engine = await loadSpellEngine();
-      const sandboxConfig = await engine.loadSandboxConfigFromProject(findProjectRoot());
+      const contentProjectRoot = findProjectRoot();
+      const sandboxConfig = await engine.loadSandboxConfigFromProject(contentProjectRoot);
+      const budget = await engine.loadSpellBudgetFromProject(contentProjectRoot, 'interactive');
       const result = await engine.bridgeRunSpell(content, sourceFile, args, {
         dryRun, sandboxConfig, forceCredentialReprompt,
+        ...(budget ? { budget } : {}),
       });
       const tracked = trackStart(result.spellId, spellName);
       trackResult(tracked, result);

@@ -125,6 +125,13 @@ export interface CastingContext {
   readonly permissionLevel?: import('../core/permission-resolver.js').PermissionLevel;
   /** Effective sandbox state for OS-level confinement (Issue #410). */
   readonly sandbox?: import('../core/platform-sandbox.js').EffectiveSandbox;
+  /**
+   * Spend ceiling for this run (Issue #1335). Present only when the project
+   * or the spell configured one — absent means unbounded, which is the
+   * default. A command that spawns a billed model process must reserve
+   * through this before starting the process.
+   */
+  readonly budget?: import('../core/run-budget.js').RunBudgetAccessor;
 }
 
 // ============================================================================
