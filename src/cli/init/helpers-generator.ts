@@ -323,6 +323,18 @@ function readMofloYaml() {
 }
 var MOFLO_YAML = readMofloYaml();
 
+// #1394 — is the hook that transcribes /verify's verdict wired at all?
+// Distinguishes "agent skipped Step 5" from "nothing can record the verdict";
+// only the first is fixable by re-running /verify. Lazy (blocked path only);
+// unreadable settings → true so a parse failure keeps the generic message.
+// SYNC: mirrors bin/gate.cjs isVerifyOutcomeHookWired.
+function isVerifyOutcomeHookWired() {
+  try {
+    return fs.readFileSync(path.join(PROJECT_DIR, '.claude', 'settings.json'), 'utf-8')
+      .indexOf('record-verify-outcome') >= 0;
+  } catch (e) { return true; }
+}
+
 var config = loadGateConfig();
 var sddConf = loadSddConfig();
 var mergeConf = loadMergeConfig();
@@ -680,7 +692,10 @@ var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:
 // #1297 — path-inert dirs (.github/workflows etc.); SYNC: mirrors bin/gate.cjs EDIT_RESET_SKIP_PATH_RE.
 // #1348 — plus \`.moflo/\`, moflo's own gitignored state dir: nothing written
 // there can reach the branch diff, so it must not invalidate a gate.
-var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\\\\/])\\.github[\\\\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\\\\/.]|$)|(?:^|[\\\\\\/])\\.moflo[\\\\\\/]/i;
+// #1395 — \`.claude/\` CONFIG (settings/skills/guidance/agents) joins them: it is
+// not the code under verification, and it is the directory a user edits because
+// a gate told them to. \`scripts/\`/\`helpers/\` stay OUT — they are executable.
+var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\\\\/])\\.github[\\\\\\/](?:workflows|ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)(?:[\\\\\\/.]|$)|(?:^|[\\\\\\/])\\.moflo[\\\\\\/]|(?:^|[\\\\\\/])\\.claude[\\\\\\/](?:settings(?:\\.local)?\\.json$|skills[\\\\\\/]|guidance[\\\\\\/]|agents[\\\\\\/])/i;
 // Test files: invalidate testsRun but preserve simplifyRun (#908) — /simplify
 // already reviewed the production code, touching tests/fixtures doesn't expose
 // new untested surface for code review.
@@ -1013,6 +1028,12 @@ switch (command) {
       process.stderr.write('  - the change has not been verified since the last code edit (run /verify)\\n');
     } else if (s.verifyOutcome === 'FAIL' || s.verifyOutcome === 'UNVERIFIED') {
       process.stderr.write('  - /verify ran and returned ' + s.verifyOutcome + ' — fix the failing criteria, then re-run /verify\\n');
+      // #1394 — two causes, opposite remedies. Re-running /verify cannot fix
+      // absent wiring, so never prescribe it when the transcriber is missing.
+    } else if (!isVerifyOutcomeHookWired()) {
+      process.stderr.write('  - \`record-verify-outcome\` is not wired in .claude/settings.json — the verdict cannot be recorded\\n');
+      process.stderr.write('    /verify may well have passed; nothing exists to transcribe its result, so re-running it will not help.\\n');
+      process.stderr.write('    Fix: run \`flo doctor --fix\`, restart the session, then re-run /verify.\\n');
     } else {
       process.stderr.write('  - /verify ran but recorded no verdict — re-run it so it stores a structured result\\n');
       // #1348 — re-invoking /verify clears the prior verdict by design (#1332),

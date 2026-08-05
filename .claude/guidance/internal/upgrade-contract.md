@@ -1,6 +1,6 @@
 # MoFlo Upgrade Contract
 
-**Purpose:** The standing rules for changes that touch the install/upgrade surface (`bin/`, settings.json, hooks, moflo.yaml, claudemd-generator). Reference this whenever you add or change a config surface, a hook wiring, a helper script, or anything that ships into a consumer's `.claude/` tree.
+**Purpose:** The standing rules for changes that touch the install/upgrade surface (`bin/`, settings.json, hooks, moflo.yaml, claudemd-generator). Read it **before designing** any change to a config surface, a hook wiring, a helper script, or anything that ships into a consumer's `.claude/` tree — not at PR time, when the upgrade path has already been designed around.
 
 > **The rule: a user bumping their moflo version must never have to run `moflo init` again.** Every new capability we ship must auto-apply on the next session start after `npm install moflo@latest`. No manual action, no "re-run init to pick up the new thing," no "set this flag in your yaml." If a user has to do anything except restart their session, we've shipped a broken upgrade.
 
@@ -12,6 +12,24 @@ This is a CRITICAL invariant. Every PR that adds or changes a config surface MUS
 - `shipped/moflo-settings-injection.md` — what moflo writes into `.claude/`, the three sync mechanisms (static copy, generator output, surgical patch), and the self-heal contract for `.claude/settings.json`.
 
 If a consumer-facing change to the launcher or settings flow doesn't update one of those, it's incomplete.
+
+## Design for the upgrade path first — it is never an afterthought
+
+**Decide how a change reaches an already-installed consumer BEFORE writing the code, not after the feature works locally.** The upgrade path is a primary design input, ranked alongside correctness and cross-platform support (Rule #1) — not a box ticked at review time.
+
+The failure mode always has the same shape, and it is invisible from inside the moflo repo: the *fresh-install* path gets the new capability — because you edited a generator, and the generator is what you tested — while the *upgrade* path silently does not. Every consumer who ran `flo init` before your change is then running a configuration your new code assumes cannot exist.
+
+Ask these three questions **at design time**, in this order:
+
+| # | Question | If you can't answer it |
+|---|----------|------------------------|
+| 1 | Which mechanism in §Scope carries this to a consumer who already ran `flo init`? | Stop. You are about to ship a fresh-install-only change. |
+| 2 | What does a consumer on the *previous* version experience between `npm install` and their next session start? | Stop. Sequence the change so no window leaves them worse off than before. |
+| 3 | If the new code reads state the old version never wrote, what happens when it is absent? | Stop. Add the migration or a tolerant default — never let missing state read as a failed check. |
+
+**A change is fresh-install-only if you edited a generator and nothing else.** `settings-generator.ts`, `helpers-generator.ts`, `moflo-init.ts`, and `claudemd-generator.ts` run on `flo init`. They do **not** run on upgrade. The upgrade counterpart is always a second edit somewhere in §Scope — usually `REQUIRED_HOOK_WIRING` + `HOOK_ENTRY_MAP`, a `HOOK_REWRITE_RULES` entry, or the yaml upgrader.
+
+**Never tighten a gate without shipping its satisfier to existing consumers in the same change.** A gate that gets stricter on upgrade while the mechanism satisfying it lands only on fresh install does not degrade gracefully — it becomes a gate that *cannot pass*, whose only remedy is disabling it. See #1332 in §Historical violations.
 
 ## Scope — what auto-upgrades
 
@@ -71,12 +89,15 @@ That rule applies to **static helper scripts** — files with no per-project con
 
 The distinction is *user-owned files get additive patches; tool-owned files get replaced*.
 
-## Pre-merge checklist for config-surface changes
+## Pre-merge checklist for consumer-surface changes
 
-Before merging any PR that touches config, ask:
+Before merging any PR that touches config, hooks, helpers, or anything listed in §Scope, ask:
 
 - [ ] If a user upgrades moflo and does **nothing else**, does the new capability work?
 - [ ] If the answer involves "they need to run `moflo init`" or "they need to add X to their yaml" — the PR is incomplete
+- [ ] Did you edit a generator? Name the matching §Scope mechanism you edited alongside it — "the generator emits it" is not an upgrade path
+- [ ] If this change makes a gate or check stricter, does the thing that satisfies it reach existing consumers in this same PR?
+- [ ] Does `flo doctor` detect the absence of whatever this adds, or would it report healthy while the consumer is broken?
 - [ ] Are defaults chosen so the feature is discoverable (either on-by-default or clearly commented when off)?
 - [ ] Is the yaml block documented in the relevant `docs/` page, including how to change it?
 
@@ -84,6 +105,7 @@ Before merging any PR that touches config, ask:
 
 - **v4.x sandbox block** — shipped with `enabled: false` and no auto-append; users couldn't find the setting even though it existed in the schema. Fixed by (1) adding block to init template, (2) adding session-start yaml upgrader.
 - **#879 record-memory-searched gate.cjs wiring** — when [#838](https://github.com/eric-cielo/moflo/issues/838) added per-actor memory-search tracking, the check-side hooks (`check-before-scan`, `check-before-read`) were wired through `gate-hook.mjs` (which forwards stdin `session_id` as `HOOK_SESSION_ID`) but the record-side hook (`record-memory-searched`) stayed on direct `gate.cjs`. The asymmetry left the per-actor map empty in production, blocking every Read inside a turn. Fixed by (1) updating both generators to use `gateHookCmd`/`gateHook`, (2) adding a `HOOK_REWRITE_RULES` entry so existing consumers auto-heal, (3) tightening the cross-platform alignment test to assert wrapper-vs-direct usage per command. The lesson: any time a gate command grows session_id awareness, audit BOTH its check-side wiring AND every record-side path that should stamp the per-actor map.
+- **#1332 `record-verify-outcome` never reached upgraded consumers** — [#1332](https://github.com/eric-cielo/moflo/issues/1332) tightened `check-before-done` to require `verifyOutcome === 'PASS'`, and wired the hook that writes that field into `settings-generator.ts` only. It was never added to `REQUIRED_HOOK_WIRING` / `HOOK_ENTRY_MAP`, so `repairHookWiring()` could not graft it into an existing project and `flo doctor` reported hook wiring healthy. Every project that upgraded rather than freshly `init`ed got a verify-before-done gate that **could not be satisfied**: `/verify` stored a correct `PASS` verdict, nothing transcribed it into `workflow-state.json`, and the only escape was `gates.verify_before_done: false`. Reported from the field in [#1392](https://github.com/eric-cielo/moflo/issues/1392). Two compounding lessons: (1) the change tightened a gate for existing consumers while shipping its satisfier to new consumers only — the exact anti-pattern in §Design for the upgrade path first; (2) the same wiring is duplicated across `settings-generator.ts`, `hook-block-hash.ts`, and `hook-wiring.ts`, only the first two were updated, and a source comment warned about the drift where a test was needed.
 
 ## See Also
 

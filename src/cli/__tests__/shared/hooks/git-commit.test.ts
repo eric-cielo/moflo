@@ -143,25 +143,41 @@ describe('GitCommitHook', () => {
   });
 
   describe('co-author addition', () => {
-    it('should add co-author by default', async () => {
+    // #1398 — attribution is OFF by default now. Tool attribution in a
+    // consumer's permanent git history is not moflo's to add; it must be an
+    // explicit opt-in, so these assert the default is silence.
+    it('should NOT add co-author by default (#1398)', async () => {
       const result = await gitCommit.process('Add feature');
+
+      expect(result.coAuthorAdded).toBe(false);
+      expect(result.modifiedMessage).not.toContain('Co-Authored-By');
+    });
+
+    it('should NOT add a Claude Code reference by default (#1398)', async () => {
+      const result = await gitCommit.process('Add feature');
+
+      expect(result.modifiedMessage).not.toContain('Generated with');
+      expect(result.modifiedMessage).not.toContain('Claude Code');
+    });
+
+    it('does not append its own trailer alongside a user-written one (#1398)', async () => {
+      const result = await gitCommit.process('Add feature\n\nCo-Authored-By: Someone <some@email.com>');
+
+      // NOTE: this hook rewrites the subject to conventional form and drops the
+      // body, so the user's own trailer does not survive either. That is
+      // pre-existing behaviour, unrelated to #1398, and is asserted here only so
+      // the next reader is not surprised — see the follow-up note in #1398.
+      expect(result.modifiedMessage).toBe('feat: add feature');
+      expect(result.modifiedMessage).not.toContain('Claude');
+    });
+
+    it('still adds co-author when explicitly opted in', async () => {
+      // The capability is retained, just no longer default-on.
+      const hook = createGitCommitHook(registry, { addCoAuthor: true });
+      const result = await hook.process('Add feature');
 
       expect(result.coAuthorAdded).toBe(true);
       expect(result.modifiedMessage).toContain('Co-Authored-By:');
-      expect(result.modifiedMessage).toContain('Claude');
-    });
-
-    it('should add Claude Code reference', async () => {
-      const result = await gitCommit.process('Add feature');
-
-      expect(result.modifiedMessage).toContain('Claude Code');
-    });
-
-    it('should not duplicate co-author if already present', async () => {
-      const result = await gitCommit.process('Add feature\n\nCo-Authored-By: Someone <some@email.com>');
-
-      // Should still add Claude co-author
-      expect(result.modifiedMessage).toContain('Claude');
     });
   });
 
@@ -230,6 +246,8 @@ describe('GitCommitHook', () => {
 
     it('should allow custom co-author', async () => {
       const hook = createGitCommitHook(registry, {
+        // #1398 — addCoAuthor now defaults false, so opting in is explicit.
+        addCoAuthor: true,
         coAuthor: { name: 'Custom AI', email: 'ai@example.com' },
       });
       const result = await hook.process('Add feature');
@@ -273,7 +291,8 @@ describe('GitCommitHook', () => {
       const config = gitCommit.getConfig();
 
       expect(config.maxSubjectLength).toBeDefined();
-      expect(config.addCoAuthor).toBe(true);
+      // #1398 — attribution defaults off.
+      expect(config.addCoAuthor).toBe(false);
     });
 
     it('should update config', () => {
@@ -312,11 +331,9 @@ describe('GitCommitHook', () => {
       // Should have ticket reference
       expect(result.modifiedMessage).toContain('AUTH-123');
 
-      // Should have Claude reference
-      expect(result.modifiedMessage).toContain('Claude Code');
-
-      // Should have co-author
-      expect(result.modifiedMessage).toContain('Co-Authored-By');
+      // #1398 — no attribution of any kind unless explicitly opted in.
+      expect(result.modifiedMessage).not.toContain('Claude Code');
+      expect(result.modifiedMessage).not.toContain('Co-Authored-By');
     });
 
     it('should return original message unchanged in result', async () => {

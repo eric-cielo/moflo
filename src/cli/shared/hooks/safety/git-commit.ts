@@ -198,9 +198,13 @@ const DEFAULT_CONFIG: CommitConfig = {
   maxSubjectLength: 72,
   maxBodyLength: 100,
   requireConventional: true,
-  addCoAuthor: true,
+  // #1398 — both default OFF. This hook used to append a "Generated with …"
+  // line and a Co-Authored-By trailer to every commit it processed. Tool
+  // attribution in a consumer's git history is permanent and not moflo's to
+  // add; callers who genuinely want it must opt in explicitly.
+  addCoAuthor: false,
   coAuthor: DEFAULT_CO_AUTHOR,
-  addClaudeReference: true,
+  addClaudeReference: false,
 };
 
 /**
