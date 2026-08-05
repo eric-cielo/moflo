@@ -16,7 +16,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { HnswLite } from './hnsw-lite.js';
-import { tryLoadHnswSidecar } from './hnsw-persistence.js';
+import { readHnswSidecarStatus, tryLoadHnswSidecar } from './hnsw-persistence.js';
 import { parseEmbeddingJson } from './controllers/_shared.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { openDaemonDatabase } from './daemon-backend.js';
@@ -295,6 +295,79 @@ export function getHNSWStatus(): {
     initialized: hnswIndex?.initialized ?? false,
     entryCount: hnswIndex?.entries.size ?? 0,
     dimensions: hnswIndex?.dimensions ?? 384
+  };
+}
+
+/**
+ * Where an {@link EffectiveHNSWStatus} answer came from.
+ *
+ * - `process` — this process built an index and it holds vectors.
+ * - `sidecar` — this process has no index of its own; the answer describes
+ *   `.moflo/hnsw.index`, which is what the daemon serves searches from.
+ * - `none` — neither exists. The index really is not built.
+ */
+export type HNSWStatusSource = 'process' | 'sidecar' | 'none';
+
+export interface EffectiveHNSWStatus {
+  available: boolean;
+  initialized: boolean;
+  /** `null` only when a sidecar exists but its vector count is unknowable. */
+  entryCount: number | null;
+  dimensions: number;
+  source: HNSWStatusSource;
+}
+
+/**
+ * Status of the index that will actually serve a search — not the caller's
+ * own singleton (#1387).
+ *
+ * {@link getHNSWStatus} reports process-local state, which was a fair proxy
+ * until #1058 routed reads through the daemon's RPC. Since then `searchEntries`
+ * returns before ever touching `searchHNSWIndex`, so in the MCP server and CLI
+ * the local singleton is never built — and reporting it told healthy installs
+ * their index did not exist. The status inverted with health: it read `Active`
+ * only in a process that had *failed* to reach the daemon.
+ *
+ * So: use the local index when one is genuinely populated, and otherwise fall
+ * back to the sidecar on disk. Callers that specifically want process-local
+ * state (a benchmark about to search in-process, a rebuild's before/after)
+ * should keep calling {@link getHNSWStatus}.
+ */
+export function getEffectiveHNSWStatus(projectRoot?: string): EffectiveHNSWStatus {
+  const local = getHNSWStatus();
+
+  // `initialized && entryCount > 0` rather than `available` — a bridge-loaded
+  // process reports available/initialized with a null singleton behind it, and
+  // its entryCount of 0 is an artifact, not a measurement. A local index that
+  // is genuinely built-but-empty falls through here too, which is the intended
+  // answer both ways: with a sidecar on disk that is the more useful report,
+  // and with none, an index holding zero vectors answers no search anyway.
+  if (local.initialized && local.entryCount > 0) {
+    return { ...local, source: 'process' };
+  }
+
+  try {
+    const sidecar = readHnswSidecarStatus(projectRoot ?? resolveStateRoot());
+    if (sidecar.present) {
+      return {
+        available: true,
+        initialized: true,
+        entryCount: sidecar.vectorCount,
+        dimensions: sidecar.dimensions ?? local.dimensions,
+        source: 'sidecar',
+      };
+    }
+  } catch {
+    // An unreadable state root is not evidence of a missing index, but there
+    // is nothing left to consult — fall through to the honest negative.
+  }
+
+  return {
+    available: false,
+    initialized: false,
+    entryCount: 0,
+    dimensions: local.dimensions,
+    source: 'none',
   };
 }
 

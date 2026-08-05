@@ -111,4 +111,26 @@ describe('HnswLite serialize / load', () => {
     buf.writeUInt32LE(2, 24);
     expect(() => HnswLite.load(buf)).toThrow(/size mismatch|arity mismatch/);
   });
+
+  describe('readHeader — status reads without decoding the graph (#1387)', () => {
+    it('reports the graph parameters from the header bytes alone', () => {
+      const buf = buildIndex(3, 8).serialize();
+
+      const header = HnswLite.readHeader(buf.subarray(0, HnswLite.HEADER_BYTES));
+
+      expect(header).toMatchObject({
+        metric: 'cosine',
+        dimensions: 8,
+        vectorCount: 3,
+      });
+    });
+
+    it('applies the same validation load() does, so the two cannot disagree', () => {
+      const bad = Buffer.alloc(HnswLite.HEADER_BYTES);
+      bad.write('NOTMAGIC', 0, 'ascii');
+
+      expect(() => HnswLite.readHeader(bad)).toThrow(/bad magic/);
+      expect(() => HnswLite.readHeader(Buffer.alloc(8))).toThrow(/too small/);
+    });
+  });
 });

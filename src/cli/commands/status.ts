@@ -606,6 +606,21 @@ const tasksCommand: Command = {
   }
 };
 
+/**
+ * Render the `HNSW Index` row (#1387).
+ *
+ * Names which index answered, because "Active" alone hid the bug this replaces:
+ * the row said "Not built" on every healthy install, since a daemon-routed read
+ * never builds a local index for the CLI to find. Exported for tests.
+ */
+export function hnswIndexLabel(performance: {
+  hnswEnabled: boolean;
+  hnswSource?: 'process' | 'sidecar' | 'none';
+}): string {
+  if (!performance.hnswEnabled) return 'Not built (search falls back to scan)';
+  return performance.hnswSource === 'sidecar' ? 'Active (on-disk sidecar)' : 'Active';
+}
+
 // Memory subcommand
 const memoryCommand: Command = {
   name: 'memory',
@@ -620,7 +635,10 @@ const memoryCommand: Command = {
         performance: {
           avgSearchTime: number | null;
           hnswEnabled: boolean;
-          indexedVectors: number;
+          // null = a sidecar is present but its vector count is unknown (#1387).
+          indexedVectors: number | null;
+          // Absent when talking to a moflo predating #1387.
+          hnswSource?: 'process' | 'sidecar' | 'none';
         };
       }>('memory_detailed-stats', { measureLatency: true });
 
@@ -642,7 +660,7 @@ const memoryCommand: Command = {
           { property: 'Backend', value: result.backend },
           { property: 'Total Entries', value: result.entries.toLocaleString() },
           { property: 'Storage Size', value: formatBytes(result.size) },
-          { property: 'HNSW Index', value: result.performance.hnswEnabled ? 'Active' : 'Not built (search falls back to scan)' }
+          { property: 'HNSW Index', value: hnswIndexLabel(result.performance) }
         ]
       });
 
@@ -657,7 +675,7 @@ const memoryCommand: Command = {
           // Only metrics the store actually measures — write latency and
           // cache hit rate are not tracked anywhere, so they are not shown.
           { metric: 'Avg Search Time', value: result.performance.avgSearchTime === null ? 'unavailable' : `${result.performance.avgSearchTime.toFixed(2)}ms` },
-          { metric: 'Indexed Vectors', value: result.performance.indexedVectors.toLocaleString() }
+          { metric: 'Indexed Vectors', value: result.performance.indexedVectors === null ? 'unknown' : result.performance.indexedVectors.toLocaleString() }
         ]
       });
 

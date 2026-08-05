@@ -6,6 +6,21 @@ export interface HnswSearchResult {
 export type HnswMetric = 'cosine' | 'dot' | 'euclidean';
 const METRICS: readonly HnswMetric[] = ['cosine', 'dot', 'euclidean'];
 
+/**
+ * The fixed-size prefix of a serialized sidecar — everything a caller can learn
+ * about the graph without decoding it. See {@link HnswLite.serialize} for the
+ * byte layout.
+ */
+export interface HnswSerialHeader {
+  metric: HnswMetric;
+  dimensions: number;
+  m: number;
+  efConstruction: number;
+  vectorCount: number;
+  /** Length of the UTF-8 JSON section that follows the header. */
+  jsonLen: number;
+}
+
 const SERIAL_MAGIC = Buffer.from('MFLOHNSW', 'ascii');
 const SERIAL_VERSION = 1;
 const SERIAL_HEADER_BYTES = 32;
@@ -216,32 +231,53 @@ export class HnswLite {
     return out;
   }
 
+  /** Bytes {@link HnswLite.readHeader} needs — the serialized header's size. */
+  static readonly HEADER_BYTES = SERIAL_HEADER_BYTES;
+
+  /**
+   * Decode the fixed 32-byte header of a serialize() buffer (#1387).
+   *
+   * A status caller that only wants "how many vectors does this sidecar hold"
+   * can read {@link HnswLite.HEADER_BYTES} bytes and call this, instead of
+   * loading an 8MB graph or parsing a manifest that lists every id. Applies the
+   * same magic/version/metric checks {@link HnswLite.load} does — the two share
+   * one definition of a well-formed sidecar rather than two copies of the byte
+   * offsets that could drift apart.
+   */
+  static readHeader(buf: Buffer): HnswSerialHeader {
+    if (buf.length < SERIAL_HEADER_BYTES) {
+      throw new Error(`HnswLite.readHeader: buffer too small (${buf.length} < ${SERIAL_HEADER_BYTES})`);
+    }
+    if (buf.compare(SERIAL_MAGIC, 0, SERIAL_MAGIC.length, 0, SERIAL_MAGIC.length) !== 0) {
+      throw new Error(`HnswLite.readHeader: bad magic, expected MFLOHNSW`);
+    }
+    const version = buf.readUInt8(8);
+    if (version !== SERIAL_VERSION) {
+      throw new Error(`HnswLite.readHeader: unsupported version ${version} (expected ${SERIAL_VERSION})`);
+    }
+    const metricCode = buf.readUInt8(9);
+    const metric = METRICS[metricCode];
+    if (!metric) {
+      throw new Error(`HnswLite.readHeader: unknown metric code ${metricCode}`);
+    }
+    return {
+      metric,
+      dimensions: buf.readUInt32LE(12),
+      m: buf.readUInt32LE(16),
+      efConstruction: buf.readUInt32LE(20),
+      vectorCount: buf.readUInt32LE(24),
+      jsonLen: buf.readUInt32LE(28),
+    };
+  }
+
   /**
    * Reconstruct an HnswLite from a serialize() buffer. Throws on bad magic,
    * unknown version, or truncated payload — callers should catch and fall
    * back to rebuilding from the source-of-truth (SQL embedding column).
    */
   static load(buf: Buffer): HnswLite {
-    if (buf.length < SERIAL_HEADER_BYTES) {
-      throw new Error(`HnswLite.load: buffer too small (${buf.length} < ${SERIAL_HEADER_BYTES})`);
-    }
-    if (buf.compare(SERIAL_MAGIC, 0, SERIAL_MAGIC.length, 0, SERIAL_MAGIC.length) !== 0) {
-      throw new Error(`HnswLite.load: bad magic, expected MFLOHNSW`);
-    }
-    const version = buf.readUInt8(8);
-    if (version !== SERIAL_VERSION) {
-      throw new Error(`HnswLite.load: unsupported version ${version} (expected ${SERIAL_VERSION})`);
-    }
-    const metricCode = buf.readUInt8(9);
-    const metric = METRICS[metricCode];
-    if (!metric) {
-      throw new Error(`HnswLite.load: unknown metric code ${metricCode}`);
-    }
-    const dimensions = buf.readUInt32LE(12);
-    const m = buf.readUInt32LE(16);
-    const efConstruction = buf.readUInt32LE(20);
-    const vectorCount = buf.readUInt32LE(24);
-    const jsonLen = buf.readUInt32LE(28);
+    const { metric, dimensions, m, efConstruction, vectorCount, jsonLen } =
+      HnswLite.readHeader(buf);
 
     const expectedSize =
       SERIAL_HEADER_BYTES + jsonLen + vectorCount * dimensions * SERIAL_FLOAT_BYTES;

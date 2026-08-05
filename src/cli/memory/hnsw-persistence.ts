@@ -462,6 +462,74 @@ export function tryLoadHnswSidecar(projectRoot: string): HnswLite | null {
 }
 
 /**
+ * What the on-disk sidecar reports about itself, read from its header alone
+ * (#1387). One open + one 32-byte read — no graph decode, and no manifest
+ * parse either, so the cost is independent of store size and a status command
+ * can call it unconditionally.
+ */
+export interface HnswSidecarStatus {
+  /** The sidecar file exists at `<projectRoot>/.moflo/hnsw.index`. */
+  present: boolean;
+  /**
+   * Vectors the sidecar holds, per the count its own header records.
+   *
+   * `null` means "present, count unknown" — the file is there but its header
+   * is truncated or malformed. Deliberately not `0`, which would read as an
+   * index that exists and is empty.
+   */
+  vectorCount: number | null;
+  /** Embedding dimensions per the header; null when the header is unreadable. */
+  dimensions: number | null;
+}
+
+/**
+ * Report the sidecar's on-disk state (#1387).
+ *
+ * The in-process HNSW singleton answers "did *this* process build an index",
+ * which since the #1058 read-routing preamble is `no` in every non-daemon
+ * process. This answers the question a status command actually means: does an
+ * index exist for the daemon to serve searches from, and how many vectors is
+ * it carrying.
+ *
+ * Reads the sidecar's own header rather than the manifest's `ids` array: it is
+ * the count the graph itself carries (so it stays right for a sidecar written
+ * before the manifest existed), and it costs one small read instead of a JSON
+ * parse proportional to store size.
+ */
+export function readHnswSidecarStatus(projectRoot: string): HnswSidecarStatus {
+  const sidecarPath = hnswIndexPath(projectRoot);
+  // `0`, not `null`: no file at all is a known count of nothing. The null-means-
+  // unknown rule applies to a sidecar that IS there but will not parse.
+  const absent = { present: false, vectorCount: 0, dimensions: null };
+
+  // stat before open, and require a regular file: POSIX happily opens a
+  // directory read-only and fails at the first read, while Windows refuses the
+  // open outright. Deciding here keeps both platforms on the same answer.
+  try {
+    if (!fs.statSync(sidecarPath).isFile()) return absent;
+  } catch {
+    return absent;
+  }
+
+  let fd: number;
+  try {
+    fd = fs.openSync(sidecarPath, 'r');
+  } catch {
+    return absent;
+  }
+  try {
+    const head = Buffer.alloc(HnswLite.HEADER_BYTES);
+    const read = fs.readSync(fd, head, 0, head.length, 0);
+    const header = HnswLite.readHeader(head.subarray(0, read));
+    return { present: true, vectorCount: header.vectorCount, dimensions: header.dimensions };
+  } catch {
+    return { present: true, vectorCount: null, dimensions: null };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
  * Load the reconciliation manifest. Returns null when it is absent, unreadable,
  * from another format version, or structurally invalid — every one of which
  * sends `syncHnswSidecar` down the full-rebuild path.
