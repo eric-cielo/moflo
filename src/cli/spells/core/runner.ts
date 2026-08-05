@@ -29,6 +29,9 @@ import { executeParallelSteps } from './parallel-executor.js';
 import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
+import {
+  resolveStepRetry, isRetryableFailure, computeBackoffMs, abortableDelay,
+} from './step-retry.js';
 import { collectPrerequisites, resolveUnmetPrerequisites } from './prerequisite-checker.js';
 import { classifyAuthError, type AuthErrorMatch } from './auth-error-classifier.js';
 import { readLineFromStdin } from './stdin-reader.js';
@@ -581,13 +584,50 @@ export class SpellCaster {
     return null;
   }
 
-  private runStep(
+  private async runStep(
     step: import('../types/spell-definition.types.js').StepDefinition,
     state: StepExecutionState, index: number,
   ) {
     const ctxBuilder = (v: Record<string, unknown>, a: Record<string, unknown>, sid: string, si: number, sig?: AbortSignal) =>
       this.buildContext(v, a, sid, si, sig, state.effectiveSandbox, state.budget);
-    return executeSingleStep(step, state, index, this.registry, ctxBuilder);
+    const attempt = () => executeSingleStep(step, state, index, this.registry, ctxBuilder);
+
+    const retry = resolveStepRetry(step.retry);
+    if (!retry) return attempt();
+
+    // Opt-in retry (#1336). Deliberately wraps the WHOLE step rather than just
+    // `command.execute`: a step's rollback runs inside executeSingleStep on
+    // failure, and re-running after that rollback is what makes a retry safe
+    // for a step that got halfway.
+    let result = await attempt();
+    let attemptsMade = 1;
+    let totalDelay = 0;
+
+    while (attemptsMade < retry.attempts) {
+      if (result.status !== 'failed' || !isRetryableFailure(result.errorCode)) break;
+      // Hand auth-shaped failures straight to the credential-refresh path
+      // (#1042), which runs after this returns. Retrying a stale credential
+      // cannot fix it — it only burns the attempts and delays the re-prompt
+      // that would. That path owns this failure shape; generic retry does not.
+      if (classifyAuthError(this.collectStepErrorText(result))) break;
+      // A latched spend-ceiling breach (#1335) denies every subsequent
+      // reservation, so further attempts cannot succeed — they would only
+      // spend backoff on a run the runner is about to abort anyway.
+      if (state.budget?.breach) break;
+      if (state.options.signal?.aborted) break;
+
+      const delay = computeBackoffMs(retry, attemptsMade, totalDelay);
+      totalDelay += delay;
+      await abortableDelay(delay, state.options.signal);
+      // The wait may have been cut short by a cancellation or a wall-clock
+      // ceiling breach; re-check rather than spend an attempt on a dying run.
+      if (state.options.signal?.aborted) break;
+
+      result = await attempt();
+      attemptsMade++;
+    }
+
+    return { ...result, attempts: attemptsMade };
   }
 
   /**

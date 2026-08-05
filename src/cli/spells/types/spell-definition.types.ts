@@ -7,6 +7,7 @@
 import type { CapabilityType, MofloLevel } from './step-command.types.js';
 import type { PermissionLevel } from '../core/permission-resolver.js';
 import type { SpellBudgetConfig } from '../core/run-budget.js';
+import type { StepRetryConfig } from '../core/step-retry.js';
 import type { ScheduleDefinition } from '../scheduler/schedule.types.js';
 
 // ============================================================================
@@ -62,6 +63,13 @@ export interface StepDefinition {
    * nested loop/condition/parallel bodies) and evaluated before step 1.
    */
   readonly prerequisites?: readonly PrerequisiteSpec[];
+  /**
+   * Retry this step on a transient failure (Issue #1336). Opt-in per step:
+   * blanket retry would silently re-run non-idempotent work like a Slack post
+   * or a file write. Only non-deterministic failures are retried — see
+   * `isRetryableFailure` in `core/step-retry.ts`.
+   */
+  readonly retry?: StepRetryConfig;
 }
 
 /**

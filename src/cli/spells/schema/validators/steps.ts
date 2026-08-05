@@ -62,6 +62,8 @@ export function validateSteps(
     const capErrors = validateStepCapabilities(step, path);
     errors.push(...capErrors);
 
+    validateStepRetry(step, errors, path);
+
     if (step.mofloLevel !== undefined) {
       if (!isValidMofloLevel(step.mofloLevel)) {
         errors.push({
@@ -178,4 +180,55 @@ function findSimilar(target: string, candidates: readonly string[]): string[] {
       return common >= 3 || c.startsWith(target.slice(0, 3));
     })
     .slice(0, 3);
+}
+
+/**
+ * Validate a step's optional `retry` block (issue #1336).
+ *
+ * Fails the same direction the budget validator does: an unrecognised key
+ * means "no retry", so a step its author believed was resilient would fail on
+ * the first flake. Reject the shape at parse time instead of at 3am.
+ */
+export function validateStepRetry(
+  step: StepDefinition,
+  errors: ValidationError[],
+  path: string,
+): void {
+  const retry = (step as { retry?: unknown }).retry;
+  if (retry === undefined) return;
+
+  if (retry === null || typeof retry !== 'object' || Array.isArray(retry)) {
+    errors.push({ path: `${path}.retry`, message: 'retry must be an object' });
+    return;
+  }
+
+  const known = ['attempts', 'backoffMs', 'maxDelayMs', 'maxTotalDelayMs'] as const;
+  const rec = retry as Record<string, unknown>;
+
+  for (const key of Object.keys(rec)) {
+    if (!(known as readonly string[]).includes(key)) {
+      errors.push({
+        path: `${path}.retry.${key}`,
+        message: `unknown retry key "${key}". Valid keys: ${known.join(', ')}`,
+      });
+    }
+  }
+
+  for (const key of known) {
+    const value = rec[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      errors.push({
+        path: `${path}.retry.${key}`,
+        message: `retry.${key} must be a number greater than 0`,
+      });
+    }
+  }
+
+  if (rec.attempts === undefined) {
+    errors.push({
+      path: `${path}.retry.attempts`,
+      message: 'retry.attempts is required when a retry block is present',
+    });
+  }
 }
