@@ -610,6 +610,10 @@ export class SpellCaster {
       // cannot fix it — it only burns the attempts and delays the re-prompt
       // that would. That path owns this failure shape; generic retry does not.
       if (classifyAuthError(this.collectStepErrorText(result))) break;
+      // A latched spend-ceiling breach (#1335) denies every subsequent
+      // reservation, so further attempts cannot succeed — they would only
+      // spend backoff on a run the runner is about to abort anyway.
+      if (state.budget?.breach) break;
       if (state.options.signal?.aborted) break;
 
       const delay = computeBackoffMs(retry, attemptsMade, totalDelay);

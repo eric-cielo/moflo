@@ -391,3 +391,56 @@ describe('retry vs credential refresh', () => {
     expect(result.success).toBe(true);
   });
 });
+
+// ============================================================================
+// Interaction with the spend ceiling (#1335)
+// ============================================================================
+
+describe('retry vs the spend ceiling', () => {
+  /** A step that reserves against the budget the way bashCommand does. */
+  function modelStep(): StepCommand & { calls: number } {
+    const cmd = {
+      calls: 0,
+      type: 'flaky',
+      description: 'reserves a model invocation, then fails transiently',
+      configSchema: { type: 'object' },
+      validate: () => ({ valid: true, errors: [] }),
+      async execute(_c: unknown, context: { budget?: { tryConsumeModelInvocation(): boolean; breach: { message: string } | null } }) {
+        cmd.calls++;
+        if (context.budget && !context.budget.tryConsumeModelInvocation()) {
+          return { success: false, data: {}, error: context.budget.breach?.message ?? 'denied' };
+        }
+        return { success: false, data: {}, error: 'transient upstream failure' };
+      },
+      describeOutputs: () => [],
+    };
+    return cmd as unknown as StepCommand & { calls: number };
+  }
+
+  it('bills every attempt separately rather than once per step', async () => {
+    // Retry must not be a way to get extra model calls for free.
+    const cmd = modelStep();
+    const result = await casterWith(cmd).run(
+      spellWith({ attempts: 4, backoffMs: 1 }), {},
+      { budget: { maxModelInvocations: 10 } },
+    );
+
+    expect(cmd.calls).toBe(4);
+    expect(result.success).toBe(false);
+  });
+
+  it('stops retrying once the ceiling latches a breach', async () => {
+    // A latched breach denies every later reservation, so further attempts
+    // cannot succeed — retrying would only spend backoff on a doomed run.
+    // With attempts: 10 and no check, this burns all ten.
+    const cmd = modelStep();
+    const result = await casterWith(cmd).run(
+      spellWith({ attempts: 10, backoffMs: 1 }), {},
+      { budget: { maxModelInvocations: 2 } },
+    );
+
+    // 2 granted, then the attempt that trips the ceiling. No further retries.
+    expect(cmd.calls).toBe(3);
+    expect(result.errors.map(e => e.code)).toContain('BUDGET_EXCEEDED');
+  });
+});
