@@ -89,24 +89,30 @@ Practical floors:
 
 ## Bounding Spend on Unattended Runs
 
-**Set `spells.budget.scheduled` before scheduling any spell that invokes `claude -p`.** A scheduled run is unattended: nothing observes how many times it calls the model, so a loop step or a too-frequent cron can spend without a signal until the bill arrives. The ceiling is opt-in and absent by default.
+**Set `spells.budget.scheduled` before scheduling any spell that invokes `claude -p`.** A scheduled run is unattended: nothing observes how many times it calls the model, so a loop step or a too-frequent cron can spend without a signal until the bill arrives. `flo init` writes these values into new projects; existing projects are untouched on upgrade and must opt in.
 
 ```yaml
 spells:
   budget:
     scheduled:
-      maxModelInvocations: 20     # `claude -p` spawns allowed per run
-      maxWallClockMs: 1800000     # 30 minutes end to end
+      maxModelInvocations: 30     # `claude -p` spawns allowed per run
+      maxWallClockMs: 2400000     # 40 minutes end to end
+      dailyModelInvocations: 300  # rolling 24h across ALL scheduled runs
 ```
 
-| Ceiling | Enforced | On breach |
-|---------|----------|-----------|
-| `maxModelInvocations` | Reservation before the process spawns | The spawn is refused — a denied invocation is never billed |
-| `maxWallClockMs` | Deadline timer on the run's abort signal | The in-flight step is aborted |
+| Ceiling | Scope | Enforced | On breach |
+|---------|-------|----------|-----------|
+| `maxModelInvocations` | One run | Reservation before the process spawns | The spawn is refused — a denied invocation is never billed |
+| `maxWallClockMs` | One run | Deadline timer on the run's abort signal | The in-flight step is aborted |
+| `dailyModelInvocations` | Every run in this project, trailing 24h | Reservation checked against the on-disk ledger | The spawn is refused before the process starts |
+
+**Set `dailyModelInvocations`, not just the per-run keys — a per-run ceiling cannot bound a schedule.** The two answer different questions. A per-run ceiling asks "did this run go haywire"; the daily one asks "is this project spending more than I meant to." A five-minute cron under a 30-invocation per-run cap satisfies the per-run check 288 times a day and still reaches 8,640 invocations. Only the rolling window sees the total.
+
+The count persists in `.moflo/spell-invocation-ledger.json` and is checked **before** the per-run ceiling, so a breach message names the limit that actually stopped the run. Delete the file to reset the window; a corrupt or unreadable ledger fails open rather than blocking every scheduled run.
 
 **A breach aborts the run and ignores `continueOnError`.** It surfaces three ways: a `BUDGET_EXCEEDED` error on the result, `abortReason: budget-exceeded` plus a structured `budgetBreach` in the run's `tasklist` record, and a warning line in the daemon log.
 
-**This is a proxy for spend, not a measurement of it.** moflo counts invocations, not tokens — metering would require changing what a bash step returns to downstream steps. Use `spells.budget.interactive` (configured separately, never inherited from `scheduled`) to cap session-attached runs, and a per-spell `budget:` block to tighten a single spell. Full key reference: `.claude/guidance/moflo-yaml-reference.md`.
+**This is a proxy for spend, not a measurement of it.** moflo counts invocations, not tokens — metering would require changing what a bash step returns to downstream steps, and `claude -p "say hi"` counts the same as `claude -p "refactor this subsystem"`. Use `spells.budget.interactive` (configured separately, never inherited from `scheduled`, and deliberately loose because a human is present) to cap session-attached runs, and a per-spell `budget:` block to tighten a single spell. Full key reference: `.claude/guidance/moflo-yaml-reference.md`.
 
 ---
 
