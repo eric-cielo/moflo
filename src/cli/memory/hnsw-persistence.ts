@@ -48,6 +48,7 @@ import * as path from 'node:path';
 
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { HnswLite } from './hnsw-lite.js';
+import { withHnswSidecarLock } from './hnsw-sidecar-lock.js';
 import { parseEmbeddingJson } from './controllers/_shared.js';
 import { hnswIndexPath } from '../services/moflo-paths.js';
 import { openDaemonDatabase } from './daemon-backend.js';
@@ -252,6 +253,23 @@ export async function buildAndWriteHnswSidecar(
   projectRoot: string,
   options: HnswBuildOptions = {},
 ): Promise<HnswBuildResult> {
+  return withHnswSidecarLock(projectRoot, () =>
+    buildAndWriteHnswSidecarUnlocked(dbPath, projectRoot, options),
+  );
+}
+
+/**
+ * The body of {@link buildAndWriteHnswSidecar}, minus the lock.
+ *
+ * Exists so `syncHnswSidecar`'s full-rebuild fallback can reach it while
+ * already holding the lock — {@link withHnswSidecarLock} is not re-entrant,
+ * so calling the public wrapper from inside it would deadlock (#1388).
+ */
+async function buildAndWriteHnswSidecarUnlocked(
+  dbPath: string,
+  projectRoot: string,
+  options: HnswBuildOptions,
+): Promise<HnswBuildResult> {
   const { dimensions, m, efConstruction, metric } = resolveOptions(options);
 
   if (!fs.existsSync(dbPath)) {
@@ -316,6 +334,20 @@ export async function syncHnswSidecar(
   projectRoot: string,
   options: HnswBuildOptions & { force?: boolean } = {},
 ): Promise<HnswSyncResult> {
+  // The lock spans load → diff → write, not just the write: a writer decides
+  // what to persist by diffing the graph it loaded, so serialising only the
+  // write would still let a second writer act on a pre-first-writer snapshot
+  // and overwrite it wholesale (#1388).
+  return withHnswSidecarLock(projectRoot, () =>
+    syncHnswSidecarUnlocked(dbPath, projectRoot, options),
+  );
+}
+
+async function syncHnswSidecarUnlocked(
+  dbPath: string,
+  projectRoot: string,
+  options: HnswBuildOptions & { force?: boolean },
+): Promise<HnswSyncResult> {
   const { dimensions, m, efConstruction, metric } = resolveOptions(options);
 
   if (!fs.existsSync(dbPath)) {
@@ -323,7 +355,7 @@ export async function syncHnswSidecar(
   }
 
   const fullRebuild = async (reason: string): Promise<HnswSyncResult> => {
-    const built = await buildAndWriteHnswSidecar(dbPath, projectRoot, options);
+    const built = await buildAndWriteHnswSidecarUnlocked(dbPath, projectRoot, options);
     return { ...built, mode: 'full', reason, added: built.vectorCount, removed: 0 };
   };
 
