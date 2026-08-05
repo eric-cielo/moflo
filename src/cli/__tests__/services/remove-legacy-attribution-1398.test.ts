@@ -77,8 +77,11 @@ describe('#1398 — upgraded projects are healed', () => {
   it('leaves a consumer-authored attribution block completely alone', () => {
     // We remove OUR string, not the concept. A team that deliberately set their
     // own trailer keeps it.
+    // Placeholder domain only — `example.com` is sanctioned by the client-name
+    // leak guard. A realistic-looking company domain here trips it (Rule #3),
+    // which is exactly what happened on this test's first draft.
     const theirs = {
-      commit: 'Co-Authored-By: Their Bot <bot@their-company.example>',
+      commit: 'Co-Authored-By: Their Bot <bot@example.com>',
       pr: 'Built by our platform team',
     };
     const settings: Record<string, unknown> = { attribution: { ...theirs } };
