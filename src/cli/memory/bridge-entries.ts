@@ -887,18 +887,25 @@ export async function bridgeGetEntry(options: {
       // Under node:sqlite the UPDATE is durable regardless.
       const now = Date.now();
 
-      // MUTATE THE CACHED RECORD IN PLACE — do not rebuild it. `cacheGet`
-      // returns the stored object by reference (`TieredCacheManager.get`
-      // returns `node.value.data`, no clone) and both get/set are synchronous,
-      // so two concurrent same-key reads share this object and these two lines
-      // are a read-modify-write with no `await` between read and write — atomic
-      // under Node's single thread. Building a replacement record and writing
-      // it back with `cacheSet` instead would reintroduce a lost update: both
-      // callers would read the same delta across the await boundary and the
-      // second write would clobber the first, permanently dropping an access.
-      // That interleaving is reachable on the very workload this throttle is
-      // for — the neighbor fan-out fetches adjacent chunk keys in parallel and
-      // two hits can share a neighbor.
+      // MUTATE THE CACHED RECORD IN PLACE — do not rebuild it.
+      //
+      // The guarantee this rests on is OBJECT IDENTITY, not synchrony:
+      // `TieredCacheManager.get` is async, but it hands back the stored object
+      // unchanged from `CacheManager.get`, which returns `node.value.data` with
+      // no clone. So every concurrent reader of this key holds the SAME object,
+      // and the two lines below are a read-modify-write with no `await` between
+      // the read and the write — atomic under Node's single thread.
+      //
+      // Building a replacement record and writing it back with `cacheSet`
+      // instead reintroduces a lost update: both callers read the same delta
+      // across the await boundary and the second write clobbers the first,
+      // permanently dropping an access. That interleaving is reachable on the
+      // very workload this throttle is for — the neighbour fan-out fetches
+      // adjacent chunk keys in parallel and two hits can share a neighbour.
+      //
+      // If the cache ever starts cloning on read, the delta stops accumulating
+      // and this silently under-persists. `loses no counts when the same key is
+      // read concurrently` is the test that would catch it.
       cached.accessCount = (cached.accessCount ?? 0) + 1;
       cached.pendingAccessDelta = (cached.pendingAccessDelta ?? 0) + 1;
 
