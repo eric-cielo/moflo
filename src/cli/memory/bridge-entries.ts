@@ -810,8 +810,13 @@ export async function bridgeGetEntry(options: {
     // row and re-caches the full shape. Self-heals on the first read after an
     // in-place upgrade, and since the L1 cache is in-memory only, nothing
     // outlives the process anyway.
+    // `content !== undefined` rather than a truthy test: a row whose content is
+    // legitimately `''` would otherwise fail this check on every read, be
+    // re-fetched from disk, re-cached as `''`, and fail again — a permanent
+    // cache bypass for that key. Pre-existing, but this is the condition it
+    // lives in.
     const usableCache = cached
-      && cached.content
+      && cached.content !== undefined
       && cached.createdAt !== undefined
       && cached.hasEmbedding !== undefined
       && Array.isArray(cached.tags);
@@ -822,6 +827,15 @@ export async function bridgeGetEntry(options: {
       // cache TTL reported the same count forever — and `accessCount` is an
       // orderable field (query-builder's `sortBy('accessCount')`) plus a stats
       // input, so the hottest rows ranked as the coldest.
+      //
+      // ACCEPTED TRADE-OFF: this makes a cache hit perform one indexed write.
+      // The alternative — bump only the cached copy — keeps hits read-only but
+      // leaves the PERSISTED counter undercounting exactly the hot rows, which
+      // is the defect being fixed, since ordering and stats read the column and
+      // not the cache. A hit is still cheaper than the disk read it replaces
+      // (no SELECT, no tag/metadata parse), and the pre-cache code issued this
+      // same UPDATE on every read. Debouncing is the lever if it ever shows up
+      // in a profile.
       //
       // The UPDATE is `access_count + 1` evaluated by SQLite, so the stored
       // counter stays correct under concurrency; only the cached copy can lose
