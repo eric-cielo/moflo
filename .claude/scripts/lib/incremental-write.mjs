@@ -98,9 +98,12 @@ export function schemeTaggedContentHash(files, schemeVersion) {
  * @param {string} namespace
  * @param {string} [keyPrefix] — when set, restricts the scan to `key LIKE '<prefix>%'`.
  *   The same prefix scopes the orphan sweep in {@link applyIncrementalChunks}.
+ * @param {RegExp} [keyPattern] — optional second filter applied in JS after the
+ *   SQL `LIKE`. Required whenever one caller's `keyPrefix` can be a string
+ *   prefix of another's — see {@link applyIncrementalChunks}.
  * @returns {Map<string,string>}
  */
-export function loadExistingContent(db, namespace, keyPrefix) {
+export function loadExistingContent(db, namespace, keyPrefix, keyPattern) {
   const stmt = keyPrefix
     ? db.prepare(
         `SELECT key, content FROM memory_entries WHERE namespace = ? AND key LIKE ? AND status = 'active'`,
@@ -116,7 +119,9 @@ export function loadExistingContent(db, namespace, keyPrefix) {
   const map = new Map();
   while (stmt.step()) {
     const row = stmt.getAsObject();
-    map.set(String(row.key), String(row.content ?? ''));
+    const key = String(row.key);
+    if (keyPattern && !keyPattern.test(key)) continue;
+    map.set(key, String(row.content ?? ''));
   }
   stmt.free();
   return map;
@@ -137,12 +142,21 @@ export function loadExistingContent(db, namespace, keyPrefix) {
  *   when processing a single file's chunks at a time (e.g. index-guidance.mjs
  *   iterates files independently) — without it the sweep would delete every
  *   chunk from every OTHER file as an orphan on each call.
+ * @param {RegExp} [opts.keyPattern] — narrows `keyPrefix` beyond what SQL `LIKE`
+ *   can express. REQUIRED when one file's prefix can be a string prefix of
+ *   another's, which is exactly the case for per-file chunk keys: indexing
+ *   `flo` scopes to `chunk-skill-flo-%`, and that LIKE also matches every chunk
+ *   of `flo-simplify`. Those rows are absent from the caller's `chunks`, so the
+ *   orphan sweep deleted a sibling document's entire index — it reappeared only
+ *   on the next run, re-inserted with a NULL embedding and re-vectorised from
+ *   scratch. Passing `/^chunk-skill-flo-\d+$/` confines the sweep to the chunk
+ *   keys the caller actually owns.
  * @returns {{inserted:number, updated:number, unchanged:number, removed:number}}
  */
 export function applyIncrementalChunks(db, namespace, chunks, opts = {}) {
   const serialize = opts.serialize !== false;
   const keyPrefix = opts.keyPrefix;
-  const existing = loadExistingContent(db, namespace, keyPrefix);
+  const existing = loadExistingContent(db, namespace, keyPrefix, opts.keyPattern);
   const newKeys = new Set();
   let inserted = 0;
   let updated = 0;

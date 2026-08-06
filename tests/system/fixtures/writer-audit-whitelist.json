@@ -263,6 +263,11 @@
       "notes": "Launcher pre-boot — S3 wraps invocation"
     },
     {
+      "file": "bin/migrations/purge-spec-chunks.mjs",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot — S3 wraps invocation"
+    },
+    {
       "file": "bin/migrations/knowledge-purge.mjs",
       "classification": "daemon-offline",
       "notes": "Launcher pre-boot — S3 wraps invocation"

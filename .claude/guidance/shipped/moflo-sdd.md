@@ -27,16 +27,31 @@ Specs and plans persist as Markdown, one directory per unit of work, under the c
 <specs_dir>/<slug>/plan.md   # the "steps" + how each criterion is verified
 ```
 
-They are indexed into memory on session start, so `mcp__moflo__memory_search` surfaces prior specs across sessions. **Always create and mutate them through the `flo sdd` CLI** — never hand-write the path in a skill step (cross-platform, Rule #1: the CLI builds every path with `path.join`).
+**Always create and mutate them through the `flo sdd` CLI** — never hand-write the path in a skill step (cross-platform, Rule #1: the CLI builds every path with `path.join`).
 
-**Where they live is configurable (`sdd.specs_dir`, #1294).** The default `.moflo/specs` is **gitignored** by `flo init` — specs stay local and do not bloat source control, but they also do **not** appear in PRs. To make specs reviewable, point `sdd.specs_dir` at a **tracked** path and commit them:
+### Specs are NOT indexed into memory
+
+Earlier versions indexed `spec.md` / `plan.md` into the `guidance` namespace. They no longer are, and the specs directory is excluded from the guidance walk even when it sits inside a `guidance.directories` entry.
+
+A spec is pre-implementation intent for **one** unit of work, not a project rule. Once implemented it is stale-by-construction, and specs accumulate without bound — so a superseded approach kept surfacing at high similarity alongside real guidance, and the namespace degraded as the project aged. Nothing was gained in exchange: the active spec's path is already known (the `flo sdd` CLI just returned it), so **read it from disk** rather than searching for it.
+
+| To… | Use |
+|---|---|
+| Read the spec/plan you are working on | `Read` the path `flo sdd` returned |
+| Find prior specs across sessions | `flo sdd list` / `flo sdd status <slug>` |
+| Recall what an implementation actually taught you | `memory_search` namespace `learnings` |
+| Recall a past verify verdict | `memory_search` namespace `verify` |
+
+Existing spec rows are removed by the `purge-spec-chunks` migration on the next session start.
+
+**Where specs live is configurable (`sdd.specs_dir`, #1294).** The default `.moflo/specs` is **gitignored** by `flo init`. To make specs reviewable in the PR, point `sdd.specs_dir` at a **tracked** path and commit them:
 
 | `sdd.specs_dir` | Committed? | Use when |
 |-----------------|------------|----------|
-| `.moflo/specs` (default) | No (gitignored) | You want the SDD workflow but not spec artifacts in history |
-| `docs/specs`, `.specs`, … (tracked) | Yes | You want specs reviewed in the PR alongside the code |
+| `.moflo/specs` (default) | No (gitignored) | Specs are scratch — the PR body carries the acceptance criteria. Best at high spec volume. |
+| `docs/specs`, `.specs`, … (tracked) | Yes | You want the spec diffed and reviewed alongside the code |
 
-Set it once in `moflo.yaml`; the `flo sdd` CLI and the session-start indexer both honor it. If the path sits inside a `guidance.directories` entry, specs are indexed once (as guidance), not twice.
+Set it once in `moflo.yaml`; the `flo sdd` CLI and the session-start indexer both honor it — the CLI to write specs there, the indexer to exclude them.
 
 Each artifact carries a `status` of `draft` or `reviewed` in its frontmatter. The constitution layer (`CLAUDE.md` + `.claude/guidance/`) is referenced by every stage — never restate its invariants inside a spec.
 

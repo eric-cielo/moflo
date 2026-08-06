@@ -47,6 +47,28 @@ const DB_PATH = memoryDbPath(projectRoot);
 // Load guidance directories from moflo.yaml, falling back to defaults
 // ============================================================================
 
+/**
+ * Absolute path to the project's SDD specs directory (default `.moflo/specs`).
+ *
+ * Validation MUST match `specsRoot()` in `src/cli/sdd/artifacts.ts` exactly, or
+ * the indexer and the CLI would disagree on where specs live: reject absolute /
+ * drive-letter / parent-escape values and fall back to the default.
+ *
+ * Cross-platform (Rule #1): split the /-written config value and re-join with
+ * `path.resolve`, never hardcode a separator.
+ */
+function resolveSpecsDir(specsDirConfig) {
+  const raw = specsDirConfig || '.moflo/specs';
+  let rel = raw.split(/[\\/]+/).filter(Boolean);
+  const escapes = rel.length === 0
+    || rel.includes('..')
+    || /^([a-zA-Z]:|~)$/.test(rel[0])
+    || raw.startsWith('/')
+    || raw.startsWith('\\');
+  if (escapes) rel = ['.moflo', 'specs'];
+  return resolve(projectRoot, ...rel);
+}
+
 function loadGuidanceDirs() {
   const dirs = [];
 
@@ -115,38 +137,34 @@ function loadGuidanceDirs() {
     dirs.push({ path: bundledSkillsDir, prefix: 'skill-bundled', fileFilter: ['SKILL.md'], kind: 'skill', absolute: true });
   }
 
-  // 6. SDD spec/plan artifacts (Epic #1269) — index <specs_dir>/<slug>/{spec,plan}.md
-  //    so prior specs/plans are searchable across sessions. kind: 'spec' keys each
-  //    file by <slug>-<spec|plan> to avoid collisions between per-slug spec.md files.
-  //    #1294 — the location is configurable (default .moflo/specs). Cross-platform
-  //    (Rule #1): split the /-written value and re-join, never hardcode a separator.
-  //    Validation MUST match specsRoot() in src/cli/sdd/artifacts.ts exactly, or
-  //    the indexer and the CLI would disagree on where specs live: reject
-  //    absolute / drive-letter / parent-escape values and fall back to the default.
-  const rawSpecs = specsDirConfig || '.moflo/specs';
-  let specsRel = rawSpecs.split(/[\\/]+/).filter(Boolean);
-  const specsEscapes = specsRel.length === 0
-    || specsRel.includes('..')
-    || /^([a-zA-Z]:|~)$/.test(specsRel[0])
-    || rawSpecs.startsWith('/')
-    || rawSpecs.startsWith('\\');
-  if (specsEscapes) specsRel = ['.moflo', 'specs'];
-  const projectSpecsDir = resolve(projectRoot, ...specsRel);
-  // Double-index guard: if specs_dir sits inside a guidance dir, the guidance
-  // scan (step 1) already indexes those .md files — skip the 'spec' entry so
-  // they aren't indexed twice under two prefixes.
-  const insideGuidance = userDirs.some(d => {
-    const gd = resolve(projectRoot, ...d.split(/[\\/]+/).filter(Boolean));
-    return projectSpecsDir === gd || projectSpecsDir.startsWith(gd + sep);
-  });
-  if (existsSync(projectSpecsDir) && !insideGuidance) {
-    dirs.push({ path: specsRel.join('/'), prefix: 'spec', fileFilter: ['spec.md', 'plan.md'], kind: 'spec' });
-  }
+  // 6. SDD spec/plan artifacts are NOT indexed.
+  //
+  //    They were (Epic #1269, kind: 'spec'), into this same `guidance` namespace.
+  //    That was wrong on both axes:
+  //
+  //    - Signal: a spec is PRE-implementation intent for one unit of work, not a
+  //      project rule. Once implemented it is stale-by-construction, and a
+  //      superseded approach surfacing at high similarity alongside real guidance
+  //      is worse than absent. Specs accumulate without bound, so the guidance
+  //      namespace degraded monotonically with project age.
+  //    - Value: the active spec's path is already known (the `flo sdd` CLI just
+  //      returned it) — reading it beats chunked retrieval of a doc you hold the
+  //      path to. Cross-session discovery is served by `flo sdd list`, and the
+  //      durable post-implementation signal already lands in `learnings` /
+  //      `verify`.
+  //
+  //    So the specs directory is EXCLUDED from the walk rather than merely
+  //    skipped. Exclusion (not just dropping the step-6 entry) is what makes this
+  //    correct for the config `moflo-sdd.md` recommends for reviewable specs —
+  //    a tracked `specs_dir` INSIDE a guidance dir, where the step-1 scan would
+  //    otherwise pick spec.md/plan.md up as ordinary guidance markdown and
+  //    reintroduce the pollution under a guidance prefix.
+  const specsDir = resolveSpecsDir(specsDirConfig);
 
-  return dirs;
+  return { dirs, excludeRoots: [specsDir] };
 }
 
-const GUIDANCE_DIRS = loadGuidanceDirs();
+const { dirs: GUIDANCE_DIRS, excludeRoots: EXCLUDE_ROOTS } = loadGuidanceDirs();
 
 // Chunking config - optimized for Claude's retrieval
 const MIN_CHUNK_SIZE = 50;    // Lower minimum to avoid mega-chunks
@@ -612,8 +630,15 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
       };
     });
 
+    // keyPattern is load-bearing, not belt-and-braces: `${chunkPrefix}-%` as a
+    // bare LIKE also matches every chunk of any sibling doc whose name extends
+    // this one's (indexing `flo` matches `chunk-skill-flo-simplify-0`). Those
+    // rows aren't in chunkRows, so the orphan sweep deleted the sibling's whole
+    // index whenever THIS doc changed. Anchoring on the numeric chunk suffix
+    // confines the sweep to the keys this file actually owns.
     const counts = applyIncrementalChunks(db, NAMESPACE, chunkRows, {
       keyPrefix: `${chunkPrefix}-`,
+      keyPattern: new RegExp(`^${chunkPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-\\d+$`),
     });
     if (verbose) {
       debug(`  Doc ${docKey}: inserted=${counts.inserted} updated=${counts.updated} unchanged=${counts.unchanged} removed=${counts.removed}`);
@@ -628,20 +653,28 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
 /**
  * Recursively collect all .md files under a directory.
  * Skips node_modules, .git, and other non-content directories.
+ *
+ * `excludeRoots` (absolute paths) prunes whole subtrees — used to keep the SDD
+ * specs directory out of the index even when it sits inside a guidance dir.
+ * Compares resolved absolute paths, never raw strings, and matches on a
+ * `path.sep` boundary so `docs/specs` cannot also prune `docs/specs-guide`.
  */
-function walkMdFiles(dir) {
+function walkMdFiles(dir, excludeRoots = []) {
   const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports']);
   // CLAUDE.md is loaded into context by Claude automatically — skip to avoid duplicate vectors
   const SKIP_FILES = new Set(['CLAUDE.md']);
   const files = [];
 
+  const isExcluded = (p) => excludeRoots.some(root => p === root || p.startsWith(root + sep));
+
   function walk(current) {
     if (!existsSync(current)) return;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = resolve(current, entry.name);
       if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) walk(resolve(current, entry.name));
+        if (!SKIP_DIRS.has(entry.name) && !isExcluded(full)) walk(full);
       } else if (entry.isFile() && entry.name.endsWith('.md') && !SKIP_FILES.has(entry.name)) {
-        files.push(resolve(current, entry.name));
+        if (!isExcluded(full)) files.push(full);
       }
     }
   }
@@ -659,7 +692,7 @@ function indexDirectory(db, dirConfig) {
     return results;
   }
 
-  const allMdFiles = walkMdFiles(dirPath);
+  const allMdFiles = walkMdFiles(dirPath, EXCLUDE_ROOTS);
   const filtered = dirConfig.fileFilter
     ? allMdFiles.filter(f => dirConfig.fileFilter.includes(basename(f)))
     : allMdFiles;
@@ -674,17 +707,6 @@ function indexDirectory(db, dirConfig) {
         extraMetadata: { kind: 'skill', skill_name: skillName },
         extraTags: ['skill', `skill-${skillName}`],
       };
-    } else if (dirConfig.kind === 'spec') {
-      // kind: 'spec' (Epic #1269) — key by <slug>-<spec|plan> so a spec.md and
-      // plan.md under the same slug, and identically-named files across slugs,
-      // never collide on the doc key.
-      const slug = basename(dirname(filePath));
-      const artifact = basename(filePath, extname(filePath)); // 'spec' | 'plan'
-      options = {
-        nameOverride: `${slug}-${artifact}`,
-        extraMetadata: { kind: 'spec', spec_slug: slug, artifact },
-        extraTags: ['spec', `spec-${slug}`, artifact],
-      };
     }
     const result = indexFile(db, filePath, dirConfig.prefix, options);
     results.push(result);
@@ -694,36 +716,76 @@ function indexDirectory(db, dirConfig) {
 }
 
 /**
- * Remove stale entries for files that no longer exist on disk.
- * Uses the set of docKeys seen during the current indexing run to determine
- * which entries are stale, rather than reconstructing file paths from keys
- * (which breaks for files in subdirectories).
+ * Derive a chunk row's owning doc prefix from its key.
+ *
+ * Chunk keys are `${chunkPrefix}-${i}`, so stripping the FINAL `-<digits>`
+ * recovers the prefix. Only the last segment is stripped, which keeps
+ * docs whose filename itself ends in digits intact:
+ * `chunk-guidance-issue-1402-0` → `chunk-guidance-issue-1402`, not
+ * `chunk-guidance-issue`.
+ *
+ * Returns null for a key with no numeric suffix — those are not chunk rows
+ * this indexer wrote, and the caller leaves them alone rather than guessing.
  */
-function cleanStaleEntries(db, currentDocKeys) {
-  const docsStmt = db.prepare(
-    `SELECT DISTINCT key FROM memory_entries WHERE namespace = ? AND key LIKE 'doc-%'`
+function chunkPrefixOf(key) {
+  const m = key.match(/^(.*)-\d+$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Remove stale entries for files that no longer exist on disk.
+ *
+ * Keyed on the chunk prefixes seen during the current run, NOT on `doc-*` rows.
+ * The original implementation enumerated `key LIKE 'doc-%'` and treated any doc
+ * key absent from the run as a deleted file — but #1053 S4 retired doc rows
+ * (the chunker stopped writing them and `purge-doc-entries` deleted the rest),
+ * so on any current install that query returns zero rows and the sweep was a
+ * silent no-op. Deleting a guidance file left its chunks — embeddings and all —
+ * in the namespace permanently, with nothing downstream to detect it. Specs made
+ * that visible because they accumulate fastest, but it stranded chunks for every
+ * deleted guidance file, skill, and doc.
+ *
+ * Safety: an empty live set means the run indexed nothing (I/O error, config
+ * pointing at a missing tree). Sweeping then would wipe the namespace, so bail
+ * and leave the rows for a later healthy run to reconcile.
+ */
+function cleanStaleEntries(db, currentChunkPrefixes) {
+  if (currentChunkPrefixes.size === 0) {
+    log('  Skipped: this run indexed no files (refusing to sweep on an empty live set)');
+    return 0;
+  }
+
+  const chunkStmt = db.prepare(
+    `SELECT DISTINCT key FROM memory_entries WHERE namespace = ? AND key LIKE 'chunk-%'`
   );
-  docsStmt.bind([NAMESPACE]);
-  const docs = [];
-  while (docsStmt.step()) docs.push(docsStmt.getAsObject());
-  docsStmt.free();
+  chunkStmt.bind([NAMESPACE]);
+  const chunkKeys = [];
+  while (chunkStmt.step()) chunkKeys.push(chunkStmt.getAsObject().key);
+  chunkStmt.free();
+
+  // Group stale chunk keys by prefix so the log reports one line per deleted
+  // file rather than one per chunk.
+  const stalePrefixes = new Map();
+  for (const key of chunkKeys) {
+    const prefix = chunkPrefixOf(key);
+    if (!prefix || currentChunkPrefixes.has(prefix)) continue;
+    stalePrefixes.set(prefix, (stalePrefixes.get(prefix) ?? 0) + 1);
+  }
 
   let staleCount = 0;
-
-  for (const { key } of docs) {
-    // If this doc key was seen during the current indexing run, it's not stale
-    if (currentDocKeys.has(key)) continue;
-
-    const chunkPrefix = key.replace('doc-', 'chunk-');
-    const countBefore = db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = '${NAMESPACE}'`)[0]?.values[0][0] || 0;
-    db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${chunkPrefix}%`]);
-    db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, key]);
-    const countAfter = db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = '${NAMESPACE}'`)[0]?.values[0][0] || 0;
-    const removed = countBefore - countAfter;
-    if (removed > 0) {
-      log(`  Removed ${removed} stale entries for deleted file: ${key}`);
-      staleCount += removed;
+  const del = db.prepare(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`);
+  try {
+    for (const key of chunkKeys) {
+      const prefix = chunkPrefixOf(key);
+      if (!prefix || currentChunkPrefixes.has(prefix)) continue;
+      del.run([NAMESPACE, key]);
+      staleCount++;
     }
+  } finally {
+    del.free();
+  }
+  for (const [prefix, count] of stalePrefixes) {
+    log(`  Removed ${count} stale entries for deleted file: ${prefix}`);
   }
 
   // Also clean any orphaned entries not matching doc-/chunk- patterns
@@ -738,6 +800,22 @@ function cleanStaleEntries(db, currentDocKeys) {
     db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, key]);
     staleCount++;
     log(`  Removed orphan entry: ${key}`);
+  }
+
+  // Legacy `doc-*` rows from a pre-#1053-S4 install that never ran the
+  // purge-doc-entries migration. Unconditional — the chunker has not written
+  // one since S4, so any survivor is stale by definition.
+  const docStmt = db.prepare(
+    `SELECT key FROM memory_entries WHERE namespace = ? AND key LIKE 'doc-%'`
+  );
+  docStmt.bind([NAMESPACE]);
+  const legacyDocs = [];
+  while (docStmt.step()) legacyDocs.push(docStmt.getAsObject().key);
+  docStmt.free();
+  for (const key of legacyDocs) {
+    db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, key]);
+    staleCount++;
+    log(`  Removed legacy doc entry: ${key}`);
   }
 
   return staleCount;
@@ -760,7 +838,10 @@ let docsIndexed = 0;
 let chunksIndexed = 0;
 let unchanged = 0;
 let errors = 0;
-const currentDocKeys = new Set();
+// Chunk prefixes written by this run — the live set the stale sweep diffs
+// against. Populated from every file that indexed OR was skipped as unchanged;
+// an unchanged file is very much still on disk.
+const currentChunkPrefixes = new Set();
 
 if (specificFile) {
   // Index single file
@@ -794,7 +875,7 @@ if (specificFile) {
 
     for (const result of results) {
       if (result.status === 'indexed' || result.status === 'unchanged') {
-        currentDocKeys.add(result.docKey);
+        currentChunkPrefixes.add(result.docKey.replace(/^doc-/, 'chunk-'));
       }
       if (result.status === 'indexed') {
         log(`  ✅ ${result.docKey} (${result.chunks} chunks)`);
@@ -814,7 +895,7 @@ if (specificFile) {
 let staleRemoved = 0;
 if (!specificFile) {
   log('Cleaning stale entries for deleted files...');
-  staleRemoved = cleanStaleEntries(db, currentDocKeys);
+  staleRemoved = cleanStaleEntries(db, currentChunkPrefixes);
   if (staleRemoved === 0) {
     log('  No stale entries found');
   }

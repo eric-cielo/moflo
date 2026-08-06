@@ -274,7 +274,7 @@ describe('bin/index-guidance.mjs — skills (#942)', () => {
   });
 });
 
-describe('bin/index-guidance.mjs — configurable sdd.specs_dir (#1294)', () => {
+describe('bin/index-guidance.mjs — SDD specs are excluded from the index', () => {
   let root: string;
 
   beforeEach(() => {
@@ -316,10 +316,23 @@ describe('bin/index-guidance.mjs — configurable sdd.specs_dir (#1294)', () => 
     );
   }
 
-  it('indexes specs from a configured specs_dir with a BLANK LINE between sdd keys', { timeout: 30_000 }, async () => {
-    // Regression: the parser must tolerate natural whitespace inside the sdd
-    // block. A naive contiguous-line regex silently fell back to .moflo/specs,
-    // so specs written to the configured dir were never indexed (no error).
+  it('does not index specs from the default .moflo/specs', { timeout: 30_000 }, async () => {
+    writeSpec('.moflo/specs', 'my-feature');
+
+    const result = runIndexer(root);
+    expect(result.status).toBe(0);
+
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    expect((await readMemoryRows(dbPath, 'chunk-spec-%')).length).toBe(0);
+    expect((await readMemoryRows(dbPath, '%my-feature%')).length).toBe(0);
+  });
+
+  it('does not index specs from a configured specs_dir', { timeout: 30_000 }, async () => {
+    // The blank line between sdd keys is the #1294 parser regression: a naive
+    // contiguous-line regex silently falls back to .moflo/specs. The parse must
+    // still resolve `sdd-artifacts` — now so the dir can be EXCLUDED, where
+    // before it decided what to include. A silent fallback would leave the
+    // configured dir indexed as ordinary guidance.
     writeFileSync(join(root, 'moflo.yaml'), 'sdd:\n  default: false\n\n  specs_dir: sdd-artifacts\n');
     writeSpec('sdd-artifacts', 'my-feature');
 
@@ -327,31 +340,168 @@ describe('bin/index-guidance.mjs — configurable sdd.specs_dir (#1294)', () => 
     expect(result.status).toBe(0);
 
     const dbPath = join(root, '.moflo', 'moflo.db');
-    const rows = await readMemoryRows(dbPath, 'chunk-spec-%');
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) {
-      expect(JSON.parse(row.metadata || '{}').kind).toBe('spec');
-    }
+    expect((await readMemoryRows(dbPath, 'chunk-spec-%')).length).toBe(0);
+    expect((await readMemoryRows(dbPath, '%my-feature%')).length).toBe(0);
   });
 
-  it('does not double-index specs when specs_dir sits inside a guidance dir', { timeout: 30_000 }, async () => {
-    // docs/ is a guidance dir; specs under it are indexed once (as guidance),
-    // never a second time under the 'spec' prefix.
+  it('excludes specs even when specs_dir sits inside a guidance dir', { timeout: 30_000 }, async () => {
+    // The config moflo-sdd.md recommends for REVIEWABLE specs: a tracked
+    // specs_dir under a guidance directory. Merely dropping the dedicated spec
+    // step would leave the guidance walk picking these up as ordinary markdown
+    // under the guidance prefix — the same pollution, harder to spot. Sibling
+    // guidance in the same dir must survive, proving the prune is scoped to the
+    // specs subtree and not the whole guidance dir.
     writeFileSync(
       join(root, 'moflo.yaml'),
       ['guidance:', '  directories:', '    - docs', 'sdd:', '  specs_dir: docs/specs', ''].join('\n'),
     );
     writeSpec('docs/specs', 'inside-guidance');
+    mkdirSync(join(root, 'docs'), { recursive: true });
+    writeFileSync(
+      join(root, 'docs', 'real-guidance.md'),
+      ['# Real guidance', '', '## A section', '', 'Body padded past the chunker floor. '.repeat(4), ''].join('\n'),
+    );
 
     const result = runIndexer(root);
     expect(result.status).toBe(0);
 
     const dbPath = join(root, '.moflo', 'moflo.db');
-    // No 'spec'-prefixed rows — the guidance scan owns these files.
-    const specRows = await readMemoryRows(dbPath, 'chunk-spec-%');
-    expect(specRows.length).toBe(0);
-    // But they ARE indexed under the guidance (docs) prefix.
-    const guidanceRows = await readMemoryRows(dbPath, 'chunk-docs-%');
-    expect(guidanceRows.length).toBeGreaterThan(0);
+    expect((await readMemoryRows(dbPath, 'chunk-spec-%')).length).toBe(0);
+    expect((await readMemoryRows(dbPath, '%inside-guidance%')).length).toBe(0);
+    // The guidance dir itself is still indexed — only the specs subtree is pruned.
+    expect((await readMemoryRows(dbPath, '%real-guidance%')).length).toBeGreaterThan(0);
+  });
+
+  it('does not prune a sibling dir sharing the specs_dir name prefix', { timeout: 30_000 }, async () => {
+    // `docs/specs` must not also prune `docs/specs-guide` — the exclusion
+    // matches on a path.sep boundary, not a raw string prefix.
+    writeFileSync(
+      join(root, 'moflo.yaml'),
+      ['guidance:', '  directories:', '    - docs', 'sdd:', '  specs_dir: docs/specs', ''].join('\n'),
+    );
+    mkdirSync(join(root, 'docs', 'specs-guide'), { recursive: true });
+    writeFileSync(
+      join(root, 'docs', 'specs-guide', 'how-to-spec.md'),
+      ['# How to spec', '', '## A section', '', 'Body padded past the chunker floor. '.repeat(4), ''].join('\n'),
+    );
+
+    const result = runIndexer(root);
+    expect(result.status).toBe(0);
+
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    expect((await readMemoryRows(dbPath, '%how-to-spec%')).length).toBeGreaterThan(0);
+  });
+});
+
+describe('bin/index-guidance.mjs — stale sweep for deleted files', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = makeTempRoot();
+  });
+  afterEach(() => {
+    cleanTempRoot(root);
+  });
+
+  function writeGuidanceDoc(name: string) {
+    const dir = join(root, '.claude', 'guidance');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, `${name}.md`),
+      [`# ${name}`, '', '## A section', '', `Body for ${name} padded past the chunker floor. `.repeat(4), ''].join('\n'),
+    );
+  }
+
+  it('removes chunks for a guidance file deleted between runs', { timeout: 60_000 }, async () => {
+    // Regression: the sweep keyed on `doc-*` rows, which #1053 S4 retired. On
+    // any current install that query returns nothing, so deleting a file left
+    // its chunks in the namespace permanently.
+    writeGuidanceDoc('keeper');
+    writeGuidanceDoc('doomed');
+
+    expect(runIndexer(root).status).toBe(0);
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    expect((await readMemoryRows(dbPath, '%doomed%')).length).toBeGreaterThan(0);
+
+    rmSync(join(root, '.claude', 'guidance', 'doomed.md'));
+    expect(runIndexer(root).status).toBe(0);
+
+    expect((await readMemoryRows(dbPath, '%doomed%')).length).toBe(0);
+    // The surviving file's chunks are untouched — including on the second run,
+    // where it is skipped as `unchanged` rather than re-indexed. An unchanged
+    // file must still count as live or the sweep would eat the whole namespace.
+    expect((await readMemoryRows(dbPath, '%keeper%')).length).toBeGreaterThan(0);
+  });
+
+  it('sweeps chunks for a directory dropped from guidance.directories', { timeout: 60_000 }, async () => {
+    // A dir removed from config is stale the same way a deleted file is: the
+    // sweep diffs against what THIS run indexed, not against what exists on
+    // disk. Pinned because it is a behaviour change — before the fix nothing
+    // was ever swept, so a reconfigure left the old dir's chunks serving
+    // results forever.
+    //
+    // Note this is why the sweep bails on an empty live set (see
+    // cleanStaleEntries): that guard is a defensive backstop against a broken
+    // install wiping the namespace, and is not reachable from here — moflo's
+    // own bundled guidance always indexes, so a run is never truly empty.
+    writeGuidanceDoc('keeper');
+    expect(runIndexer(root).status).toBe(0);
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    expect((await readMemoryRows(dbPath, '%keeper%')).length).toBeGreaterThan(0);
+
+    writeFileSync(
+      join(root, 'moflo.yaml'),
+      ['guidance:', '  directories:', '    - docs', ''].join('\n'),
+    );
+    mkdirSync(join(root, 'docs'), { recursive: true });
+    writeFileSync(
+      join(root, 'docs', 'replacement.md'),
+      ['# Replacement', '', '## A section', '', 'Body padded past the chunker floor. '.repeat(4), ''].join('\n'),
+    );
+    expect(runIndexer(root).status).toBe(0);
+
+    expect((await readMemoryRows(dbPath, '%keeper%')).length).toBe(0);
+    expect((await readMemoryRows(dbPath, '%replacement%')).length).toBeGreaterThan(0);
+  });
+
+  it('editing a doc does not wipe a sibling whose name extends it', { timeout: 60_000 }, async () => {
+    // Regression: the per-file orphan sweep scoped itself with a bare SQL LIKE
+    // on `chunk-guidance-foo-%`, which also matches every chunk of `foo-bar`.
+    // Those rows are absent from foo's chunk list, so editing foo.md deleted
+    // foo-bar.md's entire index. It came back only on the NEXT indexer run,
+    // re-inserted with a NULL embedding — so a sibling doc silently dropped out
+    // of search for a whole session and was then re-vectorised from scratch.
+    // Real instance in this repo: the `flo` skill shadows `flo-simplify`.
+    writeGuidanceDoc('foo');
+    writeGuidanceDoc('foo-bar');
+
+    expect(runIndexer(root).status).toBe(0);
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    const before = (await readMemoryRows(dbPath, 'chunk-guidance-foo-bar-%')).length;
+    expect(before).toBeGreaterThan(0);
+
+    // Edit ONLY foo.md — foo-bar.md is untouched and must survive intact.
+    writeFileSync(
+      join(root, '.claude', 'guidance', 'foo.md'),
+      ['# foo', '', '## A section', '', 'Edited body padded past the chunker floor. '.repeat(4), ''].join('\n'),
+    );
+    expect(runIndexer(root).status).toBe(0);
+
+    expect((await readMemoryRows(dbPath, 'chunk-guidance-foo-bar-%')).length).toBe(before);
+  });
+
+  it('keeps chunks for a doc whose filename ends in digits', { timeout: 60_000 }, async () => {
+    // `chunk-guidance-issue-1402-0` must reduce to `chunk-guidance-issue-1402`,
+    // not `chunk-guidance-issue` — otherwise every such doc reads as stale and
+    // is swept on the very next run.
+    writeGuidanceDoc('issue-1402');
+
+    expect(runIndexer(root).status).toBe(0);
+    const dbPath = join(root, '.moflo', 'moflo.db');
+    expect((await readMemoryRows(dbPath, '%issue-1402%')).length).toBeGreaterThan(0);
+
+    // Second run: file unchanged, so it takes the `unchanged` path.
+    expect(runIndexer(root).status).toBe(0);
+    expect((await readMemoryRows(dbPath, '%issue-1402%')).length).toBeGreaterThan(0);
   });
 });
