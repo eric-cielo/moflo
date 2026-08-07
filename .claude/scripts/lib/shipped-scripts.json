@@ -22,7 +22,8 @@
     "gate-hook.mjs",
     "prompt-hook.mjs",
     "hook-handler.cjs",
-    "simplify-classify.cjs"
+    "simplify-classify.cjs",
+    "pr-create-command.cjs"
   ],
   "sourceHelperFiles": [
     "auto-memory-hook.mjs",

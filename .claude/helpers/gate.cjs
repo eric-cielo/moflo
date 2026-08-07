@@ -963,6 +963,45 @@ function creditIsLive(flag, stored, scope) {
   return stored === now;
 }
 
+// #1410 — is this Bash command actually a `gh pr create` invocation? Delegates
+// to pr-create-command.cjs, which sanitises data regions (quotes, heredoc
+// bodies, comments) before looking for the command, so the gate neither misses
+// real invocations (newline-separated, piped, parenthesised) nor fires on
+// commands that merely quote the literal (`git commit -m "...gh pr create..."`).
+//
+// Fail-safe, in BOTH directions, because this runs on every Bash call in every
+// consumer. gate-hook.mjs maps a non-zero exit from this script to exit 2, so an
+// uncaught throw here does not degrade one gate — it blocks every Bash call the
+// consumer makes. So a load failure (partial `.claude/helpers` sync mid-upgrade,
+// hand-pruned install) AND a throw from the matcher itself both fall back to the
+// pre-#1410 regex: previous behaviour, not a wedged session.
+//
+// Not silent (#854, hook-authoring §4): the fallback path advises on stderr and
+// continues. If this ever fires it means the matcher crashed, which is worth
+// being loud about — and it cannot spam a healthy session, because a healthy
+// session never reaches it.
+var LEGACY_PR_CREATE_RE = /(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/;
+var prCreateMatcher = null;
+function isPrCreateCommand(cmd) {
+  if (prCreateMatcher === null) {
+    try {
+      prCreateMatcher = require('./pr-create-command.cjs').isPrCreateCommand;
+    } catch (e) {
+      prCreateMatcher = false;
+      process.stderr.write('moflo: pr-create-command.cjs unavailable (' + (e && e.message) + ') — PR gates fall back to the legacy matcher. Run `npx flo doctor --fix`.\n');
+    }
+    if (typeof prCreateMatcher !== 'function') prCreateMatcher = false;
+  }
+  if (prCreateMatcher) {
+    try {
+      return prCreateMatcher(cmd);
+    } catch (e) {
+      process.stderr.write('moflo: pr-create matcher threw (' + (e && e.message) + ') — falling back to the legacy matcher. Please report with the command that triggered it.\n');
+    }
+  }
+  return LEGACY_PR_CREATE_RE.test(cmd);
+}
+
 // Classifier-aware simplify gate skip. Returns a string reason if the gate
 // can be auto-passed, or null if /simplify must run. Uses simplify-classify.cjs
 // so the gate's "trivial" definition matches the skill's exactly.
@@ -1600,12 +1639,12 @@ switch (command) {
     break;
   }
   case 'check-before-pr': {
-    // Anchored to command-start (or chained via && / || / ;) so heredoc bodies
-    // and quoted strings that contain the literal "gh pr create" don't trip
-    // the gate during regular `git commit -m "...gh pr create..."` flows. The
-    // optional ENV=val prefix segment catches `GH_TOKEN=x gh pr create`.
+    // Anchored to command-start so heredoc bodies and quoted strings that
+    // contain the literal "gh pr create" don't trip the gate during regular
+    // `git commit -m "...gh pr create..."` flows, while still catching the
+    // chained, piped, parenthesised, and multi-line shapes (#1410).
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;
+    if (!isPrCreateCommand(cmd)) break;
     // #1374 — close the loop the TaskCreate reminder opens. Advisory: stdout,
     // no exit, and worded as a reminder, because a message may only claim to
     // block when it blocks (#1326). An open task list is a reporting failure,
@@ -1716,7 +1755,7 @@ switch (command) {
     // command (docs-only diffs are exempt, so this never blocks a docs PR).
     if (!config.verify_before_done) break;
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;
+    if (!isPrCreateCommand(cmd)) break;
     // No-source-files exemption — a docs-only / path-inert diff needs no verify.
     var changedD = getChangedFilesVsBase();
     if (changedD && changedD.length > 0) {

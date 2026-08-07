@@ -85,6 +85,7 @@ function stageDriftScenario(root: string, pkgName: string) {
     'index-tests.mjs', 'index-patterns.mjs', 'index-reference.mjs', 'index-all.mjs',
     'setup-project.mjs', 'run-migrations.mjs', 'session-continuity.mjs',
     'gate-hook.mjs', 'prompt-hook.mjs', 'hook-handler.cjs', 'simplify-classify.cjs',
+    'pr-create-command.cjs',
   ]) {
     writeFileSync(join(nmDir, 'bin', f), '');
   }
