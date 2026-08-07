@@ -43,6 +43,14 @@
  */
 
 import * as realFs from 'node:fs';
+// `randomBytes` inline rather than `randomSuffix` from './id.js' (#1423): the
+// session-start launcher dynamically imports this module out of a consumer's
+// `node_modules/moflo/dist/`, so every import edge added here widens a closure
+// that has to resolve before moflo.yaml can be written. `node:crypto` is a
+// builtin and adds no file to that closure; a sibling module would.
+// `tests/bin/launcher-visibility.test.ts` stages that closure by hand and fails
+// the moment it grows.
+import { randomBytes } from 'node:crypto';
 
 export interface AtomicWriteFs {
   writeFileSync: typeof realFs.writeFileSync;
@@ -65,7 +73,7 @@ export function atomicWriteFileSync(
   data: Buffer | Uint8Array | string,
   fs: AtomicWriteFs = realFs,
 ): void {
-  const tmpPath = `${targetPath}.tmp.${process.pid}.${Math.random().toString(36).slice(2, 8)}`;
+  const tmpPath = `${targetPath}.tmp.${process.pid}.${randomBytes(4).toString('hex')}`;
   try {
     fs.writeFileSync(tmpPath, data);
     fsyncFile(tmpPath, fs);

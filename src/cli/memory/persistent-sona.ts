@@ -21,6 +21,7 @@ import type {
   EwcRecord,
   TrajectoryRecord,
 } from './rvf-learning-store.js';
+import { generateId } from '../shared/utils/id.js';
 // `createEmbeddingService` loaded lazily in initEmbeddings() — see hooks-tools.ts.
 
 // ===== Types =====
@@ -79,10 +80,6 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
   const denom = Math.sqrt(normA) * Math.sqrt(normB);
   return denom > 0 ? dot / denom : 0;
-}
-
-function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // ===== PersistentSonaCoordinator =====

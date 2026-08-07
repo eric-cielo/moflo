@@ -19,6 +19,7 @@ import type {
 } from './types.js';
 import { createSONAManager, SONAManager } from './sona-manager.js';
 import { createPatternLearner, PatternLearner } from './pattern-learner.js';
+import { generateId } from '../shared/utils/id.js';
 
 // ============================================================================
 // ReasoningBank Types (agentic-flow compatible)
@@ -298,7 +299,7 @@ export class ReasoningBankAdapter {
     for (let i = 0; i < Math.min(patterns.length, maxItems); i++) {
       const pattern = patterns[i];
 
-      const id = `mem_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const id = generateId('mem', { separator: '_' });
 
       const rbPattern: ReasoningBankPattern = {
         id,

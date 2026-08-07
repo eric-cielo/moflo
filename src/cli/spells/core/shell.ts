@@ -70,12 +70,11 @@ export function execFileAsync(
 }
 
 /**
- * Escape a string for safe use as a single-quoted shell argument.
- * Wraps in single quotes and escapes embedded single quotes.
+ * Escape a string for safe use as a shell argument.
+ *
+ * Re-exported from `shared/utils/platform.ts` rather than redefined: this module
+ * carried a near-identical copy, and the Windows branch of that copy had the
+ * trailing-backslash defect fixed in #1419. Two implementations meant fixing the
+ * same bug twice — or, as happened, once.
  */
-export function escapeShellArg(arg: string): string {
-  if (process.platform === 'win32') {
-    return `"${arg.replace(/"/g, '\\"')}"`;
-  }
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}
+export { escapeShellArg } from '../../shared/utils/platform.js';

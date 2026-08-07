@@ -10,6 +10,7 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { withSyntheticNotice } from './synthetic.js';
 import { getMofloVersion } from '../services/moflo-version.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -2331,7 +2332,7 @@ export const hooksPatternStore: MCPTool = {
     const confidence = (params.confidence as number) || 0.8;
     const metadata = params.metadata as Record<string, unknown> | undefined;
     const timestamp = new Date().toISOString();
-    const patternId = `pattern-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const patternId = generateId('pattern');
 
     // Try pattern bridge first (HNSW-indexed raw SQL)
     let bridgeResult: { success: boolean; patternId: string; controller: string } | null = null;

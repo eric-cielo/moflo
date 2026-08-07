@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { MOFLO_DIR, mofloHomeDir } from '../services/moflo-paths.js';
+import { generateId } from '../shared/utils/id.js';
 
 // ============================================================================
 // Persistence Configuration
@@ -640,7 +641,7 @@ export async function recordStep(step: TrajectoryStep): Promise<boolean> {
     // Store in ReasoningBank for retrieval
     if (reasoningBank) {
       reasoningBank.store({
-        id: `step_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        id: generateId('step', { separator: '_' }),
         type: step.type,
         embedding,
         content: step.content,

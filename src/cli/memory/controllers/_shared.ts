@@ -5,7 +5,7 @@
  * hierarchical-memory don't each reinvent cosine and BLOB serialization.
  */
 
-import { randomBytes } from 'node:crypto';
+import { generateId as mintId } from '../../shared/utils/id.js';
 
 /**
  * Matches `EmbeddingGenerator` in controller-spec; accepts number[] so
@@ -131,8 +131,14 @@ function keywordOverlap(lowerQuery: string, lowerContent: string): number {
   return hits / tokens.size;
 }
 
+/**
+ * Delegates to the canonical minter, preserving this module's exact ID format
+ * (`-` separator, base36 timestamp, 6 bytes of entropy). The format is pinned
+ * rather than normalised because these IDs are persisted to `.moflo/moflo.db` —
+ * reshaping them would churn consumer state for no benefit (#1423, Rule #2).
+ */
 export function generateId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${randomBytes(6).toString('hex')}`;
+  return mintId(prefix, { base36Time: true });
 }
 
 /**

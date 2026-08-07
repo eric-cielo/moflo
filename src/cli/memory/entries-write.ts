@@ -27,6 +27,7 @@ import { serialiseMetadata } from './bridge-entries.js';
 import { logRoutingFault, writeVectorStatsCache } from './entries-shared.js';
 import { writeThroughDurable } from '../services/durable-sync.js';
 import { resolveStateRoot } from '../services/project-root.js';
+import { generateId } from '../shared/utils/id.js';
 
 /**
  * Propagate a just-persisted durable write to the shared store (#1232). The
@@ -183,7 +184,7 @@ export async function storeEntry(options: {
 
     const db = openDaemonDatabase(dbPath);
 
-    const id = `entry_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const id = generateId('entry', { separator: '_' });
     const now = Date.now();
 
     // generateEmbedding() throws on embed failure; the outer try/catch returns

@@ -18,6 +18,7 @@ import type { HookContext, HookEvent } from '../types.js';
 import type { IEmbeddingService } from './embedding-service-types.js';
 import { TestDeterministicEmbedding } from './__mocks__/test-embedding-service.js';
 import { MEMORY_DB_FILE, MOFLO_DIR } from '../../services/moflo-paths.js';
+import { generateId } from '../../shared/utils/id.js';
 
 // Dynamic imports for optional dependencies
 let MofloDbAdapter: any = null;
@@ -368,7 +369,7 @@ export class ReasoningBank extends EventEmitter {
 
     // Create new pattern
     const pattern: GuidancePattern = {
-      id: `pat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: generateId('pat', { separator: '_' }),
       strategy,
       domain,
       embedding,

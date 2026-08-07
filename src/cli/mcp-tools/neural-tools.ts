@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Lazily resolved fastembed-backed embedder. The previous top-level `await`
 // blocked module evaluation on the fastembed model load (~1–3 s + model
@@ -265,7 +266,7 @@ const rawNeuralTools: MCPTool[] = [
       }
 
       if (action === 'store') {
-        const patternId = `pattern-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const patternId = generateId('pattern');
         const patternName = (input.name as string) || 'Unnamed pattern';
 
         // Generate embedding from pattern name/content

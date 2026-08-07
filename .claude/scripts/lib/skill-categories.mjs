@@ -75,6 +75,13 @@ export const SKILL_CATEGORY_NAMES = Object.keys(SKILL_CATEGORIES_MAP);
 export const ALWAYS_INSTALLED_SKILLS = ['flo', 'fl'];
 
 /**
+ * How far `parseSkillCategories` will look ahead for the `]` closing a
+ * flow-style `categories: [...]` list. Bounded so an unterminated bracket costs
+ * a fixed amount of work rather than a scan to end-of-file per candidate line.
+ */
+const FLOW_LOOKAHEAD_LINES = 50;
+
+/**
  * Extract the selected skill categories from raw `moflo.yaml` text.
  *
  * Regex-based on purpose: the launcher deliberately avoids a YAML dependency
@@ -89,6 +96,14 @@ export const ALWAYS_INSTALLED_SKILLS = ['flo', 'fl'];
  *         - core
  *         - memory
  *
+ * Scanned line by line rather than with one multi-line regex. The regex form
+ * spanned the gap between `skills:` and `categories:` with
+ * `(?:[ \t]+[^\r\n]*\r?\n)*?`, whose `[ \t]+` and `[^\r\n]*` overlap — every
+ * indented line could be split many ways, so a `skills:` block with no
+ * `categories:` key backtracked exponentially and hung the launcher at session
+ * start on the consumer's own `moflo.yaml` (#1418). Line scanning is linear and
+ * matches the same inputs.
+ *
  * @param {string} yamlContent
  * @returns {string[]|null} selected categories, or null when unconfigured
  *   (meaning "no restriction" — sync everything).
@@ -102,27 +117,76 @@ export const ALWAYS_INSTALLED_SKILLS = ['flo', 'fl'];
 export function parseSkillCategories(yamlContent) {
   if (typeof yamlContent !== 'string' || yamlContent.length === 0) return null;
 
-  // Flow style: categories: [a, b]
-  const flow = yamlContent.match(/^[ \t]*skills:[ \t]*\r?\n(?:[ \t]+[^\r\n]*\r?\n)*?[ \t]+categories:[ \t]*\[([^\]]*)\]/m);
-  if (flow) {
-    return flow[1]
-      .split(',')
-      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
-      .filter((s) => s.length > 0);
-  }
+  const lines = yamlContent.split(/\r?\n/);
 
-  // Block style: categories:\n  - a\n  - b
-  const block = yamlContent.match(/^[ \t]*skills:[ \t]*\r?\n(?:[ \t]+[^\r\n]*\r?\n)*?[ \t]+categories:[ \t]*\r?\n((?:[ \t]*-[ \t]*[^\r\n]+\r?\n?)+)/m);
-  if (block) {
-    return block[1]
-      .split(/\r?\n/)
-      .map((line) => line.match(/^[ \t]*-[ \t]*(.+?)[ \t]*$/))
-      .filter(Boolean)
-      .map((m) => m[1].replace(/^['"]|['"]$/g, '').trim())
-      .filter((s) => s.length > 0);
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^[ \t]*skills:[ \t]*$/.test(lines[i])) continue;
+
+    // Walk the indented block under `skills:`. A dedent (or a blank line) ends
+    // it, exactly as the old `[ \t]+`-per-line repetition required.
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (!/^[ \t]/.test(line)) break;
+
+      // Flow style: categories: [a, b], possibly wrapped across lines — the old
+      // regex accepted that because its `[^\]]*` spanned newlines, so dropping
+      // it would be a silent behaviour regression.
+      //
+      // Lookahead is bounded and accumulates FORWARD rather than re-slicing the
+      // remainder of the file. `lines.slice(j).join('\n')` on every candidate
+      // line is O(n^2) on a file with many unterminated `categories: [` lines —
+      // a smaller version of exactly the attacker-controlled-YAML blowup this
+      // rewrite exists to close. A real flow list is one or two lines; 50 is
+      // already far past any legitimate input.
+      if (/^[ \t]+categories:[ \t]*\[/.test(line)) {
+        let buffer = line;
+        for (let k = j + 1; k < lines.length && k <= j + FLOW_LOOKAHEAD_LINES; k++) {
+          if (buffer.includes(']')) break;
+          buffer += '\n' + lines[k];
+        }
+        const flow = buffer.match(/^[ \t]+categories:[ \t]*\[([^\]]*)\]/);
+        if (flow) {
+          return flow[1]
+            .split(',')
+            .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+            .filter((s) => s.length > 0);
+        }
+      }
+
+      // Block style: categories:\n  - a\n  - b
+      if (/^[ \t]+categories:[ \t]*$/.test(line)) return parseBlockItems(lines, j + 1);
+    }
   }
 
   return null;
+}
+
+/**
+ * Collect `- item` lines following a bare `categories:` key.
+ *
+ * Returns `null` when there is not a single dash item, mirroring the old block
+ * regex's `+` quantifier failing to match: a `categories:` key with nothing
+ * under it is unconfigured ("sync everything"), NOT an empty selection ("sync
+ * nothing"). Conflating those would strip every skill from a consumer who left
+ * the key dangling (Rule #2).
+ *
+ * @param {string[]} lines
+ * @param {number} start - index of the first candidate item line
+ * @returns {string[]|null}
+ */
+function parseBlockItems(lines, start) {
+  const items = [];
+  let sawItem = false;
+
+  for (let k = start; k < lines.length; k++) {
+    const item = lines[k].match(/^[ \t]*-[ \t]*(.+?)[ \t]*$/);
+    if (!item) break;
+    sawItem = true;
+    const value = item[1].replace(/^['"]|['"]$/g, '').trim();
+    if (value.length > 0) items.push(value);
+  }
+
+  return sawItem ? items : null;
 }
 
 /**

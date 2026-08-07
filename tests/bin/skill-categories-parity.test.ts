@@ -89,6 +89,35 @@ describe('parseSkillCategories', () => {
     const yaml = 'skills:\n  profile: custom\n  categories: [core]\n';
     expect(parseSkillCategories(yaml)).toEqual(['core']);
   });
+
+  // ── #1418: this parser was rewritten from one multi-line regex to a line scan
+  // because the regex backtracked exponentially and hung the launcher at session
+  // start. These pin the edges of that rewrite — the cases the old regex handled
+  // implicitly and a line scanner could plausibly get wrong. The timing
+  // assertion lives in tests/guards/redos-guard.test.ts.
+
+  it('parses a flow list wrapped across lines', () => {
+    // The old regex spanned newlines via `[^\]]*` and accepted this by accident.
+    // A naive per-line scan would not.
+    expect(parseSkillCategories('skills:\n  categories: [core,\n    memory]\n'))
+      .toEqual(['core', 'memory']);
+  });
+
+  it('treats a dangling categories: key as unconfigured, not as an empty selection', () => {
+    // Rule #2: returning [] here would strip every skill from a consumer who
+    // left the key empty. The old block regex required at least one `- item`.
+    expect(parseSkillCategories('skills:\n  categories:\n')).toBeNull();
+    expect(parseSkillCategories('skills:\n  categories:\nother: x\n')).toBeNull();
+  });
+
+  it('parses a flow list with no trailing newline', () => {
+    expect(parseSkillCategories('skills:\n  categories: [core]')).toEqual(['core']);
+  });
+
+  it('stops at a dedent rather than reaching into the next block', () => {
+    const yaml = 'skills:\n  profile: custom\nother:\n  categories: [nope]\n';
+    expect(parseSkillCategories(yaml)).toBeNull();
+  });
 });
 
 describe('computeExcludedSkills', () => {

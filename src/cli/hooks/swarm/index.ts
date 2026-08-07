@@ -12,6 +12,7 @@ import { EventEmitter } from 'node:events';
 import { reasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
 import { MessageBus } from '../../swarm/message-bus/message-bus.js';
 import type { Message, MessageFilter, IMessageBus } from '../../swarm/types.js';
+import { generateId } from '../../shared/utils/id.js';
 
 // ============================================================================
 // Types
@@ -119,7 +120,7 @@ export interface SwarmConfig {
 }
 
 const DEFAULT_CONFIG: SwarmConfig = {
-  agentId: `agent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  agentId: generateId('agent', { separator: '_' }),
   agentName: 'anonymous',
   messageRetention: 3600000, // 1 hour
   consensusTimeout: 30000, // 30 seconds
@@ -418,7 +419,7 @@ export class SwarmCommunication extends EventEmitter {
     await this.ensureInitialized();
 
     const broadcast: PatternBroadcast = {
-      id: `bc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: generateId('bc', { separator: '_' }),
       sourceAgent: this.config.agentId,
       pattern,
       broadcastTime: Date.now(),
@@ -536,7 +537,7 @@ export class SwarmCommunication extends EventEmitter {
     await this.ensureInitialized();
 
     const request: ConsensusRequest = {
-      id: `cons_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: generateId('cons', { separator: '_' }),
       initiator: this.config.agentId,
       question,
       options,
@@ -691,7 +692,7 @@ export class SwarmCommunication extends EventEmitter {
     await this.ensureInitialized();
 
     const handoff: TaskHandoff = {
-      id: `ho_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: generateId('ho', { separator: '_' }),
       taskId: `task_${Date.now()}`,
       description: taskDescription,
       fromAgent: this.config.agentId,

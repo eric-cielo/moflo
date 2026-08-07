@@ -13,6 +13,7 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 // #1315 — the intelligence/maturity probes below read `.moflo/` state; anchor
 // them at the resolved root so a subdirectory invocation doesn't report zeroes.
 import { resolveStateRoot } from '../services/project-root.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Hook types
 const HOOK_TYPES = [
@@ -1492,7 +1493,7 @@ const postTaskCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     // Auto-generate task ID if not provided
-    const taskId = (ctx.flags.taskId as string) || `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const taskId = (ctx.flags.taskId as string) || generateId('task', { separator: '_' });
     // Default success to true for backward compatibility
     const success = ctx.flags.success !== undefined ? (ctx.flags.success as boolean) : true;
 

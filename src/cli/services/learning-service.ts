@@ -21,6 +21,7 @@ import {
   createNeuralEmbeddingProvider,
   type NeuralEmbeddingProvider,
 } from './neural-embedding-provider.js';
+import { generateId } from '../shared/utils/id.js';
 
 // ============================================================================
 // Configuration
@@ -430,7 +431,7 @@ export class LearningService {
       return { id: existingId, action: 'updated', similarity: ltResults[0].similarity };
     }
 
-    const id = `pat_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const id = generateId('pat', { separator: '_' });
     const embeddingJson = JSON.stringify(Array.from(embedding));
 
     dbRun(this.db!, `

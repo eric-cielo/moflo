@@ -35,6 +35,7 @@ import { ResearchMode } from './modes/research.js';
 import { EdgeMode } from './modes/edge.js';
 import { BatchMode } from './modes/batch.js';
 import type { ModeImplementation } from './modes/index.js';
+import { generateId } from '../shared/utils/id.js';
 
 /**
  * Default mode configurations
@@ -249,7 +250,7 @@ export class SONAManager {
   beginTrajectory(context: string, domain: Trajectory['domain'] = 'general'): string {
     const startTime = performance.now();
 
-    const trajectoryId = `traj_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const trajectoryId = generateId('traj', { separator: '_' });
 
     const trajectory: Trajectory = {
       trajectoryId,
@@ -384,7 +385,7 @@ export class SONAManager {
 
     const fullPattern: Pattern = {
       ...pattern,
-      patternId: `pat_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      patternId: generateId('pat', { separator: '_' }),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
