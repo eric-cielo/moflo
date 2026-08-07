@@ -312,5 +312,41 @@ describe('Daemon Orphan healer (#1150)', () => {
         rmSync(outside, { recursive: true, force: true });
       }
     }, 20000);
+
+    /**
+     * `findProjectRoot` Pass A accepts `.moflo/moflo.db` OR a legacy
+     * `.swarm/memory.db` as a root marker. A guard that disambiguates on only
+     * the first is blind to a nested checkout still on the legacy layout —
+     * it sees no nearer root, concludes there is nothing to disambiguate, and
+     * allows the outer project's daemons to be reaped. The guard must test the
+     * same marker set as the resolver it is guarding.
+     */
+    it('refuses from a nested checkout marked only by legacy .swarm/memory.db', async () => {
+      const outerPid1 = await spawnFakeDaemon();
+      const outerPid2 = await spawnFakeDaemon();
+      writeFileSync(join(tempDir, '.moflo', 'moflo.db'), '');
+
+      // Nested project on the pre-migration layout: no `.moflo/moflo.db`.
+      const nested = join(tempDir, 'vendor', 'legacy-project');
+      mkdirSync(join(nested, '.swarm'), { recursive: true });
+      writeFileSync(join(nested, '.swarm', 'memory.db'), '');
+
+      delete process.env.CLAUDE_PROJECT_DIR;
+      process.chdir(nested);
+
+      // Pass A counts the legacy marker too, so it still climbs to tempDir.
+      expect(findProjectRoot()).toBe(tempDir);
+
+      const success = await autoFixCheck({
+        name: 'Daemon Orphan',
+        status: 'fail',
+        message: '2 daemons',
+        fix: 'flo healer --fix -c daemon-orphan',
+      });
+
+      expect(success).toBe(false);
+      expect(isAlive(outerPid1)).toBe(true);
+      expect(isAlive(outerPid2)).toBe(true);
+    }, 20000);
   });
 });

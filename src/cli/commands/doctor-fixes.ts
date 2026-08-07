@@ -7,13 +7,13 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync, readdirSync } from 'fs';
-import { isAbsolute, join, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, parse, relative, resolve } from 'path';
 import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { findProjectDaemonPids, getDaemonLockHolder } from '../services/daemon-lock.js';
-import { findAncestorMofloRoot, findProjectRoot, resolveStateRoot } from '../services/project-root.js';
+import { findProjectRoot, resolveStateRoot } from '../services/project-root.js';
 import { legacyMemoryDbPath, legacyMemoryDbBakPath, memoryDbPath, mofloDir } from '../services/moflo-paths.js';
 import { findZombieProcesses } from './doctor-zombies.js';
 import { loadToolArrays, getTool } from './doctor-checks-functional-shared.js';
@@ -38,11 +38,36 @@ function canonical(p: string): string {
   try { return realpathSync(abs); } catch { return abs; }
 }
 
-/** Nearest `.moflo/moflo.db` at or above `from`, or null. */
+/**
+ * Pass A's marker test, mirrored exactly.
+ *
+ * `findProjectRoot` treats `.moflo/moflo.db` OR a legacy `.swarm/memory.db` as
+ * equally valid (`project-root.ts` Pass A). Disambiguating on the narrower
+ * signal would leave the guard blind to a nested checkout that has only the
+ * legacy marker — which is the very case it exists to catch. `findAncestorMofloRoot`
+ * is deliberately NOT reused here: it tests only `.moflo/moflo.db`, it is
+ * exclusive of its starting directory, and it has an algorithmic twin in
+ * `bin/lib/moflo-paths.mjs` that `flo init` and the launcher depend on.
+ */
+function hasMofloMarker(dir: string): boolean {
+  return existsSync(join(dir, '.moflo', 'moflo.db')) || existsSync(join(dir, '.swarm', 'memory.db'));
+}
+
+/** Nearest moflo root at or above `from` (inclusive), or null. */
 function nearestMofloRoot(from: string): string | null {
-  const abs = resolve(from);
-  if (existsSync(join(abs, '.moflo', 'moflo.db'))) return abs;
-  return findAncestorMofloRoot(abs);
+  const start = resolve(from);
+  const fsRoot = parse(start).root;
+  let dir = start;
+  while (dir !== fsRoot) {
+    // Same skip as Pass A — a marker inside `node_modules` is a vendored
+    // package's state, not a project root.
+    if (basename(dir) === 'node_modules') { dir = dirname(dir); continue; }
+    if (hasMofloMarker(dir)) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
 }
 
 /**
