@@ -377,14 +377,41 @@ describe('Agent Commands', () => {
 
 describe('Swarm Commands', () => {
   let ctx: CommandContext;
+  let swarmTmpDir: string;
+  let swarmOriginalCwd: string;
+  let swarmOriginalProjectDir: string | undefined;
 
+  // #1428 — anchor these on a throwaway project root. `swarm init`/`start`/
+  // `stop` persist to `<root>/.moflo/swarm/state.json`, and before this block
+  // existed they resolved to the *developer's real repo* and rewrote the live
+  // file on every run. Unanchored, the assertions below also read whatever
+  // that ambient file happened to contain — the same ambient-root coupling
+  // that produced the #1422 report.
   beforeEach(() => {
+    swarmOriginalCwd = process.cwd();
+    swarmOriginalProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    // realpathSync both sides: macOS hands out /var/folders paths that resolve
+    // to /private/var/folders, and findProjectRoot canonicalizes (#1145).
+    swarmTmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'moflo-swarm-cmd-')));
+    process.chdir(swarmTmpDir);
+    process.env.CLAUDE_PROJECT_DIR = swarmTmpDir;
+    // `resolveStateRoot` memoizes; without this, getSwarmStatus resolves the
+    // memory-db candidates against whatever root a previous block cached.
+    _resetStateRootCacheForTest();
+
     ctx = {
       args: [],
       flags: { _: [] },
-      cwd: '/test',
+      cwd: swarmTmpDir,
       interactive: false
     };
+  });
+
+  afterEach(() => {
+    process.chdir(swarmOriginalCwd);
+    if (swarmOriginalProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+    else process.env.CLAUDE_PROJECT_DIR = swarmOriginalProjectDir;
+    rmSync(swarmTmpDir, { recursive: true, force: true });
   });
 
   describe('swarm init', () => {
@@ -430,15 +457,25 @@ describe('Swarm Commands', () => {
   });
 
   describe('swarm start', () => {
+    // #1428 — `start` now attaches an objective to an already-initialised
+    // swarm rather than inventing one, so these run `init` first.
+    const initFirst = async () => {
+      const initCmd = swarmCommand.subcommands?.find(c => c.name === 'init');
+      await initCmd!.action!({ ...ctx, flags: { _: [] } });
+    };
+
     it('should start swarm with objective', async () => {
       const startCmd = swarmCommand.subcommands?.find(c => c.name === 'start');
       expect(startCmd).toBeDefined();
+      await initFirst();
 
       ctx.flags = { objective: 'Build REST API', _: [] };
       const result = await startCmd!.action!(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveProperty('objective', 'Build REST API');
+      // The id comes from the initialised swarm, not a fresh mint.
+      expect(result.data).toHaveProperty('swarmId', 'swarm-mock-123');
     });
 
     it('should fail without objective', async () => {
@@ -450,8 +487,19 @@ describe('Swarm Commands', () => {
       expect(result.exitCode).toBe(1);
     });
 
+    it('should fail when no swarm has been initialised', async () => {
+      const startCmd = swarmCommand.subcommands?.find(c => c.name === 'start');
+
+      ctx.flags = { objective: 'Build REST API', _: [] };
+      const result = await startCmd!.action!(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+    });
+
     it('should accept strategy option', async () => {
       const startCmd = swarmCommand.subcommands?.find(c => c.name === 'start');
+      await initFirst();
 
       ctx.flags = { objective: 'Test project', strategy: 'testing', _: [] };
       const result = await startCmd!.action!(ctx);
@@ -480,13 +528,31 @@ describe('Swarm Commands', () => {
       const stopCmd = swarmCommand.subcommands?.find(c => c.name === 'stop');
       expect(stopCmd).toBeDefined();
 
-      ctx.args = ['swarm-123'];
+      // #1428 — `stop` now clears real recorded state, so there has to be
+      // some. Pre-fix it confirmed a stop for any string at all.
+      const initCmd = swarmCommand.subcommands?.find(c => c.name === 'init');
+      await initCmd!.action!({ ...ctx, flags: { _: [] } });
+
+      ctx.args = ['swarm-mock-123'];
       ctx.flags = { force: true, _: [] };
       const result = await stopCmd!.action!(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveProperty('swarmId', 'swarm-123');
+      expect(result.data).toHaveProperty('swarmId', 'swarm-mock-123');
       expect(result.data).toHaveProperty('stopped', true);
+    });
+
+    it('should refuse an id that is not the active swarm', async () => {
+      const stopCmd = swarmCommand.subcommands?.find(c => c.name === 'stop');
+      const initCmd = swarmCommand.subcommands?.find(c => c.name === 'init');
+      await initCmd!.action!({ ...ctx, flags: { _: [] } });
+
+      ctx.args = ['swarm-not-the-active-one'];
+      ctx.flags = { force: true, _: [] };
+      const result = await stopCmd!.action!(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
     });
 
     it('should fail without swarm ID', async () => {
@@ -503,7 +569,12 @@ describe('Swarm Commands', () => {
       const scaleCmd = swarmCommand.subcommands?.find(c => c.name === 'scale');
       expect(scaleCmd).toBeDefined();
 
-      ctx.args = ['swarm-123'];
+      // #1428 — scale now records against a real initialised swarm rather than
+      // computing a delta from a hardcoded `currentAgents = 8`.
+      const initCmd = swarmCommand.subcommands?.find(c => c.name === 'init');
+      await initCmd!.action!({ ...ctx, flags: { _: [] } });
+
+      ctx.args = ['swarm-mock-123'];
       ctx.flags = { agents: 20, _: [] };
       const result = await scaleCmd!.action!(ctx);
 

@@ -12,7 +12,105 @@ import * as path from 'path';
 import { LEGACY_SWARM_DIR, memoryDbCandidatePaths, mofloDir } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { resolveStateRoot } from '../services/project-root.js';
-import { generateId } from '../shared/utils/id.js';
+
+/**
+ * Persisted swarm state — the only durable thing the `flo swarm` CLI owns.
+ *
+ * #1428: every MCP tool the CLI can reach (`swarm_init`, `agent_spawn`,
+ * `task_orchestrate`, …) runs *in-process* — `mcp-client.ts` imports the
+ * handlers directly rather than talking to a server. So the coordinator a
+ * one-shot CLI command builds dies when that command exits, and nothing it
+ * spawned survives to be observed. The long-lived coordinator lives in the
+ * MCP server, which is why the `mcp__moflo__*` tools can deploy agents and
+ * the CLI cannot.
+ *
+ * That makes this state file the boundary of what `flo swarm` may honestly
+ * claim: `init` records the topology, `start` records an objective against
+ * it, `stop` clears it, and `status` reads it back. Anything beyond that has
+ * to be reported as delegated to the MCP surface, not narrated as done.
+ */
+interface SwarmStateFile {
+  id: string;
+  topology?: string;
+  maxAgents?: number;
+  strategy?: string;
+  v3Mode?: boolean;
+  initializedAt?: string;
+  status?: string;
+  objective?: string;
+  plannedAgents?: number;
+  startedAt?: string;
+}
+
+/**
+ * Canonical path first, then the pre-#1168 `.swarm/state.json` fallback, so a
+ * consumer who initialised on an older moflo still resolves their swarm.
+ * Writes only ever go to `[0]`.
+ */
+function swarmStateFileCandidates(): [canonical: string, legacy: string] {
+  const root = findProjectRoot();
+  return [
+    path.join(mofloDir(root), 'swarm', 'state.json'),
+    path.join(root, LEGACY_SWARM_DIR, 'state.json'),
+  ];
+}
+
+function readSwarmState(): SwarmStateFile | null {
+  for (const file of swarmStateFileCandidates()) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf-8')) as SwarmStateFile;
+    } catch {
+      // A malformed state file is treated as absent rather than fatal — the
+      // remedy is `flo swarm init`, which overwrites it.
+    }
+  }
+  return null;
+}
+
+function writeSwarmState(state: SwarmStateFile): void {
+  const [canonical] = swarmStateFileCandidates();
+  fs.mkdirSync(path.dirname(canonical), { recursive: true });
+  fs.writeFileSync(canonical, JSON.stringify(state, null, 2));
+}
+
+/**
+ * Resolve the recorded swarm, or print why it cannot be and return null —
+ * in which case the caller exits non-zero without doing anything.
+ *
+ * Shared by `stop` and `scale`: both must refuse an id that is not the active
+ * swarm rather than acting on it, which is half of what #1428 was about.
+ */
+function resolveActiveSwarm(swarmId: string, missingMessage: string): SwarmStateFile | null {
+  const existing = readSwarmState();
+  if (!existing) {
+    output.printError(missingMessage);
+    output.printInfo('Run "flo swarm status" to see what is recorded for this project.');
+    return null;
+  }
+  if (existing.id !== swarmId) {
+    output.printError(`Swarm ${swarmId} is not the active swarm.`);
+    output.printInfo(`Active swarm is ${existing.id} — run "flo swarm status" to confirm.`);
+    return null;
+  }
+  return existing;
+}
+
+/** Remove both the canonical and legacy state files; returns true if any existed. */
+function clearSwarmState(): boolean {
+  let removed = false;
+  for (const file of swarmStateFileCandidates()) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      fs.rmSync(file, { force: true });
+      removed = true;
+    } catch {
+      // Leave `removed` false — the caller reports the failure rather than
+      // claiming a stop that did not happen.
+    }
+  }
+  return removed;
+}
 
 // Get dynamic swarm status from memory/session files
 function getSwarmStatus(swarmId?: string) {
@@ -23,25 +121,12 @@ function getSwarmStatus(swarmId?: string) {
   // were removed — no current writer creates those directories, so they
   // always produced 0 counts. The coordinator-backed MCP tools
   // (agent_list / task_list) are the live source of truth.
-  const canonicalSwarmDir = path.join(mofloDir(projectRoot), 'swarm');
-  const legacySwarmDir = path.join(projectRoot, LEGACY_SWARM_DIR);
   const sessionDir = path.join(process.cwd(), '.claude', 'sessions');
   const memoryPaths = memoryDbCandidatePaths(resolveStateRoot());
 
-  // Check for active swarm state file — canonical first, then legacy.
-  let swarmStateFile = path.join(canonicalSwarmDir, 'state.json');
-  if (!fs.existsSync(swarmStateFile)) {
-    swarmStateFile = path.join(legacySwarmDir, 'state.json');
-  }
-  let swarmState: Record<string, unknown> | null = null;
-
-  if (fs.existsSync(swarmStateFile)) {
-    try {
-      swarmState = JSON.parse(fs.readFileSync(swarmStateFile, 'utf-8'));
-    } catch {
-      // Ignore parse errors
-    }
-  }
+  // Canonical first, then legacy — shared with init/start/stop so all four
+  // subcommands resolve the same file.
+  const swarmState = readSwarmState();
 
   // agents/tasks counters: no file-store readers post-#1168. Coordinator
   // MCP tools own the live counts; getSwarmStatus surfaces a static summary
@@ -93,15 +178,18 @@ function getSwarmStatus(swarmId?: string) {
   } else if (completedTasks > 0 && pendingTasks === 0 && inProgressTasks === 0) {
     status = 'completed';
   } else if (swarmState) {
-    status = 'ready';
+    // Honour what was recorded. `start` writes `running`; `init` writes
+    // `ready`. Pre-#1428 this collapsed both to `ready`, so a recorded
+    // objective was invisible here.
+    status = swarmState.status || 'ready';
   }
 
   return {
-    id: swarmId || (swarmState as Record<string, string>)?.id || 'no-active-swarm',
-    topology: (swarmState as Record<string, string>)?.topology || 'none',
+    id: swarmId || swarmState?.id || 'no-active-swarm',
+    topology: swarmState?.topology || 'none',
     status,
-    objective: (swarmState as Record<string, string>)?.objective || 'No active objective',
-    strategy: (swarmState as Record<string, string>)?.strategy || 'none',
+    objective: swarmState?.objective || 'No active objective',
+    strategy: swarmState?.strategy || 'none',
     agents: {
       total: totalAgents,
       active: activeAgents,
@@ -278,22 +366,17 @@ const initCommand: Command = {
       // Save swarm state locally for status command to read. Post-#1168 the
       // canonical home is `<root>/.moflo/swarm/state.json`; the legacy
       // `.swarm/state.json` path is preserved as a read-only fallback in
-      // `getSwarmStatus`.
-      const swarmDir = path.join(mofloDir(findProjectRoot()), 'swarm');
+      // `readSwarmState`.
       try {
-        if (!fs.existsSync(swarmDir)) {
-          fs.mkdirSync(swarmDir, { recursive: true });
-        }
-        const stateFile = path.join(swarmDir, 'state.json');
-        fs.writeFileSync(stateFile, JSON.stringify({
+        writeSwarmState({
           id: result.swarmId,
           topology: result.topology,
           maxAgents: result.config.maxAgents,
-          strategy: ctx.flags.strategy || 'development',
+          strategy: (ctx.flags.strategy as string) || 'development',
           v3Mode,
           initializedAt: result.initializedAt,
           status: 'ready'
-        }, null, 2));
+        });
       } catch {
         // Ignore errors writing state file
       }
@@ -371,6 +454,17 @@ const startCommand: Command = {
 
     strategy = strategy || 'development';
 
+    // #1428 — refuse rather than narrate. Pre-fix this command printed "All
+    // agents deployed" and a `flo swarm status <id>` follow-up for an id it
+    // never persisted, so the advertised command reported either no active
+    // swarm or the state of an unrelated earlier `init`.
+    const existing = readSwarmState();
+    if (!existing) {
+      output.printError('No initialised swarm found.');
+      output.printInfo('Run "flo swarm init" first — it records the topology this objective attaches to.');
+      return { success: false, exitCode: 1 };
+    }
+
     output.writeln();
     output.printInfo(`Starting swarm with objective: ${output.highlight(objective)}`);
     output.writeln();
@@ -378,7 +472,7 @@ const startCommand: Command = {
     // Compute agent deployment plan based on strategy
     const agentPlan = getAgentPlan(strategy);
 
-    output.writeln(output.bold('Agent Deployment Plan'));
+    output.writeln(output.bold('Planned Agent Roster'));
     output.printTable({
       columns: [
         { key: 'role', header: 'Role', width: 20 },
@@ -389,10 +483,12 @@ const startCommand: Command = {
       data: agentPlan
     });
 
+    const plannedAgents = agentPlan.reduce((sum, a) => sum + a.count, 0);
+
     // Confirm execution
     if (ctx.interactive) {
       const confirmed = await confirm({
-        message: `Deploy ${agentPlan.reduce((sum, a) => sum + a.count, 0)} agents?`,
+        message: `Record this objective for ${plannedAgents} agents?`,
         default: true
       });
 
@@ -402,31 +498,49 @@ const startCommand: Command = {
       }
     }
 
-    output.writeln();
-    output.printInfo('Deploying agents...');
-
-    // Show deployment progress
-    const spinner = output.createSpinner({ text: 'Initializing agents...', spinner: 'dots' });
-    spinner.start();
-
-    // Brief delay for spinner animation
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    spinner.succeed('All agents deployed');
-
+    const startedAt = new Date().toISOString();
     const executionState = {
-      swarmId: generateId('swarm', { base36Time: true }),
+      // The persisted id, never a freshly-minted one — `flo swarm status`
+      // resolves ids out of this same file, so a local mint was guaranteed
+      // to be unresolvable.
+      swarmId: existing.id,
       objective,
       strategy,
       status: 'running',
-      agents: agentPlan.reduce((sum, a) => sum + a.count, 0),
-      startedAt: new Date().toISOString(),
+      agents: plannedAgents,
+      startedAt,
       parallel: ctx.flags.parallel ?? true
     };
 
+    try {
+      writeSwarmState({
+        ...existing,
+        strategy,
+        objective,
+        plannedAgents,
+        startedAt,
+        status: 'running',
+      });
+    } catch (error) {
+      output.printError(`Failed to record objective: ${String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+
     output.writeln();
-    output.printSuccess('Swarm execution started');
+    output.printSuccess(`Objective recorded against swarm ${executionState.swarmId}`);
     output.writeln(output.dim(`  Monitor: flo swarm status ${executionState.swarmId}`));
+    output.writeln();
+    // Say plainly what did NOT happen. The CLI reaches its MCP tools in-process
+    // (see SwarmStateFile above), so agents spawned here would not outlive this
+    // command — the long-lived coordinator is the one inside the MCP server.
+    output.printInfo('No agents were spawned by this command.');
+    output.writeln(output.dim('  The roster above is a plan. Agents run on the long-lived coordinator'));
+    output.writeln(output.dim('  in the MCP server — drive them from a Claude Code session with the'));
+    output.writeln(output.dim('  swarm_init / agent_spawn / task_orchestrate tools.'));
+
+    if (ctx.flags.format === 'json') {
+      output.printJson(executionState);
+    }
 
     return { success: true, data: executionState };
   }
@@ -553,9 +667,16 @@ const stopCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
+    // #1428 — `stop` used to print "Swarm <id> stopped" for any string at all,
+    // including an id that never existed, while leaving the state file in
+    // place. It is the counterpart to `start`: if it does not clear that file,
+    // `flo swarm status` reports the objective as running indefinitely.
+    const existing = resolveActiveSwarm(swarmId, 'No active swarm to stop.');
+    if (!existing) return { success: false, exitCode: 1 };
+
     if (ctx.interactive && !force) {
       const confirmed = await confirm({
-        message: `Stop swarm ${swarmId}? Progress will be saved.`,
+        message: `Stop swarm ${swarmId}? Its recorded objective will be cleared.`,
         default: false
       });
 
@@ -567,14 +688,15 @@ const stopCommand: Command = {
 
     output.printInfo(`Stopping swarm ${swarmId}...`);
 
-    if (!force) {
-      output.writeln(output.dim('  Completing in-progress tasks...'));
-      output.writeln(output.dim('  Saving coordination state...'));
-      output.writeln(output.dim('  Notifying agents...'));
-      output.writeln(output.dim('  Saving memory state...'));
+    if (!clearSwarmState()) {
+      output.printError(`Failed to clear swarm state for ${swarmId}.`);
+      return { success: false, exitCode: 1 };
     }
 
     output.printSuccess(`Swarm ${swarmId} stopped`);
+    // Only the recorded state is ours to clear — see SwarmStateFile.
+    output.writeln(output.dim('  Cleared the recorded swarm state. Agents running on the MCP'));
+    output.writeln(output.dim('  coordinator are unaffected — terminate those with agent_terminate.'));
 
     return { success: true, data: { swarmId, stopped: true, force } };
   }
@@ -615,94 +737,118 @@ const scaleCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
-    output.printInfo(`Scaling swarm ${swarmId} to ${targetAgents} agents...`);
+    // #1428 — same treatment as `start`, for the same structural reason. The
+    // wired `swarm_scale` MCP tool really does call coordinator.spawnAgent /
+    // terminateAgent, but calling it from here would drive a coordinator that
+    // dies with this process: the agents would be spawned and lost between one
+    // command and the next. Pre-fix this computed a delta against a hardcoded
+    // `currentAgents = 8` and announced "Swarm scaled to N agents".
+    const existing = resolveActiveSwarm(swarmId, 'No initialised swarm found.');
+    if (!existing) return { success: false, exitCode: 1 };
 
-    // Calculate scaling delta
-    const currentAgents = 8;
-    const delta = targetAgents - currentAgents;
-
-    if (delta > 0) {
-      output.writeln(output.dim(`  Spawning ${delta} new agents...`));
-    } else if (delta < 0) {
-      output.writeln(output.dim(`  Gracefully stopping ${-delta} agents...`));
-    } else {
-      output.printInfo('Swarm already at target size');
-      return { success: true };
+    // The recorded ceiling, which is a real number `init` wrote — not a guess.
+    const previous = existing.maxAgents;
+    if (previous === targetAgents) {
+      output.printInfo(`Recorded agent ceiling is already ${targetAgents}.`);
+      return { success: true, data: { swarmId, agents: targetAgents, changed: false } };
     }
 
-    output.printSuccess(`Swarm scaled to ${targetAgents} agents`);
+    try {
+      writeSwarmState({ ...existing, maxAgents: targetAgents });
+    } catch (error) {
+      output.printError(`Failed to record agent ceiling: ${String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
 
-    return { success: true, data: { swarmId, agents: targetAgents, delta } };
+    output.printSuccess(
+      `Recorded agent ceiling for ${swarmId}: ${previous ?? 'unset'} → ${targetAgents}`,
+    );
+    output.writeln();
+    output.printInfo('No agents were spawned or terminated by this command.');
+    output.writeln(output.dim('  This records the ceiling a later swarm_init will use. To scale a'));
+    output.writeln(output.dim('  running swarm, call the swarm_scale MCP tool from a Claude Code'));
+    output.writeln(output.dim('  session — that reaches the live coordinator, which this CLI cannot.'));
+
+    if (agentType) {
+      output.writeln(output.dim(`  --type ${agentType} applies only to live scaling via swarm_scale.`));
+    }
+
+    return {
+      success: true,
+      data: { swarmId, agents: targetAgents, previousAgents: previous, changed: true },
+    };
   }
 };
 
-// Coordinate command (V3 specific)
+/**
+ * The V3 roster `--v3-mode` is designed around. This is reference data, not
+ * observed state: no agent here is running, and nothing reads it back.
+ *
+ * #1428 — it used to carry a per-agent `status` of `primary`/`active`/
+ * `standby`, rendered in colour, which read as live telemetry for agents that
+ * did not exist. The roster itself is real (the topology it describes is what
+ * `swarm init --v3-mode` actually selects), so the fix is to drop the invented
+ * status column rather than the table.
+ */
+const V3_ROSTER = [
+  { id: 1, role: 'Queen Coordinator', domain: 'Orchestration' },
+  { id: 2, role: 'Security Architect', domain: 'Security' },
+  { id: 3, role: 'Security Auditor', domain: 'Security' },
+  { id: 4, role: 'Test Architect', domain: 'Security' },
+  { id: 5, role: 'Core Architect', domain: 'Core' },
+  { id: 6, role: 'Memory Specialist', domain: 'Core' },
+  { id: 7, role: 'Swarm Specialist', domain: 'Core' },
+  { id: 8, role: 'Integration Architect', domain: 'Integration' },
+  { id: 9, role: 'Performance Engineer', domain: 'Integration' },
+  { id: 10, role: 'CLI Developer', domain: 'Integration' },
+  { id: 11, role: 'Hooks Developer', domain: 'Integration' },
+  { id: 12, role: 'MCP Specialist', domain: 'Integration' },
+  { id: 13, role: 'Project Coordinator', domain: 'Management' },
+  { id: 14, role: 'Documentation Lead', domain: 'Management' },
+  { id: 15, role: 'DevOps Engineer', domain: 'Management' },
+];
+
+// Reference display for the V3 roster. Named `coordinate` for backward
+// compatibility — it coordinates nothing, and no longer claims to.
 const coordinateCommand: Command = {
   name: 'coordinate',
-  description: 'Execute V3 15-agent hierarchical mesh coordination',
+  description: 'Show the V3 15-agent hierarchical-mesh roster (reference only — starts nothing)',
   options: [
     {
       name: 'agents',
-      description: 'Number of agents',
+      description: 'Number of roster entries to show',
       type: 'number',
       default: 15
-    },
-    {
-      name: 'domains',
-      description: 'Domains to activate',
-      type: 'array'
     }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const agentCount = ctx.flags.agents as number || 15;
+    const roster = V3_ROSTER.slice(0, agentCount);
 
     output.writeln();
-    output.writeln(output.bold('V3 15-Agent Hierarchical Mesh Coordination'));
+    output.writeln(output.bold('V3 Hierarchical-Mesh Roster (reference)'));
+    output.writeln(output.dim('  The layout `flo swarm init --v3-mode` is designed around.'));
     output.writeln();
-
-    // V3 agent structure
-    const v3Agents = [
-      { id: 1, role: 'Queen Coordinator', domain: 'Orchestration', status: 'primary' },
-      { id: 2, role: 'Security Architect', domain: 'Security', status: 'active' },
-      { id: 3, role: 'Security Auditor', domain: 'Security', status: 'active' },
-      { id: 4, role: 'Test Architect', domain: 'Security', status: 'active' },
-      { id: 5, role: 'Core Architect', domain: 'Core', status: 'active' },
-      { id: 6, role: 'Memory Specialist', domain: 'Core', status: 'active' },
-      { id: 7, role: 'Swarm Specialist', domain: 'Core', status: 'active' },
-      { id: 8, role: 'Integration Architect', domain: 'Integration', status: 'active' },
-      { id: 9, role: 'Performance Engineer', domain: 'Integration', status: 'active' },
-      { id: 10, role: 'CLI Developer', domain: 'Integration', status: 'active' },
-      { id: 11, role: 'Hooks Developer', domain: 'Integration', status: 'active' },
-      { id: 12, role: 'MCP Specialist', domain: 'Integration', status: 'active' },
-      { id: 13, role: 'Project Coordinator', domain: 'Management', status: 'active' },
-      { id: 14, role: 'Documentation Lead', domain: 'Management', status: 'standby' },
-      { id: 15, role: 'DevOps Engineer', domain: 'Management', status: 'standby' }
-    ].slice(0, agentCount);
 
     output.printTable({
       columns: [
         { key: 'id', header: '#', width: 3, align: 'right' },
         { key: 'role', header: 'Role', width: 22 },
-        { key: 'domain', header: 'Domain', width: 15 },
-        { key: 'status', header: 'Status', width: 10, format: (v) => {
-          if (v === 'primary') return output.highlight(String(v));
-          if (v === 'active') return output.success(String(v));
-          return output.dim(String(v));
-        }}
+        { key: 'domain', header: 'Domain', width: 15 }
       ],
-      data: v3Agents
+      data: roster
     });
 
     output.writeln();
-    output.printInfo('Capabilities:');
-    output.printList([
-      `Flash Attention: ${output.success('memory-efficient attention')}`,
-      `AgentDB Search: ${output.success('HNSW (ANN)')}`,
-      `Memory: ${output.success('Int8 quantized')}`,
-      `Code Reduction: ${output.success('<5,000 lines')}`
-    ]);
+    output.printInfo('No agents were started, and none are running as a result of this command.');
+    output.writeln(output.dim('  Initialise the topology with: flo swarm init --v3-mode'));
+    output.writeln(output.dim('  Spawn real agents from a Claude Code session with agent_spawn.'));
 
-    return { success: true, data: { agents: v3Agents, count: agentCount } };
+    if (ctx.flags.format === 'json') {
+      output.printJson({ roster, count: roster.length });
+    }
+
+    return { success: true, data: { agents: roster, count: roster.length } };
   }
 };
 
@@ -715,7 +861,7 @@ export const swarmCommand: Command = {
   examples: [
     { command: 'flo swarm init --v3-mode', description: 'Initialize V3 swarm' },
     { command: 'flo swarm start -o "Build API" -s development', description: 'Start development swarm' },
-    { command: 'flo swarm coordinate --agents 15', description: 'V3 coordination' }
+    { command: 'flo swarm coordinate --agents 15', description: 'Show the V3 roster (reference)' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
@@ -730,7 +876,7 @@ export const swarmCommand: Command = {
       `${output.highlight('status')}      - Show swarm status`,
       `${output.highlight('stop')}        - Stop swarm execution`,
       `${output.highlight('scale')}       - Scale swarm agent count`,
-      `${output.highlight('coordinate')}  - V3 15-agent coordination`
+      `${output.highlight('coordinate')}  - Show the V3 15-agent roster (reference)`
     ]);
 
     return { success: true };

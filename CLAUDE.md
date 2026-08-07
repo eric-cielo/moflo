@@ -166,6 +166,16 @@ Drive-by edits count too. Auto-memory files under `~/.claude/projects/.../memory
 
 Zero tolerance for unresolved failures. Every failing test, every warning, every bug gets fixed before moving on — no exceptions by severity, no "probably flaky" without individual re-verification. If a test fails in the full suite, retest individually to distinguish real failures from flaky ones. If flaky, fix the flakiness itself (tight timeouts, resource contention, etc.) — don't just re-run and move on. A red signal is never acceptable as background noise.
 
+## Fix small defects here — don't file them (mandatory)
+
+**The default for a defect you find mid-task is to fix it in the PR you are already in.** Filing is the exception and must be earned: name which threshold in `.claude/guidance/shipped/moflo-inline-fixes.md` § 2 the defect crosses, or fix it. A ticket that costs more to triage than the fix costs to make is pure loss.
+
+**Never file a defect your own change caused, unmasked, or invalidated** — a test you turned red, a stale bound or count, a test that pinned the bug you just fixed, a lint or type error your edit introduced. That is not a discovery, it is part of the change.
+
+**Batch fixes into one push.** Fix everything found, run the suite once, push once. Serialised one-fix-per-CI-round pushes are slower than a single careful pass and buy nothing.
+
+Full rule, decision table, and how to surface drive-bys: `.claude/guidance/shipped/moflo-inline-fixes.md`.
+
 ## ⛔ Protected functionality — swarm + hive-mind (mandatory)
 
 **Swarm and hive-mind are CRITICAL moflo product surface.** They are headline capabilities (`flo swarm`, `flo hive-mind`, MCP tools `swarm_*` / `agent_*` / `task_*` / `hive-mind_*`, queen/worker hierarchy, consensus). They MUST remain wired and functional across every refactor, migration, collapse, rename, and "cleanup".

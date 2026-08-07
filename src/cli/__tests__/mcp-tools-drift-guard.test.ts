@@ -107,8 +107,12 @@ const ALLOWLIST: Record<string, string> = {
   // call, so every result they returned described nothing that happened. An
   // allowlist entry is for a tool that works and lacks a caller — reaching for
   // one to keep a fabricating tool registered is the failure mode to avoid.
+  // #1428 removed the `coordination_sync` entry, and the tool with it, for the
+  // reason spelled out directly above: its handler incremented a counter, slept
+  // 50ms under `// Simulate sync` and returned `synchronized` without ever
+  // reaching UnifiedSwarmCoordinator. The entry claimed "handlers remain real,
+  // exercised infrastructure" — which was the half that did not hold.
   'neural_predict': 'public neural API: registered MCP tool callable from user prompts (consumers in retired #932 agents)',
-  'coordination_sync': 'public coordination API: registered MCP tool for swarm/hive sync (consumers in retired #932 agents)',
 };
 
 interface RegisteredTool {

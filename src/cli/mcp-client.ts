@@ -26,7 +26,11 @@ import { performanceTools } from './mcp-tools/performance-tools.js';
 // #1353 — `github-tools.ts` is gone. Its four tools made no GitHub API call;
 // they wrote local JSON and returned `Math.random()` counts, so a `merged: true`
 // described nothing that happened. Use the `gh` CLI or a GitHub MCP server.
-import { coordinationTools } from './mcp-tools/coordination-tools.js';
+// #1428 — `coordination-tools.ts` is gone. Its single tool, `coordination_sync`,
+// incremented a counter, slept 50ms under `// Simulate sync`, wrote a local JSON
+// store and returned `synchronized` — it never touched UnifiedSwarmCoordinator.
+// Its agent-side callers were retired by #932; nothing in the tree invoked it.
+// Same disposition as the `github_*` tools in #1353.
 import { moflodbTools } from './mcp-tools/moflodb-tools.js';
 // #1349 — handlers for tool names shipped CLI commands were already calling.
 import { progressTools } from './mcp-tools/progress-tools.js';
@@ -62,7 +66,6 @@ registerTools([
   ...systemTools,
   ...neuralTools,
   ...performanceTools,
-  ...coordinationTools,
   ...moflodbTools,
   ...progressTools,
   ...coverageTools,

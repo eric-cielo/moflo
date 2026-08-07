@@ -176,6 +176,7 @@ npx flo memory store --namespace patterns --key "brief-descriptive-key" --value 
 
 ## See Also
 
+- `.claude/guidance/moflo-inline-fixes.md` — Fix-vs-file rule for defects found mid-PR; the default is to fix them in the PR you are already in
 - `.claude/guidance/moflo-subagents.md` — Spawn protocol that consumes these universal rules
 - `.claude/guidance/moflo-task-icons.md` — Full ICON + [Role] format and icon map
 - `.claude/guidance/moflo-claude-swarm-cohesion.md` — How `TaskCreate` and swarm coordination layer on top of these rules

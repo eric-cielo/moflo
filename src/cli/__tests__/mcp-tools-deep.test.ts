@@ -148,7 +148,6 @@ vi.mock('../mcp-tools/auto-install.js', () => ({
 
 import { agentTools } from '../mcp-tools/agent-tools.js';
 import { moflodbTools } from '../mcp-tools/moflodb-tools.js';
-import { coordinationTools } from '../mcp-tools/coordination-tools.js';
 import { hiveMindTools } from '../mcp-tools/hive-mind-tools.js';
 import { memoryTools } from '../mcp-tools/memory-tools.js';
 import { neuralTools } from '../mcp-tools/neural-tools.js';
@@ -175,7 +174,6 @@ interface ToolModule {
 const ALL_MODULES: ToolModule[] = [
   { name: 'agent-tools', tools: agentTools },
   { name: 'moflodb-tools', tools: moflodbTools },
-  { name: 'coordination-tools', tools: coordinationTools },
   { name: 'hive-mind-tools', tools: hiveMindTools },
   { name: 'hooks-tools', tools: hooksTools },
   { name: 'memory-tools', tools: memoryTools },
@@ -205,9 +203,11 @@ describe('MCP Tools Deep Test Suite', () => {
       // Lower bound only — exact accounting lives in the drift-guard test.
       // 15 → 14 in #1353, which deleted github-tools.ts outright: all four of
       // its tools made no GitHub API call, so the module had no honest half to
-      // keep. Lowering this bound is legitimate when a module is deliberately
-      // removed; it is a red flag when a module merely stops loading.
-      expect(ALL_MODULES.length).toBeGreaterThanOrEqual(14);
+      // keep. 14 → 13 in #1428, same disposition for coordination-tools.ts —
+      // its one tool simulated a sync instead of performing one. Lowering this
+      // bound is legitimate when a module is deliberately removed; it is a red
+      // flag when a module merely stops loading.
+      expect(ALL_MODULES.length).toBeGreaterThanOrEqual(13);
     });
 
     it('should export arrays from each module', () => {
@@ -231,7 +231,6 @@ describe('MCP Tools Deep Test Suite', () => {
       const minCounts: Record<string, number> = {
         'agent-tools': 6,
         'moflodb-tools': 15,
-        'coordination-tools': 1,
         'hive-mind-tools': 9,
         'memory-tools': 6,
         'neural-tools': 3,
@@ -600,16 +599,8 @@ describe('MCP Tools Deep Test Suite', () => {
     });
   });
 
-  // --------------------------------------------------------------------------
-  // 13. Handler Invocation - Coordination Tools (only coordination_sync remains)
-  // --------------------------------------------------------------------------
-  describe('Coordination Tools - Handler Invocation', () => {
-    it('coordination_sync status returns sync state', async () => {
-      const tool = coordinationTools.find(t => t.name === 'coordination_sync')!;
-      const result: any = await tool.handler({ action: 'status' });
-      expect(result.success).toBe(true);
-    });
-  });
+  // 13. Coordination Tools — removed in #1428 along with coordination_sync,
+  // whose handler simulated a sync instead of performing one.
 
   // --------------------------------------------------------------------------
   // 15. Handler Invocation - Performance Tools (report + benchmark)
@@ -710,7 +701,6 @@ describe('MCP Tools Deep Test Suite', () => {
         agentTools.find(t => t.name === 'agent_list')!,
         swarmTools.find(t => t.name === 'swarm_status')!,
         taskTools.find(t => t.name === 'task_list')!,
-        coordinationTools.find(t => t.name === 'coordination_sync')!,
         performanceTools.find(t => t.name === 'performance_report')!,
       ];
 
