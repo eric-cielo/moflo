@@ -123,7 +123,7 @@ describe('#1427 — no ID is minted from Date.now() alone', () => {
    * `++` covers the in-memory event/message buses, whose counters are
    * process-local and monotonic — weaker than a CSPRNG, but not zero.
    */
-  const HAS_ENTROPY = /random|Random|randomUUID|randomBytes|randomSuffix|generateId|\+\+|[Cc]ounter|crypto/;
+  const HAS_ENTROPY = /[Rr]andom|generateId|\+\+|[Cc]ounter|crypto/;
 
   /** Comment lines describe these shapes on purpose — see doctor-checks-swarm.ts. */
   const COMMENT = /^\s*(?:\/\/|\*|\/\*)/;
