@@ -11,7 +11,7 @@
 
 import * as fs from 'fs';
 import { createHash } from 'crypto';
-import { dirname, join, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 import { locateMofloCliBin } from './moflo-require.js';
@@ -32,6 +32,45 @@ export interface ServiceUninstallResult {
   message: string;
 }
 
+/** Options accepted by the injected command runner — a subset of `execSync`'s. */
+export interface CommandRunnerOptions {
+  timeout: number;
+  stdio?: 'ignore';
+  windowsHide?: boolean;
+  cwd?: string;
+}
+
+/**
+ * The process boundary this module shells out across. Throws on non-zero exit,
+ * exactly like `execSync` — every call site here relies on that to decide
+ * whether the service manager accepted the command.
+ */
+export type CommandRunner = (command: string, options: CommandRunnerOptions) => void;
+
+export interface DaemonServiceOptions {
+  /**
+   * Replaces the real `execSync`. Unit tests pass a recording stub so they
+   * assert the commands that *would* be issued instead of invoking the host's
+   * service manager — see #1412 (real `systemctl --user` calls made the tests
+   * both unsandboxed and unable to fit inside vitest's 5s timeout).
+   */
+  readonly runCommand?: CommandRunner;
+  /** Target a platform branch other than the host's. Test injection. */
+  readonly platform?: NodeJS.Platform;
+  /**
+   * Root the service file is written under. Test injection — keeps unit tests
+   * out of the developer's real `~/Library/LaunchAgents` and
+   * `~/.config/systemd/user`. When set, `XDG_CONFIG_HOME` is deliberately
+   * ignored so an ambient value cannot leak the write back out of the sandbox.
+   */
+  readonly homeDir?: string;
+}
+
+/** Real process boundary. Kept thin so the stub and the default stay swappable. */
+const execSyncRunner: CommandRunner = (command, options) => {
+  execSync(command, options);
+};
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -47,16 +86,20 @@ const SCHTASKS_NAME = 'MoFloDaemon';
 /**
  * Check if the daemon service is registered for the current platform.
  */
-export function isDaemonInstalled(projectRoot: string): boolean {
+export function isDaemonInstalled(
+  projectRoot: string,
+  options: DaemonServiceOptions = {},
+): boolean {
   const resolvedRoot = resolve(projectRoot);
-  const platform = process.platform;
+  const platform = options.platform ?? process.platform;
+  const run = options.runCommand ?? execSyncRunner;
 
   if (platform === 'darwin') {
-    return isDaemonInstalledMacOS(resolvedRoot);
+    return isDaemonInstalledMacOS(resolvedRoot, options);
   } else if (platform === 'linux') {
-    return isDaemonInstalledLinux(resolvedRoot);
+    return isDaemonInstalledLinux(resolvedRoot, options);
   } else if (platform === 'win32') {
-    return isDaemonInstalledWindows(resolvedRoot);
+    return isDaemonInstalledWindows(resolvedRoot, run);
   }
 
   return false;
@@ -65,20 +108,24 @@ export function isDaemonInstalled(projectRoot: string): boolean {
 /**
  * Install the daemon as an OS-native login service.
  */
-export function installDaemonService(projectRoot: string): ServiceInstallResult {
+export function installDaemonService(
+  projectRoot: string,
+  options: DaemonServiceOptions = {},
+): ServiceInstallResult {
   const resolvedRoot = resolve(projectRoot);
   validateProjectRoot(resolvedRoot);
 
-  const platform = process.platform;
+  const platform = options.platform ?? process.platform;
+  const run = options.runCommand ?? execSyncRunner;
   const nodePath = process.execPath;
   const cliPath = resolveCliPath();
 
   if (platform === 'darwin') {
-    return installMacOS(resolvedRoot, nodePath, cliPath);
+    return installMacOS(resolvedRoot, nodePath, cliPath, options);
   } else if (platform === 'linux') {
-    return installLinux(resolvedRoot, nodePath, cliPath);
+    return installLinux(resolvedRoot, nodePath, cliPath, run, options);
   } else if (platform === 'win32') {
-    return installWindows(resolvedRoot, nodePath, cliPath);
+    return installWindows(resolvedRoot, nodePath, cliPath, run);
   }
 
   return {
@@ -91,17 +138,21 @@ export function installDaemonService(projectRoot: string): ServiceInstallResult 
 /**
  * Uninstall the daemon OS-native login service.
  */
-export function uninstallDaemonService(projectRoot: string): ServiceUninstallResult {
+export function uninstallDaemonService(
+  projectRoot: string,
+  options: DaemonServiceOptions = {},
+): ServiceUninstallResult {
   const resolvedRoot = resolve(projectRoot);
   validateProjectRoot(resolvedRoot);
-  const platform = process.platform;
+  const platform = options.platform ?? process.platform;
+  const run = options.runCommand ?? execSyncRunner;
 
   if (platform === 'darwin') {
-    return uninstallMacOS(resolvedRoot);
+    return uninstallMacOS(resolvedRoot, run, options);
   } else if (platform === 'linux') {
-    return uninstallLinux(resolvedRoot);
+    return uninstallLinux(resolvedRoot, run, options);
   } else if (platform === 'win32') {
-    return uninstallWindows(resolvedRoot);
+    return uninstallWindows(resolvedRoot, run);
   }
 
   return {
@@ -114,9 +165,9 @@ export function uninstallDaemonService(projectRoot: string): ServiceUninstallRes
 // macOS — launchd
 // ---------------------------------------------------------------------------
 
-function plistPath(projectRoot: string): string {
+function plistPath(projectRoot: string, options: DaemonServiceOptions = {}): string {
   const slug = projectRootSlug(projectRoot);
-  return join(homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.${slug}.plist`);
+  return join(options.homeDir ?? homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.${slug}.plist`);
 }
 
 function generatePlist(projectRoot: string, nodePath: string, cliPath: string): string {
@@ -156,8 +207,13 @@ function generatePlist(projectRoot: string, nodePath: string, cliPath: string): 
   ].join('\n');
 }
 
-function installMacOS(projectRoot: string, nodePath: string, cliPath: string): ServiceInstallResult {
-  const dest = plistPath(projectRoot);
+function installMacOS(
+  projectRoot: string,
+  nodePath: string,
+  cliPath: string,
+  options: DaemonServiceOptions,
+): ServiceInstallResult {
+  const dest = plistPath(projectRoot, options);
   const dir = dirname(dest);
   fs.mkdirSync(dir, { recursive: true });
 
@@ -171,8 +227,12 @@ function installMacOS(projectRoot: string, nodePath: string, cliPath: string): S
   };
 }
 
-function uninstallMacOS(projectRoot: string): ServiceUninstallResult {
-  const dest = plistPath(projectRoot);
+function uninstallMacOS(
+  projectRoot: string,
+  run: CommandRunner,
+  options: DaemonServiceOptions,
+): ServiceUninstallResult {
+  const dest = plistPath(projectRoot, options);
 
   if (!fs.existsSync(dest)) {
     return { success: true, message: 'Daemon service is not installed.' };
@@ -180,24 +240,29 @@ function uninstallMacOS(projectRoot: string): ServiceUninstallResult {
 
   // Unload before removing (ignore errors — may not be loaded)
   try {
-    execSync(`launchctl unload "${dest}"`, { timeout: 5000, stdio: 'ignore' });
+    run(`launchctl unload "${dest}"`, { timeout: 5000, stdio: 'ignore' });
   } catch { /* not loaded — fine */ }
 
   fs.unlinkSync(dest);
   return { success: true, message: `Daemon service removed from ${dest}.` };
 }
 
-function isDaemonInstalledMacOS(projectRoot: string): boolean {
-  return fs.existsSync(plistPath(projectRoot));
+function isDaemonInstalledMacOS(projectRoot: string, options: DaemonServiceOptions): boolean {
+  return fs.existsSync(plistPath(projectRoot, options));
 }
 
 // ---------------------------------------------------------------------------
 // Linux — systemd --user
 // ---------------------------------------------------------------------------
 
-function systemdUnitPath(projectRoot: string): string {
+function systemdUnitPath(projectRoot: string, options: DaemonServiceOptions = {}): string {
   const slug = projectRootSlug(projectRoot);
-  const configDir = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  // An injected homeDir is a sandbox boundary — XDG_CONFIG_HOME must not
+  // override it, or an ambient value would redirect the write back to the
+  // developer's real config tree.
+  const configDir = options.homeDir
+    ? join(options.homeDir, '.config')
+    : process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
   return join(configDir, 'systemd', 'user', `${SYSTEMD_UNIT.replace('.service', '')}-${slug}.service`);
 }
 
@@ -221,8 +286,14 @@ function generateSystemdUnit(projectRoot: string, nodePath: string, cliPath: str
   ].join('\n');
 }
 
-function installLinux(projectRoot: string, nodePath: string, cliPath: string): ServiceInstallResult {
-  const dest = systemdUnitPath(projectRoot);
+function installLinux(
+  projectRoot: string,
+  nodePath: string,
+  cliPath: string,
+  run: CommandRunner,
+  options: DaemonServiceOptions,
+): ServiceInstallResult {
+  const dest = systemdUnitPath(projectRoot, options);
   const dir = dirname(dest);
   fs.mkdirSync(dir, { recursive: true });
 
@@ -231,9 +302,8 @@ function installLinux(projectRoot: string, nodePath: string, cliPath: string): S
 
   // Reload systemd and enable
   try {
-    execSync('systemctl --user daemon-reload', { timeout: 10000, stdio: 'ignore' });
-    const unitName = dest.split('/').pop()!;
-    execSync(`systemctl --user enable ${unitName}`, { timeout: 10000, stdio: 'ignore' });
+    run('systemctl --user daemon-reload', { timeout: 10000, stdio: 'ignore' });
+    run(`systemctl --user enable ${basename(dest)}`, { timeout: 10000, stdio: 'ignore' });
   } catch {
     // systemctl may not be available in all environments
   }
@@ -245,8 +315,12 @@ function installLinux(projectRoot: string, nodePath: string, cliPath: string): S
   };
 }
 
-function uninstallLinux(projectRoot: string): ServiceUninstallResult {
-  const dest = systemdUnitPath(projectRoot);
+function uninstallLinux(
+  projectRoot: string,
+  run: CommandRunner,
+  options: DaemonServiceOptions,
+): ServiceUninstallResult {
+  const dest = systemdUnitPath(projectRoot, options);
 
   if (!fs.existsSync(dest)) {
     return { success: true, message: 'Daemon service is not installed.' };
@@ -254,23 +328,23 @@ function uninstallLinux(projectRoot: string): ServiceUninstallResult {
 
   // Disable and stop before removing
   try {
-    const unitName = dest.split('/').pop()!;
-    execSync(`systemctl --user disable ${unitName}`, { timeout: 10000, stdio: 'ignore' });
-    execSync(`systemctl --user stop ${unitName}`, { timeout: 10000, stdio: 'ignore' });
+    const unitName = basename(dest);
+    run(`systemctl --user disable ${unitName}`, { timeout: 10000, stdio: 'ignore' });
+    run(`systemctl --user stop ${unitName}`, { timeout: 10000, stdio: 'ignore' });
   } catch { /* may not be running */ }
 
   fs.unlinkSync(dest);
 
   // Reload systemd
   try {
-    execSync('systemctl --user daemon-reload', { timeout: 10000, stdio: 'ignore' });
+    run('systemctl --user daemon-reload', { timeout: 10000, stdio: 'ignore' });
   } catch { /* ignore */ }
 
   return { success: true, message: `Daemon service removed from ${dest}.` };
 }
 
-function isDaemonInstalledLinux(projectRoot: string): boolean {
-  return fs.existsSync(systemdUnitPath(projectRoot));
+function isDaemonInstalledLinux(projectRoot: string, options: DaemonServiceOptions): boolean {
+  return fs.existsSync(systemdUnitPath(projectRoot, options));
 }
 
 // ---------------------------------------------------------------------------
@@ -282,13 +356,18 @@ function schtasksName(projectRoot: string): string {
   return `${SCHTASKS_NAME}-${slug}`;
 }
 
-function installWindows(projectRoot: string, nodePath: string, cliPath: string): ServiceInstallResult {
+function installWindows(
+  projectRoot: string,
+  nodePath: string,
+  cliPath: string,
+  run: CommandRunner,
+): ServiceInstallResult {
   const taskName = schtasksName(projectRoot);
 
   // Build schtasks command — ONLOGON trigger, user-level
   // Use /F to force overwrite if already exists (idempotent)
   try {
-    execSync(
+    run(
       `schtasks /Create /TN "${taskName}" /TR "\\"${nodePath}\\" \\"${cliPath}\\" daemon start --foreground --quiet" /SC ONLOGON /F`,
       { timeout: 15000, windowsHide: true, cwd: projectRoot, stdio: 'ignore' },
     );
@@ -307,11 +386,11 @@ function installWindows(projectRoot: string, nodePath: string, cliPath: string):
   };
 }
 
-function uninstallWindows(projectRoot: string): ServiceUninstallResult {
+function uninstallWindows(projectRoot: string, run: CommandRunner): ServiceUninstallResult {
   const taskName = schtasksName(projectRoot);
 
   try {
-    execSync(
+    run(
       `schtasks /Delete /TN "${taskName}" /F`,
       { timeout: 15000, windowsHide: true, stdio: 'ignore' },
     );
@@ -323,10 +402,10 @@ function uninstallWindows(projectRoot: string): ServiceUninstallResult {
   return { success: true, message: `Daemon task "${taskName}" removed from Task Scheduler.` };
 }
 
-function isDaemonInstalledWindows(projectRoot: string): boolean {
+function isDaemonInstalledWindows(projectRoot: string, run: CommandRunner): boolean {
   const taskName = schtasksName(projectRoot);
   try {
-    execSync(`schtasks /Query /TN "${taskName}"`, {
+    run(`schtasks /Query /TN "${taskName}"`, {
       timeout: 10000,
       windowsHide: true,
       stdio: 'ignore',
