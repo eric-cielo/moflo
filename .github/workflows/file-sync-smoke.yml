@@ -16,6 +16,18 @@ name: File-sync smoke (#976)
 #                                       sentinel write + hash-skip mtime
 #   - bootstrap-sentinel-promotion.test.ts — launcher §0/§3h sentinel +
 #                                            upgrade-notice round-trip
+#   - daemon-service.test.ts          — OS-native service registration
+#                                       (#1412). Not a file-sync test; it rides
+#                                       this matrix because it is the repo's
+#                                       only 3-OS vitest leg and the suite is
+#                                       where separator-flavor bugs hide. The
+#                                       Linux branch derived its systemd unit
+#                                       name with `split('/')`, which returns
+#                                       the WHOLE path under NTFS — invisible
+#                                       to the ubuntu-only `Tests` job. Now the
+#                                       macOS/Linux/Windows branches are all
+#                                       stub-driven, so every leg asserts every
+#                                       branch in ~2s.
 #
 # These three together cover the six #976 acceptance behaviors:
 #   B1 hash-skip preserves mtime
@@ -56,6 +68,8 @@ on:
       - 'src/cli/__tests__/post-install-bootstrap.test.ts'
       - 'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts'
       - 'src/cli/__tests__/shipped-scripts-manifest.test.ts'
+      - 'src/cli/services/daemon-service.ts'
+      - 'src/cli/__tests__/services/daemon-service.test.ts'
       - '.github/workflows/file-sync-smoke.yml'
   workflow_dispatch:
 
@@ -108,4 +122,5 @@ jobs:
           src/cli/__tests__/post-install-bootstrap.test.ts
           src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
           src/cli/__tests__/shipped-scripts-manifest.test.ts
+          src/cli/__tests__/services/daemon-service.test.ts
           tests/bin/launcher-854-fixes.test.ts
