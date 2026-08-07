@@ -20,6 +20,13 @@ on:
       - '.github/PULL_REQUEST_TEMPLATE/**'
       - 'LICENSE'
 
+# The GITHUB_TOKEN this workflow receives needs nothing beyond reading the
+# repo: no job here pushes, comments, releases, or uploads. Declared
+# explicitly so the intent survives a change to the org/repo default, and
+# because declaring any key drops every unlisted scope to none. (#1420)
+permissions:
+  contents: read
+
 env:
   NODE_VERSION: '22'
 
