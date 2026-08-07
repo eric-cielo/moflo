@@ -167,10 +167,15 @@ jobs:
       - name: Build (tsc only — tests need the source helpers under bin/lib/)
         run: npm run build
 
+      # `--config vitest.isolation.config.ts` is load-bearing — the default
+      # config's `exclude` (which splices in `isolationTests`) wins over an
+      # explicitly named file, so this step silently skipped
+      # bootstrap-sentinel-promotion and launcher-854-fixes and still exited 0.
       - name: Run file-sync smoke tests
-        run: npx vitest run --reporter=default
+        run: npx vitest run --config vitest.isolation.config.ts --reporter=default
           src/cli/__tests__/file-sync-helper.test.ts
           src/cli/__tests__/post-install-bootstrap.test.ts
           src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
           src/cli/__tests__/shipped-scripts-manifest.test.ts
+          src/cli/__tests__/services/daemon-service.test.ts
           tests/bin/launcher-854-fixes.test.ts
