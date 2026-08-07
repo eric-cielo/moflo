@@ -123,6 +123,8 @@ export function loadRetiredManifest(manifestPath) {
 /**
  * Decide what to do with a consumer-side path against a retirement entry:
  *
+ *   - 'shipped'    — the installed package STILL ships this path, so the
+ *                    manifest entry contradicts the package; skip it entirely
  *   - 'absent'     — path doesn't exist on disk; nothing to do
  *   - 'prune'      — file exists and content hash matches a known-shipped
  *                    value; safe to delete (consumer didn't customize)
@@ -131,13 +133,34 @@ export function loadRetiredManifest(manifestPath) {
  *   - 'unknown'    — file exists but its hash couldn't be read (transient
  *                    error); leave alone, retry next session
  *
+ * The `shipped` check exists because a path can be retired and later RESTORED
+ * under the same name (#1414). The stale entry then holds only pre-deletion
+ * hashes, so the consumer's copy — which moflo itself just synced from the
+ * package — matches nothing and is reported as a customized retired file every
+ * session. Asking the package what it ships is the only source that cannot
+ * drift from the manifest, so it wins.
+ *
+ * `packageRoot` is optional and defaults to no cross-check: callers that don't
+ * know where the package lives keep exactly the pre-#1414 semantics.
+ *
+ * Order matters. The consumer-path check runs FIRST because most entries are
+ * `absent` on a typical install (already pruned, or never had the file), and
+ * those need no package stat at all — this runs on every consumer's session
+ * start, where a doubled stat count is 10-40ms on Windows with a scanner or a
+ * network `node_modules`. Entries that are absent locally are also exactly the
+ * ones a contradiction cannot hurt: there is nothing to delete or report.
+ *
  * @param {string} projectRoot
  * @param {{path:string, knownContentHashes:string[]}} entry
- * @returns {{ action: 'absent'|'prune'|'preserve'|'unknown', actualHash: string|null }}
+ * @param {string|null} [packageRoot] - root of the installed moflo package
+ * @returns {{ action: 'shipped'|'absent'|'prune'|'preserve'|'unknown', actualHash: string|null }}
  */
-export function classifyRetiredFile(projectRoot, entry) {
+export function classifyRetiredFile(projectRoot, entry, packageRoot = null) {
   const abs = resolve(projectRoot, entry.path);
   if (!existsSync(abs)) return { action: 'absent', actualHash: null };
+  if (packageRoot && existsSync(resolve(packageRoot, entry.path))) {
+    return { action: 'shipped', actualHash: null };
+  }
   const actualHash = fileSha256(abs);
   if (!actualHash) return { action: 'unknown', actualHash: null };
   if (entry.knownContentHashes.includes(actualHash)) {
@@ -167,15 +190,24 @@ export function classifyRetiredFile(projectRoot, entry) {
  * `preservedDetails` carries the same set with the manifest's retirement
  * provenance attached, for the machine-readable record (#1307 finding 3).
  *
+ * `shipped` collects entries the installed package still ships (#1414). They
+ * are neither pruned nor preserved — the manifest is simply wrong about them,
+ * and reporting them as retained is what produced the false banner. Nothing
+ * reads it today; it is here so the return value is a complete accounting of
+ * every entry's disposition rather than silently dropping one class, and so
+ * tests can assert the skip happened instead of inferring it from an absence.
+ *
  * @param {string} projectRoot
  * @param {string} manifestPath
- * @returns {{ pruned: string[], preserved: string[], preservedDetails: Array<{path:string, retiredIn?:string, retiredBy?:string}>, unknown: string[], failed: Array<{path:string, message:string}> }}
+ * @param {string|null} [packageRoot] - root of the installed moflo package
+ * @returns {{ pruned: string[], preserved: string[], preservedDetails: Array<{path:string, retiredIn?:string, retiredBy?:string}>, shipped: string[], unknown: string[], failed: Array<{path:string, message:string}> }}
  */
-export function applyRetiredPrune(projectRoot, manifestPath) {
+export function applyRetiredPrune(projectRoot, manifestPath, packageRoot = null) {
   const { entries } = loadRetiredManifest(manifestPath);
-  const report = { pruned: [], preserved: [], preservedDetails: [], unknown: [], failed: [] };
+  const report = { pruned: [], preserved: [], preservedDetails: [], shipped: [], unknown: [], failed: [] };
   for (const entry of entries) {
-    const { action } = classifyRetiredFile(projectRoot, entry);
+    const { action } = classifyRetiredFile(projectRoot, entry, packageRoot);
+    if (action === 'shipped') { report.shipped.push(entry.path); continue; }
     if (action === 'absent') continue;
     if (action === 'preserve') {
       report.preserved.push(entry.path);

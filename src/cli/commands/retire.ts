@@ -59,7 +59,7 @@ export const retireCommand: Command = {
     },
     {
       name: 'rebuild-hashes',
-      description: 'Recompute knownContentHashes[] for every existing entry from full git history (#1133 backfill)',
+      description: 'Recompute knownContentHashes[] for every entry from full git history, and drop entries whose path is back in the tree (#1133 backfill, #1414 heal)',
       type: 'boolean',
       default: false,
     },

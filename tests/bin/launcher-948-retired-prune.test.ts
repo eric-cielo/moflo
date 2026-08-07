@@ -575,4 +575,122 @@ describe('retired-files helper (#948)', () => {
       }]);
     });
   });
+
+  // ── Still-shipped cross-check (#1414) ──────────────────────────────────
+  //
+  // A path can be retired and later RESTORED under the same name. The stale
+  // manifest entry then holds only pre-deletion hashes, so the copy moflo's own
+  // manifest sync just wrote from the package matches nothing and is reported
+  // as a customized retired file on every session — telling the user to delete
+  // agents that agent-router and swarm resolve by name. Ten shipped core agents
+  // were in exactly that state.
+  //
+  // Asking the installed package what it ships is the only source that cannot
+  // drift, so it overrides the manifest. The check is conservative in the safe
+  // direction: it can only ever turn a delete into a skip.
+  describe('still-shipped cross-check', () => {
+    let root: string;
+    let pkgRoot: string;
+    beforeEach(() => {
+      root = makeTempRoot('shipped');
+      pkgRoot = makeTempRoot('shipped-pkg');
+    });
+    afterEach(() => { cleanTempRoot(root); cleanTempRoot(pkgRoot); });
+
+    const REL = '.claude/agents/core/coder.md';
+
+    function manifestFor(entries: Array<{path:string; knownContentHashes:string[]}>) {
+      const p = join(root, 'retired-files.json');
+      writeFileSync(p, JSON.stringify({ version: 1, retired: entries }));
+      return p;
+    }
+
+    it('classifies a still-shipped path as shipped, whatever the on-disk content', () => {
+      writeAt(root, REL, '# current shipped content\n');
+      writeAt(pkgRoot, REL, '# current shipped content\n');
+
+      const entry = { path: REL, knownContentHashes: [sha256Of('# the ancient pre-deletion content\n')] };
+      // Without the package root this is the pre-#1414 verdict: hash mismatch
+      // reads as a user customization.
+      expect(classifyRetiredFile(root, entry).action).toBe('preserve');
+      expect(classifyRetiredFile(root, entry, pkgRoot).action).toBe('shipped');
+    });
+
+    it('classifies as shipped even when the hash WOULD have matched', () => {
+      // The prune direction matters more than the preserve direction: a
+      // contradictory entry whose hash happens to match would delete a file the
+      // package still ships, and Mechanism A would put it back next session —
+      // a delete/restore flap on every upgrade.
+      const content = '# shipped\n';
+      writeAt(root, REL, content);
+      writeAt(pkgRoot, REL, content);
+
+      const entry = { path: REL, knownContentHashes: [sha256Of(content)] };
+      expect(classifyRetiredFile(root, entry).action).toBe('prune');
+      expect(classifyRetiredFile(root, entry, pkgRoot).action).toBe('shipped');
+    });
+
+    it('leaves the verdict alone for a path the package genuinely dropped', () => {
+      const content = '# shipped\n';
+      writeAt(root, REL, content);
+      // pkgRoot deliberately has no copy — a real retirement.
+
+      const entry = { path: REL, knownContentHashes: [sha256Of(content)] };
+      expect(classifyRetiredFile(root, entry, pkgRoot).action).toBe('prune');
+    });
+
+    it('applyRetiredPrune reports shipped entries separately and touches nothing', () => {
+      const stale = '# ancient\n';
+      writeAt(root, REL, '# current shipped content\n');
+      writeAt(pkgRoot, REL, '# current shipped content\n');
+      writeAt(root, '.claude/agents/v3/really-retired.md', stale);
+
+      const manifestPath = manifestFor([
+        { path: REL, knownContentHashes: [sha256Of(stale)] },
+        { path: '.claude/agents/v3/really-retired.md', knownContentHashes: [sha256Of(stale)] },
+      ]);
+
+      const report = applyRetiredPrune(root, manifestPath, pkgRoot);
+
+      expect(report.shipped).toEqual([REL]);
+      expect(report.preserved).toEqual([]);
+      expect(report.preservedDetails).toEqual([]);
+      expect(existsSync(join(root, REL))).toBe(true);
+
+      // The genuine retirement still prunes — the cross-check is per-entry, not
+      // a global off switch.
+      expect(report.pruned).toEqual(['.claude/agents/v3/really-retired.md']);
+      expect(existsSync(join(root, '.claude/agents/v3/really-retired.md'))).toBe(false);
+    });
+
+    it('omitting the package root preserves pre-#1414 behaviour exactly', () => {
+      const stale = '# ancient\n';
+      writeAt(root, REL, '# current shipped content\n');
+      writeAt(pkgRoot, REL, '# current shipped content\n');
+
+      const manifestPath = manifestFor([{ path: REL, knownContentHashes: [sha256Of(stale)] }]);
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.shipped).toEqual([]);
+      expect(report.preserved).toEqual([REL]);
+    });
+
+    it('feeds an empty preserved set into writeRetainedRecord, clearing a stale record', () => {
+      // The end-to-end payoff for an affected consumer: on the upgrade that
+      // carries this fix, the record naming 10 falsely-retained files is not
+      // rewritten — it is deleted.
+      const stale = '# ancient\n';
+      writeAt(root, REL, '# current shipped content\n');
+      writeAt(pkgRoot, REL, '# current shipped content\n');
+      const manifestPath = manifestFor([{ path: REL, knownContentHashes: [sha256Of(stale)] }]);
+
+      const before = applyRetiredPrune(root, manifestPath);
+      expect(writeRetainedRecord(root, before.preservedDetails, '4.12.4')).not.toBeNull();
+      expect(existsSync(join(root, RETAINED_RECORD_REL))).toBe(true);
+
+      const after = applyRetiredPrune(root, manifestPath, pkgRoot);
+      expect(writeRetainedRecord(root, after.preservedDetails, '4.12.5')).toBeNull();
+      expect(existsSync(join(root, RETAINED_RECORD_REL))).toBe(false);
+    });
+  });
 });

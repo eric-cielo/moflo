@@ -2,34 +2,12 @@
   "version": 1,
   "retired": [
     {
-      "path": ".claude/agents/analysis/code-analyzer.md",
-      "knownContentHashes": [
-        "sha256:259bd298e1f6cf297ab5354e4701bec9cf0020bc22a66bba96c09cc580af47f0"
-      ],
-      "retiredIn": "2.0.0-alpha.121"
-    },
-    {
       "path": ".claude/agents/analysis/code-review/analyze-code-quality.md",
       "knownContentHashes": [
         "sha256:468851022f67047982c5abb8a2a74a5fb0fe330fe0821f7c91c859697d72162e",
         "sha256:b865110a1694598fcfa9c1eb319014eb87461df35aaaaa6c820a41a5535346ad"
       ],
       "retiredIn": "4.8.12"
-    },
-    {
-      "path": ".claude/agents/architecture/system-design/arch-system-design.md",
-      "knownContentHashes": [
-        "sha256:7330ff870b23d2d6c05a415fdd9cc7ee6ff49a2cc48a33eb1962b830106abf3b"
-      ],
-      "retiredIn": "3.0.0-alpha.1"
-    },
-    {
-      "path": ".claude/agents/base-template-generator.md",
-      "knownContentHashes": [
-        "sha256:1bea126c6853067e650e432b1e5cedf588f3161c4995eb1e2e97d04733e24d83",
-        "sha256:4b957343021823020828d6d213126243bad177f29984fc09545814b88fcfa87a"
-      ],
-      "retiredIn": "2.0.0-alpha.121"
     },
     {
       "path": ".claude/agents/consensus/byzantine-coordinator.md",
@@ -97,41 +75,6 @@
       "retiredBy": "#932"
     },
     {
-      "path": ".claude/agents/core/coder.md",
-      "knownContentHashes": [
-        "sha256:fd11f4cf99f74e7db021947e0ecc10f8fd3e5afb357433bcf68058905abf0116"
-      ],
-      "retiredIn": "2.0.0-alpha.121"
-    },
-    {
-      "path": ".claude/agents/core/planner.md",
-      "knownContentHashes": [
-        "sha256:1ea85a5cf770f62e7e40e612be9fc5d779dd265f77fa942ee6f8d1c3950127c3"
-      ],
-      "retiredIn": "2.0.0-alpha.121"
-    },
-    {
-      "path": ".claude/agents/core/researcher.md",
-      "knownContentHashes": [
-        "sha256:e486075522aef212f49ab79659130521fe362779daf0919fac17f2d1f16576a6"
-      ],
-      "retiredIn": "2.0.0-alpha.121"
-    },
-    {
-      "path": ".claude/agents/core/reviewer.md",
-      "knownContentHashes": [
-        "sha256:664518900259644124b28d4b0e92be3ca139fa391920fc0e97b309649bc093fd"
-      ],
-      "retiredIn": "2.0.0-alpha.121"
-    },
-    {
-      "path": ".claude/agents/core/tester.md",
-      "knownContentHashes": [
-        "sha256:26f05967316ebbda9b96b7262fe80500d158fcd2f75f1adba1d28c99d882f6e7"
-      ],
-      "retiredIn": "2.0.0-alpha.121"
-    },
-    {
       "path": ".claude/agents/data/ml/data-ml-model.md",
       "knownContentHashes": [
         "sha256:dfcd3745237c80daa26a9f819cc58f2396e3863c1add36da727e1a526097b014",
@@ -149,21 +92,6 @@
         "sha256:c636bb38b48e714c12d00c7869b11ce8e39a21db8e1aa451c2f5013638fdedab"
       ],
       "retiredIn": "4.8.12"
-    },
-    {
-      "path": ".claude/agents/devops/ci-cd/ops-cicd-github.md",
-      "knownContentHashes": [
-        "sha256:daa1ca3b2e116167dd4d057b64d96bd40c00bfd1d6a3ad3c607dd9129db7a032"
-      ],
-      "retiredIn": "3.0.0-alpha.1"
-    },
-    {
-      "path": ".claude/agents/documentation/api-docs/docs-api-openapi.md",
-      "knownContentHashes": [
-        "sha256:0a24f98cd97229b746a2f89f2cdfe09fac0ee8dcd757073017fee91e951b7f7f",
-        "sha256:0cec8892de681a157cb3d56af8e336020dae58ec4a51c0e1dcaf6cfd90c61cd7"
-      ],
-      "retiredIn": "3.0.0-alpha.1"
     },
     {
       "path": ".claude/agents/dual-mode/codex-coordinator.md",

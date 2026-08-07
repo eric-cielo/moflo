@@ -1334,13 +1334,18 @@ try {
       // prune when the consumer's file matches a known-shipped hash —
       // customized files (different hash) get preserved with a one-line
       // notice the user can act on.
+      //
+      // The package root is passed so entries can be cross-checked against
+      // what moflo actually ships (#1414). A path can be retired and later
+      // RESTORED under the same name; the stale entry then carries only
+      // pre-deletion hashes, so the copy Mechanism A just synced matches
+      // nothing and gets reported as a "customized retired file" on every
+      // session — inviting the user to delete an agent the CLI still routes to.
       let prunedRetiredPaths = new Set();
       try {
-        const retiredManifestPath = resolve(
-          projectRoot,
-          'node_modules/moflo/retired-files.json',
-        );
-        const report = applyRetiredPrune(projectRoot, retiredManifestPath);
+        const mofloPackageRoot = resolve(projectRoot, 'node_modules', 'moflo');
+        const retiredManifestPath = resolve(mofloPackageRoot, 'retired-files.json');
+        const report = applyRetiredPrune(projectRoot, retiredManifestPath, mofloPackageRoot);
         prunedRetiredPaths = new Set(report.pruned);
         if (report.pruned.length > 0) {
           emitMutation(
@@ -1365,7 +1370,7 @@ try {
         if (report.preservedDetails.length > 0) {
           try {
             recordVersion = JSON.parse(readFileSync(
-              resolve(projectRoot, 'node_modules/moflo/package.json'), 'utf-8',
+              resolve(mofloPackageRoot, 'package.json'), 'utf-8',
             )).version;
           } catch { /* record just omits the version */ }
         }

@@ -165,4 +165,54 @@ describe('build-retired-files.mjs (#1133)', () => {
       }
     });
   });
+
+  // ── Resurrected paths (#1414) ────────────────────────────────────────────
+  //
+  // `--seed` walks deletion commits, and a path deleted in the alpha era can
+  // have been restored since. Recording it anyway produces an entry whose
+  // hashes predate the content moflo now installs, so every consumer reports it
+  // as a customized retired file forever. Ten shipped core agents were in that
+  // state.
+  //
+  // These read the real repo and never write the manifest — the guard suite
+  // reads it concurrently, and a test that rewrites a tracked file to observe
+  // the effect would race it.
+  describe('resurrected-path skip', () => {
+    it('isResurrected is true for a path that was deleted and later restored', () => {
+      // Deleted in the 2.0.0-alpha era, shipped again today.
+      const path = '.claude/agents/core/coder.md';
+      const deletionLog = spawnSync(
+        'git',
+        ['log', '--diff-filter=D', '--pretty=format:%H', '-n', '1', '--', path],
+        { cwd: repoRoot, encoding: 'utf-8' },
+      );
+      expect((deletionLog.stdout || '').trim(), `${path} was never deleted — pick another fixture`).not.toBe('');
+      expect(buildRetired.isResurrected(path)).toBe(true);
+    });
+
+    it('isResurrected is false for a path that stayed retired', () => {
+      expect(buildRetired.isResurrected('.claude/agents/sona/sona-learning-optimizer.md')).toBe(false);
+    });
+
+    it('no path that a seed walk would find is both deleted-in-history and back in the tree', () => {
+      // The seed-side statement of the invariant: enumerate exactly what
+      // `--seed` enumerates, and assert every resurrected path it encounters is
+      // absent from the committed manifest. Pre-fix this listed 10 paths.
+      const deleted = new Set<string>();
+      for (const commit of buildRetired.findDeletionCommits()) {
+        for (const p of commit.deletedPaths) deleted.add(p);
+      }
+      expect(deleted.size, 'deletion walk found nothing — shallow clone or walk regressed').toBeGreaterThan(0);
+
+      const recorded = new Set(loadManifest().retired.map((e) => e.path));
+      const offenders = [...deleted].filter((p) => buildRetired.isResurrected(p) && recorded.has(p)).sort();
+
+      expect(
+        offenders,
+        `retired-files.json records ${offenders.length} path(s) that were deleted but are back in the tree:\n` +
+          `  ${offenders.join('\n  ')}\n` +
+          `Run \`flo retire --rebuild-hashes\` to drop them.`,
+      ).toEqual([]);
+    });
+  });
 });

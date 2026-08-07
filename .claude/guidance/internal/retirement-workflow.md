@@ -106,6 +106,8 @@ flo retire --rebuild-hashes
 
 Walks each existing entry's path, re-derives `knownContentHashes[]` from every reachable commit, and unions with the prior list. Idempotent — re-runs produce no diff once the manifest is saturated. Commit the regenerated file.
 
+This is also the heal command for a still-shipped entry: it drops every entry whose path is back in the tree and names each one on stdout. Never hand-edit the manifest to remove them.
+
 ---
 
 ## What NOT To Do
@@ -113,7 +115,33 @@ Walks each existing entry's path, re-derives `knownContentHashes[]` from every r
 - **Don't delete `retired-files.json` entries** to "clean up" old retirements. Consumers may still be on a moflo version old enough to have those files; pruning them from the manifest reverts the cleanup. Entries can be expired only after we're confident no consumer is on an affected version (~12 months minimum).
 - **Don't hand-edit `knownContentHashes[]`** unless you're fixing a verified mistake. The hashes come from git's authoritative content; rewriting them by hand is how silent-prune-of-customized-file regressions happen.
 - **Don't run `flo retire` from outside moflo's source repo.** It will refuse. The `retired-files.json` lives at the moflo package root and doesn't ship to consumer `node_modules/` for editing.
-- **Don't add a `retired-files.json` entry for a deleted file that is later restored.** Either remove the entry in the same PR that restores the file, or leave both — but never ship a manifest entry for a path that exists in `node_modules/moflo/`. The entry would be a no-op for unmodified consumers (file matches a hash, gets pruned, then restored on next sync) and a destructive flap for customized consumers (prune notice, restore, prune notice every upgrade).
+- **Don't add a `retired-files.json` entry for a deleted file that is later restored.** Never ship a manifest entry for a path that exists in `node_modules/moflo/` — see *Never Retire a Path the Package Still Ships* below.
+
+---
+
+## Never Retire a Path the Package Still Ships
+
+A retired path can come back — someone restores the file under the same name in a later PR. Withdraw the manifest entry in that same PR.
+
+The stale entry's `knownContentHashes` hold only pre-deletion content, while the file on the consumer's disk is the current shipped content that Mechanism A just wrote. Nothing matches, so `classifyRetiredFile` returns `preserve` and the launcher prints on every session start:
+
+```
+moflo: retained 10 customized retired files (delete manually if unwanted)
+```
+
+Both halves are false — the files were never customized and are not retired — and the notice invites deleting agent definitions that `agent-router`, `swarm`, and `.claude/skills/flo-simplify/SKILL.md` resolve by name. Ten shipped core agents sat in this state from the alpha era until #1414.
+
+The other branch is worse. When a recorded hash *does* match the restored content, the launcher prunes the file, Mechanism A syncs it back from the package next session, and the prune fires again — a delete-restore flap on every upgrade, forever.
+
+Three layers now enforce it, so a violation cannot survive to a consumer:
+
+| Layer | Where | Behaviour |
+|---|---|---|
+| Author | `scripts/build-retired-files.mjs` | `--seed` skips a resurrected path; `--rebuild-hashes` drops one and names it; `--add` warns that the deletion must land in this PR |
+| Build | `tests/guards/retired-manifest-shipped-path-guard.test.ts` | Fails when any entry names a path in the tracked tree. No exemption list — a path in the tree is a path that ships |
+| Run | `bin/lib/retired-files.mjs` | `classifyRetiredFile` returns `shipped` when the installed package still has the path, so a contradictory entry is skipped rather than pruned or reported |
+
+Ask the package what it ships, never the manifest — the package cannot drift from the truth. The run-time check is deliberately one-directional: it can only turn a delete into a skip.
 
 ---
 
@@ -121,7 +149,8 @@ Walks each existing entry's path, re-derives `knownContentHashes[]` from every r
 
 - `bin/session-start-launcher.mjs` — section 3 manifest sync (Mechanism A) + retired-files prune block (Mechanism B)
 - `bin/lib/retired-files.mjs` — `loadRetiredManifest`, `classifyRetiredFile`, `applyRetiredPrune`
-- `scripts/build-retired-files.mjs` — `--seed` (bulk), `--add` (single-path), `--rebuild-hashes` (full-history backfill)
+- `scripts/build-retired-files.mjs` — `--seed` (bulk), `--add` (single-path), `--rebuild-hashes` (full-history backfill + still-shipped heal)
+- `tests/guards/retired-manifest-shipped-path-guard.test.ts` — build-time guard for the still-shipped rule
 - `src/cli/commands/retire.ts` — `flo retire <path>` and `flo retire --rebuild-hashes` thin wrappers that call the build script
 - `tests/bin/launcher-948-retired-prune.test.ts` — unit tests for the prune helper
 - `tests/scripts/build-retired-files.test.ts` — unit tests for `hashesForPath` + rebuild invariants (#1133)

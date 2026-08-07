@@ -18,7 +18,14 @@
  *   --rebuild-hashes
  *     Re-derive `knownContentHashes[]` for every existing entry from full
  *     git history. Used to backfill entries written under the legacy 3-hash
- *     cap that left pre-cutoff consumer installs un-prunable (#1133).
+ *     cap that left pre-cutoff consumer installs un-prunable (#1133), and to
+ *     drop entries whose path has since been restored to the tree (#1414).
+ *
+ * Every mode upholds one invariant: an entry may never name a path moflo still
+ * ships. Such an entry can only resolve to "customized, retained" on every
+ * consumer forever, because its hashes predate the content the package now
+ * installs. `tests/guards/retired-manifest-shipped-path-guard.test.ts` enforces
+ * it at build time; `bin/lib/retired-files.mjs` skips violators at run time.
  *
  * The `version: 1` schema lives at the moflo package root and ships to
  * consumers via package.json `files`. Launcher reads it on every upgrade
@@ -65,6 +72,52 @@ function sha256(buf) {
  */
 function unionHashes(a, b) {
   return Array.from(new Set([...a, ...b]));
+}
+
+/**
+ * Paths git tracks, `/`-separated exactly as git reports them. Computed once —
+ * every caller below asks the same question of the same tree.
+ *
+ * `-z` because git quote-escapes non-ASCII paths under the default
+ * `core.quotePath`, and a mangled entry would silently read as "not tracked".
+ */
+let trackedPathsCache = null;
+function trackedPaths() {
+  if (trackedPathsCache) return trackedPathsCache;
+  const NUL = String.fromCharCode(0);
+  trackedPathsCache = new Set(gitOk(['ls-files', '-z']).split(NUL).filter(Boolean));
+  return trackedPathsCache;
+}
+
+/**
+ * True when moflo ships `path` again under the same name — deleted at some
+ * point, but back in the tree. See the module header for why such an entry can
+ * never be correct.
+ *
+ * Gate on the TRACKED tree, not `existsSync`. Dropping an entry is destructive
+ * and irreversible, and an untracked stray under `.claude/agents/` — precisely
+ * what Mechanism A leaves behind when dogfooding — would otherwise make
+ * `--rebuild-hashes` delete a legitimate retirement. Tracked is also what the
+ * npm tarball ships and what `tests/guards/retired-manifest-shipped-path-guard.test.ts`
+ * asserts, so the author-time and build-time predicates cannot disagree.
+ */
+function isResurrected(path) {
+  return trackedPaths().has(path.replace(/\\/g, '/'));
+}
+
+/**
+ * Remove every entry whose path is back in the tree, returning the dropped
+ * paths. Shared by `--seed` and `--rebuild-hashes` so neither can leave a
+ * contradiction the other would have cleaned.
+ */
+function dropResurrected(manifest) {
+  const dropped = [];
+  manifest.retired = manifest.retired.filter((entry) => {
+    if (!isResurrected(entry.path)) return true;
+    dropped.push(entry.path);
+    return false;
+  });
+  return dropped;
 }
 
 /**
@@ -173,14 +226,25 @@ function findRetirementPrFromCommitMessage(commit) {
 
 function seed() {
   const manifest = loadManifest();
+  // Clean before walking. Skipping resurrected paths during the walk stops new
+  // contradictions entering, but says nothing about ones already recorded — a
+  // seed that reported "10 skipped" while leaving all 10 in place would read as
+  // handled when nothing had been fixed.
+  const dropped = dropResurrected(manifest);
   const existing = new Map(manifest.retired.map((e) => [e.path, e]));
   const deletionCommits = findDeletionCommits();
   let added = 0;
   let updated = 0;
+  const skipped = new Set();
   for (const { commit, deletedPaths } of deletionCommits) {
     const retiredIn = versionAtCommit(commit);
     const retiredBy = findRetirementPrFromCommitMessage(commit);
     for (const path of deletedPaths) {
+      // The path was deleted here but is back in the tree — moflo ships it
+      // again, so it is not retired and must not enter the manifest (#1414).
+      // Counted in a Set: a delete → restore → delete path appears in several
+      // deletion commits and would otherwise inflate the tally.
+      if (isResurrected(path)) { skipped.add(path); continue; }
       // Walk from the deletion commit itself — `git show <deletion>:<path>`
       // raises (path absent at deletion) and is skipped, while every prior
       // touch of the file is enumerated. Full history, no cap (#1133).
@@ -208,7 +272,13 @@ function seed() {
     }
   }
   writeManifest(manifest);
-  process.stdout.write(`retired-files.json: +${added} added, ${updated} updated, ${manifest.retired.length} total\n`);
+  process.stdout.write(
+    `retired-files.json: +${added} added, ${updated} updated, ${skipped.size} skipped and ` +
+    `${dropped.length} dropped (path restored), ${manifest.retired.length} total\n`,
+  );
+  for (const path of dropped) {
+    process.stdout.write(`  dropped ${path} — still shipped, so not retired\n`);
+  }
 }
 
 function addOne(args) {
@@ -218,6 +288,19 @@ function addOne(args) {
     throw new Error(`--add <path> must start with one of: ${TARGET_PREFIXES.join(', ')}`);
   }
   const manifest = loadManifest();
+  // git still tracks the path, so the deletion has not been staged yet. That is
+  // legitimate mid-PR — `flo retire` is meant to be usable before the deletion
+  // is committed — but it is also exactly how a still-shipped path lands in the
+  // manifest (#1414), and nothing here can tell the two apart until CI sees the
+  // merged tree. Warn rather than refuse, and name the guard that decides.
+  if (isResurrected(path)) {
+    process.stderr.write(
+      `warning: ${path} is still tracked by git — the deletion is not staged.\n` +
+      `  Retiring a path moflo still ships produces a permanent "customized retired file"\n` +
+      `  notice in every consumer. Make sure the deletion lands in this PR —\n` +
+      `  tests/guards/retired-manifest-shipped-path-guard.test.ts fails the build otherwise.\n`,
+    );
+  }
   // Walk from the deletion commit (the file is gone) or from HEAD (file
   // still tracked because the user is preparing the entry on a branch where
   // the deletion isn't committed yet).
@@ -265,6 +348,12 @@ function addOne(args) {
  *
  * Entries with no resolvable git history are reported but left alone — the
  * existing hashes may still be load-bearing for some consumer.
+ *
+ * Entries whose path is back in the tree ARE dropped (#1414). Re-deriving
+ * hashes for a path moflo still ships cannot make the entry correct — the
+ * consumer's copy is the current shipped content by construction, so the entry
+ * can only ever resolve to "customized, retained". This is the heal command the
+ * build-time guard points at.
  */
 function rebuild() {
   const manifest = loadManifest();
@@ -273,6 +362,7 @@ function rebuild() {
   let orphaned = 0;
   let totalHashesBefore = 0;
   let totalHashesAfter = 0;
+  const dropped = dropResurrected(manifest);
   for (const entry of manifest.retired) {
     const prior = entry.knownContentHashes || [];
     totalHashesBefore += prior.length;
@@ -298,8 +388,12 @@ function rebuild() {
   writeManifest(manifest);
   process.stdout.write(
     `retired-files.json: ${updated} updated, ${unchanged} unchanged, ${orphaned} no-resolvable-history, ` +
+    `${dropped.length} dropped (path restored), ` +
     `${manifest.retired.length} total entries; hashes ${totalHashesBefore} → ${totalHashesAfter}\n`,
   );
+  for (const path of dropped) {
+    process.stdout.write(`  dropped ${path} — still shipped, so not retired\n`);
+  }
 }
 
 function parseArgs(argv) {
@@ -318,10 +412,11 @@ function parseArgs(argv) {
   return out;
 }
 
-// Exports kept narrow — tests need to exercise hash walking and the rebuild
-// loop, but seed()/addOne() drive end-user side effects (writing the manifest)
-// that tests cover via subprocess spawn rather than direct call.
-export { hashesForPath, sha256, loadManifest, manifestPath, repoRoot };
+// Exports kept narrow — tests need to exercise hash walking, the resurrection
+// predicate, and the deletion walk, but seed()/addOne()/rebuild() drive
+// end-user side effects (rewriting the tracked manifest) that a test must not
+// trigger: the guard suite reads retired-files.json concurrently.
+export { hashesForPath, sha256, loadManifest, manifestPath, repoRoot, isResurrected, findDeletionCommits };
 
 // CLI dispatch fires only when invoked directly, not when imported by tests.
 // Empty argv[1] (no script path on the command line — e.g. `node -e ...`)
