@@ -73,6 +73,23 @@ export interface FindProjectRootOptions {
  *
  * Algorithmic twin of `bin/lib/moflo-paths.mjs:findAncestorMofloRoot()`.
  */
+/**
+ * Does `dir` carry moflo state that makes it a project root?
+ *
+ * The single source of truth for Pass A's marker set, exported so callers that
+ * must agree with the resolver cannot drift from it. #1431 is exactly that
+ * drift: `doctor-fixes.ts` guarded its daemon reaps by looking for
+ * `.moflo/moflo.db` alone, went blind to a nested checkout carrying only the
+ * legacy `.swarm/memory.db`, and allowed the parent project's daemons to be
+ * killed. Any new marker belongs here and nowhere else.
+ *
+ * (`bin/lib/moflo-paths.mjs` holds a plain-JS twin for the launcher, which
+ * cannot import TypeScript — keep the two in step.)
+ */
+export function hasMofloStateMarker(dir: string): boolean {
+  return existsSync(join(dir, '.moflo', 'moflo.db')) || existsSync(join(dir, '.swarm', 'memory.db'));
+}
+
 export function findAncestorMofloRoot(dir: string): string | null {
   const start = resolve(dir);
   const fsRoot = parse(start).root;
@@ -221,7 +238,7 @@ export function findProjectRoot(opts?: FindProjectRootOptions): string {
       dir = dirname(dir);
       continue;
     }
-    if (existsSync(join(dir, '.moflo', 'moflo.db')) || existsSync(join(dir, '.swarm', 'memory.db'))) {
+    if (hasMofloStateMarker(dir)) {
       topmostMemoryMarker = dir;
     }
     const parent = dirname(dir);
