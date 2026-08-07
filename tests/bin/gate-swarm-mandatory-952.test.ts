@@ -232,9 +232,15 @@ describe('execution-modes.md #952: skill text contains MANDATORY directives', ()
     expect(text).toContain('mcp__moflo__hive-mind_init');
   });
 
-  it('cites issue #952 and the protected-functionality CLAUDE.md section', () => {
+  // This used to assert the skill cited issue #952. Skills ship into consumer
+  // projects, where that number resolves against *their* tracker, so the citation
+  // was removed and `tests/guards/issue-attribution-guard.test.ts` now keeps it
+  // out. What this test always meant to protect is the substance the citation was
+  // standing in for: the skill must name the contract being violated and point at
+  // the CLAUDE.md section that owns it.
+  it('names the swarm-registration contract and the protected-functionality CLAUDE.md section', () => {
     const text = readFileSync(skillPath, 'utf-8');
-    expect(text).toContain('#952');
+    expect(text).toMatch(/swarm-registration contract/i);
     expect(text).toMatch(/Protected functionality/i);
   });
 });

@@ -81,6 +81,28 @@ This is rarer and riskier — only do it when you're sure no consumer relies on 
 
 ---
 
+## 4. Where Issue Citations Are Allowed
+
+**Write an issue number only where it resolves against moflo's own tracker.** Rule #10 in `shipped/moflo-guidance-rules.md` bans citations from guidance; moflo's two-bucket layout decides which files that actually covers, because the same `(#1294)` is noise in one directory and legitimate provenance in another. Decide by **who reads the file**, never by its extension.
+
+| Surface | Citations | Why |
+|---------|-----------|-----|
+| `.claude/guidance/shipped/**` | **never** | Synced into consumer projects, where `#1294` points at *their* tracker |
+| `.claude/skills/**`, `.claude/agents/**`, `.claude/commands/**` | **never** | All shipped via `package.json` `files`; read from the consumer's `node_modules/moflo/` |
+| Strings emitted by `claudemd-generator.ts`, `moflo-yaml-template.ts`, or any other init template | **never** | The rendered text is written into the consumer's own `CLAUDE.md` / `moflo.yaml` |
+| `.claude/guidance/internal/**` | allowed | Dev-only; never leaves this repo |
+| Repo-root and `src/**` `CLAUDE.md` | allowed | Read only by sessions working on moflo itself |
+| TS/JS source comments and JSDoc | allowed | Debugging provenance for moflo developers |
+| Shipped implementation code — `.claude/helpers/**`, `dist/**`, spell definition YAML | allowed | Reaches consumers, but nobody reads it *as guidance* |
+
+**The boundary is "does Claude load it as instructions", not "does it ship".** `.claude/helpers/gate.cjs` is copied verbatim into every consumer and carries ~100 citations; that is fine, because no session reads it for direction. A shipped `.md` with one citation is not, because that text enters the context window as a rule. Do not "fix" the helpers to satisfy a symmetry the rule never claimed.
+
+**The template rows are the ones that get missed.** A citation inside a `.ts` file *looks* internal, so the distinction is not the file's extension but whether the string is emitted. `// see #1398` in `settings-generator.ts` is fine; the same text inside the template literal it returns is not.
+
+`tests/guards/issue-attribution-guard.test.ts` enforces this. It scans the shipped directories and **renders** the CLAUDE.md and moflo.yaml templates to scan their output, which is what keeps the source-comment exemption honest without an allowlist. If it goes red, delete the citation and keep the fact — never add an exemption.
+
+---
+
 ## See Also
 
 - `.claude/guidance/shipped/moflo-guidance-rules.md` — Universal writing rules (#1–#9) every guidance file in any project must follow; this doc only adds the moflo-specific bucket extensions on top of those

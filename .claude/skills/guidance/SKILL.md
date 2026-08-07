@@ -81,6 +81,7 @@ Apply the universal rules from `.claude/guidance/moflo-guidance-rules.md`. The r
 7. Avoid the listed anti-patterns
 8. Optimize for RAG chunking
 9. End with a `## See Also` section
+10. Never cite issue or PR numbers — write the rule, not where it came from
 
 ### Audience: Humans (`-h` flag) — lighter human ruleset
 
@@ -97,6 +98,7 @@ Drop the rules that serve Claude's RAG retrieval and imperative-mood enforcement
 | 7 | Avoid anti-patterns | **Modified** | Short prose preambles ARE allowed for humans; code-comments-as-rules still bad |
 | 8 | Optimize for RAG chunking | **Drop** | Humans don't query a vector index |
 | 9 | `## See Also` section at end | **Keep** | Helps human readers traverse to related docs |
+| 10 | No issue / PR citations | **Keep** | A bare issue number is unresolvable for any reader; provenance belongs in `git log` |
 
 ### Creating a new doc — scaffold this shape
 
@@ -139,6 +141,7 @@ For the loaded file, evaluate against the universal rules and report findings as
 | H2 headings are specific (not "Overview", "Configuration", "Examples") | list any generic ones |
 | Uses imperative voice for rules ("must"/"always"/"never") not hedged ("should"/"might"/"consider") | list hedged phrases found |
 | Has prose preamble before first rule | yes / no |
+| Cites issue or PR numbers (`(#NNNN)`, `issue #NNNN`, `Epic #NNNN`) | list every citation found |
 
 Then propose edits as concrete diffs — never rewrite the whole file unless the user asks.
 

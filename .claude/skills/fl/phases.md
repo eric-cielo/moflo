@@ -4,7 +4,7 @@ Phase-by-phase notes for the full `/flo <issue>` run. Phase 2 (Ticket) lives in 
 
 ## Phase 0: Record run start (Flo Runs dashboard)
 
-Before research, open a run record so the Luminarium "Flo Runs" tab shows this run live and after the next session restart (#968), and so Phase 5.5 can price it. Skip this phase ONLY when `--epic-branch` is set — the epic orchestrator owns the parent record and the per-story spell engine writes its own row.
+Before research, open a run record so the Luminarium "Flo Runs" tab shows this run live and after the next session restart, and so Phase 5.5 can price it. Skip this phase ONLY when `--epic-branch` is set — the epic orchestrator owns the parent record and the per-story spell engine writes its own row.
 
 One command. It builds the record, derives the run id, and picks up the session id `gate.cjs` stamped on this prompt:
 
@@ -20,7 +20,7 @@ Flag the mode when it isn't a plain ticket run: `--research` (`-r`), `--new-tick
 
 `sessionId: null` means no session id was stamped (the gate has not seen a prompt yet, or you are outside Claude Code). The run still records; only its token cost will be unmeasurable.
 
-Do **not** hand-write a `memory_store` call for this. The record shape lives in `storeFloRunRecord` (`src/cli/services/daemon-dashboard.ts`) and `flo runs start` is its only caller — #1333 replaced a copy of the schema that lived here in prose, which produced exactly one record across the whole retained corpus because it depended on remembering to perform it.
+Do **not** hand-write a `memory_store` call for this. The record shape lives in `storeFloRunRecord` (`src/cli/services/daemon-dashboard.ts`) and `flo runs start` is its only caller — it replaced a copy of the schema that once lived here in prose, which produced exactly one record across the whole retained corpus because it depended on remembering to perform it.
 
 The session-start launcher retains the most recent ~200 tasklist rows, so this record outlives the session and renders in the Flo Runs tab on subsequent restarts.
 
@@ -63,7 +63,7 @@ flo memory search --query "<domain keywords>" --namespace guidance
 Or via MCP: `mcp__moflo__memory_search`.
 
 ### 1.4 Reach guidance via memory (only if memory was thin)
-If the §1.3 search above (the memory-first step named `SKILL.md` Step 0) returned fewer than three relevant results, widen the query — **still through `mcp__moflo__memory_search` (namespace `guidance`)**, not a direct `Read` of `.claude/guidance/*.md`. Guidance docs are indexed; search returns the relevant chunk, and `mcp__moflo__memory_get_neighbors` traverses adjacent context far more cheaply than reading the whole doc (this is the #1292 fix — don't bulk-read `.claude/guidance/moflo-sdd.md` et al.). Angle the query by change type:
+If the §1.3 search above (the memory-first step named `SKILL.md` Step 0) returned fewer than three relevant results, widen the query — **still through `mcp__moflo__memory_search` (namespace `guidance`)**, not a direct `Read` of `.claude/guidance/*.md`. Guidance docs are indexed; search returns the relevant chunk, and `mcp__moflo__memory_get_neighbors` traverses adjacent context far more cheaply than reading the whole doc (don't bulk-read `.claude/guidance/moflo-sdd.md` et al.). Angle the query by change type:
 - Bug → testing patterns, error handling
 - Feature → domain model, architecture
 - UI → frontend patterns, components
@@ -165,13 +165,13 @@ Closes #<issue-number>"
 ```
 
 **No attribution trailer.** Do not add `Co-Authored-By:`, `Generated with …`, or any
-other tool-attribution line to commits or PR bodies (#1398). This is the consumer's
+other tool-attribution line to commits or PR bodies. This is the consumer's
 repository and their git history is permanent — moflo does not sign their commits.
 
 ### 5.1b Verify-before-done (default; skipped only with `--no-verify`)
 **Delegate to the `/verify` skill** — `Skill({ skill: "verify" })`, passing the issue number or spec slug. That skill owns the mechanics (locate acceptance criteria → reuse Phase 4's already-green tests, no double verify → map each criterion → run only uncovered checks → record the outcome). Don't restate them here or verify in prose — *invoking* `/verify` is what records the run and satisfies the `check-before-done` gate.
 
-**When it runs:** by default (`verify_before_done` now defaults true, #1294) and always under `--sdd`; `--no-verify` skips it for one run. See `./sdd.md` for triggers and `.claude/skills/verify/SKILL.md` for how verification is performed.
+**When it runs:** by default (`verify_before_done` now defaults true) and always under `--sdd`; `--no-verify` skips it for one run. See `./sdd.md` for triggers and `.claude/skills/verify/SKILL.md` for how verification is performed.
 
 ### 5.2 Store learnings
 Before opening the PR, call `mcp__moflo__memory_store` with what was learned. The `check-before-pr` gate blocks `gh pr create` until this has run.
@@ -208,7 +208,7 @@ gh pr create --title "type(scope): description" --body "## Summary
 Closes #<issue-number>"
 ```
 
-**Under `--sdd` (#1297):** when `sdd.embed_in_pr` is true (default), append the spec+plan to the PR body so the reasoning is reviewable in the PR even when specs stay local/gitignored. Run `flo sdd embed <slug>`, read its printed output from the tool result, and paste it as literal text at the end of the PR body — do **not** use shell command substitution (`$(...)`) or heredoc/`printf`, none of which are portable (Rule #1). The robust path on every OS: write the full body (summary + embed block) to a file with the Write tool, then `gh pr create --body-file <path>`. See `./sdd.md` step 7.
+**Under `--sdd`:** when `sdd.embed_in_pr` is true (default), append the spec+plan to the PR body so the reasoning is reviewable in the PR even when specs stay local/gitignored. Run `flo sdd embed <slug>`, read its printed output from the tool result, and paste it as literal text at the end of the PR body — do **not** use shell command substitution (`$(...)`) or heredoc/`printf`, none of which are portable (Rule #1). The robust path on every OS: write the full body (summary + embed block) to a file with the Write tool, then `gh pr create --body-file <path>`. See `./sdd.md` step 7.
 
 ### 5.4 Update issue status
 ```bash
@@ -226,7 +226,7 @@ Idempotent and safe to skip when there is no back-reference. `--epic-branch` run
 
 ### 5.5 Close the run record
 
-Close the record Phase 0 opened, using the `runId` it printed. This is what snapshots the run's token cost — `finalize` reads the session transcript for the run's window and stores the rollup **in the same record**, so cost and outcome finally share a key (#1333):
+Close the record Phase 0 opened, using the `runId` it printed. This is what snapshots the run's token cost — `finalize` reads the session transcript for the run's window and stores the rollup **in the same record**, so cost and outcome finally share a key:
 
 ```bash
 flo runs finalize --run-id <runId>            # or: --status failed --error "<summary>"
@@ -236,7 +236,7 @@ Run it after the PR is open (5.3) so the rollup covers the whole run. Skipped un
 
 Snapshot rather than compute-on-read because Claude Code prunes `~/.claude/projects/**` — measured at roughly two days of history, so a cost joined at read time would be correct today and zero next week.
 
-`tokens.transcripts: 0` in the stored record means the run's cost could **not** be measured (no transcript, or no session id was stamped), which is not the same as a run that cost nothing. `success` means the run reached a terminal state without reporting an error — it is not a verification that the work was correct, and nothing here should be described as one (#1322).
+`tokens.transcripts: 0` in the stored record means the run's cost could **not** be measured (no transcript, or no session id was stamped), which is not the same as a run that cost nothing. `success` means the run reached a terminal state without reporting an error — it is not a verification that the work was correct, and nothing here should be described as one.
 
 ### 5.3b Auto-merge the PR (`mergeMode` / `merge.auto`)
 

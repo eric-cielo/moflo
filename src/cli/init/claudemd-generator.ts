@@ -55,7 +55,7 @@ After \`npm install\` touches moflo, check \`.moflo/restart-pending.json\` — i
 
 ### Monorepos
 
-Moflo state lives at the monorepo root \`.moflo/\` — never run \`flo init\` inside a sub-workspace of an existing moflo project, or the MCP server and CLI silently bind to different daemons (issue #1174).
+Moflo state lives at the monorepo root \`.moflo/\` — never run \`flo init\` inside a sub-workspace of an existing moflo project, or the MCP server and CLI silently bind to different daemons.
 
 ### Full Reference
 

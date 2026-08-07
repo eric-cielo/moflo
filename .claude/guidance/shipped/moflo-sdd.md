@@ -6,7 +6,7 @@
 
 ## When to Use `-sd` vs `-v` vs Neither
 
-Two independent modifiers on `/flo`, orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`. The **spec/plan ceremony (`-sd`) is opt-in**; **verify-before-done (`-v`) runs by default** (#1294) — separable from SDD by design.
+Two independent modifiers on `/flo`, orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`. The **spec/plan ceremony (`-sd`) is opt-in**; **verify-before-done (`-v`) runs by default** — separable from SDD by design.
 
 | Situation | Flag | Effect |
 |-----------|------|--------|
@@ -44,7 +44,7 @@ A spec is pre-implementation intent for **one** unit of work, not a project rule
 
 Existing spec rows are removed by the `purge-spec-chunks` migration on the next session start.
 
-**Where specs live is configurable (`sdd.specs_dir`, #1294).** The default `.moflo/specs` is **gitignored** by `flo init`. To make specs reviewable in the PR, point `sdd.specs_dir` at a **tracked** path and commit them:
+**Where specs live is configurable (`sdd.specs_dir`).** The default `.moflo/specs` is **gitignored** by `flo init`. To make specs reviewable in the PR, point `sdd.specs_dir` at a **tracked** path and commit them:
 
 | `sdd.specs_dir` | Committed? | Use when |
 |-----------------|------------|----------|
@@ -78,7 +78,7 @@ The two review checkpoints are the point: **a spec must be reviewed before its p
 
 When enforced, `gh pr create` is blocked until the change has been verified end-to-end since the last code edit.
 
-- **On by default (#1294).** Enforced for every `/flo` run; disable per-project with `gates.verify_before_done: false` or per-run with `--no-verify`. On upgrade, consumers with no `verify_before_done` key start enforcing; an explicit value is preserved. Docs-only diffs are exempt, so a pure-docs PR is never blocked.
+- **On by default.** Enforced for every `/flo` run; disable per-project with `gates.verify_before_done: false` or per-run with `--no-verify`. On upgrade, consumers with no `verify_before_done` key start enforcing; an explicit value is preserved. Docs-only diffs are exempt, so a pure-docs PR is never blocked.
 - **Satisfy it by running the `/verify` skill** — `/flo` delegates to it. It exercises the change against the plan's (or ticket's) acceptance criteria and records its own outcome to memory (`namespace: verify, key: verify:<slug>`). It reuses the Tests-phase run rather than repeating it (no double verify).
 - **A source edit invalidates a prior verification** — re-run `/verify` after editing. `/ward` and `/quicken` are targeted audits, not the completion gate.
 
@@ -86,13 +86,13 @@ When enforced, `gh pr create` is blocked until the change has been verified end-
 
 ## SDD & Verify moflo.yaml Defaults
 
-`sdd.default` is off (opt-in); `verify_before_done` is **on** (#1294). Override per run with the flags.
+`sdd.default` is off (opt-in); `verify_before_done` is **on**. Override per run with the flags.
 
 ```yaml
 sdd:
   default: false              # true → every /flo run uses the SDD cycle unless --no-sdd
 gates:
-  verify_before_done: true    # on by default (#1294); false → skip /verify unless -v. Per-run: --no-verify
+  verify_before_done: true    # on by default; false → skip /verify unless -v. Per-run: --no-verify
 ```
 
 Check wiring status with `/healer` (or `/eldar`) — the `SDD + Verify Wiring` check reports whether the gate cases and hooks are present and which toggles are on.

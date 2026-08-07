@@ -14,7 +14,7 @@ Prove the current change **actually does what it was supposed to** before it shi
 
 ## What satisfies the gate
 
-Invoking this skill (name `verify`) trips the `record-verify-run` hook, which flips the `verifyRun` state. **That alone does not open the gate** (#1332): `check-before-done` also requires the recorded verdict to be `PASS`, which reaches it from the `metadata.overall` your Step 5 store writes. So a run returning FAIL leaves `gh pr create` blocked — as it should, since the change did not meet its criteria — and a run that stores prose without `metadata` counts as *no verdict* and blocks too.
+Invoking this skill (name `verify`) trips the `record-verify-run` hook, which flips the `verifyRun` state. **That alone does not open the gate**: `check-before-done` also requires the recorded verdict to be `PASS`, which reaches it from the `metadata.overall` your Step 5 store writes. So a run returning FAIL leaves `gh pr create` blocked — as it should, since the change did not meet its criteria — and a run that stores prose without `metadata` counts as *no verdict* and blocks too.
 
 **Only `/verify` satisfies it** — `/ward` and `/quicken` are targeted audits, not an end-to-end verification. A source edit *after* verifying invalidates both the flag and the verdict, so run `/verify` as the last step before the PR.
 
@@ -26,7 +26,7 @@ Search memory before reading files, same as any task (satisfies `memory_first`, 
 mcp__moflo__memory_search { query: "verify <feature keywords>", namespace: "verify" }
 ```
 
-**Search `verify`, never `learnings`.** Verdict records moved out of `learnings` in #1375 — see Step 5.
+**Search `verify`, never `learnings`.** Verdict records moved out of `learnings` — see Step 5.
 
 ## Step 1 — Locate the acceptance criteria
 
@@ -97,13 +97,13 @@ mcp__moflo__memory_store {
 }
 ```
 
-**Store to `verify`, never `learnings` (#1375).** A verdict is audit exhaust — one commit, one issue, criteria that never apply again — and `memory_search` returns a bounded set, so every verdict parked in `learnings` displaced a reusable lesson. The move is free: `record-learnings-stored` matches any `memory_store`, and `record-verify-outcome` keys on the `verify:` **key prefix**, not the namespace. Both gates still fire.
+**Store to `verify`, never `learnings`.** A verdict is audit exhaust — one commit, one issue, criteria that never apply again — and `memory_search` returns a bounded set, so every verdict parked in `learnings` displaced a reusable lesson. The move is free: `record-learnings-stored` matches any `memory_store`, and `record-verify-outcome` keys on the `verify:` **key prefix**, not the namespace. Both gates still fire.
 
 **Why both.** `value` is what gets embedded for semantic search, so it stays prose — a JSON blob there would degrade every future `verify` search. `metadata` is stored verbatim and not embedded, so the structure survives without that cost. `memory_retrieve` returns the parsed `metadata` object for non-chunk entries, which is what makes the record readable rather than write-only.
 
 **`freshlyExecuted` is required on every criterion, not optional.** Step 3 deliberately permits *citing* an earlier green run instead of re-executing. That is a sound cost optimisation, but it means evidence may be a citation rather than a fresh result — set `freshlyExecuted: false` when you cited. Without that flag a later reader silently inherits stale evidence and cannot tell a re-verified criterion from a re-cited one.
 
-**Never record an exit code.** Claude Code's `tool_response` for Bash carries `stdout`/`stderr` but **no exit status**, and PostToolUse does not fire at all when a command exits non-zero (#1322). `evidence` is therefore descriptive by necessity; a field named `exitCode` would be agent-narrated fiction, which is the problem this record exists to remove.
+**Never record an exit code.** Claude Code's `tool_response` for Bash carries `stdout`/`stderr` but **no exit status**, and PostToolUse does not fire at all when a command exits non-zero. `evidence` is therefore descriptive by necessity; a field named `exitCode` would be agent-narrated fiction, which is the problem this record exists to remove.
 
 `overall` MUST agree with the Step 4 rule — PASS iff no criterion is FAIL or UNVERIFIED. Record a FAIL as a FAIL; the store is the audit trail, and a verdict that only ever reads PASS is worth nothing.
 

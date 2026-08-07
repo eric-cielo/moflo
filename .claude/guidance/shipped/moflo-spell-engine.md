@@ -124,7 +124,7 @@ steps:
 
 ### agent — NOT EXECUTABLE
 
-**Do not use this step type.** It has never spawned a subagent — moflo has no agent spawner in the spell runner. It is still registered so existing spell YAML keeps parsing, but casting it now always fails with an explanatory error (#1334). Earlier versions returned `success: true` and a `result` string for work that never happened.
+**Do not use this step type.** It has never spawned a subagent — moflo has no agent spawner in the spell runner. It is still registered so existing spell YAML keeps parsing, but casting it now always fails with an explanatory error. Earlier versions returned `success: true` and a `result` string for work that never happened.
 
 **To run a Claude subagent from a spell, use a `bash` step:**
 
