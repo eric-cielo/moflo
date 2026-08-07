@@ -87,6 +87,7 @@ function getProjectRoot(): string {
 
 import { ControllerRegistry } from './controller-registry.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { generateId as mintId } from '../shared/utils/id.js';
 
 let registryPromise: Promise<any | null> | null = null;
 // Sync handle populated once the promise resolves. Lets sync callers
@@ -247,8 +248,14 @@ function getDbPath(customPath?: string): string {
   return resolveBridgeDbPath(getProjectRoot(), customPath);
 }
 
+/**
+ * Delegates to the canonical minter, preserving this module's exact ID format
+ * (`_` separator, 8 bytes of entropy). The format is pinned rather than
+ * normalised because these IDs are persisted to `.moflo/moflo.db` — reshaping
+ * them would churn consumer state for no benefit (#1423, Rule #2).
+ */
 export function generateId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+  return mintId(prefix, { separator: '_', bytes: 8 });
 }
 
 /**

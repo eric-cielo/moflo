@@ -25,9 +25,27 @@ export function recordSample(label, stderr) {
 export function getStderrSamples() { return stderrSamples; }
 export function clearStderrSamples() { stderrSamples.length = 0; }
 
+/**
+ * Mirror of `escapeShellArg`'s Windows branch in
+ * `src/cli/shared/utils/platform.ts` — kept in sync by hand because this harness
+ * is plain `.mjs` and cannot import the TS module.
+ *
+ * Under MSVCRT argv parsing a backslash is only special immediately before a
+ * `"`. Escaping quotes alone left a trailing backslash escaping the *closing*
+ * quote, so `C:\Users\runneradmin\x y\` ran on and swallowed the next argument —
+ * and this harness exists to catch cross-platform divergence, on runners whose
+ * paths are exactly that shape (#1419).
+ *
+ * An argument with no metacharacter is still passed bare: unquoted, backslashes
+ * are literal and need no doubling.
+ */
 function quoteWin(arg) {
   const s = String(arg);
-  return /[\s"&|<>^%]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s;
+  if (!/[\s"&|<>^%]/.test(s)) return s;
+  const escaped = s
+    .replace(/(\\*)"/g, '$1$1\\"')  // backslash run before a quote: double it, then escape the quote
+    .replace(/(\\+)$/, '$1$1');     // backslash run before the closing quote: double it
+  return `"${escaped}"`;
 }
 
 export function run(cmd, args, runOpts = {}) {

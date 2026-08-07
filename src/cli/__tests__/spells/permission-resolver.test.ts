@@ -13,6 +13,7 @@ import {
   type PermissionLevel,
 } from '../../spells/core/permission-resolver.js';
 import type { StepCapability } from '../../spells/types/step-command.types.js';
+import { escapeShellArg } from '../../shared/utils/platform.js';
 
 // ============================================================================
 // resolvePermissions
@@ -187,7 +188,10 @@ describe('buildClaudeCommand', () => {
     expect(cmd).toContain('claude');
     expect(cmd).toContain('--permission-mode bypassPermissions');
     expect(cmd).toContain('--allowedTools Edit,Write,Bash,Read,Glob,Grep');
-    expect(cmd).toContain('-p "Do something"');
+    // Quoting comes from the shared escapeShellArg (#1419), so the quote
+    // character is platform-dependent — `'…'` on POSIX, `"…"` on Windows.
+    // Asserting the literal here is what pinned the old, broken Windows escape.
+    expect(cmd).toContain(`-p ${escapeShellArg('Do something')}`);
   });
 
   it('readonly command has no permission-mode flag', () => {
@@ -203,9 +207,12 @@ describe('buildClaudeCommand', () => {
     expect(cmd).not.toContain('bypassPermissions');
   });
 
-  it('escapes double quotes in prompt', () => {
-    const cmd = buildClaudeCommand('Say "hello"', 'readonly');
-    expect(cmd).toContain('Say \\"hello\\"');
+  it('quotes a prompt containing shell metacharacters', () => {
+    for (const prompt of ['Say "hello"', "it's fine", 'C:\\Users\\x\\', '$(whoami)']) {
+      expect(buildClaudeCommand(prompt, 'readonly')).toContain(`-p ${escapeShellArg(prompt)}`);
+    }
+    // Round-trip correctness for both platforms is covered by
+    // tests/guards/shell-escaping-guard.test.ts.
   });
 
   it('autonomous omits --allowedTools', () => {

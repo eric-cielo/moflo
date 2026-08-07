@@ -38,6 +38,7 @@ import {
   pushDetail,
   summarizeFunctional,
 } from './doctor-checks-functional-shared.js';
+import { randomSuffix } from '../shared/utils/id.js';
 
 const MEMORY_ACCESS_CHECK = 'Memory Access Functional';
 const MEMORY_ACCESS_FAIL_FIX = 'Run `flo doctor --json` for per-subcheck details. Common fixes: ensure fastembed installed (memory_store.hasEmbedding=false), explicit threshold:0 honored (#837), or rebuild HNSW index (`flo memory rebuild-index`)';
@@ -92,7 +93,7 @@ export async function _runMemoryRoundTripForTest(ctx: RoundTripContext): Promise
 }
 
 async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string; namespace: string }> {
-  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const stamp = `${Date.now()}-${randomSuffix()}`;
   const key = `doctor-memprobe-${ctx.persona}-${stamp}`;
   const namespace = `doctor-memprobe-${ctx.persona}`;
   const sentinel = `memprobe-${ctx.persona}-${stamp}`;
@@ -360,7 +361,7 @@ async function probeMemoryGetNeighbors(
     expected: 'memory_get_neighbors registered',
   });
 
-  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const stamp = `${Date.now()}-${randomSuffix()}`;
   const namespace = `doctor-neighbors-${stamp}`;
   const prefix = `chunk-doctor-neighbors-${stamp}`;
   const chunkKeys = [`${prefix}-0`, `${prefix}-1`, `${prefix}-2`];

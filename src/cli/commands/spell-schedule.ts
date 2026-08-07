@@ -21,6 +21,7 @@ import { checkScheduleAcceptance } from '../services/schedule-acceptance-check.j
 import { reconcileDaemonAutostart } from '../services/daemon-autostart-lifecycle.js';
 import { isDaemonInstalled } from '../services/daemon-service.js';
 import { validateSchedule, computeNextRun } from '../spells/scheduler/cron-parser.js';
+import { randomSuffix } from '../shared/utils/id.js';
 
 const NAMESPACE_SCHEDULES = 'scheduled-spells';
 const NAMESPACE_EXECUTIONS = 'schedule-executions';
@@ -157,7 +158,7 @@ const createCommand: Command = {
     }
 
     // Always create the schedule, regardless of daemon state
-    const id = `sched-adhoc-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = `sched-adhoc-${now}-${randomSuffix()}`;
     const record = {
       id,
       spellName: name,

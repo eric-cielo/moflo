@@ -14,6 +14,7 @@ import type {
   HookRegistryStats,
   HookListFilter,
 } from '../types.js';
+import { generateId } from '../../shared/utils/id.js';
 
 /**
  * Hook Registry - manages hook registration and lookup
@@ -236,7 +237,7 @@ export class HookRegistry {
    * Generate unique hook ID
    */
   private generateId(): string {
-    return `hook-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    return generateId('hook');
   }
 }
 

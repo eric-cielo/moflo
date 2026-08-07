@@ -15,6 +15,7 @@
  */
 
 import type { StepCapability, CapabilityType } from '../types/step-command.types.js';
+import { escapeShellArg } from '../../shared/utils/platform.js';
 
 // ============================================================================
 // Permission Levels
@@ -115,8 +116,7 @@ export function buildClaudeCommand(
   additionalTools?: readonly string[],
 ): string {
   const resolved = resolvePermissions(explicitLevel, capabilities, additionalTools);
-  const escapedPrompt = prompt.replace(/"/g, '\\"');
-  return `claude ${resolved.cliArgs.join(' ')} -p "${escapedPrompt}"`;
+  return `claude ${resolved.cliArgs.join(' ')} -p ${escapeShellArg(prompt)}`;
 }
 
 // ============================================================================

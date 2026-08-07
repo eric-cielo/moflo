@@ -229,7 +229,10 @@ export const agentTools: MCPTool[] = [
 
       const routingResult = await determineAgentModel(agentType, config, task);
 
-      // Math.random().toString(36) was observably colliding under burst spawns.
+      // Base-36 slicing of Math.random() was observably colliding under burst
+      // spawns (Story #801). Kept inline rather than routed through
+      // shared/utils/id.ts because this ID interpolates the agent type in place
+      // of a timestamp; every other site now uses the shared minter (#1423).
       const agentId = `agent-${agentType}-${randomBytes(12).toString('hex')}`;
 
       const capabilities = Array.isArray(config.capabilities)

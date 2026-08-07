@@ -21,6 +21,7 @@ import type {
   EvaluatorResult,
 } from './types.js';
 import type { RunLedger } from './ledger.js';
+import { escapeShellArg, NULL_DEVICE } from '../shared/utils/platform.js';
 
 // ============================================================================
 // Task Suite Types
@@ -320,14 +321,10 @@ export class HeadlessRunner {
    * Build the Claude Code headless command
    */
   private buildCommand(task: TestTask): string {
-    // Escape the prompt for shell safety
-    const nd = process.platform === 'win32' ? 'NUL' : '/dev/null';
-    if (process.platform === 'win32') {
-      const escapedPrompt = task.prompt.replace(/"/g, '\\"');
-      return `claude -p "${escapedPrompt}" --output-format json 2>${nd}`;
-    }
-    const escapedPrompt = task.prompt.replace(/'/g, "'\\''");
-    return `claude -p '${escapedPrompt}' --output-format json 2>${nd}`;
+    // Quoting and the null device both come from platform.ts — this used to
+    // branch on process.platform twice and hand-roll the Windows escape, which
+    // is where the trailing-backslash defect lived (#1419).
+    return `claude -p ${escapeShellArg(task.prompt)} --output-format json 2>${NULL_DEVICE}`;
   }
 
   /**

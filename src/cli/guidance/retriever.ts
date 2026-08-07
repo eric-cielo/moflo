@@ -382,12 +382,7 @@ export class ShardRetriever {
   private matchGlob(path: string, glob: string): boolean {
     let re = this.globCache.get(glob);
     if (!re) {
-      const pattern = glob
-        .replace(/\*\*/g, '{{GLOBSTAR}}')
-        .replace(/\*/g, '[^/]*')
-        .replace(/{{GLOBSTAR}}/g, '.*')
-        .replace(/\//g, '\\/');
-      re = new RegExp(`^${pattern}$`);
+      re = globToRegExp(glob);
       this.globCache.set(glob, re);
     }
     return re.test(path);
@@ -430,4 +425,31 @@ export class ShardRetriever {
  */
 export function createRetriever(embeddingProvider: IEmbeddingProvider): ShardRetriever {
   return new ShardRetriever(embeddingProvider);
+}
+
+/**
+ * Compile a repo-scope glob (`*`, `**`) into an anchored regex.
+ *
+ * Metacharacters are escaped FIRST, then the wildcards are substituted. Without
+ * the escape a glob containing `.`, `+`, `(` or `[` either matched the wrong
+ * thing — `docs/*.md` happily matching `docsXmd`, because the `.` was a
+ * wildcard — or threw from `new RegExp` on an unbalanced bracket. Guidance
+ * scopes carry `.md` routinely, so the silent-mismatch case was the live one
+ * (#1419).
+ *
+ * `*` is left unescaped so the substitutions can still see it. The
+ * `{{GLOBSTAR}}` placeholder cannot collide with a literal `{{GLOBSTAR}}` in the
+ * input because that input has already had its braces escaped to `\{\{…\}\}` by
+ * the time the placeholder is inserted.
+ *
+ * Exported for direct testing: the only caller is a private method reachable
+ * solely through a fully-loaded retriever.
+ */
+export function globToRegExp(glob: string): RegExp {
+  const pattern = glob
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '{{GLOBSTAR}}')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\{\{GLOBSTAR\}\}/g, '.*');
+  return new RegExp(`^${pattern}$`);
 }

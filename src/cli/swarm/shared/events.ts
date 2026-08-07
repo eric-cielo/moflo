@@ -7,6 +7,7 @@
  */
 
 import type { SwarmEvent, EventType, EventHandler, AgentId } from './types.js';
+import { generateId } from '../../shared/utils/id.js';
 
 // =============================================================================
 // Event Bus Interface
@@ -185,7 +186,7 @@ export function createEvent<T>(
 
 // Helper function to generate event IDs
 function generateEventId(): string {
-  return `evt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return generateId('evt');
 }
 
 // Helper function to create a base SwarmEvent

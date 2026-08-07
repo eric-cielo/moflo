@@ -37,8 +37,13 @@ const DENYLIST: readonly DenylistEntry[] = [
   // /lib, /boot, /root, /home (alone — not /home/user/project/dist),
   // C:\ (Windows root).
   // End-of-string OR followed by space/wildcard — NOT followed by more path.
+  // The flag group is `[^rfRF\W]*[rfRF]\w*`, not `\w*[rfRF]\w*`: forcing the
+  // leading run to exclude r/f pins each match to the FIRST r/f in the token, so
+  // a flag can be split exactly one way. The ambiguous form inside the outer `*`
+  // backtracked exponentially on `rm ` + repeated `-ff\t`, and a safety gate
+  // that hangs is a safety gate that is not enforcing (#1418).
   {
-    regex: /\brm\s+(?:-\w*[rfRF]\w*\s+)*(?:\/(?:\s|$|\*)|~(?:\/?\s|\/?\*|$)|(?:\/(?:home|etc|usr|var|bin|sbin|lib|boot|root))(?:\s|$|\*|\/\*)|[A-Z]:\\(?:\s|$|\\?\*))/i,
+    regex: /\brm\s+(?:-[^rfRF\W]*[rfRF]\w*\s+)*(?:\/(?:\s|$|\*)|~(?:\/?\s|\/?\*|$)|(?:\/(?:home|etc|usr|var|bin|sbin|lib|boot|root))(?:\s|$|\*|\/\*)|[A-Z]:\\(?:\s|$|\\?\*))/i,
     pattern: 'Recursive delete of root/home/system directories',
     reason: 'Filesystem wipe — would destroy system or user files',
   },

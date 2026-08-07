@@ -183,8 +183,15 @@ async function loadMovector(): Promise<IMoVectorGraph | null> {
 function extractImports(content: string, _filePath: string): Array<{ path: string; type: GraphEdge['type'] }> {
   const imports: Array<{ path: string; type: GraphEdge['type'] }> = [];
 
-  // ES6 import statements
-  const esImportRegex = /import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s*,?\s*)*\s*from\s*['"]([^'"]+)['"]/g;
+  // ES6 import statements. Clause items are separated by a REQUIRED comma
+  // rather than the old optional `\s*,?\s*`: with the separator optional, the
+  // outer `*` could split a run of word characters many ways, and the regex
+  // backtracked exponentially on a pathological source file during indexing
+  // (#1418).
+  // `(?:type\s+)?` is explicit because the old optional separator absorbed the
+  // `type` modifier by accident; without it `import type { T } from 'x'` — the
+  // dominant form in this codebase — would stop producing a graph edge.
+  const esImportRegex = /import\s+(?:type\s+)?(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+\w+|\w+))*\s*from\s*['"]([^'"]+)['"]/g;
   let match: RegExpExecArray | null;
 
   while ((match = esImportRegex.exec(content)) !== null) {
@@ -1202,4 +1209,8 @@ export {
   loadMovector,
   fallbackMinCut,
   fallbackLouvain,
+  // Exported for the #1418 ReDoS regression test: the import regex is only
+  // reachable through file I/O otherwise, and a timing assertion needs to call
+  // it directly.
+  extractImports,
 };

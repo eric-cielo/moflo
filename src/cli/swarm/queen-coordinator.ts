@@ -461,6 +461,7 @@ export interface IMemoryService {
 }
 
 import type { IEmbeddingProvider } from './attention-coordinator.js';
+import { generateId } from '../shared/utils/id.js';
 export type { IEmbeddingProvider };
 
 /**
@@ -1988,7 +1989,7 @@ export class QueenCoordinator extends EventEmitter {
 
   private emitEvent(type: string, data: Record<string, unknown>): void {
     const event = {
-      id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      id: generateId('event', { separator: '_' }),
       type,
       source: 'queen-coordinator',
       timestamp: new Date(),

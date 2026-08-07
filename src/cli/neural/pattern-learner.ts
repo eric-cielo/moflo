@@ -14,6 +14,8 @@ import type {
   NeuralEvent,
   NeuralEventListener,
 } from './types.js';
+import { generateId } from '../shared/utils/id.js';
+import { randomSuffix } from '../shared/utils/id.js';
 
 /**
  * Configuration for Pattern Learner
@@ -173,7 +175,7 @@ export class PatternLearner {
 
     // Create new pattern
     const pattern: Pattern = {
-      patternId: `pat_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      patternId: generateId('pat', { separator: '_' }),
       name: this.generatePatternName(trajectory),
       domain: trajectory.domain,
       embedding,
@@ -343,7 +345,7 @@ export class PatternLearner {
       }
 
       const newPattern: Pattern = {
-        patternId: `pat_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+        patternId: `pat_${Date.now()}_${i}_${randomSuffix()}`,
         name: `${pattern.name}_split_${i}`,
         domain: pattern.domain,
         embedding: newEmbedding,

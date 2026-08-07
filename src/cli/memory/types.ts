@@ -7,6 +7,8 @@
  * @module v3/memory/types
  */
 
+import { generateId } from '../shared/utils/id.js';
+
 // ===== Core Memory Entry Types =====
 
 /**
@@ -673,9 +675,7 @@ export type EmbeddingGenerator = (content: string) => Promise<Float32Array>;
  * Generates a unique memory ID
  */
 export function generateMemoryId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 10);
-  return `mem_${timestamp}_${random}`;
+  return generateId('mem', { separator: '_', base36Time: true });
 }
 
 /**

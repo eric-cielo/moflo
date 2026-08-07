@@ -6,6 +6,7 @@
  */
 
 import type { CastingContext } from '../types/step-command.types.js';
+import { escapeShellArgPosix } from '../../shared/utils/platform.js';
 
 /**
  * Matches `{path}` variable references in spell step configs.
@@ -97,9 +98,13 @@ export function interpolateString(template: string, context: CastingContext): st
  * This prevents shell metacharacter injection (`;`, `|`, `` ` ``, `$()`, `&&`, `||`).
  */
 export function shellEscapeValue(value: string): string {
-  // Always use POSIX single-quote escaping — this function is specifically
-  // for shell interpolation in bash commands (bashCommand hardcodes shell: 'bash')
-  return "'" + value.replace(/'/g, "'\\''") + "'";
+  // Always POSIX single-quote escaping, unconditionally — this function is
+  // specifically for shell interpolation in bash commands (bashCommand hardcodes
+  // shell: 'bash'), so it must NOT switch to Windows quoting on a Windows host.
+  // `escapeShellArgPosix` is exactly that branch, reused rather than re-spelled:
+  // this was a third copy of the idiom, and #1419 exists because the second copy
+  // went unfixed when the first one did.
+  return escapeShellArgPosix(value);
 }
 
 /**

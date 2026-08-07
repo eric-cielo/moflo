@@ -15,6 +15,7 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { resolveBridgeDbPath } from '../memory/bridge-core.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Memory backends
 const BACKENDS = [
@@ -1543,7 +1544,7 @@ function saveAndCloseDb(db: SqlJsLikeDatabase, _dbPath: string): void {
 }
 
 function batchGenerateId(): string {
-  return `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return generateId('mem', { separator: '_' });
 }
 
 function batchStoreEntry(

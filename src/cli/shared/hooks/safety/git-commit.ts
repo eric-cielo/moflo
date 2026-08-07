@@ -15,6 +15,7 @@ import {
   HookPriority,
 } from '../types.js';
 import { HookRegistry } from '../registry.js';
+import { escapeShellArg } from '../../utils/platform.js';
 
 /**
  * Git commit hook result
@@ -256,12 +257,17 @@ export class GitCommitHook {
 
     const result = await this.processCommitMessage(message, branchName);
 
-    // Modify the command with the new message
+    // Modify the command with the new message.
+    //
+    // `escapeShellArg` rather than a hand-rolled quote escape: this rewrites a
+    // command that then runs in the consumer's shell, and the Windows branch of
+    // the old escape left a trailing backslash escaping its own closing quote
+    // (#1419). The replacement is a FUNCTION so that a `$&` or `$1` occurring in
+    // the commit message is inserted literally instead of being expanded by
+    // String.replace's substitution syntax.
     if (result.success && result.modifiedMessage !== message) {
-      const modifiedCommand = command.replace(
-        /-m\s+["'][^"']+["']/,
-        `-m "${result.modifiedMessage.replace(/"/g, '\\"')}"`
-      );
+      const replacement = `-m ${escapeShellArg(result.modifiedMessage ?? '')}`;
+      const modifiedCommand = command.replace(/-m\s+["'][^"']+["']/, () => replacement);
 
       return {
         ...result,

@@ -17,6 +17,7 @@ import type {
 import { computeNextRun } from './cron-parser.js';
 import { compareMofloLevels } from '../core/capability-validator.js';
 import { errorDetail } from '../../shared/utils/error-detail.js';
+import { generateId } from '../../shared/utils/id.js';
 
 // ============================================================================
 // Constants
@@ -215,7 +216,7 @@ export class SpellScheduler {
       throw new Error('Could not compute next run time from provided schedule');
     }
 
-    const id = `sched-adhoc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = generateId('sched-adhoc');
     const record: SpellSchedule = {
       id,
       spellName: params.spellName,

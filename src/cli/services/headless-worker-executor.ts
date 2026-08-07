@@ -18,6 +18,7 @@ import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 
 import { join, relative } from 'path';
 import type { WorkerType } from './worker-daemon.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { randomSuffix } from '../shared/utils/id.js';
 
 // ============================================
 // Type Definitions
@@ -843,7 +844,7 @@ export class HeadlessWorkerExecutor extends EventEmitter {
     const headless = { ...baseConfig.headless!, ...configOverrides };
 
     const startTime = Date.now();
-    const executionId = `${workerType}_${startTime}_${Math.random().toString(36).slice(2, 8)}`;
+    const executionId = `${workerType}_${startTime}_${randomSuffix()}`;
 
     this.emit('start', { executionId, workerType, config: headless });
 

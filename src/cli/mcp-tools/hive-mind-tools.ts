@@ -17,6 +17,7 @@ import { SUBAGENT_BOOTSTRAP_DIRECTIVE } from '../services/subagent-bootstrap.js'
 import { validateAgentType } from './agent-tools.js';
 import type { AgentType } from '../swarm/types.js';
 import { SWARM_CONSTANTS } from '../swarm/types.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Namespace constants — avoids hardcoded strings scattered across handlers
 const HIVE_NS = 'hive-mind' as const;
@@ -380,7 +381,7 @@ export const hiveMindTools: MCPTool[] = [
       // Initialize write-through adapter (configures hive-mind namespace)
       await getWriteThroughAdapter();
 
-      const hiveId = `hive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const hiveId = generateId('hive');
       const queenId = (input.queenId as string) || `queen-${Date.now()}`;
 
       const config = {
@@ -623,7 +624,7 @@ export const hiveMindTools: MCPTool[] = [
       const bus = await getMessageBus();
 
       if (action === 'propose') {
-        const proposalId = `proposal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const proposalId = generateId('proposal');
         const proposal: ConsensusProposal = {
           proposalId,
           type: (input.type as string) || 'general',

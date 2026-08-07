@@ -26,6 +26,7 @@ import type {
 // neural/index → here would leave MofloDbAdapter undefined at module load.
 import { MofloDbAdapter } from '../memory/moflo-db-adapter.js';
 import { createDefaultEntry } from '../memory/types.js';
+import { generateId } from '../shared/utils/id.js';
 
 // ============================================================================
 // Configuration
@@ -437,7 +438,7 @@ export class ReasoningBank {
     const embedding = this.computeAggregateEmbedding(trajectory);
 
     const memory: DistilledMemory = {
-      memoryId: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      memoryId: generateId('mem', { separator: '_' }),
       trajectoryId: trajectory.trajectoryId,
       strategy,
       keyLearnings,

@@ -11,6 +11,8 @@
  * @module moflo/production/monitoring
  */
 
+import { generateId } from '../shared/utils/id.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -430,7 +432,7 @@ export class MonitoringHooks {
 
       if (!recentAlert) {
         this.alerts.push({
-          id: `alert_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          id: generateId('alert', { separator: '_' }),
           level,
           metric: name,
           message: `${name} exceeded ${level} threshold: ${value} >= ${threshold}`,

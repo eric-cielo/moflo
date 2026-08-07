@@ -4,6 +4,8 @@
  * Represents a detected security threat from AI manipulation attempts.
  */
 
+import { generateId } from '../../../shared/utils/id.js';
+
 export type ThreatSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 export type ThreatType =
@@ -69,7 +71,7 @@ export function createThreat(params: {
   location?: { start: number; end: number };
 }): Threat {
   return {
-    id: `threat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: generateId('threat'),
     type: params.type,
     severity: params.severity,
     confidence: params.confidence,
