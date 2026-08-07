@@ -170,7 +170,7 @@ export function setupPerformanceHooks() {
         return { success: true };
       }
 
-      const metricId = `tool-${toolName}-${Date.now()}`;
+      const metricId = generateId(`tool-${toolName}`);
       performanceMetrics.set(metricId, { start: Date.now() });
 
       return {
@@ -309,7 +309,7 @@ export function setupSessionHooks() {
   registry.register(
     HookEvent.SessionStart,
     async (context) => {
-      const sessionId = context.session?.id || `session-${Date.now()}`;
+      const sessionId = context.session?.id || generateId('session');
 
       activeSession = {
         id: sessionId,
@@ -495,6 +495,7 @@ export async function runDemo() {
 
 // Run demo if executed directly
 import { pathToFileURL as _pfu_eu } from 'url';
+import { generateId } from '../utils/id.js';
 if (import.meta.url === _pfu_eu(process.argv[1]).href) {
   runDemo().catch(console.error);
 }

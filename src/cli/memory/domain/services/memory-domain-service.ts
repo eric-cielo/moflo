@@ -9,6 +9,7 @@
 
 import { MemoryEntry, MemoryType, MemoryEntryProps } from '../entities/memory-entry.js';
 import { IMemoryRepository, VectorSearchResult } from '../repositories/memory-repository.interface.js';
+import { generateId } from '../../../shared/utils/id.js';
 
 /**
  * Memory consolidation strategy
@@ -349,7 +350,7 @@ export class MemoryDomainService {
     // Create merged entry
     return MemoryEntry.create({
       namespace: primary.namespace,
-      key: `merged_${Date.now()}`,
+      key: generateId('merged', { separator: '_' }),
       value: {
         primary: primary.value,
         related: sorted.slice(1).map((e) => e.value),

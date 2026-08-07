@@ -18,6 +18,7 @@ import type { MCPTool } from './types.js';
 import * as os from 'node:os';
 import { createJsonStore } from './json-store.js';
 import { readCpuUsagePercent, readLoadAverage, NOT_MEASURED } from '../shared/utils/load-average.js';
+import { generateId } from '../shared/utils/id.js';
 
 /**
  * #1354: `latency`, `throughput` and `errors` are gone from this shape.
@@ -267,7 +268,7 @@ const rawPerformanceTools: MCPTool[] = [
           const avgLatencyMs = durationMs / iterations;
           const memoryDelta = Math.round((memAfter - memBefore) / 1024);
 
-          const id = `bench-${suiteName}-${Date.now()}`;
+          const id = generateId(`bench-${suiteName}`);
           const result: Benchmark = {
             id,
             name: suiteName,

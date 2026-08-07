@@ -48,6 +48,7 @@ import { CircuitBreaker } from '../production/circuit-breaker.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { readLoadAverage } from '../shared/utils/load-average.js';
 import { readMofloEnv } from './env-compat.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Worker types matching hooks-tools.ts. `audit`, `predict`, `document`
 // were removed in #970; `optimize` + `testgaps` were removed in #1258 (moved
@@ -974,7 +975,7 @@ export class WorkerDaemon extends EventEmitter {
    */
   private async executeWorker(workerConfig: WorkerConfig): Promise<WorkerResult> {
     const state = this.workers.get(workerConfig.type)!;
-    const workerId = `${workerConfig.type}_${Date.now()}`;
+    const workerId = generateId(workerConfig.type, { separator: '_' });
     const startTime = Date.now();
 
     // The controller is parked on shared state so setWorkerEnabled(false) can

@@ -20,6 +20,7 @@ import type { Skills } from './skills.js';
 import type { ControllerSpec } from '../controller-spec.js';
 import { hasMethod } from './_shared.js';
 import { errorDetail } from '../../shared/utils/error-detail.js';
+import { generateId } from '../../shared/utils/id.js';
 
 export interface NightlyReport {
   consolidation?: ConsolidationReport;
@@ -115,7 +116,7 @@ export class NightlyLearner {
     const self = this;
     this.timer = setInterval(() => {
       // Fire-and-forget; consolidate swallows its own errors.
-      void self.consolidate({ sessionId: `cron-${Date.now()}` });
+      void self.consolidate({ sessionId: generateId('cron') });
     }, intervalMs);
     if (typeof (this.timer as NodeJS.Timeout & { unref?: () => void }).unref === 'function') {
       (this.timer as NodeJS.Timeout & { unref?: () => void }).unref!();

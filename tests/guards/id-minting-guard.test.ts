@@ -44,22 +44,42 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-function shippedSourceFiles(): string[] {
-  return SHIPPED_ROOTS.flatMap((rel) => [...walk(path.join(REPO_ROOT, rel))]);
+/**
+ * Every shipped source file, already split into lines.
+ *
+ * Read once and memoised: three scans share this, and each was otherwise
+ * re-walking and re-reading the whole shipped tree.
+ */
+let cachedSources: Array<{ rel: string; lines: string[] }> | null = null;
+
+function shippedSources(): Array<{ rel: string; lines: string[] }> {
+  cachedSources ??= SHIPPED_ROOTS.flatMap((root) =>
+    [...walk(path.join(REPO_ROOT, root))].map((file) => ({
+      rel: path.relative(REPO_ROOT, file),
+      // `/\r?\n/` rather than `'\n'`. `.gitattributes` pins `eol=lf` for *.ts
+      // and *.mjs, so CRLF should not reach here — this is the habit, not a
+      // live fix, and it keeps a future `$`-anchored matcher from silently
+      // failing on a stray `\r` if that policy ever changes.
+      lines: readFileSync(file, 'utf8').split(/\r?\n/),
+    })),
+  );
+  return cachedSources;
+}
+
+/** Collect `file:line  text` for every line the predicate flags. */
+function scan(flagged: (line: string) => boolean): string[] {
+  const offenders: string[] = [];
+  for (const { rel, lines } of shippedSources()) {
+    lines.forEach((line, i) => {
+      if (flagged(line)) offenders.push(`${rel}:${i + 1}  ${line.trim()}`);
+    });
+  }
+  return offenders;
 }
 
 describe('#1423 — no ID is minted from Math.random()', () => {
   it('no shipped source file base-36-slices Math.random()', () => {
-    const offenders: string[] = [];
-
-    for (const file of shippedSourceFiles()) {
-      const lines = readFileSync(file, 'utf8').split('\n');
-      lines.forEach((line, i) => {
-        if (BASE36_SLICE.test(line)) {
-          offenders.push(`${path.relative(REPO_ROOT, file)}:${i + 1}  ${line.trim()}`);
-        }
-      });
-    }
+    const offenders = scan((line) => BASE36_SLICE.test(line));
 
     expect(
       offenders,
@@ -73,18 +93,95 @@ describe('#1423 — no ID is minted from Math.random()', () => {
     // The same defect written without `.toString(36)` — e.g. a raw
     // `${Date.now()}-${Math.random()}` — would slip past the check above.
     const pattern = /\$\{\s*Date\s*\.\s*now\s*\(\s*\)\s*\}[^`]{0,20}\$\{[^}]*Math\s*\.\s*random/;
-    const offenders: string[] = [];
 
-    for (const file of shippedSourceFiles()) {
-      const lines = readFileSync(file, 'utf8').split('\n');
-      lines.forEach((line, i) => {
-        if (pattern.test(line)) {
-          offenders.push(`${path.relative(REPO_ROOT, file)}:${i + 1}  ${line.trim()}`);
-        }
-      });
-    }
+    expect(scan((line) => pattern.test(line))).toEqual([]);
+  });
+});
 
-    expect(offenders).toEqual([]);
+describe('#1427 — no ID is minted from Date.now() alone', () => {
+  // Strictly worse than the Math.random() sites above: a base-36 slice carried
+  // ~31 bits before slicing, a bare clock reading carries none. Two entities
+  // created in the same millisecond do not risk a collision, they take one.
+  //
+  // `${Date.now()}` is legitimate in plenty of places — cache busters, SSE
+  // pings, backup filenames, elapsed-time maths, and the doctor's own prose
+  // describing the stub shape it detects. So this keys on the *binding*: a
+  // template assigned to something named like an identifier, with no other
+  // source of uniqueness in it.
+  // The interpolation must be a bare clock reading — `${Date.now()}` or the
+  // base36 spelling of it. `${Date.now() - 86400000}` is deliberately excluded:
+  // that is a reference to a past instant (hooks-tools synthesises "the session
+  // from an hour ago" that way), not a fresh mint, and randomising it would be
+  // wrong rather than safer.
+  const NOW = String.raw`\$\{\s*Date\s*\.\s*now\s*\(\s*\)(?:\s*\.\s*toString\s*\(\s*36\s*\))?\s*\}`;
+  const ID_BINDING = new RegExp(
+    String.raw`\b\w*(?:[Ii]d|[Kk]ey)\s*[:=]\s*[^;\n]*\`[^\`\n]*` + NOW,
+  );
+
+  /**
+   * Anything that already separates two IDs minted in the same millisecond.
+   * `++` covers the in-memory event/message buses, whose counters are
+   * process-local and monotonic — weaker than a CSPRNG, but not zero.
+   */
+  const HAS_ENTROPY = /random|Random|randomUUID|randomBytes|randomSuffix|generateId|\+\+|[Cc]ounter|crypto/;
+
+  /** Comment lines describe these shapes on purpose — see doctor-checks-swarm.ts. */
+  const COMMENT = /^\s*(?:\/\/|\*|\/\*)/;
+
+  // Known limits, stated rather than discovered later. This is a line-based
+  // scan over a binding name, so it does NOT catch:
+  //   - a template split across lines
+  //   - concatenation: `const spellId = 'sp-' + Date.now()`
+  //   - `return \`sp-${Date.now()}\`` — no binding name to key on, and keying
+  //     on bare `return` would flag every function building a timestamped
+  //     filename
+  //   - a binding named for the entity rather than the id (`session`, `handle`)
+  //   - a line where HAS_ENTROPY matches incidentally (a trailing comment
+  //     containing the word "counter" masks the rest of the line)
+  // None of these exist in the tree today. The check is a ratchet against the
+  // shape that actually recurred 52 times, not a proof of absence.
+
+  const flagged = (line: string) =>
+    !COMMENT.test(line) && ID_BINDING.test(line) && !HAS_ENTROPY.test(line);
+
+  it('no shipped source file binds an id/key to a template whose only variable is Date.now()', () => {
+    const offenders = scan(flagged);
+
+    expect(
+      offenders,
+      `Mint IDs with generateId() from src/cli/shared/utils/id.ts.\n` +
+        `A bare Date.now() has zero entropy — same millisecond means same ID.\n` +
+        offenders.join('\n'),
+    ).toEqual([]);
+  });
+
+  it('detects the shape it claims to detect', () => {
+    // Without this, the check above passes just as happily when ID_BINDING has
+    // been broken as when the codebase is clean. Uses the same predicate the
+    // scan does, so the two cannot drift apart.
+    const detect = flagged;
+
+    // Caught — the #1427 shapes, in the spacings and separators used here.
+    expect(detect('const spellId = `sp-${Date.now()}`;')).toBe(true);
+    expect(detect('  taskId: `task_${Date.now()}`,')).toBe(true);
+    expect(detect('const queenId = input.queenId || `queen-${Date.now()}`;')).toBe(true);
+    expect(detect('  key: `merged_${Date.now()}`,')).toBe(true);
+    expect(detect('const probeKey = `doctor-probe-${ Date.now() }`;')).toBe(true);
+
+    // Not caught — legitimate uses that must stay legal.
+    expect(detect('const cacheBuster = `?t=${Date.now()}`;')).toBe(false); // not an id binding
+    expect(detect('res.write(`: ping ${Date.now()}\\n\\n`);')).toBe(false); // not a binding
+    expect(detect('const backupPath = `${p}.malformed-${Date.now()}`;')).toBe(false); // a path
+    expect(detect('const id = `evt-${Date.now()}-${++eventCounter}`;')).toBe(false); // counter
+    expect(detect('const id = `s-${Date.now()}-${randomUUID()}`;')).toBe(false); // random
+    expect(detect('const spellId = generateId("sp");')).toBe(false); // the fix itself
+    // The doctor documents the stub shape in prose; that must not trip.
+    expect(detect('  // literal was `swarm-${Date.now()}` (hyphen).')).toBe(false);
+    // A derived past instant, not a mint.
+    expect(detect('const sessionId = `session-${Date.now() - 3600000}`;')).toBe(false);
+
+    // The base36 spelling is the same defect and is caught.
+    expect(detect('const swarmId = `swarm-${Date.now().toString(36)}`;')).toBe(true);
   });
 });
 

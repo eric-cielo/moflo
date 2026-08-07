@@ -23,6 +23,9 @@ import { spawn } from 'child_process';
 import { existsSync, appendFileSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+// A builtin, deliberately: this file is a shipped hook entry point, and pulling
+// in a bin/lib/ module here would widen its resolve closure for one call site.
+import { randomBytes } from 'node:crypto';
 import { createProcessManager } from './lib/process-manager.mjs';
 import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
@@ -240,7 +243,7 @@ async function main() {
       case 'pre-task': {
         const description = getArg('description') || process.env.TOOL_INPUT_prompt;
         if (description) {
-          const taskId = `task-${Date.now()}`;
+          const taskId = `task-${Date.now()}-${randomBytes(6).toString('hex')}`;
           await runClaudeFlow('hooks', ['pre-task', '--task-id', taskId, '--description', description]);
         }
         break;

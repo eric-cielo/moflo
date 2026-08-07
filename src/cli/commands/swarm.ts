@@ -12,6 +12,7 @@ import * as path from 'path';
 import { LEGACY_SWARM_DIR, memoryDbCandidatePaths, mofloDir } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { resolveStateRoot } from '../services/project-root.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Get dynamic swarm status from memory/session files
 function getSwarmStatus(swarmId?: string) {
@@ -414,7 +415,7 @@ const startCommand: Command = {
     spinner.succeed('All agents deployed');
 
     const executionState = {
-      swarmId: `swarm-${Date.now().toString(36)}`,
+      swarmId: generateId('swarm', { base36Time: true }),
       objective,
       strategy,
       status: 'running',

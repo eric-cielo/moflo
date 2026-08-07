@@ -20,6 +20,7 @@ import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
 import { loadSpellBudgetFromProject } from '../core/run-budget.js';
 import { errorDetail } from '../../shared/utils/error-detail.js';
 import { getDefaultCredentialStore } from '../credentials/default-store.js';
+import { generateId } from '../../shared/utils/id.js';
 
 // ============================================================================
 // Types
@@ -92,7 +93,7 @@ export async function runSpellFromContent(
     definition = parsed.definition;
   } catch (err) {
     return {
-      spellId: options.spellId ?? `sp-${Date.now()}`,
+      spellId: options.spellId ?? generateId('sp'),
       success: false,
       steps: [],
       outputs: {},
@@ -105,7 +106,7 @@ export async function runSpellFromContent(
   const validation = validateSpellDefinition(definition);
   if (!validation.valid) {
     return {
-      spellId: options.spellId ?? `sp-${Date.now()}`,
+      spellId: options.spellId ?? generateId('sp'),
       success: false,
       steps: [],
       outputs: {},

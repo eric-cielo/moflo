@@ -20,6 +20,7 @@ import { pathToFileURL } from 'url';
 import { findProjectRoot as findConsumerProjectDir } from '../services/project-root.js';
 import { findMofloPackageRoot } from '../services/moflo-require.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { generateId } from '../shared/utils/id.js';
 import type { HealthCheck } from './doctor-types.js';
 
 // Re-exported so existing consumers (`doctor-checks-memory-access.ts`,
@@ -93,7 +94,7 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
     // Spawn a test agent
     const spawnResult = await spawnTool.handler({
       agentType: 'tester',
-      id: `doctor-probe-${Date.now()}`,
+      id: generateId('doctor-probe'),
       priority: 'low',
       metadata: { purpose: 'doctor-health-check' },
     }, {});
@@ -176,7 +177,7 @@ steps:
 `;
 
     const result = await runSpellFromContent(minimalSpell, 'doctor-probe.yaml', {
-      spellId: `doctor-probe-${Date.now()}`,
+      spellId: generateId('doctor-probe'),
       timeout: 10_000,
     });
 

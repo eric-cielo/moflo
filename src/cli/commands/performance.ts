@@ -8,6 +8,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { readLoadAverage, NOT_MEASURED } from '../shared/utils/load-average.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Benchmark subcommand - REAL measurements
 const benchmarkCommand: Command = {
@@ -199,7 +200,7 @@ const benchmarkCommand: Command = {
       for (let i = 0; i < Math.min(iterations, 20); i++) {
         const start = performance.now();
         await storeEntry({
-          key: `bench_${Date.now()}_${i}`,
+          key: generateId('bench', { separator: '_' }),
           value: `Benchmark test entry ${i} with some content for testing storage performance`,
           namespace: 'benchmark',
           generateEmbeddingFlag: true,

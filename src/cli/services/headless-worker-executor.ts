@@ -19,6 +19,7 @@ import { join, relative } from 'path';
 import type { WorkerType } from './worker-daemon.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { randomSuffix } from '../shared/utils/id.js';
+import { generateId } from '../shared/utils/id.js';
 
 // ============================================
 // Type Definitions
@@ -1379,7 +1380,7 @@ ${ioInstructions}`;
       sandboxMode: 'strict',
       workerType,
       timestamp: new Date(),
-      executionId: `error_${Date.now()}`,
+      executionId: generateId('error', { separator: '_' }),
       error,
     };
   }

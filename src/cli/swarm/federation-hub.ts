@@ -177,7 +177,7 @@ export type FederationEventType =
 // ============================================================================
 
 const DEFAULT_CONFIG: Required<FederationConfig> = {
-  federationId: `federation_${Date.now()}`,
+  federationId: generateId('federation', { separator: '_' }),
   maxEphemeralAgents: 100,
   defaultTTL: 300000, // 5 minutes
   syncIntervalMs: 30000, // 30 seconds

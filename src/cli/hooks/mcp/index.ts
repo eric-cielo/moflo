@@ -15,6 +15,7 @@ import type {
   MetricsQueryInput,
   MetricsQueryResult,
 } from '../types.js';
+import { generateId } from '../../shared/utils/id.js';
 
 /**
  * MCP Tool definition interface
@@ -142,7 +143,7 @@ export const postEditTool: MCPTool = {
       success,
       recorded: true,
       recordedAt: new Date().toISOString(),
-      patternId: success ? `pattern-${Date.now()}` : undefined,
+      patternId: success ? generateId('pattern') : undefined,
     };
   },
 };
@@ -365,7 +366,7 @@ export const postCommandTool: MCPTool = {
 
     return {
       recorded: true,
-      patternId: success ? `cmd-${Date.now()}` : undefined,
+      patternId: success ? generateId('cmd') : undefined,
     };
   },
 };

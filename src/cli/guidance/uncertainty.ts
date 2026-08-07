@@ -25,6 +25,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { generateId } from '../shared/utils/id.js';
 
 // ============================================================================
 // Types
@@ -479,7 +480,7 @@ export class UncertaintyLedger {
 
     // Record the resolution as evidence
     const resolutionEvidence: EvidencePointer = {
-      sourceId: `resolution:${beliefId}:${Date.now()}`,
+      sourceId: generateId(`resolution:${beliefId}`, { separator: ':' }),
       sourceType: 'human-input',
       supports: status === 'confirmed',
       weight: 1.0,

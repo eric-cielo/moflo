@@ -22,6 +22,7 @@ import { buildGrimoire } from '../services/grimoire-builder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { inferSpellTier, type SpellTier } from '../spells/core/spell-tier.js';
 import { getSharedMemoryAccessor } from '../services/daemon-dashboard.js';
+import { generateId } from '../shared/utils/id.js';
 
 
 // ============================================================================
@@ -102,7 +103,7 @@ async function executeAndTrack(
     tier?: SpellTier;
   } = {},
 ): Promise<Record<string, unknown>> {
-  const spellId = `sp-${Date.now()}`;
+  const spellId = generateId('sp');
   const tracked = trackStart(spellId, definition.name, definition.description);
 
   try {
