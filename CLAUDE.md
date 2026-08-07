@@ -141,11 +141,12 @@ After `npm install` touches moflo, check `.moflo/restart-pending.json` — if pr
 
 ### Monorepos
 
-Moflo state lives at the monorepo root `.moflo/` — never run `flo init` inside a sub-workspace of an existing moflo project, or the MCP server and CLI silently bind to different daemons (issue #1174).
+Moflo state lives at the monorepo root `.moflo/` — never run `flo init` inside a sub-workspace of an existing moflo project, or the MCP server and CLI silently bind to different daemons.
 
 ### Full Reference
 
 - Universal agent rules (memory protocol, git/PR conventions, file org, build/test): `.claude/guidance/moflo-agent-rules.md`
+- Fix small defects in the PR you are already in — don't file them: `.claude/guidance/moflo-inline-fixes.md`
 - Subagent spawn protocol: `.claude/guidance/moflo-subagents.md`
 - Task + swarm coordination: `.claude/guidance/moflo-claude-swarm-cohesion.md`
 - CLI, hooks, swarm, memory, moflo.yaml: `.claude/guidance/moflo-core-guidance.md`
