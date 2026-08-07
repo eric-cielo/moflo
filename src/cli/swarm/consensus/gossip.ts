@@ -11,6 +11,7 @@ import {
   ConsensusConfig,
   SWARM_CONSTANTS,
 } from '../types.js';
+import { generateId } from '../../shared/utils/id.js';
 
 export interface GossipMessage {
   id: string;
@@ -490,7 +491,7 @@ export class GossipConsensus extends EventEmitter {
     const randomNeighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
 
     const stateMessage: GossipMessage = {
-      id: `state_${this.node.id}_${Date.now()}`,
+      id: generateId(`state_${this.node.id}`, { separator: '_' }),
       type: 'state',
       senderId: this.node.id,
       version: this.node.version,

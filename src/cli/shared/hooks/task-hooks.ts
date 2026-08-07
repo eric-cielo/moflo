@@ -15,6 +15,7 @@ import {
   TaskInfo,
 } from './types.js';
 import { HookRegistry } from './registry.js';
+import { generateId } from '../utils/id.js';
 
 /**
  * Pre-task hook result with agent suggestions
@@ -250,7 +251,7 @@ export class TaskHooksManager {
       outcome,
       learningUpdates,
       patternId: learningUpdates.newPatterns > 0 ? `pattern-${task.id}` : undefined,
-      trajectoryId: `trajectory-${task.id}-${Date.now()}`,
+      trajectoryId: generateId(`trajectory-${task.id}`),
     };
   }
 

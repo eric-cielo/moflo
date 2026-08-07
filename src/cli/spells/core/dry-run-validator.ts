@@ -30,6 +30,7 @@ import {
 } from './capability-validator.js';
 import { collectPrerequisites, checkPrerequisites } from './prerequisite-checker.js';
 import { analyzeStepPermissions, analyzeSpellPermissions } from './permission-disclosure.js';
+import { generateId } from '../../shared/utils/id.js';
 
 /** Invariant context shared across all `dryRunValidateStep` calls within a single dry-run. */
 interface DryRunEnv {
@@ -152,7 +153,7 @@ export async function dryRunValidate(
     : [];
   const prereqByName = new Map(prereqResults.map(r => [r.name, r]));
 
-  const spellId = `dryrun-${Date.now()}`;
+  const spellId = generateId('dryrun');
   const variables: Record<string, unknown> = {};
   const stepReports: DryRunStepReport[] = [];
   const env: DryRunEnv = { registry, definition, options, prereqByName };

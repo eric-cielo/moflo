@@ -22,6 +22,7 @@ import type { MemoryAuthority, MemoryEntry, WriteDecision } from './memory-gate.
 import type { ProofEnvelopeMetadata } from './proof.js';
 import type { CoherenceScore } from './coherence.js';
 import type { TrustRecord, GateOutcome } from './trust.js';
+import { generateId } from '../shared/utils/id.js';
 
 // ============================================================================
 // RuvBot Ambient Types (optional peer dependency)
@@ -850,7 +851,7 @@ export class RuvBotGuidanceBridge {
    */
   private async handleSessionCreate(...args: unknown[]): Promise<void> {
     const data = (args[0] ?? {}) as Record<string, unknown>;
-    const sessionId = String(data['sessionId'] ?? data['id'] ?? `session-${Date.now()}`);
+    const sessionId = String(data['sessionId'] ?? data['id'] ?? generateId('session'));
 
     this.logEvent('session:create', { sessionId });
 

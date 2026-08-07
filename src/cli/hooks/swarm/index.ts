@@ -693,7 +693,7 @@ export class SwarmCommunication extends EventEmitter {
 
     const handoff: TaskHandoff = {
       id: generateId('ho', { separator: '_' }),
-      taskId: `task_${Date.now()}`,
+      taskId: generateId('task', { separator: '_' }),
       description: taskDescription,
       fromAgent: this.config.agentId,
       toAgent,

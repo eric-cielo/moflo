@@ -57,6 +57,7 @@ import {
   createRunBudget, mergeSpellBudgets,
   type BudgetBreach, type RunBudgetAccessor,
 } from './run-budget.js';
+import { generateId } from '../../shared/utils/id.js';
 
 /** Spell engine version. Story #285 (epic #287) — workflow-test constant. */
 export const ENGINE_VERSION = '1.0.0';
@@ -84,7 +85,7 @@ export class SpellCaster {
     const defValidation = validateSpellDefinition(definition, {
       knownStepTypes: this.registry.types(),
     });
-    const spellId = options.spellId ?? `sp-${Date.now()}`;
+    const spellId = options.spellId ?? generateId('sp');
 
     if (!defValidation.valid) {
       return this.failureResult(spellId, startTime, [{

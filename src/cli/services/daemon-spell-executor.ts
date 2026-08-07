@@ -24,6 +24,7 @@ import {
   type SandboxConfig,
   type SpellBudgetConfig,
 } from './engine-loader.js';
+import { generateId } from '../shared/utils/id.js';
 
 export interface DaemonSpellExecutorOptions {
   /** Pre-built Grimoire used to resolve spell names at poll time. */
@@ -86,7 +87,7 @@ export class DaemonSpellExecutor implements SpellExecutor {
     const loaded = this.registry.resolve(spellName);
     if (!loaded) {
       return failedResult(
-        `scheduled-${spellName}-${Date.now()}`,
+        generateId(`scheduled-${spellName}`),
         'STEP_EXECUTION_FAILED',
         `Spell not found in grimoire: ${spellName}`,
       );
@@ -94,7 +95,7 @@ export class DaemonSpellExecutor implements SpellExecutor {
 
     const engine = await this.ensureEngine();
     const definition = this.applyMofloLevel(loaded.definition, mofloLevel);
-    const spellId = `scheduled-${loaded.definition.name}-${Date.now()}`;
+    const spellId = generateId(`scheduled-${loaded.definition.name}`);
 
     const onAbort = () => {
       try {

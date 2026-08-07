@@ -11,6 +11,7 @@
 
 import { openDaemonDatabase } from './daemon-backend.js';
 import { generateEmbedding } from './embedding-model.js';
+import { generateId } from '../shared/utils/id.js';
 
 /**
  * Verify memory initialization works correctly
@@ -54,7 +55,7 @@ export async function verifyMemoryInit(dbPath: string, options?: {
 
     // Test 2: Write entry
     const writeStart = Date.now();
-    const testId = `test_${Date.now()}`;
+    const testId = generateId('test', { separator: '_' });
     const testKey = 'verification_test';
     const testValue = 'This is a verification test entry for memory initialization';
 
@@ -130,7 +131,7 @@ export async function verifyMemoryInit(dbPath: string, options?: {
     // Test 5: Pattern storage
     const patternStart = Date.now();
     try {
-      const patternId = `pattern_${Date.now()}`;
+      const patternId = generateId('pattern', { separator: '_' });
       db.run(`
         INSERT INTO patterns (id, name, pattern_type, condition, action, confidence, created_at, updated_at)
         VALUES (?, 'test-pattern', 'task-routing', 'test condition', 'test action', 0.5, ?, ?)

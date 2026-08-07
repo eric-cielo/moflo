@@ -22,6 +22,7 @@ import {
   safeInvoke,
   summarizeFunctional,
 } from './doctor-checks-functional-shared.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Re-exported for callers that imported these from doctor-checks-swarm.ts
 // (tests, other doctor checks) before the shared module was extracted.
@@ -490,8 +491,8 @@ export async function checkHiveMindFunctional(): Promise<FunctionalHealthCheck> 
   // 6. hive-mind_memory roundtrips via Memory DB write-through.
   // Memory backend unavailable (e.g. fresh smoke fixture before `memory init`)
   // is environmental, not a regression — softFailMessage downgrades to warn.
-  const probeKey = `doctor-probe-${Date.now()}`;
-  const sentinel = `hive-doctor-${Date.now()}`;
+  const probeKey = generateId('doctor-probe');
+  const sentinel = generateId('hive-doctor');
   const setOut = await safeInvoke(hiveMindTools, 'hive-mind_memory', {
     action: 'set', key: probeKey, value: { sentinel },
   }, details, {

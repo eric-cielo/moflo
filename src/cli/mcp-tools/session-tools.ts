@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import type { MCPTool } from './types.js';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { generateId } from '../shared/utils/id.js';
 
 // Storage paths
 const SESSION_DIR = 'sessions';
@@ -414,7 +415,7 @@ export const sessionTools: MCPTool[] = [
       const importedAt = new Date().toISOString();
       // A fresh ID keeps an import from silently overwriting a local session
       // that happens to share the source's ID.
-      const sessionId = `imported-${Date.now()}`;
+      const sessionId = generateId('imported');
       const agentsImported = incoming.stats?.agents ?? countOf(incoming.data?.agents);
       const tasksImported = incoming.stats?.tasks ?? countOf(incoming.data?.tasks);
       const memoryEntriesImported =

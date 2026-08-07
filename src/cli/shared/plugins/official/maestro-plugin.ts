@@ -10,6 +10,7 @@
 import type { ClaudeFlowPlugin, PluginContext, PluginConfig } from '../types.js';
 import { HookEvent, HookPriority, type TaskInfo, type ErrorInfo } from '../../hooks/index.js';
 import { errorDetail } from '../../utils/error-detail.js';
+import { generateId } from '../../utils/id.js';
 
 /**
  * Maestro configuration
@@ -156,7 +157,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     steps: Array<Omit<SpellStep, 'id' | 'status'>>
   ): Spell {
     const spell: Spell = {
-      id: `spell-${Date.now()}`,
+      id: generateId('spell'),
       name,
       description,
       steps: steps.map((step, index) => ({
@@ -493,7 +494,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   }
 
   private checkpointSpell(spell: Spell): void {
-    spell.checkpoints.set(`checkpoint-${Date.now()}`, {
+    spell.checkpoints.set(generateId('checkpoint'), {
       progress: spell.progress,
       currentStep: spell.currentStep,
       stepStatuses: spell.steps.map((s) => ({ id: s.id, status: s.status })),

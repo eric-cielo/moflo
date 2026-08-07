@@ -499,7 +499,7 @@ export class SONAManager {
     const config = this.getLoRAConfig();
 
     const weights: LoRAWeights = {
-      adapterId: `lora_${domain}_${Date.now()}`,
+      adapterId: generateId(`lora_${domain}`, { separator: '_' }),
       A: new Map(),
       B: new Map(),
       createdAt: Date.now(),

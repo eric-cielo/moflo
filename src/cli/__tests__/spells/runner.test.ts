@@ -738,7 +738,10 @@ describe('SpellCaster — spellId', () => {
     const result = await runner.run(definition, {});
 
     expect(result.spellId).toBeDefined();
-    expect(result.spellId).toMatch(/^sp-\d+$/);
+    // #1427 — the id carries a random segment past the clock reading. Two casts
+    // in the same millisecond used to share a spellId, and spellId keys the
+    // progress record, so they shared that too.
+    expect(result.spellId).toMatch(/^sp-\d+-[0-9a-f]{12}$/);
   });
 
   it('should use caller-specified spellId', async () => {

@@ -106,7 +106,7 @@ steps:
     const result = await bridgeRunSpell(yaml, 'test.yaml', {});
 
     expect(result.success).toBe(true);
-    expect(result.spellId).toMatch(/^sp-\d+$/);
+    expect(result.spellId).toMatch(/^sp-\d+-[0-9a-f]{12}$/); // #1427 — random segment
     // After completion, should no longer be tracked
     expect(bridgeIsRunning(result.spellId)).toBe(false);
   });

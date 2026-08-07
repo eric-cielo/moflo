@@ -16,6 +16,7 @@ import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
 import type { SpellBudgetConfig } from '../core/run-budget.js';
 import { createRunner, runSpellFromContent } from './runner-factory.js';
 import { getDefaultCredentialStore } from '../credentials/default-store.js';
+import { generateId } from '../../shared/utils/id.js';
 
 /**
  * Resolve sandbox config: prefer caller-supplied; fall back to auto-loading
@@ -55,7 +56,7 @@ export async function bridgeRunSpell(
     forceCredentialReprompt?: boolean;
   } = {},
 ): Promise<SpellResult> {
-  const spellId = `sp-${Date.now()}`;
+  const spellId = generateId('sp');
   const controller = new AbortController();
   activeSpells.set(spellId, controller);
 
@@ -96,7 +97,7 @@ export async function bridgeExecuteSpell(
     forceCredentialReprompt?: boolean;
   } = {},
 ): Promise<SpellResult> {
-  const spellId = options.spellId ?? `sp-${Date.now()}`;
+  const spellId = options.spellId ?? generateId('sp');
   const controller = new AbortController();
   activeSpells.set(spellId, controller);
 

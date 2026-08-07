@@ -711,7 +711,7 @@ export const hooksPostEdit: MCPTool = {
     try {
       const bridge = await import('../memory/memory-bridge.js');
       feedbackResult = await bridge.bridgeRecordFeedback({
-        taskId: `edit-${filePath}-${Date.now()}`,
+        taskId: generateId(`edit-${filePath}`),
         success,
         quality: success ? 0.85 : 0.3,
         agent,
@@ -1212,7 +1212,7 @@ export const hooksPostTask: MCPTool = {
       learningUpdates: {
         patternsUpdated: feedbackResult?.updated || (success ? 2 : 1),
         newPatterns: success ? 1 : 0,
-        trajectoryId: `traj-${Date.now()}`,
+        trajectoryId: generateId('traj'),
         controller: feedbackResult?.controller || 'none',
         outcomePersisted,
       },
@@ -1980,7 +1980,7 @@ export const hooksSessionStart: MCPTool = {
     },
   },
   handler: async (params: Record<string, unknown>) => {
-    const sessionId = (params.sessionId as string) || `session-${Date.now()}`;
+    const sessionId = (params.sessionId as string) || generateId('session');
     const restoreLatest = params.restoreLatest as boolean;
     const shouldStartDaemon = params.startDaemon !== false;
 
@@ -2150,7 +2150,7 @@ export const hooksSessionRestore: MCPTool = {
     const restoreTasks = params.restoreTasks !== false;
 
     const originalSessionId = requestedId === 'latest' ? `session-${Date.now() - 86400000}` : requestedId;
-    const newSessionId = `session-${Date.now()}`;
+    const newSessionId = generateId('session');
 
     // Get real memory entry count
     const store = loadMemoryStore();

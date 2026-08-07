@@ -15,6 +15,7 @@ import {
   SessionInfo,
 } from './types.js';
 import { HookRegistry } from './registry.js';
+import { generateId } from '../utils/id.js';
 
 /**
  * Session state to persist
@@ -269,7 +270,7 @@ export class SessionHooksManager {
    * Handle session start
    */
   async handleSessionStart(context: HookContext): Promise<HookResult> {
-    this.currentSessionId = context.session?.id || `session-${Date.now()}`;
+    this.currentSessionId = context.session?.id || generateId('session');
     this.sessionStartTime = new Date();
     this.resetActivity();
 
@@ -394,7 +395,7 @@ export class SessionHooksManager {
     }
 
     // Update current session tracking
-    this.currentSessionId = `session-${Date.now()}-restored`;
+    this.currentSessionId = `${generateId('session')}-restored`;
     this.sessionStartTime = new Date();
     this.resetActivity();
 

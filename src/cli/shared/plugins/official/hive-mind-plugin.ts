@@ -9,6 +9,7 @@
 
 import type { ClaudeFlowPlugin, PluginContext, PluginConfig } from '../types.js';
 import { HookEvent, HookPriority, type TaskInfo } from '../../hooks/index.js';
+import { generateId } from '../../utils/id.js';
 
 /**
  * HiveMind configuration
@@ -134,7 +135,7 @@ export class HiveMindPlugin implements ClaudeFlowPlugin {
    */
   async requestDecision(question: string, options: string[]): Promise<CollectiveDecision> {
     const decision: CollectiveDecision = {
-      id: `decision-${Date.now()}`,
+      id: generateId('decision'),
       question,
       votes: new Map(),
       consensusConfidence: 0,

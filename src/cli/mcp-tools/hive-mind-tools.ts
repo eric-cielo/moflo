@@ -382,7 +382,7 @@ export const hiveMindTools: MCPTool[] = [
       await getWriteThroughAdapter();
 
       const hiveId = generateId('hive');
-      const queenId = (input.queenId as string) || `queen-${Date.now()}`;
+      const queenId = (input.queenId as string) || generateId('queen');
 
       const config = {
         consensus: resolveConsensus(input.consensus),

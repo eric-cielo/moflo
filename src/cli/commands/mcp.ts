@@ -22,6 +22,7 @@ import {
 import { listMCPTools, callMCPTool, hasTool, getToolMetadata } from '../mcp-client.js';
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder } from '../services/daemon-lock.js';
 import { readMofloEnv } from '../services/env-compat.js';
+import { generateId } from '../shared/utils/id.js';
 
 // MCP tool categories offered by `flo mcp tools --category`.
 //
@@ -567,8 +568,8 @@ const execCommand: Command = {
 
       const startTime = performance.now();
       const result = await callMCPTool(tool, params, {
-        sessionId: `cli-${Date.now().toString(36)}`,
-        requestId: `exec-${Date.now()}`,
+        sessionId: generateId('cli', { base36Time: true }),
+        requestId: generateId('exec'),
       });
       const duration = performance.now() - startTime;
 

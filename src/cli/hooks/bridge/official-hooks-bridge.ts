@@ -9,6 +9,7 @@
  */
 
 import { HookEvent, HookPriority, type HookHandler, type HookContext, type HookResult } from '../types.js';
+import { generateId } from '../../shared/utils/id.js';
 
 /**
  * Official Claude Code hook event types
@@ -176,7 +177,7 @@ export class OfficialHooksBridge {
     // Add task information for Task tool
     if (input.tool_name === 'Task') {
       context.task = {
-        id: `task-${Date.now()}`,
+        id: generateId('task'),
         description: (input.tool_input?.prompt as string) ?? '',
         agent: input.tool_input?.subagent_type as string,
       };

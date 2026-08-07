@@ -1568,7 +1568,7 @@ export class QueenCoordinator extends EventEmitter {
     for (const bottleneck of bottlenecks) {
       if (bottleneck.severity === 'critical' || bottleneck.severity === 'high') {
         alerts.push({
-          alertId: `alert_${Date.now()}_${alerts.length}`,
+          alertId: generateId('alert', { separator: '_' }),
           type: bottleneck.severity === 'critical' ? 'critical' : 'error',
           source: bottleneck.location,
           message: bottleneck.description,
@@ -1585,7 +1585,7 @@ export class QueenCoordinator extends EventEmitter {
 
     if (avgHealth < 0.5) {
       alerts.push({
-        alertId: `alert_${Date.now()}_health`,
+        alertId: `${generateId('alert', { separator: '_' })}_health`,
         type: avgHealth < 0.3 ? 'critical' : 'warning',
         source: 'swarm',
         message: `Low average agent health: ${(avgHealth * 100).toFixed(1)}%`,
@@ -1601,7 +1601,7 @@ export class QueenCoordinator extends EventEmitter {
 
     if (failureRate > this.config.bottleneckThresholds.errorRate) {
       alerts.push({
-        alertId: `alert_${Date.now()}_failures`,
+        alertId: `${generateId('alert', { separator: '_' })}_failures`,
         type: failureRate > 0.2 ? 'critical' : 'warning',
         source: 'tasks',
         message: `High task failure rate: ${(failureRate * 100).toFixed(1)}%`,
