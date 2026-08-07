@@ -14,6 +14,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { randomBytes } from 'node:crypto';
 import {
   MCPSession,
   SessionState,
@@ -365,7 +366,7 @@ export class SessionManager extends EventEmitter {
    * Generate a unique session ID
    */
   private generateSessionId(): string {
-    return `session-${++this.sessionCounter}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    return `session-${++this.sessionCounter}-${Date.now()}-${randomBytes(6).toString('hex')}`;
   }
 
   /**

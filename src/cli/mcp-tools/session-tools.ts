@@ -5,6 +5,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, statSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { MCPTool } from './types.js';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
@@ -144,7 +145,7 @@ export const sessionTools: MCPTool[] = [
       required: ['name'],
     },
     handler: async (input) => {
-      const sessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const sessionId = `session-${Date.now()}-${randomBytes(6).toString('hex')}`;
 
       // Load related data based on options
       const data = loadRelatedStores({
