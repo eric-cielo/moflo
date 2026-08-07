@@ -646,22 +646,27 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     // threaded into `reapSameProjectOrphans` so we don't re-run the
     // OS process scan inside it.
     'Daemon Orphan': async () => {
-      const cwd = process.cwd();
+      // #1431 — resolve the root the way `checkDaemonOrphan` does, not with
+      // `process.cwd()`. The check walks up to the project root; the fix used
+      // the raw cwd, so `flo doctor --fix` from a subdirectory scanned a root
+      // with no daemons, fell through `pids.length <= 1`, and reported
+      // "Fixed: Daemon Orphan" without reaping anything.
+      const root = findProjectRoot();
       const { findProjectDaemonPids, getDaemonLockHolder, reapSameProjectOrphans } =
         await import('../services/daemon-lock.js');
-      const pids = findProjectDaemonPids(cwd);
+      const pids = findProjectDaemonPids(root);
       if (pids.length <= 1) return true; // already healthy
 
-      const lockHolder = getDaemonLockHolder(cwd);
+      const lockHolder = getDaemonLockHolder(root);
       if (lockHolder != null && pids.includes(lockHolder)) {
-        const { survived } = reapSameProjectOrphans(cwd, process.pid, lockHolder, pids);
+        const { survived } = reapSameProjectOrphans(root, process.pid, lockHolder, pids);
         return survived.length === 0;
       }
 
       // No identifiable canonical daemon — kill them all, clear the lock,
       // respawn fresh.
-      const { survived } = reapSameProjectOrphans(cwd, process.pid, undefined, pids);
-      const lockFile = join(cwd, '.moflo', 'daemon.lock');
+      const { survived } = reapSameProjectOrphans(root, process.pid, undefined, pids);
+      const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
       if (survived.length > 0) return false;
       return runFixCommand('npx moflo daemon start');
@@ -672,13 +677,16 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     // daemon binds the per-project deterministic port and stamps it into
     // the lock — clients can discover it without guessing.
     'Daemon Identity Match': async () => {
-      const cwd = process.cwd();
+      // #1431 — same resolver as `checkDaemonIdentityMatch`; see the note on
+      // the `Daemon Orphan` handler above. Reading the lock from a raw cwd
+      // would SIGTERM nothing and unlink a path the daemon never wrote.
+      const root = findProjectRoot();
       const { getDaemonLockPayload } = await import('../services/daemon-lock.js');
-      const payload = getDaemonLockPayload(cwd);
+      const payload = getDaemonLockPayload(root);
       if (payload?.pid && payload.pid > 0) {
         try { process.kill(payload.pid, 'SIGTERM'); } catch { /* already dead */ }
       }
-      const lockFile = join(cwd, '.moflo', 'daemon.lock');
+      const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
       return runFixCommand('npx moflo daemon start');
     },

@@ -8,13 +8,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { spawn, type ChildProcess } from 'child_process';
 import { autoFixCheck } from '../../commands/doctor-fixes.js';
 import { checkDaemonOrphan } from '../../commands/doctor-checks-config.js';
 import { findProjectDaemonPids, lockPath, reapSameProjectOrphans } from '../../services/daemon-lock.js';
+import { findProjectRoot } from '../../services/project-root.js';
 
 const FAKE_DAEMON_SCRIPT = `
 process.stdin.resume();
@@ -38,6 +39,7 @@ describe('Daemon Orphan healer (#1150)', () => {
   let tempDir: string;
   let priorCwd: string;
   let priorSkip: string | undefined;
+  let priorProjectDir: string | undefined;
   let children: ChildProcess[] = [];
 
   beforeEach(() => {
@@ -45,11 +47,22 @@ describe('Daemon Orphan healer (#1150)', () => {
     delete process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN;
 
     priorCwd = process.cwd();
-    tempDir = mkdtempSync(join(tmpdir(), 'orphan-fix-'));
+    // realpathSync: macOS hands out `/var/folders/...` paths that resolve to
+    // `/private/var/folders/...`, and `projectCliCandidates` realpaths the root
+    // prefix before matching a daemon cmdline (#1145). Without this the
+    // candidate paths and the spawned daemon's cmdline never match on macOS.
+    tempDir = realpathSync(mkdtempSync(join(tmpdir(), 'orphan-fix-')));
     mkdirSync(join(tempDir, '.moflo'), { recursive: true });
     mkdirSync(join(tempDir, 'bin'), { recursive: true });
     writeFileSync(join(tempDir, 'bin', 'cli.js'), FAKE_DAEMON_SCRIPT);
     process.chdir(tempDir);
+
+    // #1431 — the fix handlers now resolve via `findProjectRoot()`, which
+    // honors `CLAUDE_PROJECT_DIR` ahead of cwd. Under vitest that variable
+    // points at the real moflo checkout, so without this anchor these tests
+    // would enumerate — and reap — the developer's own running daemons.
+    priorProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = tempDir;
   });
 
   afterEach(async () => {
@@ -61,6 +74,8 @@ describe('Daemon Orphan healer (#1150)', () => {
     process.chdir(priorCwd);
     rmSync(tempDir, { recursive: true, force: true });
     if (priorSkip !== undefined) process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = priorSkip;
+    if (priorProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+    else process.env.CLAUDE_PROJECT_DIR = priorProjectDir;
   });
 
   function spawnFakeDaemon(): Promise<number> {
@@ -152,4 +167,71 @@ describe('Daemon Orphan healer (#1150)', () => {
     const pids = findProjectDaemonPids(tempDir);
     expect(pids).toEqual([pid1]);
   }, 20000);
+
+  /**
+   * #1431 — the fix used to root itself at `process.cwd()` while
+   * `checkDaemonOrphan` walks up to the project root. Invoked from a
+   * subdirectory the two disagreed: `findProjectDaemonPids(<subdir>)` returns
+   * `[]`, so the handler fell through `pids.length <= 1` and returned `true`.
+   * Doctor printed "Fixed: Daemon Orphan" having reaped nothing.
+   *
+   * Both cases below run the fix from a subdirectory with two live daemons.
+   * They differ only in how the root is reachable — via `CLAUDE_PROJECT_DIR`
+   * (what Claude Code sets, the dominant path) and via the marker walk with
+   * the variable absent (a plain shell). Against the old handler both fail on
+   * the surviving orphan.
+   */
+  describe('fix invoked from a subdirectory (#1431)', () => {
+    async function expectOrphanReapedFromSubdir(subdir: string, pid1: number, pid2: number) {
+      writeFileSync(
+        lockPath(tempDir),
+        JSON.stringify({ pid: pid1, startedAt: Date.now(), label: 'moflo-daemon' }),
+      );
+      process.chdir(subdir);
+
+      const success = await autoFixCheck({
+        name: 'Daemon Orphan',
+        status: 'fail',
+        message: '2 daemons',
+        fix: 'flo healer --fix -c daemon-orphan',
+      });
+
+      // The orphan is gone and the lock-holder survives — i.e. the fix acted
+      // on the same daemons the check counted, rather than reporting a
+      // no-op success.
+      expect(await waitForDead(pid2)).toBe(true);
+      expect(isAlive(pid1)).toBe(true);
+      expect(success).toBe(true);
+    }
+
+    it('reaps the orphan when CLAUDE_PROJECT_DIR anchors the root', async () => {
+      const pid1 = await spawnFakeDaemon();
+      const pid2 = await spawnFakeDaemon();
+      const subdir = join(tempDir, 'packages', 'api');
+      mkdirSync(subdir, { recursive: true });
+      // beforeEach already anchored CLAUDE_PROJECT_DIR at tempDir.
+      await expectOrphanReapedFromSubdir(subdir, pid1, pid2);
+    }, 20000);
+
+    it('reaps the orphan when the root is only reachable by the marker walk', async () => {
+      const pid1 = await spawnFakeDaemon();
+      const pid2 = await spawnFakeDaemon();
+      const subdir = join(tempDir, 'packages', 'api');
+      mkdirSync(subdir, { recursive: true });
+
+      // Drop the env anchor so Pass A's topmost-marker walk is what resolves
+      // the root, and give it the marker it looks for.
+      delete process.env.CLAUDE_PROJECT_DIR;
+      writeFileSync(join(tempDir, '.moflo', 'moflo.db'), '');
+      process.chdir(subdir);
+
+      // Guard: assert the walk lands on tempDir BEFORE running a fix that
+      // reaps processes. If an ancestor of the OS temp dir ever carried a
+      // moflo marker, "topmost wins" would resolve above tempDir — this fails
+      // loudly instead of letting the reap run against a wider root.
+      expect(findProjectRoot()).toBe(tempDir);
+
+      await expectOrphanReapedFromSubdir(subdir, pid1, pid2);
+    }, 20000);
+  });
 });
