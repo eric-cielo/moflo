@@ -390,9 +390,14 @@ describe('Swarm Commands', () => {
   beforeEach(() => {
     swarmOriginalCwd = process.cwd();
     swarmOriginalProjectDir = process.env.CLAUDE_PROJECT_DIR;
-    swarmTmpDir = mkdtempSync(join(tmpdir(), 'moflo-swarm-cmd-'));
+    // realpathSync both sides: macOS hands out /var/folders paths that resolve
+    // to /private/var/folders, and findProjectRoot canonicalizes (#1145).
+    swarmTmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'moflo-swarm-cmd-')));
     process.chdir(swarmTmpDir);
     process.env.CLAUDE_PROJECT_DIR = swarmTmpDir;
+    // `resolveStateRoot` memoizes; without this, getSwarmStatus resolves the
+    // memory-db candidates against whatever root a previous block cached.
+    _resetStateRootCacheForTest();
 
     ctx = {
       args: [],

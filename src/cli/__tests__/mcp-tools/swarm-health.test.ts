@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -52,7 +52,9 @@ describe('swarm_health — coordinator-backed', () => {
 
   beforeEach(() => {
     originalProjectDir = process.env.CLAUDE_PROJECT_DIR;
-    anchorDir = mkdtempSync(join(tmpdir(), 'moflo-1422-health-'));
+    // realpathSync: macOS hands out `/var/folders/...` paths that resolve to
+    // `/private/var/folders/...`, and findProjectRoot canonicalizes (#1145).
+    anchorDir = realpathSync(mkdtempSync(join(tmpdir(), 'moflo-1422-health-')));
     mkdirSync(join(anchorDir, '.moflo'), { recursive: true });
     process.env.CLAUDE_PROJECT_DIR = anchorDir;
   });
@@ -83,7 +85,7 @@ describe('swarm_health — coordinator-backed', () => {
     // right to call this degraded — a project with no `.moflo/` really has no
     // memory backend — so the guarantee under test is that the *anchor* is
     // pinned by the block above and an inherited value cannot reach it.
-    const strayRoot = mkdtempSync(join(tmpdir(), 'moflo-1422-stray-'));
+    const strayRoot = realpathSync(mkdtempSync(join(tmpdir(), 'moflo-1422-stray-')));
     try {
       await callInit();
       const pinned = await callHealth();

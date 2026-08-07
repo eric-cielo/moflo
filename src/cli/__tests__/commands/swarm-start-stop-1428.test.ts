@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Command, CommandContext, CommandResult } from '../../types.js';
@@ -74,7 +74,11 @@ function readState(): Record<string, unknown> {
 beforeEach(() => {
   originalCwd = process.cwd();
   originalProjectDir = process.env.CLAUDE_PROJECT_DIR;
-  tmpDir = mkdtempSync(join(tmpdir(), 'moflo-1428-'));
+  // realpathSync: macOS hands out `/var/folders/...` paths that resolve to
+  // `/private/var/folders/...`, and findProjectRoot canonicalizes — so the
+  // state file these tests read back would otherwise be addressed by a
+  // different string than the one the command wrote (#1145).
+  tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'moflo-1428-')));
   mkdirSync(join(tmpDir, '.moflo'), { recursive: true });
   process.chdir(tmpDir);
   // findProjectRoot honours this ahead of any filesystem walk, which is what
