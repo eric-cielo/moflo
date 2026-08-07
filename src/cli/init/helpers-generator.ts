@@ -993,7 +993,7 @@ switch (command) {
     if (!/(?:^|&&\\s*|\\|\\|\\s*|;\\s*)\\s*(?:[A-Z_][A-Z0-9_]*=\\S+\\s+)*gh\\s+pr\\s+create\\b/.test(cmd)) break;
     var s = readState();
     var missing = [];
-    if (config.testing_gate && !s.testsRun) missing.push('tests have not run green since the last code edit (run npm test, vitest, jest, pytest, or similar — a run whose output reports failures does not count, #1322)');
+    if (config.testing_gate && !s.testsRun) missing.push('tests have not run green since the last code edit (run npm test, vitest, jest, pytest, or similar — a run whose output reports failures does not count)');
     if (config.simplify_gate && !s.simplifyRun) missing.push('/flo-simplify (or /distill) has not run since the last code edit');
     if (config.learnings_gate && !s.learningsStored) missing.push('learnings have not been stored (call mcp__moflo__memory_store)');
     if (missing.length === 0) break;

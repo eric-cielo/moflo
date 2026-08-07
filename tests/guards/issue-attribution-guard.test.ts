@@ -11,13 +11,21 @@
  *
  * The rule is the deliverable. The issue that produced it belongs in `git log`.
  *
- * Scope is *reader-facing instruction prose* — the documents Claude loads into
- * context and follows. It is deliberately NARROWER than the npm tarball: shipped
- * implementation code (`.claude/helpers/**`, `dist/**`, spell definition YAML) also
- * reaches consumers, but nobody reads it as guidance, and its comments are debugging
- * provenance for moflo developers. `.claude/guidance/internal/**` and this repo's own
- * CLAUDE.md files are exempt for the original reason: they are read inside moflo,
- * where the number resolves to something real.
+ * Scope is what a consumer READS: the prose loaded as instructions, the templates
+ * moflo renders into their repo, and — narrowly — the runtime strings the hook
+ * helpers print into their terminal.
+ *
+ * Hook-helper COMMENTS are deliberately excluded, and that is a considered position
+ * rather than an oversight. Stripping them was tried and reverted: it is 206 regex
+ * edits across `bin/gate.cjs`, which runs on every tool call in every consumer
+ * session, to remove text no consumer ever reads. An equivalence check proved the
+ * sweep inert, but the cost/benefit did not justify the churn in that file. The one
+ * thing that did justify a change was a citation inside the test gate's block
+ * message, which every consumer with unrun tests saw in their terminal.
+ *
+ * `.claude/guidance/internal/**`, this repo's own CLAUDE.md files, and `src/**`
+ * comments stay exempt: they are read inside moflo, where the number resolves to
+ * something real, and `src/**` is compiled before it ships.
  *
  * The two template surfaces are checked by RENDERING them and scanning the output,
  * not by grepping the `.ts` sources. That is what keeps the exemption for TS comments
@@ -32,20 +40,26 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import { defaultMofloYamlConfig, renderMofloYaml } from '../../src/cli/init/moflo-yaml-template.js';
 import { generateClaudeMd } from '../../src/cli/init/claudemd-generator.js';
+import { generateGateScript } from '../../src/cli/init/helpers-generator.js';
 
 import { REPO_ROOT } from './_helpers/eslint-harness.js';
 import { trackedFiles } from './_helpers/tracked-files.js';
 
 /**
- * A `#` followed by 2–5 digits and nothing word-like on either side. Two digits is
- * the floor because moflo's issue numbers start in the double digits; the ceiling
- * keeps long digit runs (hashes, ids) from matching.
+ * A `#` followed by 2–5 digits and nothing word-like after it. Two digits is the
+ * floor because moflo's issue numbers start in the double digits; the ceiling keeps
+ * long digit runs (hashes, ids) from matching.
+ *
+ * A trailing hyphen must NOT be excluded here. `pre-#1363-followup` is a citation
+ * and survived an earlier version of this regex that treated `-` as word-like —
+ * the one citation in the whole sweep that got through.
  */
-const ISSUE_REF = /(?<![\w#])#(\d{2,5})(?![\w-])/g;
+const ISSUE_REF = /(?<![\w#])#(\d{2,5})(?!\w)/g;
 
 /**
  * A CSS hex colour in a declaration — `color: #222;`. Digits-only colours of 3 or 4
@@ -133,6 +147,54 @@ const SCANNED_DIRS = [
   '.claude/commands',
 ];
 
+/**
+ * Hook helpers, checked for citations in their RUNTIME STRINGS only.
+ *
+ * These files are code, and their comments are debugging provenance for moflo
+ * developers — deliberately out of scope, because rewriting comments in the gate
+ * that fires on every tool call is churn in the hottest file in the library for no
+ * reader benefit. What is NOT acceptable is a citation inside a string the helper
+ * prints: the test gate's block message carried one, so every consumer whose tests
+ * hadn't run saw a moflo issue number in their terminal.
+ *
+ * Only string literals are scanned, via the TypeScript parser rather than a regex,
+ * so a `'` inside a comment can never be mistaken for the start of a literal.
+ *
+ * `gate.cjs` is checked in all three of its incarnations, because none is derived
+ * from another: `bin/gate.cjs`, its byte-identical `.claude/helpers/gate.cjs` mirror
+ * (which is what `flo init` actually copies to a consumer — not `bin/`), and the
+ * lighter variant `generateGateScript()` emits.
+ *
+ * The generator is checked by RENDERING it, never by parsing `helpers-generator.ts`
+ * directly: that file holds each generated helper as one enormous template literal,
+ * so its "string literals" include the generated file's COMMENTS, and scanning it
+ * as source would silently re-impose the comment rule this guard deliberately drops.
+ */
+const HELPER_FILES_WITH_RUNTIME_TEXT = ['bin/gate.cjs', '.claude/helpers/gate.cjs'];
+
+/** String-literal text of a source file, comments excluded by construction. */
+function stringLiterals(source: string, fileName: string): Array<{ text: string; line: number }> {
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+  const found: Array<{ text: string; line: number }> = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isStringLiteral(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node)
+    ) {
+      const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+      found.push({ text: node.text, line: line + 1 });
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sf);
+  return found;
+}
+
 /** Tracked markdown under the consumer-facing directories. */
 function trackedProseFiles(): string[] {
   return trackedFiles({ dirs: SCANNED_DIRS, filter: (rel) => rel.endsWith('.md') });
@@ -196,6 +258,13 @@ describe('issue-attribution guard — the shape', () => {
     expect(scanText('column #7')).toEqual([]);
     expect(scanText('commit #1234567')).toEqual([]);
   });
+
+  it('flags a citation with a hyphenated suffix', () => {
+    expect(scanText('// written by a pre-#1363-followup launcher')).toContainEqual({
+      ref: '#1363',
+      line: 1,
+    });
+  });
 });
 
 describe('issue-attribution guard — live fire over consumer-facing prose', () => {
@@ -221,6 +290,44 @@ describe('issue-attribution guard — live fire over consumer-facing prose', () 
 
   it('scans a non-empty file set (guards against a silently empty glob)', () => {
     expect(trackedProseFiles().length).toBeGreaterThan(50);
+  });
+
+  it('finds no issue attributions in hook-helper runtime strings', () => {
+    const offenders: string[] = [];
+
+    for (const rel of HELPER_FILES_WITH_RUNTIME_TEXT) {
+      let source: string;
+      try {
+        source = readFileSync(join(REPO_ROOT, rel), 'utf8');
+      } catch {
+        // A renamed helper must not silently drop out of coverage.
+        offenders.push(`${rel}: unreadable — update HELPER_FILES_WITH_RUNTIME_TEXT`);
+        continue;
+      }
+
+      for (const literal of stringLiterals(source, rel)) {
+        for (const hit of scanText(literal.text)) {
+          offenders.push(`${rel}:${literal.line}: ${hit.ref} in a runtime string`);
+        }
+      }
+    }
+
+    // The generator's variant, scanned as rendered output rather than as source.
+    const rendered = generateGateScript();
+    for (const literal of stringLiterals(rendered, 'generateGateScript.cjs')) {
+      for (const hit of scanText(literal.text)) {
+        offenders.push(`generateGateScript() output:${literal.line}: ${hit.ref} in a runtime string`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  // The comments in these files are deliberately NOT scanned. Asserting that keeps
+  // a later reader from "completing" the sweep and rewriting the hot path.
+  it('deliberately leaves hook-helper comments alone', () => {
+    const gate = readFileSync(join(REPO_ROOT, 'bin/gate.cjs'), 'utf8');
+    expect(scanText(gate).length).toBeGreaterThan(0);
   });
 });
 
