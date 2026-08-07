@@ -1,6 +1,7 @@
 /**
- * Tiny JSON-on-disk store shared by the trimmed MCP-tool surfaces
- * (`coordination-tools`, `system-tools`, `performance-tools`).
+ * Tiny JSON-on-disk store backing the trimmed MCP-tool surfaces. `performance-tools`
+ * is the sole remaining consumer — `coordination-tools` and `system-tools` were the
+ * others until their stores were removed.
  *
  * Anchors files at `<projectRoot>/.moflo/<subdir>/<file>` via {@link mofloDir},
  * with the root resolved by {@link findProjectRoot} so an MCP server launched
