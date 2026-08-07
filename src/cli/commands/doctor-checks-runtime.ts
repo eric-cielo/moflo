@@ -20,25 +20,13 @@ const execAsync = promisify(exec);
  * Execute command asynchronously with proper environment inheritance.
  * Critical for Windows where PATH may not be inherited properly.
  */
-export async function runCommand(
-  command: string,
-  timeoutMs: number = 5000,
-  /**
-   * Working directory for the child. Omitted, the child inherits
-   * `process.cwd()`. The daemon auto-fixes pass the resolved project root so
-   * the respawn lands where they reaped, instead of relying on the spawned
-   * command to independently re-derive the same root from an unrelated cwd
-   * (#1431).
-   */
-  opts_: { cwd?: string } = {},
-): Promise<string> {
+export async function runCommand(command: string, timeoutMs: number = 5000): Promise<string> {
   const opts = {
     encoding: 'utf8' as BufferEncoding,
     timeout: timeoutMs,
     shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
     env: { ...process.env },
     windowsHide: true,
-    ...(opts_.cwd ? { cwd: opts_.cwd } : {}),
   };
   const { stdout } = await execAsync(command, opts);
   const out = (stdout as string).trim();

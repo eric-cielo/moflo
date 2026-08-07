@@ -23,9 +23,9 @@ import { installClaudeCode, runCommand } from './doctor-checks-runtime.js';
 import type { HealthCheck } from './doctor-types.js';
 
 /** Run a shell command as a fix action. Returns true on exit code 0. */
-async function runFixCommand(cmd: string, cwd?: string): Promise<boolean> {
+async function runFixCommand(cmd: string): Promise<boolean> {
   try {
-    await runCommand(cmd, 30_000, cwd ? { cwd } : {});
+    await runCommand(cmd, 30_000);
     return true;
   } catch {
     return false;
@@ -697,7 +697,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
         if (existsSync(lockFile)) unlinkSync(lockFile);
         if (existsSync(pidFile)) unlinkSync(pidFile);
       } catch { /* best effort */ }
-      return runFixCommand('npx moflo daemon start', root);
+      return runFixCommand('npx moflo daemon start');
     },
     // Epic #1054.S5 / #1059 — SIGTERM the stale daemon and let the launcher's
     // existing respawn path (mirrored as `npx moflo daemon start`) pick up the
@@ -715,7 +715,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       }
       const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
-      return runFixCommand('npx moflo daemon start', root);
+      return runFixCommand('npx moflo daemon start');
     },
     // #1150 — terminate same-project orphan daemons. Keep the lock-holder
     // alive if it shows up in the scan (it's the canonical daemon). If the
@@ -748,7 +748,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
       if (survived.length > 0) return false;
-      return runFixCommand('npx moflo daemon start', root);
+      return runFixCommand('npx moflo daemon start');
     },
     // #1145 — daemon claims a different projectRoot than ours (or has no
     // port in its lock so we can't verify). Same recycle pattern as version
@@ -768,7 +768,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       }
       const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
-      return runFixCommand('npx moflo daemon start', root);
+      return runFixCommand('npx moflo daemon start');
     },
     'Embedding Coverage Truth': async () => {
       // Same as the existing Embeddings fix — rebuild the cache by re-running
