@@ -74,6 +74,28 @@ function writeSwarmState(state: SwarmStateFile): void {
   fs.writeFileSync(canonical, JSON.stringify(state, null, 2));
 }
 
+/**
+ * Resolve the recorded swarm, or print why it cannot be and return null —
+ * in which case the caller exits non-zero without doing anything.
+ *
+ * Shared by `stop` and `scale`: both must refuse an id that is not the active
+ * swarm rather than acting on it, which is half of what #1428 was about.
+ */
+function resolveActiveSwarm(swarmId: string, missingMessage: string): SwarmStateFile | null {
+  const existing = readSwarmState();
+  if (!existing) {
+    output.printError(missingMessage);
+    output.printInfo('Run "flo swarm status" to see what is recorded for this project.');
+    return null;
+  }
+  if (existing.id !== swarmId) {
+    output.printError(`Swarm ${swarmId} is not the active swarm.`);
+    output.printInfo(`Active swarm is ${existing.id} — run "flo swarm status" to confirm.`);
+    return null;
+  }
+  return existing;
+}
+
 /** Remove both the canonical and legacy state files; returns true if any existed. */
 function clearSwarmState(): boolean {
   let removed = false;
@@ -649,18 +671,8 @@ const stopCommand: Command = {
     // including an id that never existed, while leaving the state file in
     // place. It is the counterpart to `start`: if it does not clear that file,
     // `flo swarm status` reports the objective as running indefinitely.
-    const existing = readSwarmState();
-    if (!existing) {
-      output.printError('No active swarm to stop.');
-      output.printInfo('Run "flo swarm status" to confirm — nothing is recorded under this project.');
-      return { success: false, exitCode: 1 };
-    }
-
-    if (existing.id !== swarmId) {
-      output.printError(`Swarm ${swarmId} is not the active swarm.`);
-      output.printInfo(`Active swarm is ${existing.id} — run "flo swarm status" to confirm.`);
-      return { success: false, exitCode: 1 };
-    }
+    const existing = resolveActiveSwarm(swarmId, 'No active swarm to stop.');
+    if (!existing) return { success: false, exitCode: 1 };
 
     if (ctx.interactive && !force) {
       const confirmed = await confirm({
@@ -731,18 +743,8 @@ const scaleCommand: Command = {
     // dies with this process: the agents would be spawned and lost between one
     // command and the next. Pre-fix this computed a delta against a hardcoded
     // `currentAgents = 8` and announced "Swarm scaled to N agents".
-    const existing = readSwarmState();
-    if (!existing) {
-      output.printError('No initialised swarm found.');
-      output.printInfo('Run "flo swarm init" first.');
-      return { success: false, exitCode: 1 };
-    }
-
-    if (existing.id !== swarmId) {
-      output.printError(`Swarm ${swarmId} is not the active swarm.`);
-      output.printInfo(`Active swarm is ${existing.id} — run "flo swarm status" to confirm.`);
-      return { success: false, exitCode: 1 };
-    }
+    const existing = resolveActiveSwarm(swarmId, 'No initialised swarm found.');
+    if (!existing) return { success: false, exitCode: 1 };
 
     // The recorded ceiling, which is a real number `init` wrote — not a guess.
     const previous = existing.maxAgents;
