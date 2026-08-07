@@ -725,94 +725,128 @@ const scaleCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
-    output.printInfo(`Scaling swarm ${swarmId} to ${targetAgents} agents...`);
-
-    // Calculate scaling delta
-    const currentAgents = 8;
-    const delta = targetAgents - currentAgents;
-
-    if (delta > 0) {
-      output.writeln(output.dim(`  Spawning ${delta} new agents...`));
-    } else if (delta < 0) {
-      output.writeln(output.dim(`  Gracefully stopping ${-delta} agents...`));
-    } else {
-      output.printInfo('Swarm already at target size');
-      return { success: true };
+    // #1428 — same treatment as `start`, for the same structural reason. The
+    // wired `swarm_scale` MCP tool really does call coordinator.spawnAgent /
+    // terminateAgent, but calling it from here would drive a coordinator that
+    // dies with this process: the agents would be spawned and lost between one
+    // command and the next. Pre-fix this computed a delta against a hardcoded
+    // `currentAgents = 8` and announced "Swarm scaled to N agents".
+    const existing = readSwarmState();
+    if (!existing) {
+      output.printError('No initialised swarm found.');
+      output.printInfo('Run "flo swarm init" first.');
+      return { success: false, exitCode: 1 };
     }
 
-    output.printSuccess(`Swarm scaled to ${targetAgents} agents`);
+    if (existing.id !== swarmId) {
+      output.printError(`Swarm ${swarmId} is not the active swarm.`);
+      output.printInfo(`Active swarm is ${existing.id} — run "flo swarm status" to confirm.`);
+      return { success: false, exitCode: 1 };
+    }
 
-    return { success: true, data: { swarmId, agents: targetAgents, delta } };
+    // The recorded ceiling, which is a real number `init` wrote — not a guess.
+    const previous = existing.maxAgents;
+    if (previous === targetAgents) {
+      output.printInfo(`Recorded agent ceiling is already ${targetAgents}.`);
+      return { success: true, data: { swarmId, agents: targetAgents, changed: false } };
+    }
+
+    try {
+      writeSwarmState({ ...existing, maxAgents: targetAgents });
+    } catch (error) {
+      output.printError(`Failed to record agent ceiling: ${String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    output.printSuccess(
+      `Recorded agent ceiling for ${swarmId}: ${previous ?? 'unset'} → ${targetAgents}`,
+    );
+    output.writeln();
+    output.printInfo('No agents were spawned or terminated by this command.');
+    output.writeln(output.dim('  This records the ceiling a later swarm_init will use. To scale a'));
+    output.writeln(output.dim('  running swarm, call the swarm_scale MCP tool from a Claude Code'));
+    output.writeln(output.dim('  session — that reaches the live coordinator, which this CLI cannot.'));
+
+    if (agentType) {
+      output.writeln(output.dim(`  --type ${agentType} applies only to live scaling via swarm_scale.`));
+    }
+
+    return {
+      success: true,
+      data: { swarmId, agents: targetAgents, previousAgents: previous, changed: true },
+    };
   }
 };
 
-// Coordinate command (V3 specific)
+/**
+ * The V3 roster `--v3-mode` is designed around. This is reference data, not
+ * observed state: no agent here is running, and nothing reads it back.
+ *
+ * #1428 — it used to carry a per-agent `status` of `primary`/`active`/
+ * `standby`, rendered in colour, which read as live telemetry for agents that
+ * did not exist. The roster itself is real (the topology it describes is what
+ * `swarm init --v3-mode` actually selects), so the fix is to drop the invented
+ * status column rather than the table.
+ */
+const V3_ROSTER = [
+  { id: 1, role: 'Queen Coordinator', domain: 'Orchestration' },
+  { id: 2, role: 'Security Architect', domain: 'Security' },
+  { id: 3, role: 'Security Auditor', domain: 'Security' },
+  { id: 4, role: 'Test Architect', domain: 'Security' },
+  { id: 5, role: 'Core Architect', domain: 'Core' },
+  { id: 6, role: 'Memory Specialist', domain: 'Core' },
+  { id: 7, role: 'Swarm Specialist', domain: 'Core' },
+  { id: 8, role: 'Integration Architect', domain: 'Integration' },
+  { id: 9, role: 'Performance Engineer', domain: 'Integration' },
+  { id: 10, role: 'CLI Developer', domain: 'Integration' },
+  { id: 11, role: 'Hooks Developer', domain: 'Integration' },
+  { id: 12, role: 'MCP Specialist', domain: 'Integration' },
+  { id: 13, role: 'Project Coordinator', domain: 'Management' },
+  { id: 14, role: 'Documentation Lead', domain: 'Management' },
+  { id: 15, role: 'DevOps Engineer', domain: 'Management' },
+];
+
+// Reference display for the V3 roster. Named `coordinate` for backward
+// compatibility — it coordinates nothing, and no longer claims to.
 const coordinateCommand: Command = {
   name: 'coordinate',
-  description: 'Execute V3 15-agent hierarchical mesh coordination',
+  description: 'Show the V3 15-agent hierarchical-mesh roster (reference only — starts nothing)',
   options: [
     {
       name: 'agents',
-      description: 'Number of agents',
+      description: 'Number of roster entries to show',
       type: 'number',
       default: 15
-    },
-    {
-      name: 'domains',
-      description: 'Domains to activate',
-      type: 'array'
     }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const agentCount = ctx.flags.agents as number || 15;
+    const roster = V3_ROSTER.slice(0, agentCount);
 
     output.writeln();
-    output.writeln(output.bold('V3 15-Agent Hierarchical Mesh Coordination'));
+    output.writeln(output.bold('V3 Hierarchical-Mesh Roster (reference)'));
+    output.writeln(output.dim('  The layout `flo swarm init --v3-mode` is designed around.'));
     output.writeln();
-
-    // V3 agent structure
-    const v3Agents = [
-      { id: 1, role: 'Queen Coordinator', domain: 'Orchestration', status: 'primary' },
-      { id: 2, role: 'Security Architect', domain: 'Security', status: 'active' },
-      { id: 3, role: 'Security Auditor', domain: 'Security', status: 'active' },
-      { id: 4, role: 'Test Architect', domain: 'Security', status: 'active' },
-      { id: 5, role: 'Core Architect', domain: 'Core', status: 'active' },
-      { id: 6, role: 'Memory Specialist', domain: 'Core', status: 'active' },
-      { id: 7, role: 'Swarm Specialist', domain: 'Core', status: 'active' },
-      { id: 8, role: 'Integration Architect', domain: 'Integration', status: 'active' },
-      { id: 9, role: 'Performance Engineer', domain: 'Integration', status: 'active' },
-      { id: 10, role: 'CLI Developer', domain: 'Integration', status: 'active' },
-      { id: 11, role: 'Hooks Developer', domain: 'Integration', status: 'active' },
-      { id: 12, role: 'MCP Specialist', domain: 'Integration', status: 'active' },
-      { id: 13, role: 'Project Coordinator', domain: 'Management', status: 'active' },
-      { id: 14, role: 'Documentation Lead', domain: 'Management', status: 'standby' },
-      { id: 15, role: 'DevOps Engineer', domain: 'Management', status: 'standby' }
-    ].slice(0, agentCount);
 
     output.printTable({
       columns: [
         { key: 'id', header: '#', width: 3, align: 'right' },
         { key: 'role', header: 'Role', width: 22 },
-        { key: 'domain', header: 'Domain', width: 15 },
-        { key: 'status', header: 'Status', width: 10, format: (v) => {
-          if (v === 'primary') return output.highlight(String(v));
-          if (v === 'active') return output.success(String(v));
-          return output.dim(String(v));
-        }}
+        { key: 'domain', header: 'Domain', width: 15 }
       ],
-      data: v3Agents
+      data: roster
     });
 
     output.writeln();
-    output.printInfo('Capabilities:');
-    output.printList([
-      `Flash Attention: ${output.success('memory-efficient attention')}`,
-      `AgentDB Search: ${output.success('HNSW (ANN)')}`,
-      `Memory: ${output.success('Int8 quantized')}`,
-      `Code Reduction: ${output.success('<5,000 lines')}`
-    ]);
+    output.printInfo('No agents were started, and none are running as a result of this command.');
+    output.writeln(output.dim('  Initialise the topology with: flo swarm init --v3-mode'));
+    output.writeln(output.dim('  Spawn real agents from a Claude Code session with agent_spawn.'));
 
-    return { success: true, data: { agents: v3Agents, count: agentCount } };
+    if (ctx.flags.format === 'json') {
+      output.printJson({ roster, count: roster.length });
+    }
+
+    return { success: true, data: { agents: roster, count: roster.length } };
   }
 };
 
@@ -825,7 +859,7 @@ export const swarmCommand: Command = {
   examples: [
     { command: 'flo swarm init --v3-mode', description: 'Initialize V3 swarm' },
     { command: 'flo swarm start -o "Build API" -s development', description: 'Start development swarm' },
-    { command: 'flo swarm coordinate --agents 15', description: 'V3 coordination' }
+    { command: 'flo swarm coordinate --agents 15', description: 'Show the V3 roster (reference)' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
@@ -840,7 +874,7 @@ export const swarmCommand: Command = {
       `${output.highlight('status')}      - Show swarm status`,
       `${output.highlight('stop')}        - Stop swarm execution`,
       `${output.highlight('scale')}       - Scale swarm agent count`,
-      `${output.highlight('coordinate')}  - V3 15-agent coordination`
+      `${output.highlight('coordinate')}  - Show the V3 15-agent roster (reference)`
     ]);
 
     return { success: true };

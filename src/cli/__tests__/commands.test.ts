@@ -569,7 +569,12 @@ describe('Swarm Commands', () => {
       const scaleCmd = swarmCommand.subcommands?.find(c => c.name === 'scale');
       expect(scaleCmd).toBeDefined();
 
-      ctx.args = ['swarm-123'];
+      // #1428 — scale now records against a real initialised swarm rather than
+      // computing a delta from a hardcoded `currentAgents = 8`.
+      const initCmd = swarmCommand.subcommands?.find(c => c.name === 'init');
+      await initCmd!.action!({ ...ctx, flags: { _: [] } });
+
+      ctx.args = ['swarm-mock-123'];
       ctx.flags = { agents: 20, _: [] };
       const result = await scaleCmd!.action!(ctx);
 

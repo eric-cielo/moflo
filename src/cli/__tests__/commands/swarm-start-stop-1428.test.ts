@@ -169,6 +169,69 @@ describe('#1428 — flo swarm start', () => {
   });
 });
 
+describe('#1428 — flo swarm scale', () => {
+  it('fails when no swarm has been initialised instead of reporting a scale', async () => {
+    const result = await run('scale', { agents: 12 }, ['swarm-anything']);
+
+    expect(result.success).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(printed()).not.toMatch(/scaled to/i);
+  });
+
+  it('reports the delta against the recorded ceiling, not a hardcoded 8', async () => {
+    // Pre-fix: `const currentAgents = 8` then "Spawning 4 new agents..." for a
+    // target of 12, whatever the swarm was actually configured with.
+    seedInitialisedSwarm({ maxAgents: 3 });
+    const result = await run('scale', { agents: 12 }, ['swarm-seeded-1428']);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ agents: 12, previousAgents: 3 });
+    expect(printed()).toMatch(/3 → 12/);
+    expect(printed()).not.toMatch(/Spawning \d+ new agents/);
+  });
+
+  it('persists the new ceiling and states that nothing was spawned', async () => {
+    seedInitialisedSwarm({ maxAgents: 3 });
+    await run('scale', { agents: 12 }, ['swarm-seeded-1428']);
+
+    expect(readState().maxAgents).toBe(12);
+    expect(printed()).toMatch(/No agents were spawned or terminated/i);
+    // The rest of the recorded swarm survives the update.
+    expect(readState().topology).toBe('hierarchical');
+  });
+
+  it('refuses an id that is not the active swarm', async () => {
+    seedInitialisedSwarm({ maxAgents: 3 });
+    const result = await run('scale', { agents: 12 }, ['swarm-some-other-id']);
+
+    expect(result.success).toBe(false);
+    expect(readState().maxAgents).toBe(3);
+  });
+});
+
+describe('#1428 — flo swarm coordinate', () => {
+  it('presents the roster as reference and claims no running agents', async () => {
+    const result = await run('coordinate', {}, []);
+
+    expect(result.success).toBe(true);
+    expect((result.data as { agents: unknown[] }).agents).toHaveLength(15);
+    expect(printed()).toMatch(/reference/i);
+    expect(printed()).toMatch(/No agents were started/i);
+  });
+
+  it('no longer reports a per-agent status for agents that do not exist', async () => {
+    const result = await run('coordinate', {}, []);
+    const roster = result.data as { agents: Array<Record<string, unknown>> };
+
+    // The invented column: every entry used to carry `active`/`primary`/
+    // `standby`, rendered in colour, for a roster that starts nothing.
+    for (const entry of roster.agents) {
+      expect(entry).not.toHaveProperty('status');
+    }
+    expect(printed()).not.toMatch(/Flash Attention|Int8 quantized/);
+  });
+});
+
 describe('#1428 — flo swarm stop', () => {
   it('fails when there is no active swarm instead of confirming a stop', async () => {
     const result = await run('stop', {}, ['swarm-anything']);
