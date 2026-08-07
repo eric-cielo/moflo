@@ -6,14 +6,14 @@
  * if it looks like an `npx`/`npm`/`claude` command.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync, readdirSync } from 'fs';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { findProjectDaemonPids, getDaemonLockHolder } from '../services/daemon-lock.js';
-import { findProjectRoot, resolveStateRoot } from '../services/project-root.js';
+import { findAncestorMofloRoot, findProjectRoot, resolveStateRoot } from '../services/project-root.js';
 import { legacyMemoryDbPath, legacyMemoryDbBakPath, memoryDbPath, mofloDir } from '../services/moflo-paths.js';
 import { findZombieProcesses } from './doctor-zombies.js';
 import { loadToolArrays, getTool } from './doctor-checks-functional-shared.js';
@@ -23,13 +23,68 @@ import { installClaudeCode, runCommand } from './doctor-checks-runtime.js';
 import type { HealthCheck } from './doctor-types.js';
 
 /** Run a shell command as a fix action. Returns true on exit code 0. */
-async function runFixCommand(cmd: string): Promise<boolean> {
+async function runFixCommand(cmd: string, cwd?: string): Promise<boolean> {
   try {
-    await runCommand(cmd, 30_000);
+    await runCommand(cmd, 30_000, cwd ? { cwd } : {});
     return true;
   } catch {
     return false;
   }
+}
+
+/** `realpathSync` if the path exists, else the absolutized string. */
+function canonical(p: string): string {
+  const abs = resolve(p);
+  try { return realpathSync(abs); } catch { return abs; }
+}
+
+/** Nearest `.moflo/moflo.db` at or above `from`, or null. */
+function nearestMofloRoot(from: string): string | null {
+  const abs = resolve(from);
+  if (existsSync(join(abs, '.moflo', 'moflo.db'))) return abs;
+  return findAncestorMofloRoot(abs);
+}
+
+/**
+ * Resolve the project root the daemon auto-fixes may act on, or null to refuse.
+ *
+ * The fixes SIGTERM processes and unlink lock files, so an over-broad root is
+ * not a cosmetic error. `findProjectRoot()` Pass A deliberately returns the
+ * TOPMOST ancestor carrying `.moflo/moflo.db` (#1174, so a monorepo's root
+ * daemon is canonical). For a checkout nested inside an unrelated project that
+ * walk climbs past our own root and lands on the parent's — whose daemons are
+ * not ours to kill. These handlers were previously rooted at `process.cwd()`,
+ * where that case degraded to a harmless no-op (`pids` came back empty), so
+ * aligning them with `checkDaemonOrphan` must not convert a no-op into a kill.
+ *
+ * Refuse whenever a NEARER moflo root sits at or above the cwd and differs
+ * from the resolved root: that is the nested-checkout signature. Both sides are
+ * realpath'd before comparison (Rule #1 §2) — `findProjectRoot` may hand back a
+ * raw `CLAUDE_PROJECT_DIR` while the walk yields a resolved path, and on macOS
+ * `/var/folders` vs `/private/var/folders` would otherwise compare unequal.
+ */
+function daemonFixRoot(): string | null {
+  const root = findProjectRoot();
+  const rootC = canonical(root);
+  const cwdC = canonical(process.cwd());
+
+  // Containment first: the cwd must live inside the root we are about to reap
+  // in. `findProjectRoot` returns `CLAUDE_PROJECT_DIR` verbatim when set, and
+  // that variable is inherited by hooks, test runners, and spawned tools whose
+  // cwd may be somewhere else entirely — a temp fixture, `/`, another repo.
+  // Without this check the handler happily reaps the daemons of whatever
+  // project the environment names, from a cwd with no relationship to it.
+  // `relative` + `isAbsolute` rather than string prefixing: on Windows two
+  // different drive letters yield an absolute result, which must count as
+  // "outside" (Rule #1).
+  const rel = relative(rootC, cwdC);
+  if (rel !== '' && (rel.startsWith('..') || isAbsolute(rel))) return null;
+
+  const nearest = nearestMofloRoot(cwdC);
+  // No moflo state anywhere at or above cwd: nothing to disambiguate, and the
+  // scan will find no same-project daemons anyway.
+  if (nearest === null) return root;
+  return canonical(nearest) === rootC ? root : null;
 }
 
 /**
@@ -607,21 +662,24 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     // Also reaps any same-project orphans whose PIDs aren't recorded in the
     // lock — those are the daemons that survived prior buggy fixes.
     'Daemon Status': async () => {
-      const cwd = process.cwd();
+      // #1431 — same subdirectory-mismatch class as `Daemon Orphan`; this one
+      // also reaps and unlinks, so it takes the same guarded root.
+      const root = daemonFixRoot();
+      if (root === null) return false;
       const { getDaemonLockPayload, reapSameProjectOrphans } = await import('../services/daemon-lock.js');
-      const payload = getDaemonLockPayload(cwd);
+      const payload = getDaemonLockPayload(root);
       if (payload?.pid && payload.pid > 0) {
         try { process.kill(payload.pid, 'SIGTERM'); } catch { /* already dead */ }
       }
       // Wipe other same-project daemons that the lock doesn't account for.
-      reapSameProjectOrphans(cwd);
-      const lockFile = join(cwd, '.moflo', 'daemon.lock');
-      const pidFile = join(cwd, '.moflo', 'daemon.pid');
+      reapSameProjectOrphans(root);
+      const lockFile = join(root, '.moflo', 'daemon.lock');
+      const pidFile = join(root, '.moflo', 'daemon.pid');
       try {
         if (existsSync(lockFile)) unlinkSync(lockFile);
         if (existsSync(pidFile)) unlinkSync(pidFile);
       } catch { /* best effort */ }
-      return runFixCommand('npx moflo daemon start');
+      return runFixCommand('npx moflo daemon start', root);
     },
     // Epic #1054.S5 / #1059 — SIGTERM the stale daemon and let the launcher's
     // existing respawn path (mirrored as `npx moflo daemon start`) pick up the
@@ -629,15 +687,17 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     // bin/session-start-launcher.mjs so the auto-fix matches the launcher's
     // behavior exactly.
     'Daemon Version Skew': async () => {
-      const cwd = process.cwd();
+      // #1431 — same subdirectory-mismatch class as `Daemon Orphan`.
+      const root = daemonFixRoot();
+      if (root === null) return false;
       const { getDaemonLockPayload } = await import('../services/daemon-lock.js');
-      const payload = getDaemonLockPayload(cwd);
+      const payload = getDaemonLockPayload(root);
       if (payload?.pid && payload.pid > 0) {
         try { process.kill(payload.pid, 'SIGTERM'); } catch { /* already dead */ }
       }
-      const lockFile = join(cwd, '.moflo', 'daemon.lock');
+      const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
-      return runFixCommand('npx moflo daemon start');
+      return runFixCommand('npx moflo daemon start', root);
     },
     // #1150 — terminate same-project orphan daemons. Keep the lock-holder
     // alive if it shows up in the scan (it's the canonical daemon). If the
@@ -651,7 +711,8 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       // the raw cwd, so `flo doctor --fix` from a subdirectory scanned a root
       // with no daemons, fell through `pids.length <= 1`, and reported
       // "Fixed: Daemon Orphan" without reaping anything.
-      const root = findProjectRoot();
+      const root = daemonFixRoot();
+      if (root === null) return false;
       const { findProjectDaemonPids, getDaemonLockHolder, reapSameProjectOrphans } =
         await import('../services/daemon-lock.js');
       const pids = findProjectDaemonPids(root);
@@ -669,7 +730,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
       if (survived.length > 0) return false;
-      return runFixCommand('npx moflo daemon start');
+      return runFixCommand('npx moflo daemon start', root);
     },
     // #1145 — daemon claims a different projectRoot than ours (or has no
     // port in its lock so we can't verify). Same recycle pattern as version
@@ -680,7 +741,8 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       // #1431 — same resolver as `checkDaemonIdentityMatch`; see the note on
       // the `Daemon Orphan` handler above. Reading the lock from a raw cwd
       // would SIGTERM nothing and unlink a path the daemon never wrote.
-      const root = findProjectRoot();
+      const root = daemonFixRoot();
+      if (root === null) return false;
       const { getDaemonLockPayload } = await import('../services/daemon-lock.js');
       const payload = getDaemonLockPayload(root);
       if (payload?.pid && payload.pid > 0) {
@@ -688,7 +750,7 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       }
       const lockFile = join(root, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
-      return runFixCommand('npx moflo daemon start');
+      return runFixCommand('npx moflo daemon start', root);
     },
     'Embedding Coverage Truth': async () => {
       // Same as the existing Embeddings fix — rebuild the cache by re-running
