@@ -111,7 +111,14 @@ function isBlank(ch) {
 function startsWord(cmd, i) {
   if (i === 0) return true;
   var prev = cmd.charAt(i - 1);
-  return isBlank(prev) || prev === '\n' || SEPARATOR_CHARS.indexOf(prev) !== -1;
+  return isBlank(prev) || SEPARATOR_CHARS.indexOf(prev) !== -1;
+}
+
+/** Index of the first character of the whitespace/separator-delimited token containing `from`. */
+function tokenStartAt(s, from) {
+  var k = from;
+  while (k > 0 && !isBlank(s.charAt(k - 1)) && SEPARATOR_CHARS.indexOf(s.charAt(k - 1)) === -1) k--;
+  return k;
 }
 
 /**
@@ -389,8 +396,7 @@ function startsCommand(s, idx) {
   // (`C:\tools\gh`, or `\gh`) is not recognised — a miss, not an over-block, and
   // the same miss the pre-#1410 regex had. Blanking the escape is what makes
   // `echo a\; gh pr create` correctly NOT read as a command, which is worth more.
-  var tokenStart = idx;
-  while (tokenStart > 0 && !isBlank(s.charAt(tokenStart - 1)) && SEPARATOR_CHARS.indexOf(s.charAt(tokenStart - 1)) === -1) tokenStart--;
+  var tokenStart = tokenStartAt(s, idx);
   var token = s.slice(tokenStart, idx + 2);
   if (token !== 'gh' && !/\/gh$/.test(token)) return false;
 
@@ -400,7 +406,7 @@ function startsCommand(s, idx) {
     if (i === 0) return true;
     if (SEPARATOR_CHARS.indexOf(s.charAt(i - 1)) !== -1) return true;
     var end = i;
-    while (i > 0 && !isBlank(s.charAt(i - 1)) && SEPARATOR_CHARS.indexOf(s.charAt(i - 1)) === -1) i--;
+    i = tokenStartAt(s, i);
     if (i === end) return false;
     var word = s.slice(i, end);
     if (!ASSIGNMENT_RE.test(word) && PREFIX_WORDS.indexOf(word) === -1) return false;
