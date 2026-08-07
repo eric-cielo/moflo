@@ -57,13 +57,13 @@ session_continuity:
 
 # Memory backend
 memory:
-  backend: node-sqlite            # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider (#1144).
+  backend: node-sqlite            # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider.
   embedding_model: Xenova/all-MiniLM-L6-v2   # 384-dim neural embeddings
   namespace: default              # Default namespace for memory operations
-  # worktree_sharing: false                            # opt-OUT (#1231): automatic durable-learning sharing across git worktrees is ON by default (derived at <git-common-dir>/moflo/durable.db, active only when worktrees exist; a single checkout is untouched). Set false to disable.
-  # durable_path: ~/.moflo-shared/team-learnings.db   # opt-in (#1232): OVERRIDE the auto worktree store — a custom durable-only path for learnings/knowledge, or to converge separate clones. Point at a DEDICATED store, never a full moflo.db. Env override: MOFLO_DURABLE_PATH.
-  # team_artifact: .moflo/shared/learnings.jsonl       # opt-in (#1234): git-tracked JSONL the team commits; session-start import-merges it. Env override: MOFLO_TEAM_ARTIFACT. See moflo-cross-install-memory-sharing.md.
-  # hydrate_from: /abs/path/to/moflo-snapshot.db       # opt-in (#1244): whole-DB snapshot to seed a fresh/empty workspace on session-start (skips the cold reindex). No-op once the local DB has content. Take one with "flo memory backup --to <path>". Env override: MOFLO_HYDRATE_FROM.
+  # worktree_sharing: false                            # opt-OUT: automatic durable-learning sharing across git worktrees is ON by default (derived at <git-common-dir>/moflo/durable.db, active only when worktrees exist; a single checkout is untouched). Set false to disable.
+  # durable_path: ~/.moflo-shared/team-learnings.db   # opt-in: OVERRIDE the auto worktree store — a custom durable-only path for learnings/knowledge, or to converge separate clones. Point at a DEDICATED store, never a full moflo.db. Env override: MOFLO_DURABLE_PATH.
+  # team_artifact: .moflo/shared/learnings.jsonl       # opt-in: git-tracked JSONL the team commits; session-start import-merges it. Env override: MOFLO_TEAM_ARTIFACT. See moflo-cross-install-memory-sharing.md.
+  # hydrate_from: /abs/path/to/moflo-snapshot.db       # opt-in: whole-DB snapshot to seed a fresh/empty workspace on session-start (skips the cold reindex). No-op once the local DB has content. Take one with "flo memory backup --to <path>". Env override: MOFLO_HYDRATE_FROM.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:
@@ -132,7 +132,7 @@ auto_update:
   enabled: true                          # Master toggle for version-change auto-sync
   scripts: true                          # Sync .claude/scripts/ from moflo bin/
   helpers: true                          # Sync .claude/helpers/ from moflo source
-  hook_block_drift: regenerate           # warn | regenerate | off (default: regenerate since #1227)
+  hook_block_drift: regenerate           # warn | regenerate | off (default: regenerate)
   claudemd_injection_drift: regenerate   # warn | regenerate | off
 
 # Which skill categories to install (OPTIONAL — omit to get every skill)
@@ -245,10 +245,10 @@ skills:
 | `sandbox.tier: full` | Require OS sandbox; throw at runtime if the platform tool is unavailable |
 | `sandbox.tier: denylist-only` | Keep Layer 1 denylist only; skip OS isolation even when enabled |
 | `auto_update.enabled: false` | Disable all on-session auto-sync (scripts, helpers, drift checks) |
-| `auto_update.hook_block_drift: regenerate` | Auto-repair drift in `.claude/settings.json` hook block on session start (#881, default since #1227 — basename guard from #1180 keeps user-owned hooks safe). |
+| `auto_update.hook_block_drift: regenerate` | Auto-repair drift in `.claude/settings.json` hook block on session start (default; a basename guard keeps user-owned hooks safe). |
 | `auto_update.hook_block_drift: warn` | Print drift notice but leave settings.json unchanged. Opt-out from auto-regen. |
 | `auto_update.hook_block_drift: off` | Skip hook-block drift detection entirely |
-| `auto_update.claudemd_injection_drift: regenerate` | Auto-refresh the MoFlo block in `CLAUDE.md` when it drifts from the current generator (#1142, default) |
+| `auto_update.claudemd_injection_drift: regenerate` | Auto-refresh the MoFlo block in `CLAUDE.md` when it drifts from the current generator (default) |
 | `auto_update.claudemd_injection_drift: warn` | Print a drift notice on session start but leave `CLAUDE.md` unchanged |
 | `auto_update.claudemd_injection_drift: off` | Skip CLAUDE.md injection drift detection entirely |
 

@@ -223,7 +223,7 @@ gates:
   memory_first: ${gates}
   task_create_first: ${gates}
   context_tracking: ${gates}
-  verify_before_done: true    # Epic #1269/#1294: run /verify before 'gh pr create'. On by default; opt out with false or per-run --no-verify
+  verify_before_done: true    # Run /verify before 'gh pr create'. On by default; opt out with false or per-run --no-verify
 
 # Auto-index on session start
 auto_index:
@@ -242,7 +242,7 @@ session_continuity:
   inject: true
   max_age_hours: 72            # ignore digests older than this when injecting
 
-# Auto-meditate (#1198) — the automatic counterpart to /meditate. When enabled,
+# Auto-meditate — the automatic counterpart to /meditate. When enabled,
 # moflo recognizes durable lessons in the LIVE session (a tiny answer-first note
 # on course-corrections / errors / decisions) and distills them into long-term
 # memory at the next session-start via a cheap headless Haiku pass — deduped.
@@ -250,12 +250,12 @@ session_continuity:
 auto_meditate:
   enabled: true
 
-# Spec-Driven Development (Epic #1269) — spec -> plan -> implement -> verify.
+# Spec-Driven Development — spec -> plan -> implement -> verify.
 # When default is true, every /flo run uses the SDD cycle unless --no-sdd.
 sdd:
   default: false
 
-# Auto-merge the PR at the end of a full /flo run once preconditions are met (#1285).
+# Auto-merge the PR at the end of a full /flo run once preconditions are met.
 # When auto is true, a full /flo run awaits required checks + MERGEABLE state then
 # merges and deletes the branch, instead of stopping at "PR opened". Opt-in;
 # override per-run with --merge / --no-merge.

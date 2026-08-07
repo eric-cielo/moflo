@@ -28,13 +28,13 @@
  * identity and for generic placeholders, nothing else.
  */
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import { REPO_ROOT } from './_helpers/eslint-harness.js';
+import { trackedFiles } from './_helpers/tracked-files.js';
 
 /**
  * A project directory sitting under a user's home dir. Covers POSIX
@@ -122,22 +122,9 @@ export function scanText(text: string): Leak[] {
 }
 
 function trackedTextFiles(): string[] {
-  // execFileSync + array args: no shell, so this behaves identically on Windows.
-  // `-z` (NUL-delimited) because git quote-escapes non-ASCII paths under the
-  // default core.quotePath — those entries would then fail to read and be
-  // silently skipped, i.e. unscanned, which is the one failure mode a leak
-  // guard must not have. NUL output is also immune to newlines in filenames.
-  // maxBuffer is explicit: the default is 1 MB and this listing is ~60 KB today,
-  // but a silent ENOBUFS as the repo grows would look like a guard bug rather
-  // than an outgrown buffer.
-  return execFileSync('git', ['ls-files', '-z'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split('\u0000')
-    .filter(Boolean)
-    .filter((rel) => !SKIP_FILES.has(rel));
+  // The listing mechanics (no shell, NUL delimiting, explicit maxBuffer) and the
+  // reasons each one matters live in the shared helper.
+  return trackedFiles({ skip: SKIP_FILES });
 }
 
 describe('client-name leak guard — project dir under a home path', () => {

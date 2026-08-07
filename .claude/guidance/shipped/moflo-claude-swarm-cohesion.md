@@ -119,7 +119,7 @@ TaskList()  // Shows what's now unblocked
 TaskUpdate({ taskId: "2", status: "in_progress" })  // Next agent starts
 ```
 
-Close every task you open. moflo's PR gate reads the session transcript on `gh pr create` and prints `N tasks created this session, M still open` (#1374) — an unclosed list reports as unfinished work on the PR. Mark tasks that no longer apply `status: "deleted"`; that closes the loop exactly like `completed`.
+Close every task you open. moflo's PR gate reads the session transcript on `gh pr create` and prints `N tasks created this session, M still open` — an unclosed list reports as unfinished work on the PR. Mark tasks that no longer apply `status: "deleted"`; that closes the loop exactly like `completed`.
 
 ---
 

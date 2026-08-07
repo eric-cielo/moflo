@@ -145,6 +145,27 @@ Use relative names (not absolute paths) so the links work across project context
 
 ---
 
+## 10. Never Cite Issue or PR Numbers
+
+**Write the rule, not where it came from.** Strip every `(#NNNN)`, `issue #NNNN`, `Epic #NNNN`, and `per PR #NNNN` from guidance. A reader who hits a bare issue number cannot resolve it without leaving the document, and in guidance that ships between projects the number points at the *reader's* issue tracker, not the author's — so it is worse than useless there. Provenance belongs in `git log` and `git blame`, which is where it stays accurate.
+
+The cost is not just confusion. Guidance is loaded, chunked, and RAG-retrieved on nearly every task, so an unresolvable citation is a permanent context tax that dilutes the rule it is attached to.
+
+Below, `#NNNN` stands in for a real issue number — written that way so these examples do not themselves violate the rule.
+
+| Instead of | Write |
+|---|---|
+| `verify_before_done` is on by default (#NNNN) | `verify_before_done` is on by default |
+| Never run `flo init` in a sub-workspace (issue #NNNN) | Never run `flo init` in a sub-workspace |
+| The `optimize` worker was removed in #NNNN — it was a billed loop | The `optimize` worker was removed — it was a billed loop |
+| `### Case Study: #NNNN Hive-Mind Shutdown` | `### Case Study: Hive-Mind Shutdown Flake` |
+
+**When the number is load-bearing, relabel — don't just delete.** A case-study heading or a table keyed by `#NNNN layer 1` / `#NNNN attempt 4` uses the numbers to carry a *sequence*. Replace them with descriptive ordinals (`Attempt 1`, `Attempt 2`) so the progression survives.
+
+**This applies to every reader-facing surface, not just `.md` guidance** — skills, agent definitions, slash commands, and any template your tooling writes into a project (a generated `CLAUDE.md` block, a scaffolded config file). Source-code comments in your own repo are exempt: they are read where the number resolves.
+
+---
+
 ## See Also
 
 - `.claude/guidance/moflo-memory-strategy.md` — Companion rules on namespaces, RAG indexing, and search patterns the data feeds

@@ -16,7 +16,7 @@
 | Claude Desktop (the macOS/Windows app) | **Out of scope — never** | None — moflo neither reads nor writes Claude Desktop config |
 | Other MCP-capable clients (Cline, Continue, etc.) | Unsupported, may incidentally work | None — bug reports require Claude Code reproduction |
 
-**Never** introduce a code path, search list, fixture, or doc that reads from or writes to `~/.claude/claude_desktop_config.json`, `~/Library/Application Support/Claude/`, or `%APPDATA%/Claude/`. Those are Claude **Desktop** paths. Including them in moflo's MCP-config search list caused issue #1126: a parseable Claude Desktop preferences file outranked a malformed project `.mcp.json`, masking the real failure and routing the auto-fixer down a no-op branch.
+**Never** introduce a code path, search list, fixture, or doc that reads from or writes to `~/.claude/claude_desktop_config.json`, `~/Library/Application Support/Claude/`, or `%APPDATA%/Claude/`. Those are Claude **Desktop** paths. Including them in moflo's MCP-config search list has already caused one regression: a parseable Claude Desktop preferences file outranked a malformed project `.mcp.json`, masking the real failure and routing the auto-fixer down a no-op branch.
 
 The one ambiguous-looking path is Claude Code's user-level config at `~/.claude.json` (where `claude mcp add` writes). MoFlo doesn't author or rewrite that file either; the project-local `.mcp.json` written by `flo init` is the canonical surface moflo owns end-to-end.
 
@@ -145,7 +145,7 @@ For the full `moflo.yaml` schema, gate toggles, model routing, and sandbox confi
 | Every 5+ file changes | `map` worker | Update codebase map (local, automatic) |
 | Complex debugging | `deepdive` worker | Deep code analysis (manual trigger) |
 
-**Performance and test-gap analysis are ad-hoc skills, not background workers.** The old always-on `optimize`/`testgaps` daemon workers were removed in #1258 — they were billed `claude --print` loops with no change-detection whose reports were never surfaced. Run `/quicken` and `/ward` when you want them; they scope to the diff and report in the conversation.
+**Performance and test-gap analysis are ad-hoc skills, not background workers.** The old always-on `optimize`/`testgaps` daemon workers were removed — they were billed `claude --print` loops with no change-detection whose reports were never surfaced. Run `/quicken` and `/ward` when you want them; they scope to the diff and report in the conversation.
 
 ### Worker Report Location
 
@@ -184,7 +184,7 @@ Checks: Node version (20+), Git, config validity, daemon status, memory database
 
 ## Monorepo Layout
 
-**Purpose:** prevent the most common moflo misconfig — daemon islands in monorepos (#1174).
+**Purpose:** prevent the most common moflo misconfig — daemon islands in monorepos.
 
 | Rule | Why |
 |------|-----|
@@ -209,7 +209,7 @@ The resolver (`findProjectRoot`) prefers the topmost ancestor with `.moflo/moflo
 | Embeddings fail offline / air-gapped | `fastembed` model cache missing | Pre-populate `~/.cache/fastembed` or set `FASTEMBED_CACHE` (see `docs/modules/embeddings.md`) |
 | `flo` command not found | Not in PATH | Use `npx flo` or `node node_modules/moflo/bin/index-guidance.mjs` |
 | Bundled guidance not indexed | Running inside the moflo repo | Bundled guidance only indexes when installed as a dependency in a different project |
-| `mcp__moflo__*` tools missing in monorepo session | Nested `.moflo/` directories spawned separate daemons (#1174) | Run `flo doctor -c nested-moflo`; if any are found, `flo doctor --fix -c nested-moflo` archives them. Restart Claude Code to reconnect. |
+| `mcp__moflo__*` tools missing in monorepo session | Nested `.moflo/` directories spawned separate daemons | Run `flo doctor -c nested-moflo`; if any are found, `flo doctor --fix -c nested-moflo` archives them. Restart Claude Code to reconnect. |
 
 See `.claude/guidance/moflo-memory-strategy.md` for memory-specific troubleshooting and `.claude/guidance/moflo-spell-troubleshooting.md` for spell sandbox/network failures.
 

@@ -81,6 +81,30 @@ This is rarer and riskier — only do it when you're sure no consumer relies on 
 
 ---
 
+## 4. Where Issue Citations Are Allowed
+
+**Write an issue number only where it resolves against moflo's own tracker.** Rule #10 in `shipped/moflo-guidance-rules.md` bans citations from guidance; moflo's two-bucket layout decides which files that actually covers, because the same `(#1294)` is noise in one directory and legitimate provenance in another. Decide by **who reads the file**, never by its extension.
+
+| Surface | Citations | Why |
+|---------|-----------|-----|
+| `.claude/guidance/shipped/**` | **never** | Synced into consumer projects, where `#1294` points at *their* tracker |
+| `.claude/skills/**`, `.claude/agents/**`, `.claude/commands/**` | **never** | All shipped via `package.json` `files`; read from the consumer's `node_modules/moflo/` |
+| Strings emitted by `claudemd-generator.ts`, `moflo-yaml-template.ts`, or any other init template | **never** | The rendered text is written into the consumer's own `CLAUDE.md` / `moflo.yaml` |
+| `.claude/guidance/internal/**` | allowed | Dev-only; never leaves this repo |
+| Repo-root and `src/**` `CLAUDE.md` | allowed | Read only by sessions working on moflo itself |
+| Runtime strings printed by hook helpers | **never** | The consumer reads them in their own terminal |
+| Hook-helper and `src/**` code comments | allowed | Debugging provenance; no consumer reads it |
+
+**Do not "finish the job" by stripping hook-helper comments.** It was tried and reverted. It is ~206 regex edits across `bin/gate.cjs` — the gate that runs on every tool call in every consumer session — to remove text nobody reads, and the attempt produced two real defects (a whitespace rule that glued `see .claude/x` into `see.claude/x`, and a mangled `( /)` that would have shipped inside a generated helper). An equivalence check later proved the sweep inert, but inert churn in that file is still a bad trade. Fix a citation there only when it reaches a **printed string**.
+
+**`gate.cjs` exists three times over, and none is derived from another.** `bin/gate.cjs` (~1245 lines, hand-maintained), `.claude/helpers/gate.cjs` (its byte-identical mirror — `dogfood-copy-parity-guard.test.ts` enforces that, and `flo doctor`'s Gate Health treats drift as a publish blocker), and `generateGateScript()` in `helpers-generator.ts` (~793 lines, a separate lighter variant). `flo init` copies the consumer's file from the package's **own `.claude/helpers/gate.cjs`** — not from `bin/`, not from the generator. A message change must be applied to all three or it reaches only some consumers.
+
+`tests/guards/issue-attribution-guard.test.ts` enforces this. It scans the shipped prose directories, **renders** the CLAUDE.md and moflo.yaml templates to scan their output, and parses the three `gate.cjs` variants to scan their **string literals only** — via the TypeScript AST, so a `'` inside a comment cannot be mistaken for a literal. If it goes red, delete the citation and keep the fact; never add an exemption.
+
+**The template rows are the ones that get missed.** A citation inside a `.ts` file *looks* internal, so the distinction is not the file's extension but whether the string is emitted. `// see #1398` in `settings-generator.ts` is fine; the same text inside the template literal it returns is not.
+
+---
+
 ## See Also
 
 - `.claude/guidance/shipped/moflo-guidance-rules.md` — Universal writing rules (#1–#9) every guidance file in any project must follow; this doc only adds the moflo-specific bucket extensions on top of those

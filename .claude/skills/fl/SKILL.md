@@ -62,19 +62,19 @@ Under `--sdd` (or any run that authors or consults a spec), add these **spec-tar
 
 Worktree isolation is orthogonal to every other flag: it changes *where* the branch is created and the work happens, not *what* runs. All other arguments (mode, execution style, issue/title) apply unchanged. Ignored (with a one-line note) when `--epic-branch` is set — the epic orchestrator owns branch/worktree layout — and in `-r`/`--research` and `-t`/`--ticket` modes, which never touch a branch.
 
-## SDD & verification (Epic #1269)
+## SDD & verification
 
 Two **independent** modifiers, orthogonal to execution mode (`-n`/`-s`/`-h`) and `--worktree`. Verify is deliberately separable from SDD — you can get the completion gate without the spec ceremony.
 
 | Flag | Long | Effect |
 |------|------|--------|
 | `-sd` | `--sdd` | Run the full **spec → plan → (review) → implement → verify** cycle. Short is `-sd`, **not** `-s` (swarm) — follows the two-letter convention (`-wf`, `-wt`). Implies `--verify`. |
-| `-v` | `--verify` | **Verify-before-done** — a normal run plus the `/verify` skill (the completion gate), no spec/plan front-half. **On by default** (#1294) — this flag only forces it back on for a project that set `gates.verify_before_done: false`. |
+| `-v` | `--verify` | **Verify-before-done** — a normal run plus the `/verify` skill (the completion gate), no spec/plan front-half. **On by default** — this flag only forces it back on for a project that set `gates.verify_before_done: false`. |
 | `--no-sdd`, `--no-verify` | | Opt a single run out. `--no-verify` skips the (default-on) verify step. |
 
-Defaults seed from `moflo.yaml` — `sdd.default` (built-in **off**) and `gates.verify_before_done` (built-in **on** since #1294). So the SDD spec/plan ceremony is opt-in *by default*, but **a project can turn it on for every run** — never assume it is off; resolve it per the "Resolved run modes" section below. Verify-before-done runs by default; per-run flags override (`--no-verify` to skip). `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). In `-t`/`-r` modes (no implementation) verify is a no-op — cleared silently, with the one-line ignored note only when the user explicitly passed `-v`/`--verify`; `--sdd` in `-t` writes the spec/plan **into the ticket** rather than scaffolding artifacts. Full mechanics in `./sdd.md`.
+Defaults seed from `moflo.yaml` — `sdd.default` (built-in **off**) and `gates.verify_before_done` (built-in **on**). So the SDD spec/plan ceremony is opt-in *by default*, but **a project can turn it on for every run** — never assume it is off; resolve it per the "Resolved run modes" section below. Verify-before-done runs by default; per-run flags override (`--no-verify` to skip). `--sdd` implies `--verify` (a spec/plan without an enforced verify step drifts). In `-t`/`-r` modes (no implementation) verify is a no-op — cleared silently, with the one-line ignored note only when the user explicitly passed `-v`/`--verify`; `--sdd` in `-t` writes the spec/plan **into the ticket** rather than scaffolding artifacts. Full mechanics in `./sdd.md`.
 
-## Auto-merge (#1285)
+## Auto-merge
 
 | Flag | Long | Effect |
 |------|------|--------|
@@ -164,7 +164,7 @@ let epicBranch = null;
 let issueNumber = null;
 let titleWords = [];
 
-// SDD / verify / merge modifiers (Epic #1269, #1294, #1285) — DO NOT resolve
+// SDD / verify / merge modifiers — DO NOT resolve
 // these here. They are config-derived, and the values below are placeholders,
 // NOT defaults. Take them from the "Resolved run modes" step above; the loop
 // below only applies what the user typed on top of that resolution.
@@ -230,7 +230,7 @@ if (useWorktree && (epicBranch || workflowMode !== "full")) {
 
 // SDD/verify are implementation-time modifiers. -t (ticket) and -r (research)
 // never implement, so verify is a no-op there — clear it. Verify is on by
-// default now (#1294), so only surface the "ignored" note when the user
+// default now, so only surface the "ignored" note when the user
 // EXPLICITLY passed -v/--verify — otherwise clearing the default is silent.
 // --sdd in -t writes the spec/plan INTO the ticket (see ./sdd.md); in -r ignored.
 if (workflowMode === "ticket" || workflowMode === "research") {

@@ -61,7 +61,7 @@ npx flo daemon start
 
 ## Available Agents
 
-The shipped agent roster — each is invoked via the `Agent` tool with `subagent_type: <name>`. The canonical handle is the `name:` frontmatter inside `.claude/agents/**/*.md` (filename may differ from agent name). Aspirational agents that never shipped were retired in #932 — `retired-files.json` enforces auto-prune on consumer upgrade.
+The shipped agent roster — each is invoked via the `Agent` tool with `subagent_type: <name>`. The canonical handle is the `name:` frontmatter inside `.claude/agents/**/*.md` (filename may differ from agent name). Aspirational agents that never shipped were retired — `retired-files.json` enforces auto-prune on consumer upgrade.
 
 ### Core Development
 `coder`, `reviewer`, `tester`, `planner`, `researcher`, `analyst`
@@ -119,10 +119,10 @@ The orchestrator is the calling Claude, not a named agent. Pick specialists from
 ### Background Workers
 
 The daemon ships seven workers — two scheduled by default (both local, no
-model calls) plus five manual-trigger only. The pre-#970 `audit`, `predict`,
+model calls) plus five manual-trigger only. The earlier `audit`, `predict`,
 and `document` workers were removed because they ran without a surfacing
-layer for findings. The `optimize` and `testgaps` workers were removed in
-#1258 — they were the only default-ON workers that spawned billed
+layer for findings. The `optimize` and `testgaps` workers were also
+removed — they were the only default-ON workers that spawned billed
 `claude --print` agents, on a 15/20-min timer with no change-detection, and
 their reports were never surfaced. Their capability now lives in the ad-hoc
 `/quicken` (perf) and `/ward` (test-gap) skills, which scope to the diff and

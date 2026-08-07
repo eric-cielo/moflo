@@ -6,12 +6,12 @@ The SDD/verify modifiers (`-sd`/`--sdd`, `-v`/`--verify` — see `./sdd.md`) are
 
 ## SWARM mode (`-s`, `--swarm`)
 
-> **MANDATORY when `-s` is passed.** Your first Execute-phase action MUST be `mcp__moflo__swarm_init`, followed by `mcp__moflo__agent_spawn` for each role. Spawning subagents via `Agent` (or `Task`) without first registering the swarm is a violation of issue #952. The `Agent` PreToolUse gate will BLOCK the call until `swarm_init` runs. Even when you also use `Agent` for parallelism, the moflo swarm IS the registration surface — call it first. See CLAUDE.md "⛔ Protected functionality — swarm + hive-mind".
+> **MANDATORY when `-s` is passed.** Your first Execute-phase action MUST be `mcp__moflo__swarm_init`, followed by `mcp__moflo__agent_spawn` for each role. Spawning subagents via `Agent` (or `Task`) without first registering the swarm is a violation of the swarm-registration contract. The `Agent` PreToolUse gate will BLOCK the call until `swarm_init` runs. Even when you also use `Agent` for parallelism, the moflo swarm IS the registration surface — call it first. See CLAUDE.md "⛔ Protected functionality — swarm + hive-mind".
 
 > **`-s` is the user's request for agents.** An ambient "don't call the Agent
 > tool unless the user requested it" is satisfied by the flag — dispatch.
 > `swarm_init`/`agent_spawn` are MCP tools, so a suppressed run still registers a
-> swarm and passes the #952 gate while dispatching nobody. If you cannot spawn
+> swarm and passes the registration gate while dispatching nobody. If you cannot spawn
 > `Agent`, say so and stop.
 
 Swarm mode coordinates agents through the moflo swarm coordinator, then spawns workers via the `Agent` tool.
@@ -79,4 +79,4 @@ Single Claude execution without spawning sub-agents.
 
 ## Why these are MANDATORY
 
-Swarm and hive-mind are headline moflo product surface (CLAUDE.md "⛔ Protected functionality"). When the user explicitly opts in via `-s`/`-h`, the protected MCP surface MUST be exercised — falling back to "Claude-native parallelism" via `Agent` tool calls without coordinator registration is the failure mode that prompted issue #952. The PreToolUse gate enforces this; opt-out is `gates.swarm_invocation_gate: false` in `moflo.yaml`.
+Swarm and hive-mind are headline moflo product surface (CLAUDE.md "⛔ Protected functionality"). When the user explicitly opts in via `-s`/`-h`, the protected MCP surface MUST be exercised — falling back to "Claude-native parallelism" via `Agent` tool calls without coordinator registration is the failure mode this rule exists to prevent. The PreToolUse gate enforces this; opt-out is `gates.swarm_invocation_gate: false` in `moflo.yaml`.

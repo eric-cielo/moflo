@@ -52,7 +52,7 @@ When fix N didn't work, do these in order — not in parallel, not skipping step
 1. **Read every prior fix on this surface in full.** Not the commit message — the code. Note what each one was trying to prevent and what it actually does.
 2. **Reproduce the failure deterministically** before touching code. If you can't reproduce it, you don't understand it.
 3. **Trace the data flow.** Where does the bad state originate? What writes it? What reads it? What invariant got violated?
-4. **Question the test, not just the code.** What invariant does the failing test actually encode? Does that invariant match the runtime contract, or is the test stricter? A test stricter than the contract will produce flakes that look like bugs but aren't. (See #1017 case study.)
+4. **Question the test, not just the code.** What invariant does the failing test actually encode? Does that invariant match the runtime contract, or is the test stricter? A test stricter than the contract will produce flakes that look like bugs but aren't. (See the hive-mind shutdown case study below.)
 5. **Identify the structural cause** — the place where the bug becomes possible, not the place where it becomes visible.
 6. **Now consider fixes.** The cheapest fix at the structural cause beats the cleverest fix at the symptom every time. If the cause is "test asserts X, runtime contract is Y, X is stricter," the fix is in the test.
 
@@ -105,9 +105,9 @@ When you find that the test is the actual problem: change the test, document why
 
 **Smell test:** read the test setup as a description of production behavior. If steps appear that production code does not perform, the test is mocking around a real bug.
 
-### Case Study: #1053 Memory Traversal
+### Case Study: Memory Traversal Healer Probe
 
-> "Healer: probeMemoryGetNeighbors() runs first in checkMemoryAccessFunctional so the bridge instantiates after the seed lands (sql.js whole-DB writeback clobbers external file writes once the in-memory snapshot warms)." — PR #1053 commit
+> "Healer: probeMemoryGetNeighbors() runs first in checkMemoryAccessFunctional so the bridge instantiates after the seed lands (sql.js whole-DB writeback clobbers external file writes once the in-memory snapshot warms)." — the fix commit
 
 Diagnosis correct; fix wrong. The clobber stayed in production. `moflo@4.9.37` shipped two regressions to every consumer (migration-induced embedding loss + `memory_store` silent drop) because the suite was engineered around the failure it had just detected.
 
@@ -120,18 +120,18 @@ Diagnosis correct; fix wrong. The clobber stayed in production. `moflo@4.9.37` s
 
 ---
 
-## Concrete Example: #1017 Hive-Mind Shutdown
+## Concrete Example: Hive-Mind Shutdown Flake
 
 This is the canonical case study for this guidance — and it has a second-order lesson that makes it even more useful.
 
 | Attempt | Approach | Outcome |
 |---------|----------|---------|
-| #1017 first try | Loop list+delete in `clearNamespace` | Race window remained — broadcasts landed mid-loop |
-| #1024 layer 1 | Detach adapter BEFORE `clearNamespace` (after `terminateAgent`) | Race narrowed but not eliminated |
-| #1024 layer 2 | Add `purgeHiveNamespacesDirect` raw sql.js DELETE | Looked bulletproof; actually clobber-prone vs daemon's stale snapshot (#981 single-writer) |
-| #1024 declared green | All 6 CI checks pass once | Same flake reappeared on next PR's CI |
-| #1027 attempt 4 | Move `adapter.detach()` BEFORE `terminateAgent`; delete `purgeHiveNamespacesDirect` | Code simplified by -73 LOC. **Same flake on macos-latest CI.** |
-| #1027 — actual fix | Run launcher a SECOND time after doctor in the populated harness | Test passes. Race is intrinsic to multi-process sql.js + daemon kill timing; the harness assertion was over-strict. |
+| 1 | Loop list+delete in `clearNamespace` | Race window remained — broadcasts landed mid-loop |
+| 2 | Detach adapter BEFORE `clearNamespace` (after `terminateAgent`) | Race narrowed but not eliminated |
+| 3 | Add `purgeHiveNamespacesDirect` raw sql.js DELETE | Looked bulletproof; actually clobber-prone vs daemon's stale snapshot — it violates the single-writer contract |
+| — declared green | All 6 CI checks pass once | Same flake reappeared on next PR's CI |
+| 4 | Move `adapter.detach()` BEFORE `terminateAgent`; delete `purgeHiveNamespacesDirect` | Code simplified by -73 LOC. **Same flake on macos-latest CI.** |
+| 5 — actual fix | Run launcher a SECOND time after doctor in the populated harness | Test passes. Race is intrinsic to multi-process sql.js + daemon kill timing; the harness assertion was over-strict. |
 
 The first three attempts kept asking "how do we delete this row harder?" The fourth attempt was a structural simplification that was correct on its own merits (-73 LOC, removed dead code, simpler shutdown ordering) but **did not fix the flake**.
 
