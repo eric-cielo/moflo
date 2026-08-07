@@ -92,7 +92,7 @@ jobs:
       - name: Restore fastembed model
         id: cache-fastembed
         continue-on-error: true
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/fastembed
           key: fastembed-${{ runner.os }}-${{ hashFiles('src/cli/embeddings/fastembed-inline/**/*.ts') }}-fast-all-MiniLM-L6-v2
@@ -100,7 +100,7 @@ jobs:
       - name: Restore consumer-install node_modules
         id: cache-consumer-warm
         continue-on-error: true
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .work/consumer-warm
           key: consumer-warm-${{ runner.os }}-${{ matrix.harness }}-${{ hashFiles('package-lock.json', 'scripts/prune-native-binaries.mjs', 'scripts/post-install-bootstrap.mjs', 'scripts/post-install-notice.mjs') }}
@@ -128,7 +128,7 @@ jobs:
       - name: Save fastembed model
         if: always() && steps.cache-fastembed.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: ~/.cache/fastembed
           key: ${{ steps.cache-fastembed.outputs.cache-primary-key }}
@@ -136,7 +136,7 @@ jobs:
       - name: Save consumer-install node_modules
         if: always() && steps.cache-consumer-warm.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: .work/consumer-warm
           key: ${{ steps.cache-consumer-warm.outputs.cache-primary-key }}
