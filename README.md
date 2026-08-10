@@ -291,6 +291,7 @@ MoFlo installs Claude Code hooks that run on every tool call. Together, these ga
 |------|-----------------|------------------|----------------|
 | **Memory-first** | Claude must search the memory database before using Glob, Grep, or Read on guidance files | Before every Glob/Grep call, and before Read calls targeting `.claude/guidance/` | Prevents the AI from re-exploring files it (or a previous session) already indexed. Forces it to check what it knows first, saving tokens and context window. |
 | **TaskCreate-first** | Claude must call TaskCreate before spawning sub-agents via the Task tool | Before every Task (agent spawn) call | Ensures every piece of delegated work is tracked. Prevents runaway agent proliferation where Claude spawns agents without a clear plan. |
+| **Task-status** *(blocks by default)* | The task list Claude opened must reflect reality before the PR — every task closed, deleted, or explicitly acknowledged as deferred | Before `gh pr create`, whenever the session opened tasks and left some open | A stale task list is worse than none: it reports as not-started work that is about to merge. Every other step here is gated on an artifact; this is the one that gates what the *user is shown*. Deliberate deferrals stay legitimate — the block prints a one-command acknowledgement. Set `task_status_gate: warn` to report without blocking, or `off`; `task_create_first: false` disables both halves. |
 | **Context tracking** | Tracks conversation length and warns about context depletion | On every user prompt (UserPromptSubmit hook) | As conversations grow, AI quality degrades. MoFlo tracks interaction count and assigns a bracket (FRESH → MODERATE → DEPLETED → CRITICAL), advising Claude to checkpoint progress or start a fresh session before quality drops. |
 | **Routing** | Analyzes each prompt and recommends the optimal agent type and model tier | On every user prompt (UserPromptSubmit hook) | Saves cost by suggesting haiku for simple tasks, sonnet for moderate ones, opus for complex reasoning — without you having to think about model selection. |
 | **Verify-before-done** *(on by default)* | Claude must verify the change end-to-end (the `/verify` skill) before `gh pr create` | Before `gh pr create` (docs-only diffs exempt) | Enforces "prove it works before done." On by default since #1294 (`/flo` delegates to `/verify` and reuses its test run — no double verify). Opt out with `verify_before_done: false` or `--no-verify`. Pairs with the [Spec-Driven Development](#spec-driven-development-sdd) cycle, which gives verification its acceptance criteria. |
@@ -321,7 +322,8 @@ All gates are configurable in `moflo.yaml`:
 ```yaml
 gates:
   memory_first: true          # Set to false to disable memory-first enforcement
-  task_create_first: true     # Set to false to disable TaskCreate enforcement
+  task_create_first: true     # Set to false to disable TaskCreate enforcement (disables task_status_gate too)
+  task_status_gate: block     # Open tasks block `gh pr create`; warn → report only; off → silent
   context_tracking: true      # Set to false to disable context bracket warnings
   verify_before_done: true    # On by default (#1294); set false to skip /verify before `gh pr create`
 ```
@@ -916,6 +918,7 @@ tests:
 gates:
   memory_first: true                 # Must search memory before file exploration
   task_create_first: true            # Must TaskCreate before Agent tool
+  task_status_gate: block            # Open tasks block `gh pr create`; warn → report only; off → silent
   context_tracking: true             # Track context window depletion
   verify_before_done: true           # On by default (#1294); /verify before `gh pr create` (unless --no-verify). false to disable
 

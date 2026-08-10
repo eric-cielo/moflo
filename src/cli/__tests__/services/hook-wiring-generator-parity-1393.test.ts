@@ -30,6 +30,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { REQUIRED_HOOK_WIRING, HOOK_ENTRY_MAP, repairHookWiring } from '../../services/hook-wiring.js';
+import { getReferenceHookBlock } from '../../services/hook-block-hash.js';
 
 const GENERATOR_PATH = join(__dirname, '..', '..', 'init', 'settings-generator.ts');
 
@@ -110,6 +111,36 @@ describe('#1393 — settings-generator ↔ hook-wiring parity', () => {
       missing,
       `Listed in REQUIRED_HOOK_WIRING but absent from HOOK_ENTRY_MAP — ` +
       `repairHookWiring() will silently skip these: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * Presence parity is not enough — the EVENT has to match too, and it had
+   * drifted. `check-bash-memory` was listed here under `PostToolUse` while the
+   * generator and the reference block put it under `PreToolUse`, where #1132
+   * deliberately moved it so its `process.exit(2)` prevents the read rather than
+   * reporting one that already happened. Because the presence check is a raw
+   * substring scan over settings.json, the mismatch was invisible on every
+   * project that already had the hook; it would only bite a consumer missing it
+   * entirely, who would then be "repaired" into a gate that cannot block.
+   */
+  it('every repaired pattern is grafted under the same event the reference block uses', () => {
+    const reference = getReferenceHookBlock();
+    const eventOf = (pattern: string): string | undefined =>
+      Object.keys(reference).find(event =>
+        (reference[event] ?? []).some(block =>
+          (block.hooks ?? []).some(h => typeof h.command === 'string' && h.command.includes(pattern)),
+        ),
+      );
+
+    const mismatched = Object.keys(HOOK_ENTRY_MAP)
+      .map(pattern => ({ pattern, mapped: HOOK_ENTRY_MAP[pattern].event, reference: eventOf(pattern) }))
+      .filter(r => r.reference !== undefined && r.reference !== r.mapped)
+      .map(r => `${r.pattern}: HOOK_ENTRY_MAP=${r.mapped} but reference block=${r.reference}`);
+
+    expect(
+      mismatched,
+      `repairHookWiring() would graft these under the wrong hook event:\n  ${mismatched.join('\n  ')}`,
     ).toEqual([]);
   });
 

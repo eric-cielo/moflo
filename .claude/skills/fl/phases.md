@@ -230,6 +230,16 @@ unblock the PR.
 
 ### 5.3 Create the PR
 
+**Close the task list first.** `TaskUpdate` every task this run opened to `completed`, or to `deleted` where it no longer applies; `check-before-pr` blocks `gh pr create` while any stay open, because a list that still reads *pending* over merged work is the user's only view of what shipped.
+
+| Task state at PR time | Action |
+|-----------------------|--------|
+| Work finished | `TaskUpdate({ taskId: "<id>", status: "completed" })` |
+| No longer applies | `TaskUpdate({ taskId: "<id>", status: "deleted" })` |
+| Deliberately deferred past this PR | Run the acknowledgement command printed in the block message — it credits the gate and leaves the tasks open |
+
+Never mark a task `completed` to clear the gate. Declaring the deferral takes one command and keeps the list true.
+
 In epic mode (`--epic-branch` set): skip the PR. The commit from 5.1 (with `Closes #<issue-number>`) is enough; the epic orchestrator handles the consolidated PR and final push. Skip pushing too.
 
 Otherwise:

@@ -1780,11 +1780,17 @@ describe('end-to-end: spell lifecycle', () => {
 
   // #1374 — the completion half of the TaskCreate reminder. moflo used to push
   // `TaskCreate` and then never look again, so a run that opened four tasks and
-  // closed none satisfied every gate. These pin the reporting side: the ledger
-  // comes from the session transcript (no `^TaskUpdate$` observer — that wiring
-  // is what #1331 removed as hot-path overhead), it counts CALLS not mentions,
-  // and it reminds without ever claiming to block (#1326).
-  describe('open-task advisory at the PR gate (#1374)', () => {
+  // closed none satisfied every gate. These pin the LEDGER ARITHMETIC: it comes
+  // from the session transcript (no `^TaskUpdate$` observer — that wiring is what
+  // #1331 removed as hot-path overhead) and counts CALLS, not mentions.
+  //
+  // Pinned in `warn` mode deliberately. #1435 made `block` the default because
+  // reporting alone demonstrably did not hold, and every case below is about what
+  // the ledger COUNTS rather than what the gate then does with the count — asserting
+  // both here would re-test the mode on nine shapes that do not vary by it. The
+  // enforcement half (block, the acknowledgement escape, mode routing) is pinned
+  // in tests/bin/gate-task-status-1435.test.ts.
+  describe('open-task ledger at the PR gate (#1374)', () => {
     /** One transcript line as Claude Code writes it: a tool_use block. */
     function toolUse(name: string, input: Record<string, unknown>, id = 'toolu_x'): string {
       return JSON.stringify({
@@ -1819,8 +1825,12 @@ describe('end-to-end: spell lifecycle', () => {
       env.HOOK_TRANSCRIPT_PATH = p;
     }
 
-    /** All blocking gates satisfied, so only the advisory can appear. */
+    /**
+     * All blocking gates satisfied and the task gate in `warn` mode, so the only
+     * thing that can appear is the ledger's own line — on stdout, exit 0.
+     */
     function prReady(env: Record<string, string>): void {
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  task_status_gate: warn\n');
       writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: true });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
     }
@@ -1957,6 +1967,9 @@ describe('end-to-end: spell lifecycle', () => {
 
     it('still reports while the PR is blocked for another reason', () => {
       const env = baseEnv(tmpDir);
+      // warn mode, so the failing gate below is the ONLY thing blocking — the
+      // point is that the ledger still speaks when it is not itself the blocker.
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  task_status_gate: warn\n');
       writeState(tmpDir, { testsRun: false, simplifyRun: true, learningsStored: true });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       withTranscript(env, taskCreate('1'));
@@ -1968,12 +1981,17 @@ describe('end-to-end: spell lifecycle', () => {
     it('is silent when task_create_first is off — both halves or neither', () => {
       // The reminder to OPEN a list and the reminder to CLOSE it are one
       // feature. A project that turned the nag off must not get the other end.
-      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  task_create_first: false\n');
       const env = baseEnv(tmpDir);
       prReady(env);
+      // After prReady, which writes its own moflo.yaml. Deliberately without a
+      // task_status_gate key: `task_create_first: false` alone must silence both
+      // halves, including the mode that would otherwise block.
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  task_create_first: false\n');
       withTranscript(env, [toolUse('TaskCreate', { subject: 'a', description: 'a' })]);
       const r = runGate('check-before-pr', env);
       expect(r.stdout).not.toContain('still open');
+      expect(r.stderr).not.toContain('still open');
+      expect(r.exitCode).toBe(0);
     });
 
     it('is silent when the host forwards no transcript path', () => {
@@ -2615,6 +2633,10 @@ describe('gate-hook.mjs: session_id forwarding (#838)', () => {
 // forwarding step is the part that can regress.
 describe('gate-hook.mjs: transcript_path forwarding (#1374)', () => {
   it('forwards transcript_path so the PR gate can count open tasks', async () => {
+    // warn mode keeps this on the exit-0 path, which is what the forwarding
+    // assertion is about; the block mode #1435 made the default is pinned in
+    // tests/bin/gate-task-status-1435.test.ts.
+    writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  task_status_gate: warn\n');
     writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: true });
     const transcript = join(tmpDir, 'transcript.jsonl');
     writeFileSync(transcript, [

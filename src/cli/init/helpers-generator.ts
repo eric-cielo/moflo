@@ -218,7 +218,7 @@ var os = require('os');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, tasksAcknowledged: false, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, verifyRun: false, verifyOutcome: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
 
 function readState() {
   try {
@@ -266,9 +266,17 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true };
+  // #1435 — task_status_gate is a MODE ('block' | 'warn' | 'off'), not a boolean;
+  // boolean forms are accepted so it reads like its neighbours. Unrecognised
+  // values keep the default: a typo must not become a stealth opt-out.
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true, task_status_gate: 'block' };
   var content = MOFLO_YAML;
   if (content) {
+    var tsg = /task_status_gate:\\s*['"]?(block|warn|off|false|true)['"]?/i.exec(content);
+    if (tsg) {
+      var tsgMode = tsg[1].toLowerCase();
+      defaults.task_status_gate = tsgMode === 'false' ? 'off' : tsgMode === 'true' ? 'block' : tsgMode;
+    }
     if (/memory_first:\\s*false/i.test(content)) defaults.memory_first = false;
     if (/task_create_first:\\s*false/i.test(content)) defaults.task_create_first = false;
     if (/context_tracking:\\s*false/i.test(content)) defaults.context_tracking = false;
@@ -713,6 +721,71 @@ var EDIT_RESET_SKIP_PATH_RE = /(?:^|[\\\\\\/])\\.github[\\\\\\/](?:workflows|ISS
 // new untested surface for code review.
 var EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE = /(?:^|[\\\\\\/])(__tests__|__mocks__|tests?|spec|specs|cypress|e2e|fixtures?)[\\\\\\/]|\\.(test|spec)\\.[mc]?[jt]sx?$|\\.fixture\\.[mc]?[jt]sx?$/i;
 
+// #1374/#1435 — count TaskCreate calls against terminal TaskUpdate calls in the
+// session transcript. SYNC: mirrors bin/gate.cjs readTaskLedger (see there for
+// why the transcript, and not a TaskUpdate observer or Claude Code's task store).
+//
+// This template variant omits RELAXATIONS the synced bin/gate.cjs carries (the
+// docs-only exemption, fingerprint expiry) — omitting those only makes the
+// fallback stricter. An ENFORCEMENT gate is the opposite: leaving it out would
+// make the fallback silently permissive, which is the exact failure #1435 is
+// about. So it is mirrored in full.
+var TRANSCRIPT_MAX_BYTES = 16 * 1024 * 1024;
+function readTaskLedger() {
+  var tp = process.env.HOOK_TRANSCRIPT_PATH || '';
+  if (!tp) return null;
+  var raw;
+  try {
+    var tst = fs.statSync(tp);
+    if (!tst.isFile() || tst.size > TRANSCRIPT_MAX_BYTES) return null;
+    raw = fs.readFileSync(tp, 'utf-8');
+  } catch (e) { return null; }
+  var created = 0, createdIdCount = 0;
+  var pendingCreates = {}, createdIds = {}, latest = {};
+  var pos = 0;
+  while (pos <= raw.length) {
+    var nl = raw.indexOf('\\n', pos);
+    var line = nl < 0 ? raw.slice(pos) : raw.slice(pos, nl);
+    pos = nl < 0 ? raw.length + 1 : nl + 1;
+    if (line.indexOf('TaskCreate') < 0 && line.indexOf('TaskUpdate') < 0
+      && line.indexOf('created successfully') < 0) continue;
+    var entry;
+    try { entry = JSON.parse(line); } catch (e) { continue; }
+    var content = entry && entry.message && entry.message.content;
+    if (!Array.isArray(content)) continue;
+    for (var ci = 0; ci < content.length; ci++) {
+      var block = content[ci];
+      if (!block) continue;
+      if (block.type === 'tool_result') {
+        if (!pendingCreates[block.tool_use_id]) continue;
+        delete pendingCreates[block.tool_use_id];
+        var text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
+        var m = /Task #(\\S+) created successfully/.exec(text || '');
+        if (m && !createdIds[m[1]]) { createdIds[m[1]] = true; createdIdCount++; }
+        continue;
+      }
+      if (block.type !== 'tool_use') continue;
+      if (block.name === 'TaskCreate') {
+        created++;
+        if (block.id) pendingCreates[block.id] = true;
+        continue;
+      }
+      if (block.name !== 'TaskUpdate') continue;
+      var tinput = block.input || {};
+      var tid = tinput.taskId != null ? tinput.taskId : tinput.task_id;
+      if (tid == null || typeof tinput.status !== 'string' || !tinput.status) continue;
+      latest[String(tid)] = tinput.status;
+    }
+  }
+  if (created === 0) return null;
+  var open = created - createdIdCount;
+  Object.keys(createdIds).forEach(function(id) {
+    if (latest[id] !== 'completed' && latest[id] !== 'deleted') open++;
+  });
+  if (open > created) open = created;
+  return { created: created, closed: created - open, open: open };
+}
+
 switch (command) {
   case 'check-before-agent': {
     // Mostly advisory. The TaskCreate + memory reminders below go to stdout and
@@ -827,6 +900,28 @@ switch (command) {
     s.tasksCreated = true;
     s.taskCount = (s.taskCount || 0) + 1;
     writeState(s);
+    break;
+  }
+  // #1435 — the escape from the task-status gate, for work deliberately left
+  // open. Session-scoped via STATE_DEFAULTS; no prompt or edit reset touches it.
+  case 'record-tasks-acknowledged': {
+    var s = readState();
+    if (!s.tasksAcknowledged) {
+      s.tasksAcknowledged = true;
+      writeState(s);
+    }
+    // writeState swallows its own errors so a gate never crashes its hook. This
+    // is the ONLY escape from a BLOCKING gate, so an unconfirmed write would
+    // report "satisfied" and block the next 'gh pr create' anyway — confirm it.
+    if (!readState().tasksAcknowledged) {
+      process.stderr.write('Task-status gate NOT satisfied: the acknowledgement could not be persisted to\\n' +
+        STATE_FILE + '\\n' +
+        'Check that the file and its directory are writable, then run this again.\\n' +
+        'To proceed without it: set gates: task_status_gate: off in moflo.yaml.\\n');
+      process.exit(1);
+    }
+    process.stdout.write('Task-status gate satisfied: open tasks acknowledged as deliberately deferred.\\n' +
+      'They stay visible in the task list — this records the decision, it does not close them.\\n');
     break;
   }
   case 'record-memory-searched': {
@@ -1014,7 +1109,30 @@ switch (command) {
   case 'check-before-pr': {
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\\s*|\\|\\|\\s*|;\\s*)\\s*(?:[A-Z_][A-Z0-9_]*=\\S+\\s+)*gh\\s+pr\\s+create\\b/.test(cmd)) break;
+    // #1435 — task-status gate. Subordinate to task_create_first so both halves
+    // of the task nag are on or off together; fail-open when the ledger is null.
+    // State is read once for the whole case and reused below; reading it before
+    // the ledger keeps an acknowledged run off the transcript scan entirely.
     var s = readState();
+    if (config.task_create_first && config.task_status_gate !== 'off' && !s.tasksAcknowledged) {
+      var ledger = readTaskLedger();
+      if (ledger && ledger.open > 0) {
+        var tally = ledger.created + ' task' + (ledger.created === 1 ? '' : 's') +
+          ' created this session, ' + ledger.open + ' still open.';
+        var closeIt = 'Close them with TaskUpdate (status: completed), or delete the ones ' +
+          'that no longer apply, so the run does not report done over an unfinished list.\\n';
+        if (config.task_status_gate === 'warn') {
+          process.stdout.write('REMINDER: ' + tally + ' ' + closeIt);
+        } else {
+          process.stderr.write('BLOCKED: ' + tally + '\\n' + closeIt +
+            'Deferring them on purpose is a legitimate outcome — declare it instead of\\n' +
+            'closing tasks that are not done: node "' + __filename + '" record-tasks-acknowledged\\n' +
+            GATE_ORIGIN_NOTE + '\\n' +
+            'Report instead of blocking via moflo.yaml: gates: task_status_gate: warn   (or: off)\\n');
+          process.exit(2);
+        }
+      }
+    }
     var missing = [];
     if (config.testing_gate && !s.testsRun) missing.push('tests have not run green since the last code edit (run npm test, vitest, jest, pytest, or similar — a run whose output reports failures does not count)');
     if (config.simplify_gate && !s.simplifyRun) missing.push('/flo-simplify (or /distill) has not run since the last code edit');
@@ -1285,6 +1403,34 @@ if (hookContext.tool_response && typeof hookContext.tool_response === 'object') 
   }
 }
 
+// #1435 — deliver a PASSING gate's advisory to Claude, not only to the transcript.
+//
+// Claude Code shows a PreToolUse/PostToolUse hook's stdout to the user in
+// transcript mode and stops there; the model never sees it. So every advisory
+// the gates emit on the exit-0 path was invisible on exactly the runs it was
+// written for: #1374's open-task count, the pre-Agent TaskCreate reminder, the
+// namespace hint, the docs-only and simplify-auto-pass notes. They surfaced only
+// when some OTHER gate blocked, because the catch arm below re-routes err.stdout
+// to stderr — i.e. only once the PR had already been stopped for another reason.
+// A consumer shipped a PR over four untouched tasks with that reminder "working".
+//
+// \`hookSpecificOutput.additionalContext\` is the documented channel from a passing
+// tool hook into the model's context. Wrap there and nowhere else: SessionStart
+// and UserPromptSubmit already inject their stdout as context, so wrapping those
+// would rewrite a working path for nothing. An unknown or absent hook_event_name
+// falls back to raw stdout — byte-identical to the previous behaviour.
+var ADVISORY_EVENTS = { PreToolUse: true, PostToolUse: true };
+function emitAdvisory(text) {
+  var event = hookContext.hook_event_name;
+  if (!ADVISORY_EVENTS[event]) {
+    process.stdout.write(text);
+    return;
+  }
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: event, additionalContext: text },
+  }) + '\\n');
+}
+
 // Run gate.cjs with the enriched environment
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
@@ -1292,7 +1438,7 @@ try {
   var output = execFileSync('node', [gateScript, command], {
     env: env, encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true
   });
-  if (output.trim()) process.stdout.write(output);
+  if (output.trim()) emitAdvisory(output);
   process.exit(0);
 } catch (err) {
   // gate.cjs exit(2) = block, exit(1) = also block attempt — translate both to exit(2)

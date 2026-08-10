@@ -119,7 +119,15 @@ TaskList()  // Shows what's now unblocked
 TaskUpdate({ taskId: "2", status: "in_progress" })  // Next agent starts
 ```
 
-Close every task you open. moflo's PR gate reads the session transcript on `gh pr create` and prints `N tasks created this session, M still open` — an unclosed list reports as unfinished work on the PR. Mark tasks that no longer apply `status: "deleted"`; that closes the loop exactly like `completed`.
+**Close every task you open — `gh pr create` is blocked until you do.** moflo's PR gate reads the session transcript, counts the tasks this session opened against the ones it closed, and stops the PR while any remain open. A stale list reports work as not-started that is about to merge.
+
+| Situation | Action |
+|-----------|--------|
+| The work is done | `TaskUpdate({ taskId: "1", status: "completed" })` |
+| The task no longer applies | `TaskUpdate({ taskId: "1", status: "deleted" })` — closes the loop exactly like `completed` |
+| The work is deliberately deferred past this PR | Run the acknowledgement command the block message prints — it credits the gate and leaves the tasks open |
+
+Never mark a task `completed` to clear the gate. The acknowledgement path exists so the honest outcome costs one command; a false `completed` costs the user their only accurate view of what shipped. Set `gates: task_status_gate: warn` in `moflo.yaml` to report instead of block, or `off` to silence it.
 
 ---
 
