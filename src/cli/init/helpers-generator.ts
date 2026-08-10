@@ -355,6 +355,18 @@ var COORD_FALLBACK_NOTE = 'If mcp__moflo__* tools are unavailable this session (
 // #1348 — the pre-PR gates are order-dependent; naming only the missing one left
 // callers to rediscover the sequence by trial. SYNC: mirrors bin/gate.cjs.
 var ORDER_HINT = 'Order that satisfies all of them: tests green -> /flo-simplify (re-run tests if it edits) -> /verify -> its memory_store verdict -> gh pr create\\n';
+// #1434 — the old text named the mechanism but no quality bar, so the cheapest
+// way past the gate was a summary of the run. The escape command is built from
+// __filename: the caller is the model typing into Bash, where $CLAUDE_PROJECT_DIR
+// is unset and a relative path breaks from any cwd but the project root.
+// SYNC: mirrors bin/gate.cjs.
+var LEARNINGS_MISSING =
+  'no durable lesson recorded. A lesson qualifies only if it would help a future session ' +
+  'working on a DIFFERENT task — a reusable pattern, a trap, a decision + rationale. ' +
+  'Store one with mcp__moflo__memory_store (namespace "learnings"; use "patterns" for a ' +
+  'reusable code shape). What THIS run changed is git history — it belongs in the PR body, ' +
+  'not in memory. If this run taught nothing new, say so instead of inventing one: ' +
+  'node "' + __filename + '" record-no-durable-lesson';
 // #1294 Finding 3 — exempt ephemeral reads/scans under the OS temp dir
 // (background-task output, scratchpads) from the memory-first gate. Mirrors
 // bin/gate.cjs isEphemeralPath. Cross-platform via os.tmpdir(); normalizes a
@@ -857,11 +869,22 @@ switch (command) {
     // rather than per-task-transition.
     break;
   }
-  case 'record-learnings-stored': {
+  // #1434 — a mandatory write with nothing to say produces filler that displaces
+  // reusable lessons from every future bounded search. Both credits set the same
+  // flag and differ only in whether the run has something to say, so they share
+  // one case body. SYNC: mirrors bin/gate.cjs.
+  case 'record-learnings-stored':
+  case 'record-no-durable-lesson': {
     var s = readState();
     if (!s.learningsStored) {
       s.learningsStored = true;
       writeState(s);
+    }
+    if (command === 'record-no-durable-lesson') {
+      process.stdout.write(
+        'Learnings gate satisfied: no durable lesson declared for this run.\\n' +
+        'What this run did belongs in the PR body, not in memory.\\n',
+      );
     }
     break;
   }
@@ -995,7 +1018,7 @@ switch (command) {
     var missing = [];
     if (config.testing_gate && !s.testsRun) missing.push('tests have not run green since the last code edit (run npm test, vitest, jest, pytest, or similar — a run whose output reports failures does not count)');
     if (config.simplify_gate && !s.simplifyRun) missing.push('/flo-simplify (or /distill) has not run since the last code edit');
-    if (config.learnings_gate && !s.learningsStored) missing.push('learnings have not been stored (call mcp__moflo__memory_store)');
+    if (config.learnings_gate && !s.learningsStored) missing.push(LEARNINGS_MISSING);
     if (missing.length === 0) break;
     process.stderr.write('BLOCKED: gh pr create requires the following before opening a PR:\\n');
     for (var i = 0; i < missing.length; i++) {

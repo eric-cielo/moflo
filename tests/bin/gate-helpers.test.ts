@@ -1647,7 +1647,7 @@ describe('end-to-end: spell lifecycle', () => {
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(2);
       expect(r.stderr).toContain('BLOCKED');
-      expect(r.stderr).toContain('learnings have not been stored');
+      expect(r.stderr).toContain('no durable lesson recorded');
     });
 
     it('blocks PR when tests have not run', () => {
@@ -1676,7 +1676,7 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.exitCode).toBe(2);
       expect(r.stderr).toContain('tests have not run');
       expect(r.stderr).toContain('/flo-simplify (or /distill) has not run');
-      expect(r.stderr).toContain('learnings have not been stored');
+      expect(r.stderr).toContain('no durable lesson recorded');
     });
 
     it('allows PR when all three gates are satisfied', () => {
@@ -1703,7 +1703,7 @@ describe('end-to-end: spell lifecycle', () => {
       env.TOOL_INPUT_command = 'GH_TOKEN=x BUILD_ID=1 gh pr create --title test';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(2);
-      expect(r.stderr).toContain('learnings have not been stored');
+      expect(r.stderr).toContain('no durable lesson recorded');
     });
 
     it('does not block non-PR bash commands', () => {

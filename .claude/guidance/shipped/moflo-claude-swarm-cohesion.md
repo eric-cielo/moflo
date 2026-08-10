@@ -132,7 +132,7 @@ Close every task you open. moflo's PR gate reads the session transcript on `gh p
 | 3 | Mark `completed` when results return |
 | 4 | Use `TaskList` to monitor what's unblocked |
 | 5 | Synthesize all agent outputs before proceeding |
-| 6 | Store learnings in memory after completion |
+| 6 | Store a learning after completion **only if** it would help a different future task — a run summary belongs in the PR body, not memory |
 
 ---
 

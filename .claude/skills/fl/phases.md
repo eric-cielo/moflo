@@ -173,18 +173,60 @@ repository and their git history is permanent — moflo does not sign their comm
 
 **When it runs:** by default (`verify_before_done` now defaults true) and always under `--sdd`; `--no-verify` skips it for one run. See `./sdd.md` for triggers and `.claude/skills/verify/SKILL.md` for how verification is performed.
 
-### 5.2 Store learnings
-Before opening the PR, call `mcp__moflo__memory_store` with what was learned. The `check-before-pr` gate blocks `gh pr create` until this has run.
+### 5.2 Record a durable lesson — or declare there isn't one
+
+**A run summary is not a learning.** What this run changed — files touched, the fix applied,
+the decision taken for this ticket — is git history and belongs in the PR body. Writing it to
+memory instead is audit exhaust: one ticket, one commit, applicable never again. `memory_search`
+returns a **bounded** result set, so every such entry permanently displaces a reusable lesson
+from every future search. That cost is retrieval quality, not disk.
+
+Apply the **durability bar** — the same one `/meditate` uses:
+
+> *Would this help a future session working on a **different** task?*
+
+| Store it | Where | Skip it — it is not a lesson |
+|----------|-------|------------------------------|
+| A reusable pattern: "for X, do Y because Z" | `learnings` | "Fixed #<n> by editing `<file>`" → PR body |
+| A trap: "W silently fails when V" | `learnings` | "Added tests for Z" → the test records itself |
+| A decision + rationale future work must honor | `learnings` | "Ran tests, they passed" → the run records itself |
+| A reusable code shape this repo should copy | `patterns` | Restating an existing CLAUDE.md / guidance rule |
+
+Key the entry on the **symptom or rule**, not the ticket. A future session hits the symptom
+without knowing the issue number, so a ticket-shaped key is unfindable exactly when it is needed.
+(An incident narrative may carry the issue as provenance — `1145-daemon-port-collision-fix` — but
+the searchable words must still be the symptom.) A real entry from this repo, abridged:
 
 ```
 mcp__moflo__memory_store:
-  key: "pattern:<topic>"
-  namespace: "patterns"
-  value: "<files changed, patterns used, decisions made>"
-  tags: ["<relevant-tags>"]
+  key: "wal-defeats-db-mtime-as-change-signal"
+  namespace: "learnings"
+  value: "In WAL mode SQLite writes land in the -wal sidecar, so the .db file's mtime
+          stops advancing on write. Any cache or staleness check keyed on db mtime
+          silently never invalidates. Hash the schema+row count, or stat the -wal too."
+  tags: ["sqlite", "caching", "gotcha"]
 ```
 
-This step happens before `gh pr create`, not after.
+Note what makes it durable: it states a rule that holds beyond the ticket that discovered it,
+and a future session hitting a stale-cache symptom finds it without knowing the issue existed.
+
+**If this run taught nothing new, do not invent something.** Declare it and move on — the
+`check-before-pr` gate accepts the declaration in place of a write:
+
+```bash
+node .claude/helpers/gate.cjs record-no-durable-lesson    # from the project root
+```
+
+(When the gate has already blocked, it prints this command with an absolute path — use that
+verbatim and the cwd stops mattering.)
+
+Most runs land here, and that is the expected outcome: a routine fix in a well-understood area
+produces no transferable lesson. One real lesson beats five manufactured ones.
+
+Either path satisfies the gate, and either way it happens before `gh pr create`, not after.
+Note that when `/verify` ran (5.1b, the default), its verdict write has **already** satisfied
+this gate — so reach for `memory_store` here only when you genuinely have a lesson, never to
+unblock the PR.
 
 ### 5.3 Create the PR
 

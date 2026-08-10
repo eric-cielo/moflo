@@ -172,6 +172,25 @@ var GATE_ORIGIN_NOTE = 'This is a moflo hook, not a Claude Code permission rule 
 // /verify's Step 5 memory_store carries the verdict AND stamps learnings, which
 // is why learnings has no separate step here.
 var ORDER_HINT = 'Order that satisfies all of them: tests green -> /flo-simplify (re-run tests if it edits) -> /verify -> its memory_store verdict -> gh pr create\n';
+// #1434 — the old text ('learnings have not been stored (call memory_store)')
+// named the mechanism but no quality bar, so the cheapest way past it was a
+// summary of the run — audit exhaust that displaces reusable lessons from every
+// future bounded search. Name the bar AND the no-write path here: an escape
+// hatch nobody can find is not an escape hatch (see #1332's gate deadlock).
+//
+// The escape command is built from __filename, not written as a relative path.
+// The caller is the model typing into a Bash tool, NOT a hook: $CLAUDE_PROJECT_DIR
+// is unset there (so the settings.json form would expand to "/.claude/..."), and a
+// bare `.claude/helpers/gate.cjs` breaks from any cwd but the project root. The
+// running script's own absolute path is correct on every OS and from any cwd;
+// double quotes carry Windows separators and spaces through the shell.
+var LEARNINGS_MISSING =
+  'no durable lesson recorded. A lesson qualifies only if it would help a future session ' +
+  'working on a DIFFERENT task — a reusable pattern, a trap, a decision + rationale. ' +
+  'Store one with mcp__moflo__memory_store (namespace "learnings"; use "patterns" for a ' +
+  'reusable code shape). What THIS run changed is git history — it belongs in the PR body, ' +
+  'not in memory. If this run taught nothing new, say so instead of inventing one: ' +
+  'node "' + __filename + '" record-no-durable-lesson';
 var GATE_DISABLE_NOTE = 'Disable per-gate via moflo.yaml: gates: memory_first: false';
 // #1338 — Claude Code spawns stdio MCP servers once at session start and never
 // respawns them, so a session can outlive its moflo MCP connection. Naming only
@@ -1417,11 +1436,30 @@ switch (command) {
     // Why it does nothing: see applyPromptStateReset().
     break;
   }
-  case 'record-learnings-stored': {
+  // #1434 — the gate demanded one memory_store per run whether or not the run
+  // produced a reusable lesson, and a mandatory write with nothing to say
+  // produces filler: a summary of this ticket, this commit, applicable never
+  // again. memory_search returns a bounded set, so each of those displaces a
+  // real lesson from every future search — the cost is retrieval quality, not
+  // disk. Declaring "nothing durable here" is the honest outcome of a run that
+  // learned nothing new, so it has to be reachable without a write; otherwise
+  // the cheapest way past the gate stays the filler write.
+  //
+  // Both credits set the same flag; they differ only in whether the run has
+  // something to say. Sharing the case body keeps that single write in one
+  // place across all three copies of this file.
+  case 'record-learnings-stored':
+  case 'record-no-durable-lesson': {
     var s = readState();
     if (!s.learningsStored) {
       s.learningsStored = true;
       writeState(s);
+    }
+    if (command === 'record-no-durable-lesson') {
+      process.stdout.write(
+        'Learnings gate satisfied: no durable lesson declared for this run.\n' +
+        'What this run did belongs in the PR body, not in memory.\n',
+      );
     }
     break;
   }
@@ -1721,7 +1759,7 @@ switch (command) {
     var missing = [];
     if (config.testing_gate && !s.testsRun) missing.push('tests have not run green since the last code edit (run npm test, vitest, jest, pytest, or similar — a run whose output reports failures does not count)');
     if (config.simplify_gate && !s.simplifyRun) missing.push('/flo-simplify (or /distill) has not run since the last code edit');
-    if (config.learnings_gate && !s.learningsStored) missing.push('learnings have not been stored (call mcp__moflo__memory_store)');
+    if (config.learnings_gate && !s.learningsStored) missing.push(LEARNINGS_MISSING);
     if (missing.length === 0) break;
     process.stderr.write('BLOCKED: gh pr create requires the following before opening a PR:\n');
     for (var i = 0; i < missing.length; i++) {
