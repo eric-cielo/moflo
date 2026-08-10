@@ -38,6 +38,28 @@ import './src/cli/memory/suppress-sqlite-warning.js';
 // beforeEach, which runs *after* this one.
 const INITIAL_CWD = process.cwd();
 
+// Drop the ambient CLAUDE_PROJECT_DIR the runner inherited. Claude Code sets it
+// to the developer's real project root, and every `spawnSync('node', [LAUNCHER])`
+// / `[GATE]` in the suite passes `{ ...process.env }` through — so a call site
+// that forgets its own override anchors the child at the REAL repo instead of
+// its tmp fixture. `bin/session-start-launcher.mjs` §2 then rewrites
+// `.claude/workflow-state.json` with the 4-field session-reset shape, wiping the
+// live session's memorySearched/sessionId and every gate flag mid-run. Measured:
+// two launcher test files were enough (`tests/bin/launcher-visibility.test.ts`
+// spawned the launcher with `{ cwd: root }` and no env at all).
+//
+// CI never sets the var, so unsetting it here makes local runs match CI rather
+// than diverge from it — the divergence is precisely why this only ever bit a
+// developer. Nothing in the suite reads it expecting the real repo: every test
+// that needs an anchor assigns its own (and restores to `undefined`, i.e. this
+// state). With it unset, `findProjectRoot` walks up from the child's cwd, which
+// for a tmp fixture stays in the tmp fixture.
+//
+// Deleted once at module load, NOT in the beforeEach below: test files that set
+// the anchor outside a hook (module scope, `beforeAll`, a fixture helper) would
+// have it stripped out from under them by a per-test delete.
+delete process.env.CLAUDE_PROJECT_DIR;
+
 // Set once at module load (every test file imports this setup).
 process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 

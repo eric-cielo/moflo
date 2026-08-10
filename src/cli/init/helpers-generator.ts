@@ -976,6 +976,18 @@ switch (command) {
       writeState(s);
     }
     if (command === 'record-no-durable-lesson') {
+      // Same reasoning as record-tasks-acknowledged: this is the ONLY escape
+      // from the BLOCKING learnings gate that needs no memory_store, so an
+      // unconfirmed write would report "satisfied" and block anyway. Verified
+      // only on this arm — record-learnings-stored fires automatically on every
+      // memory_store, where a lost write still leaves the ordinary way through.
+      if (!readState().learningsStored) {
+        process.stderr.write('Learnings gate NOT satisfied: the declaration could not be persisted to\\n' +
+          STATE_FILE + '\\n' +
+          'Check that the file and its directory are writable, then run this again.\\n' +
+          'To proceed without it: set gates: learnings_gate: false in moflo.yaml.\\n');
+        process.exit(1);
+      }
       process.stdout.write(
         'Learnings gate satisfied: no durable lesson declared for this run.\\n' +
         'What this run did belongs in the PR body, not in memory.\\n',

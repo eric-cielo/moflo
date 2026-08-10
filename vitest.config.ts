@@ -142,6 +142,7 @@ export const isolationTests = [
   'tests/bin/launcher-854-fixes.test.ts',
   'tests/bin/launcher-928-dogfood-skip.test.ts',
   'tests/bin/launcher-headless-skip.test.ts',
+  'tests/bin/launcher-state-leak.test.ts',
   'tests/bin/launcher-visibility.test.ts',
   'tests/bin/prompt-hook-restart-notice.test.ts',
   'tests/system/launcher-version-skew-upgrade-boundary.test.ts',

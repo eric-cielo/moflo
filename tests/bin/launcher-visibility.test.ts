@@ -435,24 +435,36 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     const stampPath = join(root, '.moflo', 'moflo-version');
     writeFileSync(stampPath, '9.9.8');
 
-    // Stage a hanging embeddings-migration so the launcher gets stuck on the
-    // `await mod.runEmbeddingsMigrationIfNeeded(...)` call. The setInterval
-    // keeps the event loop busy so Node won't bail out via "unsettled top-level
-    // await" — we want to verify the SIGKILL path that mirrors a libuv-style
-    // crash mid-upgrade (the original failure shape from #726 task G).
+    // Stage a hanging cherry-pick so the launcher gets stuck on the
+    // `await mod.cherryPickLearningsFromLegacy(...)` call — which sits BEFORE
+    // the manifest write, and the stamp is committed immediately after that
+    // write. Hanging anything later (the embeddings migration, say) aborts the
+    // launcher on the far side of the commit and the stamp legitimately reads
+    // 9.9.9; that half of the contract is pinned by the next test. The
+    // setInterval keeps the event loop busy so Node won't bail out via
+    // "unsettled top-level await" — we want the SIGKILL path that mirrors a
+    // libuv-style crash mid-upgrade (the original failure shape from #726 task G).
     const servicesDir = join(root, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'services');
     mkdirSync(servicesDir, { recursive: true });
-    const migrationFile = join(servicesDir, 'embeddings-migration.js');
+    const cherryPickFile = join(servicesDir, 'cherry-pick-learnings.js');
     writeFileSync(
-      migrationFile,
-      'export const runEmbeddingsMigrationIfNeeded = () => new Promise(() => { setInterval(() => {}, 1000); });\n',
+      cherryPickFile,
+      'export const cherryPickLearningsFromLegacy = () => new Promise(() => { setInterval(() => {}, 1000); });\n',
     );
 
     // Spawn + SIGKILL after enough time for ESM imports + the synchronous
-    // upgrade-work blocks to reach the hanging migration. Cross-platform:
+    // upgrade-work blocks to reach the hanging cherry-pick. Cross-platform:
     // Node maps SIGKILL → TerminateProcess on Windows.
+    //
+    // Anchor CLAUDE_PROJECT_DIR like `runLauncher` above does — `cwd` alone is
+    // not enough. `resolveStateRoot()` treats an inherited value as
+    // authoritative, so without this the launcher resets whatever project the
+    // ambient env points at rather than this fixture.
     await new Promise<void>((resolveExit) => {
-      const child = spawn('node', [LAUNCHER], { cwd: root });
+      const child = spawn('node', [LAUNCHER], {
+        cwd: root,
+        env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+      });
       const killTimer = setTimeout(() => child.kill('SIGKILL'), 800);
       child.on('exit', () => {
         clearTimeout(killTimer);
@@ -460,14 +472,16 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
       });
     });
 
-    // Stamp must STILL be the old version — the launcher never reached the
-    // post-notice-clear commit point because it was killed mid-flight.
+    // Stamp must STILL be the old version — the launcher was killed before it
+    // reached the manifest write the stamp commit is gated on. (A launcher too
+    // slow to even reach the cherry-pick lands here too, which is the same
+    // verdict, so there is no timing race in this assertion.)
     expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.8');
 
     // Drop the hanging fixture so the second run can complete.
     writeFileSync(
-      migrationFile,
-      'export const runEmbeddingsMigrationIfNeeded = () => Promise.resolve();\n',
+      cherryPickFile,
+      'export const cherryPickLearningsFromLegacy = () => Promise.resolve({ copied: 0 });\n',
     );
 
     // Next launcher detects the same upgrade and completes it cleanly: stamp
@@ -482,6 +496,77 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     const notice = JSON.parse(readFileSync(noticePath, 'utf-8'));
     expect(notice.status).toBe('completed');
   });
+
+  it('aborted launcher AFTER the sync keeps the new stamp so the next run does not re-detect (#730)', async () => {
+    // The other half of the contract the previous test pins. `session-start-
+    // launcher.mjs` commits the version stamp immediately after the manifest
+    // write, on purpose: "an abort BEFORE sync still re-runs upgrade detection,
+    // while an abort AFTER sync no longer strands the stamp in a re-detect
+    // loop." Without this test only the first half is covered, and a change
+    // that moved the commit back to the end of the launcher would look green.
+    mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
+    writeFileSync(
+      join(root, 'node_modules', 'moflo', 'package.json'),
+      JSON.stringify({ name: 'moflo', version: '9.9.9' }),
+    );
+    mkdirSync(join(root, '.moflo'), { recursive: true });
+    const stampPath = join(root, '.moflo', 'moflo-version');
+    writeFileSync(stampPath, '9.9.8');
+
+    // Hang the embeddings migration — section 3e, well past the manifest write.
+    const servicesDir = join(root, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'services');
+    mkdirSync(servicesDir, { recursive: true });
+    writeFileSync(
+      join(servicesDir, 'embeddings-migration.js'),
+      'export const runEmbeddingsMigrationIfNeeded = () => new Promise(() => { setInterval(() => {}, 1000); });\n',
+    );
+
+    // Poll for the stamp rather than sleeping a fixed interval: the kill has to
+    // land after the commit, and how long the sync takes varies with runner
+    // load. A fixed delay would be a flake on a slow CI box.
+    await new Promise<void>((resolveExit, rejectExit) => {
+      const child = spawn('node', [LAUNCHER], {
+        cwd: root,
+        env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+      });
+      // Bounded well inside the `it` timeout below: the second launcher spawn
+      // still has to run to completion after this, and a deadline that ate most
+      // of the budget would turn a slow runner into a timeout that reads like a
+      // regression. The stamp lands in well under a second in practice — this
+      // ceiling only matters when something is already broken.
+      const deadline = Date.now() + 10_000;
+      const poll = setInterval(() => {
+        let stamped = false;
+        try {
+          stamped = readFileSync(stampPath, 'utf-8').trim() === '9.9.9';
+        } catch { /* mid-write — try again next tick */ }
+        if (stamped || Date.now() > deadline) {
+          clearInterval(poll);
+          child.kill('SIGKILL');
+        }
+      }, 25);
+      child.on('exit', () => {
+        clearInterval(poll);
+        resolveExit();
+      });
+      child.on('error', (err) => {
+        clearInterval(poll);
+        rejectExit(err);
+      });
+    });
+
+    expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.9');
+
+    // Drop the hang so the second run completes, and assert it treats the
+    // project as already upgraded — no re-detect loop.
+    writeFileSync(
+      join(servicesDir, 'embeddings-migration.js'),
+      'export const runEmbeddingsMigrationIfNeeded = () => Promise.resolve();\n',
+    );
+    const second = runLauncher(root);
+    expect(second.stdout).not.toContain('moflo: upgraded');
+    expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.9');
+  }, 40_000);
 
   it('replaces a stale upgrade-notice.json with a fresh completed notice on a subsequent upgrade (#738)', () => {
     // Pre-seed with a stale notice from a prior upgrade. Section 0-pre wipes
