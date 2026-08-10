@@ -114,6 +114,34 @@ if (hookContext.tool_response && typeof hookContext.tool_response === 'object') 
   }
 }
 
+// #1435 — deliver a PASSING gate's advisory to Claude, not only to the transcript.
+//
+// Claude Code shows a PreToolUse/PostToolUse hook's stdout to the user in
+// transcript mode and stops there; the model never sees it. So every advisory
+// the gates emit on the exit-0 path was invisible on exactly the runs it was
+// written for: #1374's open-task count, the pre-Agent TaskCreate reminder, the
+// namespace hint, the docs-only and simplify-auto-pass notes. They surfaced only
+// when some OTHER gate blocked, because the catch arm below re-routes err.stdout
+// to stderr — i.e. only once the PR had already been stopped for another reason.
+// A consumer shipped a PR over four untouched tasks with that reminder "working".
+//
+// `hookSpecificOutput.additionalContext` is the documented channel from a passing
+// tool hook into the model's context. Wrap there and nowhere else: SessionStart
+// and UserPromptSubmit already inject their stdout as context, so wrapping those
+// would rewrite a working path for nothing. An unknown or absent hook_event_name
+// falls back to raw stdout — byte-identical to the previous behaviour.
+var ADVISORY_EVENTS = { PreToolUse: true, PostToolUse: true };
+function emitAdvisory(text) {
+  var event = hookContext.hook_event_name;
+  if (!ADVISORY_EVENTS[event]) {
+    process.stdout.write(text);
+    return;
+  }
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: event, additionalContext: text },
+  }) + '\n');
+}
+
 // Run gate.cjs with the enriched environment
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
@@ -121,7 +149,7 @@ try {
   var output = execFileSync('node', [gateScript, command], {
     env: env, encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true
   });
-  if (output.trim()) process.stdout.write(output);
+  if (output.trim()) emitAdvisory(output);
   process.exit(0);
 } catch (err) {
   // gate.cjs exit(2) = block, exit(1) = also block attempt — translate both to exit(2)

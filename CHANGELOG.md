@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — task lists shipped stale, and the reminder that was supposed to catch it was invisible (#1435)
+
+A `/flo` run on a consumer project created four tasks, completed all four items of work, verified,
+committed, and shipped a green PR with `TaskUpdate` called **zero** times. All four tasks ended the
+run at `pending`. #1374 had already added the check that was supposed to catch exactly this.
+
+It was running. It just could not be heard. The open-task count is written to **stdout**, and
+`check-before-pr` exits 0 when the other gates pass — and Claude Code surfaces a passing
+PreToolUse hook's stdout in transcript mode only. The model never sees it, and the user sees it
+only by opening the transcript. It reached anyone at all only when some *other* gate blocked, because
+`gate-hook.mjs` re-routes a failed gate's stdout to stderr. So the closing half of #1374 fired
+solely on runs that had already been stopped for another reason, and was a no-op on every clean one.
+
+Both halves are fixed:
+
+- **Passing-gate advisories now reach Claude.** `gate-hook.mjs` emits exit-0 stdout on `PreToolUse`
+  and `PostToolUse` as `hookSpecificOutput.additionalContext`, the documented channel into the
+  model's context. This repairs every advisory on that path, not just this one — the TaskCreate
+  reminder, the pre-Agent memory reminder, the namespace hint, and the docs-only / simplify-auto-pass
+  notes were all equally unheard. `SessionStart` and `UserPromptSubmit` already inject their stdout
+  as context and are deliberately untouched.
+- **Open tasks now block the PR.** New `gates.task_status_gate`: `block` (default), `warn` (the old
+  report-only behaviour, now actually delivered), or `off`. Deliberate deferrals stay legitimate —
+  the block prints `node "<abs path>/.claude/helpers/gate.cjs" record-tasks-acknowledged`, which
+  credits the gate without closing anything, so the honest outcome costs one command and no task is
+  ever marked `completed` to clear a gate. The gate stays subordinate to `task_create_first`, so a
+  project that turned the nag off is not blocked about the other end of it, and it fails **open**:
+  a missing, oversized, or unreadable transcript, or a session with no `TaskCreate` at all, blocks
+  nothing.
+
+**Consumer impact.** After upgrading, a session that opens tasks and leaves them open will be stopped
+at `gh pr create` until they are closed, deleted, or acknowledged. Set `gates: task_status_gate: warn`
+to keep report-only behaviour, or `off` to silence it.
+
 ### Fixed — the learnings gate manufactured filler instead of lessons (#1434)
 
 `check-before-pr` blocked `gh pr create` until some `memory_store` had run, and credited any write

@@ -107,9 +107,11 @@ research → ticket → execute → tests → simplify → learnings → pr
 | Tests | Run unit + integration + E2E |
 | Simplify | Run `/flo-simplify` on changed code |
 | Learnings | Store a **durable** lesson — one that helps a *different* future task — or declare there is none. A run summary belongs in the PR body, never in memory |
-| PR | Open the PR, update issue status |
+| PR | Close every task this run opened, then open the PR and update issue status |
 
-The tests, simplify, and learnings steps are enforced by hooks. `gh pr create` is blocked by `check-before-pr` until each has run in the current session. Skill text describes the flow; the gates handle compliance.
+The tests, simplify, learnings, and task-closure steps are enforced by hooks. `gh pr create` is blocked by `check-before-pr` until each has run in the current session. Skill text describes the flow; the gates handle compliance.
+
+**Close the task list before the PR, and close it honestly.** `TaskUpdate` each task `completed`, or `deleted` if it no longer applies. Work deliberately left open is a legitimate outcome — the block message prints a one-command acknowledgement for it. Never mark a task `completed` just to clear the gate: the list is the user's only view of what actually shipped.
 
 ## Companion files
 

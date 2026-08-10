@@ -13,7 +13,7 @@ var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 // the code it describes, so a change made outside Write/Edit/MultiEdit (a Bash
 // write, a branch switch, the next issue in the same session) invalidates it.
 // See creditFingerprint() for why the boolean flags alone cannot.
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, testsFingerprint: null, simplifyRun: false, simplifySnapshotSha: null, simplifyFingerprint: null, verifyRun: false, verifyOutcome: null, verifyFingerprint: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, tasksAcknowledged: false, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, testsFingerprint: null, simplifyRun: false, simplifySnapshotSha: null, simplifyFingerprint: null, verifyRun: false, verifyOutcome: null, verifyFingerprint: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -70,9 +70,24 @@ function loadGateConfig() {
   // ships a real /verify skill and has /flo delegate to it, so leaving it off by
   // default would make the default /flo run silently skip the acceptance check.
   // Disable per-project with `verify_before_done: false` or per-run `--no-verify`.
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true };
+  // task_status_gate is a MODE, not a boolean: 'block' | 'warn' | 'off' (#1435).
+  // #1374 shipped the open-task count as a warn-only stdout line, and a consumer
+  // still shipped a PR over four untouched tasks — a reminder that survived ten
+  // consecutive ignores in one session is not a control. Blocking is the default
+  // because the honest "these stay open on purpose" outcome is one command away
+  // (record-tasks-acknowledged), so nothing here can deadlock a run.
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true, task_status_gate: 'block' };
   var content = MOFLO_YAML;
   if (content) {
+    // Boolean forms are accepted so this key reads like every other gate in the
+    // block: `false` is the same opt-out `testing_gate: false` is, `true` means
+    // enforce. Anything unrecognised falls through to the default rather than
+    // silently disabling the gate — a typo must not be a stealth opt-out.
+    var tsg = /task_status_gate:\s*['"]?(block|warn|off|false|true)['"]?/i.exec(content);
+    if (tsg) {
+      var mode = tsg[1].toLowerCase();
+      defaults.task_status_gate = mode === 'false' ? 'off' : mode === 'true' ? 'block' : mode;
+    }
     if (/memory_first:\s*false/i.test(content)) defaults.memory_first = false;
     if (/task_create_first:\s*false/i.test(content)) defaults.task_create_first = false;
     if (/context_tracking:\s*false/i.test(content)) defaults.context_tracking = false;
@@ -1374,6 +1389,41 @@ switch (command) {
     writeState(s);
     break;
   }
+  // #1435 — the escape from the task-status gate, for work deliberately left
+  // open. Session-scoped like `learningsStored`: it lives in STATE_DEFAULTS, so
+  // session-reset clears it, and neither applyPromptStateReset nor
+  // reset-edit-gates touches it — a decision the user made about the task list
+  // is not invalidated by the next prompt or the next source edit.
+  //
+  // A plain flag, not a count. The command is typed by the model into a Bash
+  // tool, where HOOK_TRANSCRIPT_PATH is unset (it is forwarded by gate-hook.mjs
+  // from the hook payload and exists only inside a hook), so this process cannot
+  // read the ledger to record WHICH tasks were acknowledged even if it wanted to.
+  case 'record-tasks-acknowledged': {
+    var s = readState();
+    if (!s.tasksAcknowledged) {
+      s.tasksAcknowledged = true;
+      writeState(s);
+    }
+    // writeState swallows its own errors by design — a gate must never crash the
+    // hook it runs in. That was harmless while every recorder was advisory. This
+    // one is the ONLY escape from a BLOCKING gate, so a lost write would report
+    // "satisfied" and then block the very next `gh pr create` with nothing said
+    // about why: #1332's deadlock shape exactly. Confirm it landed before
+    // claiming it did, and name the file and the way out when it did not.
+    if (!readState().tasksAcknowledged) {
+      process.stderr.write(
+        'Task-status gate NOT satisfied: the acknowledgement could not be persisted to\n' +
+        STATE_FILE + '\n' +
+        'Check that the file and its directory are writable, then run this again.\n' +
+        'To proceed without it: set gates: task_status_gate: off in moflo.yaml.\n');
+      process.exit(1);
+    }
+    process.stdout.write(
+      'Task-status gate satisfied: open tasks acknowledged as deliberately deferred.\n' +
+      'They stay visible in the task list — this records the decision, it does not close them.\n');
+    break;
+  }
   case 'record-memory-searched': {
     var s = readState();
     if (markMemorySearched(s)) writeState(s);
@@ -1683,25 +1733,46 @@ switch (command) {
     // chained, piped, parenthesised, and multi-line shapes (#1410).
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!isPrCreateCommand(cmd)) break;
-    // #1374 — close the loop the TaskCreate reminder opens. Advisory: stdout,
-    // no exit, and worded as a reminder, because a message may only claim to
-    // block when it blocks (#1326). An open task list is a reporting failure,
-    // not a quality failure — blocking the PR on it would be a new deadlock.
+    // #1374 opened this loop; #1435 closes it. The count itself is unchanged —
+    // what changed is that it now has teeth and, in warn mode, a delivery path.
     //
     // Deliberately ABOVE the no-source exemption below: a docs-only PR can
     // abandon a list exactly like a source PR can, and the exemption is about
     // testing/simplify/learnings, not about whether the run told the user what
-    // it did. Gated on the same `task_create_first` flag as the reminder itself
-    // so the two halves are always consistent — a project that turned the nag
-    // off is not then nagged about the other end of it.
-    if (config.task_create_first) {
+    // it did. It also exits on its own rather than joining `missing` below, for
+    // the same reason — `missing` is unreachable on an exempt diff.
+    //
+    // Gated on the same `task_create_first` flag as the reminder itself so the
+    // two halves are always consistent: a project that turned the nag off is
+    // not then blocked about the other end of it.
+    //
+    // Fail-open is load-bearing. readTaskLedger() returns null on a missing,
+    // oversized, or unreadable transcript and on a session with no TaskCreate at
+    // all, and null must never block — a gate that stops PRs because it could
+    // not read a file is worse than the reporting gap it is closing.
+    //
+    // State is read ONCE for the whole case, here — the pre-PR gate logic below
+    // reuses it and nothing writes in between. Reading it before the ledger also
+    // means an already-acknowledged run never pays for the transcript scan.
+    var s = readState();
+    if (config.task_create_first && config.task_status_gate !== 'off' && !s.tasksAcknowledged) {
       var ledger = readTaskLedger();
       if (ledger && ledger.open > 0) {
-        process.stdout.write(
-          'REMINDER: ' + ledger.created + ' task' + (ledger.created === 1 ? '' : 's') +
-          ' created this session, ' + ledger.open + ' still open. Close them with ' +
-          'TaskUpdate (status: completed), or delete the ones that no longer apply, ' +
-          'so the run does not report done over an unfinished list.\n');
+        var tally = ledger.created + ' task' + (ledger.created === 1 ? '' : 's') +
+          ' created this session, ' + ledger.open + ' still open.';
+        var closeIt = 'Close them with TaskUpdate (status: completed), or delete the ones ' +
+          'that no longer apply, so the run does not report done over an unfinished list.\n';
+        if (config.task_status_gate === 'warn') {
+          process.stdout.write('REMINDER: ' + tally + ' ' + closeIt);
+        } else {
+          process.stderr.write(
+            'BLOCKED: ' + tally + '\n' + closeIt +
+            'Deferring them on purpose is a legitimate outcome — declare it instead of\n' +
+            'closing tasks that are not done: node "' + __filename + '" record-tasks-acknowledged\n' +
+            GATE_ORIGIN_NOTE + '\n' +
+            'Report instead of blocking via moflo.yaml: gates: task_status_gate: warn   (or: off)\n');
+          process.exit(2);
+        }
       }
     }
     // No-source-files exemption (#1176, supersedes the original docs-only path).
@@ -1726,7 +1797,6 @@ switch (command) {
         break;
       }
     }
-    var s = readState();
     // Expire any credit whose fingerprint no longer matches the code before
     // reading the flags. This is what catches the mutations reset-edit-gates
     // structurally cannot see — Bash writes, git checkout/pull/merge, and the

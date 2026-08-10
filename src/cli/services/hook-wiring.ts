@@ -85,7 +85,9 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   // listing it here made repairHookWiring() graft the hook back into every
   // consumer on session start, undoing the removal.
   { event: 'PostToolUse', pattern: 'record-learnings-stored' },
-  { event: 'PostToolUse', pattern: 'check-bash-memory' },
+  // PreToolUse, not PostToolUse: #1132 moved it so its process.exit(2) actually
+  // prevents the read instead of reporting one that already happened.
+  { event: 'PreToolUse', pattern: 'check-bash-memory' },
   { event: 'PostToolUse', pattern: 'record-test-run' },
   // #1338 follow-up — CLI half of the #952 swarm/hive init recorders. Listed
   // here so an existing consumer picks it up via repairHookWiring on session
@@ -166,7 +168,9 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   'record-learnings-stored':  { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_store$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored', timeout: 2000 } },
   // #1171 — widened to ^(Bash|PowerShell)$ so PS reads / PS-invoked tests credit
   // the same gates as Bash. Name kept as `check-bash-memory` for backwards compat.
-  'check-bash-memory':        { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
+  // PreToolUse since #1132: grafting it under PostToolUse — as this entry did —
+  // would repair a consumer into a gate that reports a read it can no longer stop.
+  'check-bash-memory':        { event: 'PreToolUse',       matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
   'record-test-run':          { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-test-run', timeout: 2000 } },
   // #1338 follow-up — same Bash/PowerShell PostToolUse block as record-test-run.
   'record-bash-swarm-init':   { event: 'PostToolUse',      matcher: '^(Bash|PowerShell)$',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-bash-swarm-init', timeout: 2000 } },

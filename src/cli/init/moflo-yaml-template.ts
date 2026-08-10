@@ -224,6 +224,7 @@ gates:
   task_create_first: ${gates}
   context_tracking: ${gates}
   verify_before_done: true    # Run /verify before 'gh pr create'. On by default; opt out with false or per-run --no-verify
+  task_status_gate: block     # Open tasks stop 'gh pr create'. warn → report only; off → silent
 
 # Auto-index on session start
 auto_index:
