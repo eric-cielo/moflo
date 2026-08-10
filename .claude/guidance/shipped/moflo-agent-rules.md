@@ -170,7 +170,22 @@ npx flo memory store --namespace patterns --key "brief-descriptive-key" --value 
 | `patterns` | Solutions to tricky bugs, patterns that worked, gotchas, workarounds |
 | `learnings` | Architectural choices, user-stated decisions, post-mortem insights (`knowledge` is a deprecated alias — writes auto-redirect) |
 
+**Every entry must clear one bar: would it help a future session working on a *different* task?**
+If not, it does not go in memory. `memory_search` returns a **bounded** result set, so a non-durable
+entry does not merely waste space — it permanently displaces a reusable lesson from every future
+search.
+
+**Never store a summary of the run that just happened.** What you changed, which files you touched,
+which tests you ran, and what you decided for this one ticket are git history and belong in the
+commit or PR body. That content is applicable exactly once, so it can only ever crowd out something
+that is applicable repeatedly.
+
 **Skip** generic summaries of retrieved guidance, restated rules, and trivial file-location notes — those waste retrieval bandwidth on every future search.
+
+**A gate never justifies a write.** When a gate demands a memory write and the run produced nothing
+durable, declare that instead of inventing something — a mandatory write with nothing to say
+produces filler by construction. `/flo`'s learnings gate takes
+`node .claude/helpers/gate.cjs record-no-durable-lesson` for exactly this case.
 
 ---
 

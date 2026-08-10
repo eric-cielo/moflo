@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the learnings gate manufactured filler instead of lessons (#1434)
+
+`check-before-pr` blocked `gh pr create` until some `memory_store` had run, and credited any write
+regardless of namespace or content. That made a memory write mandatory once per `/flo` run whether
+or not the run had learned anything. When it hadn't, the run wrote a summary of itself — audit
+exhaust: one ticket, one commit, applicable never again. Because `memory_search` returns a bounded
+result set, every such entry permanently displaced a reusable lesson from every future search. The
+cost was retrieval quality, not disk.
+
+The namespace was the least of it. `/flo` Phase 5.2 was headed *"Store learnings"* and told the
+agent to record *"what was learned"*, while its worked example filled the value with
+`"<files changed, patterns used, decisions made>"` — a description of the run. The block message
+(*"learnings have not been stored (call memory_store)"*) named a mechanism and no quality bar. And
+with nothing durable to say, no honest path existed: inventing something was the only route to the
+PR. A mandatory write with nothing to say produces filler by construction.
+
+So the mandate is gone rather than re-homed. A run that learned nothing declares it —
+`node .claude/helpers/gate.cjs record-no-durable-lesson` credits the gate with no write at all — and
+the block message now states the bar (*would this help a future session working on a **different**
+task?*), names that escape, and points run narration at the PR body where it belongs. Phase 5.2 and
+the shipped agent rules carry the same bar, and Phase 5.2's example is now a real durable lesson
+instead of a template describing the run. Note that on a default run `/verify`'s verdict write
+already satisfied this gate, so the prescribed second write was redundant besides.
+
+Run records were never the problem and keep their existing home in `flo runs`. Consumers pick this
+up on upgrade; no migration, and existing `learnings` entries are left alone.
+
 ### Fixed — the post-upgrade badge outlived the upgrade, and `flo status` denied working installs (#1363)
 
 Two unrelated defects, both cases of moflo misreporting its own state.

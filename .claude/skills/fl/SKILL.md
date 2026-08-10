@@ -106,7 +106,7 @@ research → ticket → execute → tests → simplify → learnings → pr
 | Execute | Assign issue, create branch, implement |
 | Tests | Run unit + integration + E2E |
 | Simplify | Run `/flo-simplify` on changed code |
-| Learnings | Call `mcp__moflo__memory_store` with what was learned |
+| Learnings | Store a **durable** lesson — one that helps a *different* future task — or declare there is none. A run summary belongs in the PR body, never in memory |
 | PR | Open the PR, update issue status |
 
 The tests, simplify, and learnings steps are enforced by hooks. `gh pr create` is blocked by `check-before-pr` until each has run in the current session. Skill text describes the flow; the gates handle compliance.
@@ -270,6 +270,6 @@ Full mode runs end-to-end without further prompts.
 6. Run `/flo-simplify` on changed code; rerun tests if it edits — `./phases.md` Phase 4.5
 7. Commit — `./phases.md` Phase 5.1
 8. **Verify — default, unless `--no-verify`** (`verifyMode`, always on under `sddMode`): delegate to the `/verify` skill — `Skill({ skill: "verify" })`. It checks the change against the acceptance criteria, reusing Phase 4's tests (no double verify) and recording its own outcome; invoking it satisfies the verify-before-done gate. Mechanics live in `.claude/skills/verify/SKILL.md`; trigger/flow in `./phases.md` Phase 5.1b.
-9. Store learnings via `mcp__moflo__memory_store` — `./phases.md` Phase 5.2
+9. Record a durable lesson via `mcp__moflo__memory_store`, or declare there is none — `./phases.md` Phase 5.2
 10. Open PR, update issue status — `./phases.md` Phases 5.3–5.4
 11. **If `mergeMode`:** await the PR's merge preconditions and merge it (native `--auto` preferred, else poll-then-merge) — `./phases.md` Phase 5.3b
