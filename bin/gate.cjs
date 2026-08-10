@@ -1506,6 +1506,23 @@ switch (command) {
       writeState(s);
     }
     if (command === 'record-no-durable-lesson') {
+      // Same reasoning as record-tasks-acknowledged above: writeState swallows
+      // its own errors so a gate never crashes the hook it runs in, and this is
+      // the ONLY escape from the BLOCKING learnings gate that does not require a
+      // memory_store. A lost write here would print "satisfied" and then block
+      // the next `gh pr create` with nothing said about why — #1332's deadlock.
+      // Verified only on this arm: record-learnings-stored is fired
+      // automatically by the PostToolUse hook on every memory_store, where a
+      // failed write leaves the gate closed but the run still has the ordinary
+      // way through, and a diagnostic on every store would be noise.
+      if (!readState().learningsStored) {
+        process.stderr.write(
+          'Learnings gate NOT satisfied: the declaration could not be persisted to\n' +
+          STATE_FILE + '\n' +
+          'Check that the file and its directory are writable, then run this again.\n' +
+          'To proceed without it: set gates: learnings_gate: false in moflo.yaml.\n');
+        process.exit(1);
+      }
       process.stdout.write(
         'Learnings gate satisfied: no durable lesson declared for this run.\n' +
         'What this run did belongs in the PR body, not in memory.\n',

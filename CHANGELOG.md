@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the no-durable-lesson escape could report success on a write that never landed
+
+`writeState` swallows its own errors so a gate never crashes the hook it runs in. That is right for
+an advisory recorder and wrong for the one command that releases a *blocking* gate without doing the
+work the gate asks for: `record-no-durable-lesson` printed "Learnings gate satisfied", and if the
+write had failed the very next `gh pr create` was blocked again with nothing said about why. #1435
+hardened `record-tasks-acknowledged` against exactly this; this is the only other command with the
+shape. It now re-reads the state, and on a lost write exits non-zero naming the state file and
+`gates: learnings_gate: false`. `record-learnings-stored` shares the case body and stays silent —
+it fires automatically on every `memory_store`, where a failed write leaves the ordinary route
+through the gate intact.
+
+**Consumer impact.** None on a healthy project; the command behaves as before. On a project whose
+`.claude/workflow-state.json` is not writable, a run that would previously have looped between a
+false "satisfied" and a blocked PR now says so on the first attempt.
+
+### Fixed — running the test suite reset the developer's own workflow state
+
+A launcher spawn in `tests/bin/launcher-visibility.test.ts` passed a `cwd` but no environment, so it
+inherited the `CLAUDE_PROJECT_DIR` that Claude Code sets to the real project root. The launcher's
+session-reset then rewrote *that* project's `.claude/workflow-state.json` with its four-field
+starting shape — wiping `memorySearched`, `sessionId`, and every earned gate credit out from under
+the live session. Two test files were enough. It never showed up in CI, which does not set the
+variable: the divergence was the bug. `vitest.setup.ts` now drops the inherited value so local runs
+match CI, the spawn carries its own anchor, and a regression test spawns the launcher un-anchored
+and asserts the repo's state file is untouched.
+
+Repairing the anchor also exposed a test that had been passing for the wrong reason: with the
+launcher pointed at the real repo it never touched its own fixture, so "aborted launcher leaves the
+version stamp unchanged" was true no matter what the launcher did. Pointed at the fixture, the abort
+has to land before the manifest write the stamp commit is gated on — the test now hangs the
+cherry-pick rather than the embeddings migration, and a second test pins the other half of that
+contract: an abort *after* the sync keeps the new stamp, so the next session does not re-detect the
+upgrade.
+
+**Consumer impact.** None — test and dev-config only, nothing in this entry ships.
+
 ### Fixed — task lists shipped stale, and the reminder that was supposed to catch it was invisible (#1435)
 
 A `/flo` run on a consumer project created four tasks, completed all four items of work, verified,

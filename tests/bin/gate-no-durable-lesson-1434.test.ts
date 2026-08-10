@@ -183,6 +183,58 @@ describe('#1434 the block message teaches the bar, not just the mechanism', () =
 });
 
 /**
+ * `writeState` swallows its own errors so a gate never crashes the hook it runs
+ * in — correct while every recorder was advisory, wrong for the ONE command that
+ * releases a blocking gate without doing the work the gate asks for. Reporting
+ * success on a write that never landed leaves the next `gh pr create` blocked
+ * with nothing said about why: the deadlock #1332 already paid for once, and the
+ * same shape `record-tasks-acknowledged` was hardened against in #1435.
+ *
+ * The failure is induced by making the state path a DIRECTORY, which fails the
+ * write on every platform (Rule #1) — unlike a permissions bit, which Windows
+ * would happily ignore.
+ */
+describe('#1434 the escape hatch never claims a write it did not make', () => {
+  it('reports failure, loudly, when the declaration cannot be persisted', () => {
+    rmSync(join(root, '.claude', 'workflow-state.json'), { force: true });
+    mkdirSync(join(root, '.claude', 'workflow-state.json'), { recursive: true });
+
+    const r = gate('record-no-durable-lesson');
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).not.toContain('gate satisfied');
+    expect(r.stderr).toContain('NOT satisfied');
+    // Name the file and a way forward — a diagnostic that only says "failed"
+    // leaves the caller in the same deadlock.
+    expect(r.stderr).toContain('workflow-state.json');
+    expect(r.stderr).toContain('learnings_gate: false');
+  });
+
+  /**
+   * `record-learnings-stored` shares this case body but is fired automatically
+   * by the PostToolUse hook on every `memory_store`. A failed write there leaves
+   * the gate closed while the ordinary path through it still exists, so it must
+   * stay quiet rather than print a diagnostic on every store.
+   */
+  it('stays silent on the automatic credit, which has an ordinary way through', () => {
+    rmSync(join(root, '.claude', 'workflow-state.json'), { force: true });
+    mkdirSync(join(root, '.claude', 'workflow-state.json'), { recursive: true });
+
+    const r = gate('record-learnings-stored');
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toContain('NOT satisfied');
+  });
+
+  it('names the disable knob that actually controls this gate', () => {
+    // `learnings_gate: false` is the key `check-before-pr` reads; pointing at any
+    // other gate name would send the caller to a setting that changes nothing.
+    writeFileSync(join(root, 'moflo.yaml'), 'gates:\n  learnings_gate: false\n');
+    earnCreditsExceptLearnings();
+    const { stderr } = gate('check-before-pr', PR_CMD);
+    expect(stderr).not.toContain('durable lesson');
+  });
+});
+
+/**
  * The generated copy is the one a FRESH `flo init` writes, and every existing
  * test of it only string-matches the source. A syntax error inside the template
  * literal — a mis-escaped `\n`, an unbalanced brace — would therefore ship to
@@ -206,6 +258,25 @@ describe('#1434 the generated gate script runs, not just contains the case', () 
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('no durable lesson');
     expect(readStateFile().learningsStored).toBe(true);
+  });
+
+  it('emits the persistence diagnostic, so its escaping survives the template', () => {
+    const genPath = join(root, 'generated-gate.cjs');
+    writeFileSync(genPath, generateGateScript());
+    rmSync(join(root, '.claude', 'workflow-state.json'), { force: true });
+    mkdirSync(join(root, '.claude', 'workflow-state.json'), { recursive: true });
+
+    const r = spawnSync(process.execPath, [genPath, 'record-no-durable-lesson'], {
+      cwd: root,
+      encoding: 'utf-8',
+      timeout: 30_000,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+    });
+
+    expect(r.stderr).not.toMatch(/SyntaxError|Unexpected token/);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('NOT satisfied');
+    expect(r.stderr).toContain('learnings_gate: false');
   });
 });
 
@@ -239,6 +310,14 @@ describe('#1434 all three gate copies carry the fix', () => {
     it(`${name} resolves the escape path at runtime, not at build time`, () => {
       expect(src).toMatch(/'node "' \+ __filename \+ '"/);
       expect(src).not.toMatch(/node "\/(home|Users)\//);
+    });
+
+    /**
+     * Cheap to lose in a merge, and the loss is invisible: the command still
+     * exits 0 and still prints "satisfied", it just stops being true.
+     */
+    it(`${name} re-reads state before claiming the gate is satisfied`, () => {
+      expect(src).toContain('if (!readState().learningsStored)');
     });
   }
 });
