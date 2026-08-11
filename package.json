@@ -60,7 +60,8 @@
     "security:audit": "npm audit --omit=dev --audit-level high",
     "security:fix": "npm audit fix",
     "version": "node scripts/sync-version.mjs && git add src/cli/version.ts",
-    "flo": "node bin/cli.js"
+    "flo": "node bin/cli.js",
+    "generate:helpers": "node scripts/generate-embedded-helpers.mjs"
   },
   "dependencies": {
     "@anush008/tokenizers": "^0.6.0",

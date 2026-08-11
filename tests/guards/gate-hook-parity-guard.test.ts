@@ -22,8 +22,6 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { generateGateHookScript } from '../../src/cli/init/helpers-generator.js';
-
 const REPO_ROOT = resolve(__dirname, '../..');
 const BIN_BRIDGE = resolve(REPO_ROOT, 'bin/gate-hook.mjs');
 const DOGFOOD_BRIDGE = resolve(REPO_ROOT, '.claude/helpers/gate-hook.mjs');
@@ -36,10 +34,14 @@ function read(path: string): string {
 }
 
 describe('gate-hook.mjs parity', () => {
-  it('the generator emits byte-for-byte what bin/ ships', () => {
-    expect(generateGateHookScript().replace(/\r\n/g, '\n')).toBe(read(BIN_BRIDGE));
-  });
-
+  // The generator-vs-bin assertion that used to open this block moved to
+  // tests/guards/embedded-helpers-parity.test.ts (#1443), which makes the same
+  // comparison for all seven generated helpers rather than this one. Restating
+  // it here would assert the same equality against the same file twice.
+  //
+  // What remains is the half that guard cannot cover: the DOGFOOD copies. Those
+  // are separate files on disk that the launcher syncs, so they can still go
+  // stale independently of anything the generator does.
   it('the dogfood copy matches bin/ (the launcher syncs it — a diff means it is stale)', () => {
     expect(read(DOGFOOD_BRIDGE)).toBe(read(BIN_BRIDGE));
   });
