@@ -93,6 +93,27 @@ describe('#1443 embedded helper parity', () => {
     ).toBe((renderEmbeddedHelpers() as string).replace(/\r\n/g, '\n'));
   });
 
+  it('embeds LF only, so the committed file cannot differ by checkout platform', async () => {
+    // Rule #1 item 4. The codegen normalises CRLF on read, but a comment saying
+    // so is not a check: if that normalisation regressed, a contributor
+    // regenerating on a checkout with CRLF (a git config that overrides
+    // .gitattributes) would commit an embed carrying \r, and every consumer of
+    // the init fallback would receive helpers with CRLF shebang lines — which
+    // Git-for-Windows' MSYS bash cannot execute for pre-commit/post-commit.
+    //
+    // Asserting on the DECODED payload rather than re-running the codegen keeps
+    // this from having to mutate tracked files to prove a property.
+    const { EMBEDDED_HELPERS_BASE64 } = await import('../../src/cli/init/embedded-helpers.js');
+    for (const [name, encoded] of Object.entries(EMBEDDED_HELPERS_BASE64)) {
+      const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
+      expect(
+        decoded.includes('\r'),
+        `${name} embedded with carriage returns — regenerate on a LF checkout, and ` +
+          'check that scripts/generate-embedded-helpers.mjs still normalises CRLF on read.',
+      ).toBe(false);
+    }
+  });
+
   it('every embed decodes to real script content', async () => {
     // The failure this protects against is not hypothetical bookkeeping: the
     // fallback runs when an install is already broken, and a helper whose body
