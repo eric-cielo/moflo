@@ -316,25 +316,7 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
     expect(after.stderr).toContain('mcp__moflo__swarm_init');
   });
 
-  it('writes the same key set gate.cjs STATE_DEFAULTS declares', () => {
-    // Drift guard for the shape §2 writes. gate.cjs readState() merges
-    // STATE_DEFAULTS over whatever it parses, so a short shape behaves
-    // identically there — which is exactly why the old 4-field literal drifted
-    // unnoticed as gate fields were added.
-    const gateSource = readFileSync(GATE, 'utf-8');
-    const match = gateSource.match(/var STATE_DEFAULTS = \{([\s\S]*?)\};/);
-    expect(match, 'STATE_DEFAULTS not found in gate.cjs — update this guard').toBeTruthy();
-    const declaredKeys = [...match![1].matchAll(/(?:^|,)\s*([A-Za-z_][\w]*)\s*:/g)].map((m) => m[1]);
-    expect(declaredKeys.length).toBeGreaterThan(10);
-
-    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup' }));
-    const written = Object.keys(readStateFile());
-
-    expect(
-      written.slice().sort(),
-      'The launcher\'s reset shape has drifted from gate.cjs STATE_DEFAULTS. Add the ' +
-        'new field to freshWorkflowState() in bin/session-start-launcher.mjs §2 (and ' +
-        're-sync .claude/scripts/session-start-launcher.mjs).',
-    ).toEqual(declaredKeys.slice().sort());
-  });
+  // Shape parity with gate.cjs STATE_DEFAULTS — keys AND values — lives in
+  // tests/guards/workflow-state-shape-parity.test.ts, alongside the other
+  // declaration sites it has to hold across.
 });
