@@ -36,7 +36,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { tmpdir } from 'os';
 
@@ -131,20 +131,113 @@ function runGate(command: string, env: Record<string, string>): { stdout: string
 }
 
 describe('#1441 session-start launcher: continuing sessions keep their gate state', () => {
-  for (const source of ['compact', 'resume']) {
-    it(`leaves workflow-state.json untouched on SessionStart source="${source}"`, () => {
-      const staged = stageMidRunState();
-      runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source }));
+  it('leaves workflow-state.json untouched on SessionStart source="resume"', () => {
+    const staged = stageMidRunState();
+    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'resume' }));
 
-      const after = readStateFile();
+    // A resume reloads the conversation, so even the memory-search results are
+    // still in context — nothing to re-arm.
+    expect(
+      readStateFile(),
+      'SessionStart:resume rewrote workflow-state.json. A resume reopens the SAME ' +
+        'session — resetting it turns the #952 swarm gate and the #1297 SDD gate off ' +
+        'mid-run and throws away tests/simplify/verify credits.',
+    ).toEqual(staged);
+  });
+
+  it('keeps every earned credit on SessionStart source="compact"', () => {
+    const staged = stageMidRunState();
+    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
+
+    const after = readStateFile();
+    // Everything except the memory credit survives — the work it describes still
+    // stands after a compaction (tests ran, /verify passed, the diff is unchanged).
+    const memoryKeys = new Set(['memorySearched', 'memorySearchedBy', 'memoryRequired']);
+    for (const [key, value] of Object.entries(staged)) {
+      if (memoryKeys.has(key)) continue;
       expect(
-        after,
-        `SessionStart:${source} rewrote workflow-state.json. A ${source} continues the ` +
-          `SAME session — resetting it turns the #952 swarm gate and the #1297 SDD gate ` +
-          `off mid-run and throws away tests/simplify/verify credits.`,
-      ).toEqual(staged);
+        after[key],
+        `SessionStart:compact dropped "${key}". A compaction continues the SAME run — ` +
+          'only the memory-search credit is invalidated by the context loss.',
+      ).toEqual(value);
+    }
+  });
+
+  it('re-arms the memory gate on SessionStart source="compact"', () => {
+    stageMidRunState(); // memorySearched: true, memoryRequired: true
+    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
+
+    const after = readStateFile();
+    // `memorySearched` means "this actor has the results in context". After a
+    // compaction it does not, so carrying the credit forward hands the model a
+    // satisfied memory gate over a context holding none of the results.
+    expect(after.memorySearched).toBe(false);
+    expect(after.memorySearchedBy).toEqual({});
+    // Re-armed even though the prompt that preceded the compaction was `/compact`
+    // itself — an 8-char non-task string, which gate.cjs scores as
+    // memoryRequired: false. SessionStart fires after that UserPromptSubmit.
+    expect(after.memoryRequired).toBe(true);
+  });
+
+  it('re-arms the memory gate after a compaction that followed a /compact prompt', () => {
+    // The reported shape end-to-end: a real task arms the gate, `/compact` is
+    // submitted as a prompt and disarms it, then the compaction lands.
+    const env = {
+      TOOL_INPUT_command: '',
+      TOOL_INPUT_pattern: 'src/**',
+      TOOL_INPUT_path: '',
+      TOOL_INPUT_file_path: '',
+      HOOK_SESSION_ID: '',
+    };
+    runGate('prompt-reminder', { ...env, CLAUDE_USER_PROMPT: 'fix the launcher state reset bug' });
+    expect(readStateFile().memoryRequired).toBe(true);
+
+    runGate('prompt-reminder', { ...env, CLAUDE_USER_PROMPT: '/compact' });
+    expect(readStateFile().memoryRequired, 'precondition: /compact disarms it').toBe(false);
+    expect(runGate('check-before-scan', { ...env, CLAUDE_USER_PROMPT: '' }).exitCode).toBe(0);
+
+    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
+
+    const blocked = runGate('check-before-scan', { ...env, CLAUDE_USER_PROMPT: '' });
+    expect(
+      blocked.exitCode,
+      'The memory gate stayed disarmed through a compaction — the post-compaction ' +
+        'model explores files with no memory search and no signal that it should.',
+    ).toBe(2);
+  });
+
+  it('leaves an unparseable state file alone, and the gate still arms', () => {
+    // The catch arm. Rewriting a corrupt file here would buy nothing: gate.cjs
+    // readState() already falls back to STATE_DEFAULTS on a parse failure, and
+    // that default arms the memory gate — so the fail-safe is the same either
+    // way. What must NOT happen is a crash or a half-written file.
+    writeFileSync(join(fixture, STATE_REL), '{ this is not json');
+    const { stderr } = runLauncher(
+      JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }),
+    );
+
+    expect(readFileSync(join(fixture, STATE_REL), 'utf-8')).toBe('{ this is not json');
+    expect(stderr).toContain('re-arm the memory gate');
+
+    // The fallback that makes leaving it alone safe — assert it rather than
+    // assume it, since this branch's correctness rests on it.
+    const scan = runGate('check-before-scan', {
+      TOOL_INPUT_command: '',
+      TOOL_INPUT_pattern: 'src/**',
+      TOOL_INPUT_path: '',
+      TOOL_INPUT_file_path: '',
+      HOOK_SESSION_ID: '',
+      CLAUDE_USER_PROMPT: '',
     });
-  }
+    expect(scan.exitCode, 'a corrupt state file must fail safe to an ARMED gate').toBe(2);
+  });
+
+  it('does not create a partial state file when compacting before any prompt', () => {
+    // No state file staged: there is nothing to re-arm, and writing one here
+    // would bypass freshWorkflowState()'s shape guarantee.
+    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
+    expect(existsSync(join(fixture, STATE_REL))).toBe(false);
+  });
 
   for (const source of ['startup', 'clear']) {
     it(`resets workflow-state.json on SessionStart source="${source}"`, () => {

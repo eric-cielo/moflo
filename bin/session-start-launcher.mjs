@@ -777,6 +777,32 @@ function resolveDaemonRecyclerPath() {
 const CONTINUING_SESSION_SOURCES = new Set(['compact', 'resume']);
 const KNOWN_SESSION_SOURCES = new Set(['startup', 'clear', 'compact', 'resume']);
 
+// …but a compaction is NOT a pure "keep everything" either. The credits above
+// describe work that still stands — tests ran, /verify passed, the diff is
+// unchanged. The memory-search credit is the one thing compaction genuinely
+// invalidates: `memorySearched` says "this actor has the search results in
+// context", and after a compaction it does not. Preserving it would hand the
+// post-compaction model a satisfied memory gate over a context that no longer
+// holds a single result — the exact "moflo isn't being used" symptom, arrived
+// at from the opposite direction.
+//
+// `memoryRequired` is re-armed for the same reason, and it also closes a second
+// hole reported against #1441: gate.cjs derives `memoryRequired` from the user's
+// prompt TEXT, and `/compact` is an 8-character non-task string, so submitting it
+// set `memoryRequired: false` and the scan/read gates went quiet until some later
+// prompt happened to qualify. SessionStart fires AFTER that UserPromptSubmit, so
+// re-arming here corrects it — and unlike a prompt-text rule it also covers AUTO
+// compaction, where no `/compact` is ever typed.
+//
+// Resume is untouched by this: it reloads the conversation, so a prior search is
+// still in context.
+//
+// Forcing `memoryRequired` on is deliberate even when the pre-compaction prompt
+// was genuinely trivial and scored false on its own merits. One memory search is
+// cheap; a context-blind model exploring files with the gate disarmed is the
+// thing this whole issue is about.
+const MEMORY_CREDIT_KEYS = ['memorySearched', 'memorySearchedBy', 'memoryRequired'];
+
 // Full shape, not the 4-field literal this used to write. gate.cjs readState()
 // merges STATE_DEFAULTS over whatever it parses, so the short shape behaved
 // identically THERE — but it left a half-populated file for every other reader
@@ -813,6 +839,14 @@ function freshWorkflowState() {
   };
 }
 
+// Derived from freshWorkflowState(), not a second literal: a re-armed memory
+// gate is by definition the fresh-session value of those keys, and one place to
+// change beats two that agree only by inspection.
+function rearmedMemoryState() {
+  const fresh = freshWorkflowState();
+  return Object.fromEntries(MEMORY_CREDIT_KEYS.map((key) => [key, fresh[key]]));
+}
+
 // Bounded at 500ms by readHookStdin and short-circuited on a TTY, so a withheld
 // stdin cannot eat the 5000ms SessionStart budget (hook-block-hash.ts). Read
 // here rather than at the top of the file so the cost lands next to its only
@@ -837,6 +871,32 @@ if (!CONTINUING_SESSION_SOURCES.has(sessionSource)) {
     writeFileSync(stateFile, JSON.stringify(freshWorkflowState(), null, 2));
   } catch {
     // Non-fatal - workflow gate will use defaults
+  }
+} else if (sessionSource === 'compact') {
+  // Merge, never rewrite: everything the run has earned stays, only the memory
+  // credit is re-armed. Skipped entirely when there is no state file yet — a
+  // compaction before any prompt has nothing to re-arm, and writing a partial
+  // file here would defeat freshWorkflowState()'s shape guarantee.
+  //
+  // Read-modify-write, unsynchronised, like gate.cjs's own writeState. Safe
+  // here because a compaction quiesces the session: no tool hook is mid-flight
+  // to race with, and the next UserPromptSubmit is strictly after this hook.
+  // Leaving an unparseable file alone is also correct rather than merely
+  // tolerable — gate.cjs readState() falls back to STATE_DEFAULTS on a parse
+  // failure, which arms the memory gate. Repairing it here would only convert a
+  // fail-safe into an equivalent write.
+  try {
+    if (existsSync(stateFile)) {
+      const parsed = JSON.parse(readFileSync(stateFile, 'utf-8'));
+      writeFileSync(
+        stateFile,
+        JSON.stringify({ ...parsed, ...rearmedMemoryState() }, null, 2),
+      );
+    }
+  } catch (err) {
+    // Non-fatal, but not silent (#854): a failure here leaves the memory gate
+    // credited over a context that no longer holds the results.
+    emitWarning(`could not re-arm the memory gate after compaction (${errMessage(err)})`);
   }
 }
 
