@@ -19,6 +19,7 @@ import { makeSyncer, contentEqual, syncDirRecursive } from './lib/file-sync.mjs'
 import { INTERNAL_SKILLS } from './lib/internal-skills.mjs';
 import { parseSkillCategories, computeExcludedSkills } from './lib/skill-categories.mjs';
 import { loadShippedScripts } from './lib/shipped-scripts.mjs';
+import { readHookStdin } from './lib/hook-io.mjs';
 import {
   readContinuityConfig,
   readGitState,
@@ -651,7 +652,7 @@ function stopDaemon(lockFile) {
     // error 'process can only be terminated forcefully'. The prior
     // implementation invoked it anyway, swallowed the error, then polled
     // alive for 3s before escalating — exactly the time-waste that pushed
-    // §3's stopDaemon past the 3000ms SessionStart hook timeout. Go
+    // §3's stopDaemon past the SessionStart hook timeout. Go
     // straight to /F /T (tree-kill, in case a worker child outlived its
     // parent) on Win.
     if (process.platform === 'win32') {
@@ -753,23 +754,95 @@ function resolveDaemonRecyclerPath() {
 }
 
 // ── 2. Reset workflow state for new session ──────────────────────────────────
-const stateDir = resolve(projectRoot, '.claude');
-const stateFile = resolve(stateDir, 'workflow-state.json');
-try {
-  if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
-  writeFileSync(stateFile, JSON.stringify({
+//
+// #1441 — reset on a NEW session only. Claude Code fires SessionStart with a
+// `source` of `startup`, `resume`, `clear` or `compact`, and moflo's settings
+// entry carries no matcher, so this launcher runs for all four. A compaction
+// is the SAME session continuing with a shorter context; a resume is the same
+// session reopened. Resetting there wiped gate state mid-run, two ways:
+//
+//   1. `flMode` and `sddMode` are derived ONLY from the user's prompt text
+//      (gate.cjs applyPromptStateReset). Clearing them turned the #952
+//      swarm/hive invocation gate and the #1297 SDD gate OFF for the rest of
+//      the run — the user's next prompt is ordinary prose, so nothing ever
+//      re-armed them. A `/fl -s` run that compacted stopped enforcing
+//      swarm_init before Agent spawns, silently.
+//   2. testsRun / simplifyRun / verifyRun / learningsStored and their
+//      fingerprints were discarded, so a compaction forced a full re-run of
+//      tests, /flo-simplify and /verify before `gh pr create`.
+//
+// Unknown, absent, or unparseable source resets — byte-identical to the old
+// behaviour on a host that doesn't send the field, and the safe direction
+// (gates armed rather than silently off).
+const CONTINUING_SESSION_SOURCES = new Set(['compact', 'resume']);
+const KNOWN_SESSION_SOURCES = new Set(['startup', 'clear', 'compact', 'resume']);
+
+// Full shape, not the 4-field literal this used to write. gate.cjs readState()
+// merges STATE_DEFAULTS over whatever it parses, so the short shape behaved
+// identically THERE — but it left a half-populated file for every other reader
+// of workflow-state.json, and it silently drifted from STATE_DEFAULTS each time
+// a gate field was added. tests/bin/launcher-1441-compact-preserves-state.test.ts
+// pins these keys to gate.cjs's STATE_DEFAULTS so they cannot drift apart again.
+function freshWorkflowState() {
+  return {
     tasksCreated: false,
     taskCount: 0,
+    tasksAcknowledged: false,
     memorySearched: false,
-    sessionStart: new Date().toISOString()
-  }, null, 2));
-} catch {
-  // Non-fatal - workflow gate will use defaults
+    memorySearchedBy: {},
+    memoryRequired: true,
+    learningsStored: false,
+    testsRun: false,
+    testsFingerprint: null,
+    simplifyRun: false,
+    simplifySnapshotSha: null,
+    simplifyFingerprint: null,
+    verifyRun: false,
+    verifyOutcome: null,
+    verifyFingerprint: null,
+    interactionCount: 0,
+    sessionStart: new Date().toISOString(),
+    lastBlockedAt: null,
+    lastNamespaceHint: '',
+    lastNamespaceHintEmittedBy: {},
+    flMode: null,
+    swarmInitialized: false,
+    hiveInitialized: false,
+    sddMode: false,
+    activeSddSlug: null,
+  };
+}
+
+// Bounded at 500ms by readHookStdin and short-circuited on a TTY, so a withheld
+// stdin cannot eat the 5000ms SessionStart budget (hook-block-hash.ts). Read
+// here rather than at the top of the file so the cost lands next to its only
+// consumer.
+const hookPayload = await readHookStdin();
+const sessionSource = typeof hookPayload?.source === 'string' ? hookPayload.source : '';
+// A source we don't recognise still resets — but say so. Falling through in
+// silence is how a renamed or newly-added "continuing" source would re-open
+// this bug with nothing to notice it by; the reset is only the safe default
+// while the set above is accurate.
+if (sessionSource && !KNOWN_SESSION_SOURCES.has(sessionSource)) {
+  emitWarning(
+    `unrecognized SessionStart source "${sessionSource}" — resetting workflow state. ` +
+    'If this source continues an existing session, it belongs in §2\'s skip list (#1441).',
+  );
+}
+const stateDir = resolve(projectRoot, '.claude');
+const stateFile = resolve(stateDir, 'workflow-state.json');
+if (!CONTINUING_SESSION_SOURCES.has(sessionSource)) {
+  try {
+    if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
+    writeFileSync(stateFile, JSON.stringify(freshWorkflowState(), null, 2));
+  } catch {
+    // Non-fatal - workflow gate will use defaults
+  }
 }
 
 // ── 2a. Recycle daemon when behind installed version (#1054 follow-up) ──────
 // Promoted from §3a-pre to run BEFORE §3's file-sync work. The launcher has
-// a 3000ms SessionStart hook timeout (src/cli/services/hook-block-hash.ts);
+// a 5000ms SessionStart hook timeout (src/cli/services/hook-block-hash.ts);
 // §0c (DB repair) + §3 (file-sync, manifest, cherry-pick) + stopDaemon's
 // up-to-4s graceful poll routinely exceeds it on upgrade sessions, killing
 // the launcher mid-§3. Result: §3a-pre never ran on the very sessions that
@@ -1470,7 +1543,7 @@ try {
 
 // ── 3a-pre. (removed) Daemon-version-skew recycle moved to §2a. ─────────────
 // The previous version of this block ran AFTER §3's heavy file-sync work,
-// which routinely exceeded the 3000ms SessionStart hook timeout and was
+// which routinely exceeded the then-3000ms SessionStart hook timeout and was
 // killed before reaching this point. §2a now runs early and force-kills the
 // stale daemon before §3 can starve out. Don't restore §3a-pre — keep the
 // recycle in one place so the two paths can't drift.
