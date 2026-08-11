@@ -269,31 +269,24 @@ describe('#1348 the reported loop no longer happens', () => {
 });
 
 describe('#1348 the generated gate carries the same fixes', () => {
-  // `flo init` copies the package's own .claude/helpers/gate.cjs (guarded for
-  // byte-parity with bin/ in gate-hook-parity-guard), but generateGateScript()
-  // is the fallback template and had already drifted — it never consulted
-  // EDIT_RESET_SKIP_PATH_RE at all. Pin the #1348 invariants on it too, so the
-  // fix cannot ship to one audience and not the other.
-  const generated = generateGateScript();
-
-  it('skips ephemeral and path-inert writes in reset-edit-gates', () => {
-    const body = generated.slice(generated.indexOf("case 'reset-edit-gates'"));
-    const caseBody = body.slice(0, body.indexOf("case 'check-before-implement'"));
-    expect(caseBody).toContain('isEphemeralPath(fp)');
-    expect(caseBody).toContain('EDIT_RESET_SKIP_PATH_RE.test(fp)');
-  });
-
-  it('treats .moflo/ as path-inert', () => {
-    expect(generated).toMatch(/EDIT_RESET_SKIP_PATH_RE = .*moflo/);
-  });
-
-  it('refuses a verdict for a run that is no longer live', () => {
-    const body = generated.slice(generated.indexOf("case 'record-verify-outcome'"));
-    expect(body.slice(0, body.indexOf("case 'reset-edit-gates'"))).toContain('if (!vs.verifyRun) break;');
-  });
-
-  it('prints the order from both blocking gates', () => {
-    expect(generated).toContain('Order that satisfies all of them');
-    expect(generated.match(/process\.stderr\.write\(ORDER_HINT\)/g)).toHaveLength(2);
+  // This block used to re-assert each #1348 invariant against
+  // generateGateScript()'s output, because that fallback template was a
+  // hand-maintained COPY of the gate and had drifted — it never consulted
+  // EDIT_RESET_SKIP_PATH_RE at all, so the fix had shipped to one audience and
+  // not the other.
+  //
+  // #1443 removed the copy: the fallback now emits bin/gate.cjs verbatim from a
+  // build-time embed. Every behavioural test above already runs that exact file
+  // (GATE points at bin/gate.cjs), so re-checking substrings here would only
+  // restate byte-identity — and would break on any innocuous rename inside the
+  // gate, which is how the `if (!vs.verifyRun) break;` assertion aged out.
+  //
+  // The invariant that replaced it: tests/guards/embedded-helpers-parity.test.ts
+  // pins generateGateScript() to bin/gate.cjs byte-for-byte, and fails if the
+  // committed embed goes stale.
+  it('emits exactly the gate these tests exercise', () => {
+    expect(generateGateScript().replace(/\r\n/g, '\n')).toBe(
+      readFileSync(GATE, 'utf-8').replace(/\r\n/g, '\n'),
+    );
   });
 });

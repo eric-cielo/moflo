@@ -17,13 +17,14 @@
  * from `true` to `false` on one side — i.e. while a fresh session silently
  * stopped arming the memory gate, which is the exact class of bug #1441 was.
  *
- * NOT covered here, deliberately: `generateGateScript()` in
- * src/cli/init/helpers-generator.ts carries its own `STATE_DEFAULTS` for the
- * broken-npx-path fallback, and it is four keys behind. Those four keys are
- * #1348's credit fingerprints, and the fallback has none of #1348's logic
- * either — so pinning its key list here would turn this guard green over a gate
- * that still cannot invalidate a stale test credit. Tracked as #1443; fold it
- * in once the fallback carries the behaviour, not before.
+ * `generateGateScript()`'s fallback gate is NOT re-checked here, and no longer
+ * needs to be: #1443 made it emit `bin/gate.cjs` verbatim from a build-time
+ * embed, so its `STATE_DEFAULTS` is the canonical one by construction and
+ * tests/guards/embedded-helpers-parity.test.ts holds that byte-for-byte. It had
+ * been four keys behind — those keys being #1348's credit fingerprints, which
+ * the fallback had no logic for either, so pinning its key list here would have
+ * turned this guard green over a gate that still could not invalidate a stale
+ * test credit.
  */
 
 import { describe, it, expect } from 'vitest';
