@@ -26,9 +26,26 @@ export async function readHookStdin() {
     let done = false;
     let timer = null;
     const parse = (s) => { try { return s ? JSON.parse(s) : {}; } catch { return {}; } };
-    const finish = () => { if (done) return; done = true; if (timer) clearTimeout(timer); res(parse(data)); };
+    const onData = (c) => { if (!done) data += c; };
+    // Detach and pause on the way out. Without this the 500ms cap is a lie for
+    // any caller that keeps running afterwards: the listeners stay attached and
+    // a flowing stdin keeps the event loop alive well past the timeout. It was
+    // invisible while every caller exited immediately after reading; #1441 made
+    // the session-start launcher the first caller with real work left to do.
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      try {
+        process.stdin.off('data', onData);
+        process.stdin.off('end', finish);
+        process.stdin.off('error', finish);
+        process.stdin.pause();
+      } catch { /* teardown must never outrank returning the payload */ }
+      res(parse(data));
+    };
     process.stdin.setEncoding('utf-8');
-    process.stdin.on('data', (c) => { if (!done) data += c; });
+    process.stdin.on('data', onData);
     process.stdin.on('end', finish);
     process.stdin.on('error', finish);
     timer = setTimeout(finish, 500);
