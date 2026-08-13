@@ -528,8 +528,73 @@ function stripQuotedAndHeredocs(cmd) {
   return out;
 }
 
-var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
-var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
+// #1447 — words that carry no subject to search FOR: assent, acknowledgement,
+// "keep going", and conversational filler. A prompt built ONLY from these
+// continues work already under way, so the memory gate stays down; anything
+// that survives the strip is a subject, and the gate arms.
+//
+// Supersedes two things. `DIRECTIVE_RE` — a `^(yes|ok|sure|…)` prefix test that
+// had already been dead code for some time, unreferenced by the reset it was
+// written for. And the live rule, `TASK_RE.test(p) || p.length > 20`, whose
+// real work was skipping short replies: every prompt of 20 characters or fewer
+// without a task word was exempt. That caught trivia ("hmm", "got it") and
+// equally caught "check the daemon" — a genuine topic change — which is the
+// half this replaces. The list below has to carry the trivia half on its own,
+// so it covers considerably more ground than DIRECTIVE_RE ever did.
+//
+// Matching by SUBTRACTION, not by a leading-token test, is what lets
+// "yes, now fix the daemon" arm while "yes" does not — a `^(yes|ok)\b` test
+// sees the same first word in both. It is also why the list can safely hold
+// ordinary words like `do`/`it`/`work`/`the`: a word only exempts a prompt when
+// NOTHING else in that prompt survives, so each addition costs precision only
+// for prompts made entirely of listed words. Deliberately absent for that
+// reason: task words (`fix`, `test`, `build`) and any noun.
+var CONTINUATION_WORD_RE = new RegExp('\\b(?:' + [
+  // Assent / dissent / acknowledgement
+  'yes', 'yeah', 'yep', 'yup', 'no', 'nope', 'sure', 'ok', 'okay', 'k',
+  'correct', 'right', 'exactly', 'perfect', 'agreed', 'true', 'indeed',
+  'understood', 'gotcha', 'got', 'makes', 'sense', 'fine', 'alright',
+  // Continuation / assent to proceed
+  'continue', 'proceed', 'carry', 'keep', 'going', 'go', 'ahead', 'on', 'next',
+  'again', 'more', 'rest', 'both', 'all', 'them', 'those',
+  // Politeness and praise
+  'please', 'thanks', 'thank', 'ty', 'great', 'nice', 'cool', 'good', 'awesome',
+  'excellent', 'sounds', 'lgtm', 'love', 'well', 'work', 'job', 'wow', 'yay',
+  // Conversational filler / hesitation / greetings
+  'hmm', 'hm', 'huh', 'ah', 'oh', 'ha', 'haha', 'lol', 'wait', 'hold', 'hang',
+  'actually', 'anyway', 'whatever', 'nvm', 'nevermind', 'sorry', 'oops',
+  'hi', 'hello', 'hey', 'stop', 'pause', 'never', 'mind',
+  'think', 'know', 'see', 'guess', 'suppose', 'maybe', 'probably',
+  // Function words with no subject of their own
+  'do', 'it', 'that', 'this', 'the', 'a', 'an', 'and', 'is', 'are', 'was',
+  'you', 'your', 'i', 'we', 'lets', 'let', 'us', 'me', 'my', 'now', 'then',
+  'done', 'finish', 'finished', 'ready', 'too', 'also', 'just', 'still',
+].join('|') + ')\\b', 'gi');
+/**
+ * Does this prompt consist of nothing but continuation filler?
+ *
+ * An EMPTY prompt answers true — a prompt the gate cannot see is not evidence
+ * that a search is needed, and arming on it would block every read in a
+ * consumer whose host omits the field, with nothing on screen explaining why.
+ * Fail-open here; `prompt-state-reset` separately refuses to WRITE a verdict it
+ * derived from an empty prompt (#1447), so an unreadable prompt now leaves the
+ * gate exactly as prompt-reminder set it rather than silently disarming it.
+ */
+function isContinuationPrompt(promptText) {
+  var t = (promptText || '').trim();
+  if (!t) return true;
+  // Subtract continuation words, then every non-alphanumeric character. What
+  // remains is the prompt's actual subject matter; nothing remaining means the
+  // prompt introduced no new subject.
+  // `\p{L}\p{N}` with /u, NOT `A-Za-z0-9`: an ASCII-only class strips every
+  // character of a CJK, Cyrillic, Arabic, Hebrew, Greek or Thai prompt — and
+  // most of an accented French or Spanish one — leaving nothing, so a
+  // substantive non-English request would score as pure filler and silently
+  // disarm the gate. Stripping only what is neither letter nor number keeps
+  // every script's content intact and removes just punctuation and spacing.
+  var rest = t.replace(CONTINUATION_WORD_RE, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return rest.length === 0;
+}
 
 // Namespace classification (#931). The hint used to be emitted on every prompt
 // by prompt-hook.mjs which cost ~40 tokens × every prompt × every consumer.
@@ -734,7 +799,7 @@ function classifyBashNamespaceHint(cmd) {
 // UserPromptSubmit hooks can run it without compounding any field. Caller
 // owns interactionCount and the user-visible REMINDER/Context emissions, so
 // this helper stays silent.
-function applyPromptStateReset(state, promptText) {
+function applyPromptStateReset(state, promptText, opts) {
   // #352/#1331 — this is the ONLY place the memory gate resets. Deliberately
   // NOT on task transitions: within a single prompt (e.g. a /flo workflow)
   // memory stays searched so Read/Grep aren't blocked mid-execution. A
@@ -748,9 +813,24 @@ function applyPromptStateReset(state, promptText) {
   state.memorySearchedBy = {};
   // learningsStored is session-scoped — once stored, it stays true until session reset.
   // Resetting per-prompt caused false blocks when PR creation was on a later prompt.
-  var DIRECTIVE_MAX_LEN = 20;
-  var escaped = /^@@\s*/.test(promptText || '');
-  state.memoryRequired = !escaped && (promptText || '').length >= 4 && (TASK_RE.test(promptText || '') || (promptText || '').length > DIRECTIVE_MAX_LEN);
+  // #1447 — arm by DEFAULT; exempt only prompts that carry no subject of their
+  // own. This replaces `TASK_RE.test(p) || p.length > 20`, whose length cliff
+  // was arbitrary and invisible: "now look at the daemon" (22) armed the gate
+  // and "check the daemon" (16) did not, which is most of why the gate felt
+  // like it fired at random. Memory-first is this project's first rule, so the
+  // default has to be "search", with continuations as the carve-out — not the
+  // reverse. The per-prompt latch bounds the cost at one search per new prompt.
+  //
+  // `opts.skipArming` splits the reset in two. Invalidating the credits above
+  // is prompt-INDEPENDENT and always correct; deciding whether this prompt
+  // needs a search is not, and a caller holding no prompt text must not decide
+  // it from nothing. Skipping the whole reset instead would be worse than
+  // either: `memorySearchedBy` would survive, and a stale per-actor credit from
+  // the previous prompt would satisfy the gate for a prompt it never saw.
+  if (!(opts && opts.skipArming)) {
+    var escaped = /^@@\s*/.test(promptText || '');
+    state.memoryRequired = !escaped && !isContinuationPrompt(promptText);
+  }
   // Stash namespace hint for check-before-agent to emit when Claude actually
   // spawns an Agent (#931). Empty string when nothing matched — overwriting
   // any stale value from the previous prompt.
@@ -2102,10 +2182,22 @@ switch (command) {
     // already wrote the byte-identical post-reset state. Only writeState when
     // the reset actually changed something (i.e., prompt-reminder was skipped
     // because prompt-hook.mjs threw before invoking it).
-    var s = readState();
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
+    // #1447 — a safety net that cannot see the prompt must do NOTHING, not
+    // decide. This bridge did not forward `prompt` until #1447, so this hook
+    // classified the empty string on every prompt, concluded "no memory
+    // required", and wrote that over the correct value prompt-reminder had just
+    // computed — disarming the memory gate it exists to protect, intermittently,
+    // depending on which UserPromptSubmit hook wrote last. The forwarding fix
+    // addresses the cause; this guard makes the failure mode survivable if the
+    // field ever goes missing again (a host that omits it, a payload change):
+    // still invalidate the credits — that is this hook's whole reason to exist
+    // and needs no prompt — but leave the arming verdict to prompt-reminder,
+    // which has the text. Deciding "not required" from a prompt it cannot see
+    // is exactly the bug.
+    var s = readState();
     var before = JSON.stringify(s);
-    applyPromptStateReset(s, prompt);
+    applyPromptStateReset(s, prompt, { skipArming: !prompt });
     if (JSON.stringify(s) !== before) writeState(s);
     break;
   }

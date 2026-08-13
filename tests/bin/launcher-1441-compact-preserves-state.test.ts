@@ -173,15 +173,24 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
     // satisfied memory gate over a context holding none of the results.
     expect(after.memorySearched).toBe(false);
     expect(after.memorySearchedBy).toEqual({});
-    // Re-armed even though the prompt that preceded the compaction was `/compact`
-    // itself — an 8-char non-task string, which gate.cjs scores as
-    // memoryRequired: false. SessionStart fires after that UserPromptSubmit.
+    // Re-armed regardless of what the pre-compaction prompt left behind. #1447
+    // removed one way that mattered — `/compact` used to score memoryRequired:
+    // false under the old length/task-word rule — but the launcher's re-arm is
+    // deliberately independent of prompt text, because AUTO compaction happens
+    // with no prompt submitted at all.
     expect(after.memoryRequired).toBe(true);
   });
 
-  it('re-arms the memory gate after a compaction that followed a /compact prompt', () => {
-    // The reported shape end-to-end: a real task arms the gate, `/compact` is
-    // submitted as a prompt and disarms it, then the compaction lands.
+  it('re-arms the memory gate after a compaction that followed a disarming prompt', () => {
+    // The reported shape end-to-end: a real task arms the gate, a prompt that
+    // carries no subject of its own disarms it, then the compaction lands.
+    //
+    // #1447 changed WHICH prompt does that. This used to submit `/compact`,
+    // which the old `TASK_RE || length > 20` rule scored as memoryRequired:
+    // false; under the inverted rule `/compact` is subject-bearing and arms. A
+    // bare continuation is now the realistic disarming prompt — and it keeps
+    // this test honest, because the assertion below is only meaningful if the
+    // gate is genuinely down when the launcher runs.
     const env = {
       TOOL_INPUT_command: '',
       TOOL_INPUT_pattern: 'src/**',
@@ -192,8 +201,8 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
     runGate('prompt-reminder', { ...env, CLAUDE_USER_PROMPT: 'fix the launcher state reset bug' });
     expect(readStateFile().memoryRequired).toBe(true);
 
-    runGate('prompt-reminder', { ...env, CLAUDE_USER_PROMPT: '/compact' });
-    expect(readStateFile().memoryRequired, 'precondition: /compact disarms it').toBe(false);
+    runGate('prompt-reminder', { ...env, CLAUDE_USER_PROMPT: 'ok' });
+    expect(readStateFile().memoryRequired, 'precondition: a bare continuation disarms it').toBe(false);
     expect(runGate('check-before-scan', { ...env, CLAUDE_USER_PROMPT: '' }).exitCode).toBe(0);
 
     runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
