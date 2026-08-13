@@ -732,6 +732,106 @@ describe('gate.cjs: check-bash-memory BLOCK (#1132)', () => {
     });
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // #1445 — read shapes whose LEADING command is carved out.
+  //
+  // `BASH_CARVE_OUT_RE` exempts anything starting `node …` or `git …`, so the
+  // gate could not see `node -e "…readFileSync…"` or `git show <ref>:<path>` —
+  // 539 invisible file-exploration calls in one measured session. These pin the
+  // three-way split the fix has to hold: the read shapes block, the operational
+  // shapes those commands are carved out FOR keep passing, and a read-modify-
+  // write through `node -e` (Rule #1's cross-platform file op) is operational.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const runnerReadBlock: Array<[string, string]> = [
+    ['node -e "const {readFileSync}=require(\'fs\'); console.log(readFileSync(\'src/foo.ts\',\'utf8\'))"', 'node -e readFileSync'],
+    ['node --eval "require(\'fs\').readdirSync(\'src\').forEach(f=>process.stdout.write(f))"', 'node --eval readdirSync'],
+    ['node -p "require(\'fs\').readFileSync(\'package.json\',\'utf8\')"', 'node -p readFileSync'],
+    // Windows spelling of the same call (Rule #1) — `node.exe`/`node.cmd` must
+    // classify identically to bare `node`.
+    ['node.exe -e "require(\'fs\').readFileSync(\'src\\\\foo.ts\')"', 'node.exe -e readFileSync'],
+    ['node --input-type=module -e "import {readFile} from \'node:fs/promises\'; console.log(await readFile(\'x\',\'utf8\'))"', 'node ESM --input-type -e readFile'],
+    ['node -e "require(\'fs/promises\').readFile(\'x\',\'utf8\').then(console.log)"', 'node -e fs/promises readFile'],
+    ['nodejs -e "require(\'fs\').readFileSync(\'x\')"', 'nodejs -e (Debian alias)'],
+    ['node -e "const g=require(\'fs\').globSync(\'src/**/*.ts\'); console.log(g.length)"', 'node -e globSync'],
+    // The `\b` on the short mutation names earns its keep here: an unanchored
+    // `rm`/`cp` would see "transform" and carve this read out entirely.
+    ['node -e "const s=require(\'fs\').readFileSync(\'x\',\'utf8\'); console.log(s.replace(/transform|format/g,\'\'))"', 'node -e read whose body merely CONTAINS rm/cp substrings'],
+    ['git show HEAD:src/foo.ts', 'git show ref:path'],
+    ['git show origin/main:package.json', 'git show branch:path'],
+    ['git show HEAD:src/foo.ts | head -20', 'git show ref:path piped'],
+    ['git show --textconv HEAD:src/foo.ts', 'git show with a flag BEFORE ref:path'],
+    ['git show HEAD~3:package.json', 'git show HEAD~n:path'],
+    ['git cat-file -p HEAD:src/foo.ts', 'git cat-file -p ref:path'],
+    ['git ls-files', 'git ls-files (repo inventory)'],
+    ['git ls-files src/', 'git ls-files scoped'],
+    ['git grep -n "TODO" -- src/', 'git grep'],
+  ];
+
+  for (const [cmd, label] of runnerReadBlock) {
+    it(`blocks (#1445): ${label}`, () => {
+      writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      const r = runGate('check-bash-memory', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('BLOCKED');
+      expect(r.stderr).toContain('memory_search');
+    });
+  }
+
+  const runnerReadPass: Array<[string, string]> = [
+    ['node scripts/build.mjs', 'node running a script file'],
+    ['node --test', 'node test runner'],
+    ['node -e "console.log(process.version)"', 'node -e with no file read'],
+    // Rule #1 tells spell authors to do file OPS through `node -e` + fs because
+    // Windows has no `mkdir`/`rm`/`cp` on PATH. A read-modify-write is an
+    // operation, not exploration, and must not be gated.
+    ['node -e "const fs=require(\'fs\'); fs.writeFileSync(\'x.txt\', fs.readFileSync(\'y.txt\'))"', 'node -e read-modify-write'],
+    ['node -e "require(\'fs\').mkdirSync(\'build\',{recursive:true})"', 'node -e mkdirSync'],
+    ['node -e "require(\'fs\').rmSync(\'dist\',{recursive:true,force:true})"', 'node -e rmSync'],
+    // The mutation carve-out must cover the promise/callback spellings too —
+    // `fs.promises.rm` is as idiomatic as `rmSync` and is just as much an op.
+    ['node -e "const fs=require(\'fs\'); fs.promises.rm(\'dist\',{recursive:true}).then(()=>fs.readFileSync(\'x\'))"', 'node -e fs.promises.rm (no Sync suffix)'],
+    ['node -e "const fs=require(\'fs\'); fs.promises.cp(\'a\',\'b\',{recursive:true}); fs.readdirSync(\'b\')"', 'node -e fs.promises.cp'],
+    ['node -e "const fs=require(\'fs\'); if(!fs.readdirSync(\'build\').length) fs.rmdir(\'build\',()=>{})"', 'node -e fs.rmdir callback form'],
+    ['git show', 'bare git show'],
+    ['git show --stat', 'git show --stat'],
+    ['git show HEAD', 'git show a commit'],
+    ['git show --pretty=format:%h HEAD', 'git show with a colon inside a FLAG'],
+    ['git show -s --format=%ci HEAD', 'git show -s --format'],
+    ['git diff HEAD~1', 'git diff'],
+    ['git status', 'git status'],
+    ['git log --oneline -20', 'git log'],
+  ];
+
+  for (const [cmd, label] of runnerReadPass) {
+    it(`passes (#1445): ${label}`, () => {
+      writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      const r = runGate('check-bash-memory', env);
+      expect(r.exitCode).toBe(0);
+    });
+  }
+
+  it('lets a node -e read through once memory HAS been searched (#1445)', () => {
+    writeState(tmpDir, { memorySearched: true, memoryRequired: true });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'node -e "console.log(require(\'fs\').readFileSync(\'src/foo.ts\',\'utf8\'))"';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('routes git grep to the code-map namespace hint (#1445)', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true, lastNamespaceHint: '' });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'git grep -n "spawnAgent"';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('"code-map"');
+  });
+
   it('does NOT block when memoryRequired is false (e.g. directive prompt)', () => {
     writeState(tmpDir, { memorySearched: false, memoryRequired: false });
     const env = baseEnv(tmpDir);

@@ -395,6 +395,60 @@ function bashCoordinationInit(rawCmd) {
   }
   return null;
 }
+// #1445 — read shapes whose LEADING command is one BASH_CARVE_OUT_RE carves out
+// wholesale (`node …`, `git …`). They are read-like because of what FOLLOWS the
+// leading token, so anchoring on that token alone can never see them: in one
+// real session 539 file-exploration calls went through `node -e` + readFileSync
+// and `git show <ref>:<path>` with the gate blind to every one of them. That is
+// the dominant exploration shape in repos whose own guidance steers away from
+// `grep` (e.g. where `grep` is `ugrep` and silently skips files, so any
+// inventory a decision rests on must go through `fs.readFileSync`).
+//
+// These sources are spliced into READ_LIKE_BASH_RE below AND kept addressable
+// on their own, because check-bash-memory has to let them override the
+// carve-out — extending READ_LIKE alone would change nothing, the `^\s*(node|
+// git)\s` carve-out arms swallow them one line later.
+var RUNNER_READ_SOURCES = [
+  // `node -e "...readFileSync(...)..."`, in every eval spelling (-e/--eval/-p/
+  // --print/--input-type=module -e). The eval FLAG is deliberately not required:
+  // a script-file invocation (`node scripts/build.mjs`) does not carry a read
+  // call in its command line, so the read call itself is the reliable signal and
+  // demanding the flag only adds spellings to miss.
+  //
+  // The negative lookahead is load-bearing, not caution: Rule #1 tells authors
+  // to do cross-platform file OPS through `node -e` with fs (`mkdir`/`rm`/`cp`
+  // do not exist on Windows), and a read-modify-write is an operation, not
+  // exploration. Only fs MUTATION calls carve out — matching a bare `write`
+  // would carve out `process.stdout.write`, which nearly every inline read
+  // script ends with, and that would hand back the whole gap.
+  //
+  // Every mutation name covers its sync, callback AND promise spelling: authors
+  // reach for `fs.promises.rm` as readily as `rmSync`, and listing only the
+  // `*Sync` form would block the delete op Rule #1 sent them to `node -e` for.
+  // `rm`/`rmdir`/`cp` carry `\b` because they are short enough to appear inside
+  // unrelated words — an unanchored `rm` matches "format" and "transform", and
+  // would carve out most of what this arm exists to catch.
+  '^\\s*(?:node|nodejs)(?:\\.(?:exe|cmd))?\\s'
+    + '(?=[\\s\\S]*(?:read(?:File|dir)|globSync))'
+    + '(?![\\s\\S]*(?:writeFile|appendFile|mkdir|mkdtemp|unlink|copyFile|rename'
+    + '|symlink|createWriteStream|\\brm(?:dir)?(?:Sync)?\\b|\\bcp(?:Sync)?\\b))',
+  // `git show <ref>:<path>` / `git cat-file -p <ref>:<path>` — the colon form
+  // reads a blob and is `cat` by another name. Leading `-`-prefixed tokens are
+  // consumed as flags first so `--pretty=format:%h` (a colon inside a FLAG)
+  // cannot masquerade as a ref:path, and the segment after the colon must carry
+  // a path character — same false-negative trade as the `type \S*[\\/.]` arm
+  // above (`git show HEAD:src`, a bare directory, passes; source files all have
+  // extensions). Bare `git show`, `git show --stat`, `git log` and `git diff`
+  // have no ref:path token and stay operational.
+  '^\\s*git\\s+(?:show|cat-file)\\s+(?:-{1,2}\\S+\\s+)*[^-\\s]\\S*:\\S*[\\\\/.]',
+  // Repo-wide content search and file inventory — the `git` spellings of
+  // `grep -r` and `find`. NOT `git log --grep`, which searches commit messages,
+  // is already in the passing set, and does not match `git\s+grep`.
+  '^\\s*git\\s+(?:grep|ls-files)\\b',
+];
+// Same sources as their own matcher — check-bash-memory tests this to let a
+// carved-out leading command still block when the rest of the command is a read.
+var RUNNER_READ_BASH_RE = new RegExp(RUNNER_READ_SOURCES.join('|'), 'i');
 // BLOCK: read-like Bash commands that bypass the existing check-before-read /
 // check-before-scan gates by going through the shell. Anchored to the start of
 // the line so subcommands inside pipelines or `npm install grep` don't trip.
@@ -427,7 +481,7 @@ var READ_LIKE_BASH_RE = new RegExp([
   '^\\s*dir\\b[^|]*\\s\\/[sS]\\b',
   // #1171 — PowerShell hex dump, parallel to POSIX `xxd`/`hexdump`.
   '^\\s*Format-Hex\\b',
-].join('|'), 'i');
+].concat(RUNNER_READ_SOURCES).join('|'), 'i');
 // CARVE-OUT: commands that LOOK read-like but are operational. Anchored to the
 // LEADING command — the pipe-filter case (`npm test | grep FAIL`) is already
 // handled by READ_LIKE's `^\s*` anchor never matching the leading `npm`, so
@@ -510,7 +564,9 @@ var NS_NAV_RES = [
 // explicitly opted in to the protected coordination surface, so falling back to
 // raw Agent dispatch silently regresses headline moflo product capability.
 //
-// SYNC: duplicated verbatim in src/cli/init/helpers-generator.ts.
+// This file is the single source; #1443 replaced helpers-generator.ts's
+// hand-maintained copy with a build-time embed of this exact file, so there is
+// no longer a second copy of this function to keep in step.
 function detectFlMode(promptText) {
   var p = promptText || '';
   if (!/^\s*\/(?:fl|flo)\b/i.test(p)) return null;
@@ -653,10 +709,14 @@ function classifyNamespaceHint(promptText) {
 // full sentence in the same shape as classifyNamespaceHint so the BLOCK arm
 // can write either source's hint without branching on format.
 //
-// SYNC: duplicated verbatim in src/cli/init/helpers-generator.ts.
+// This file is the single source — see the note on detectFlMode above (#1443).
 function classifyBashNamespaceHint(cmd) {
   // Search-like tools — the user is hunting for a symbol/file, code-map wins.
-  if (/^\s*(?:grep|rg|ag|fgrep|egrep|find|fd|Select-String|sls)\b/i.test(cmd)) {
+  // #1445 — `git grep` / `git ls-files` are the same hunt through a different
+  // binary, so they route to the same namespace rather than falling through to
+  // the hintless generic message.
+  if (/^\s*(?:grep|rg|ag|fgrep|egrep|find|fd|Select-String|sls)\b/i.test(cmd)
+   || /^\s*git\s+(?:grep|ls-files)\b/i.test(cmd)) {
     return 'Memory namespace hint: use "code-map" for codebase navigation.';
   }
   // Reading a .md / RST / TXT, or a well-known doc file — guidance/learnings win.
@@ -1454,7 +1514,12 @@ switch (command) {
     // → state read → memory gate.
     if (!config.memory_first) break;
     if (!READ_LIKE_BASH_RE.test(cmd)) break;
-    if (BASH_CARVE_OUT_RE.test(cmd)) break;
+    // #1445 — the carve-out is anchored to the LEADING command, so its `node`
+    // and `git` arms swallow every shape RUNNER_READ_SOURCES exists to catch.
+    // Those shapes earn their read classification from what follows the leading
+    // token, so they override the carve-out; every other command keeps #1132's
+    // semantics exactly (`npm test | grep FAIL`, `git diff`, `node build.mjs`).
+    if (BASH_CARVE_OUT_RE.test(cmd) && !RUNNER_READ_BASH_RE.test(cmd)) break;
     var s2 = readState();
     if (!s2.memoryRequired || isMemorySearchedFor(s2)) break;
     // Hint precedence: prompt-derived classification (set by applyPromptStateReset
