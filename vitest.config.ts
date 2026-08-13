@@ -48,6 +48,12 @@ export const isolationTests = [
   'src/cli/__tests__/spells/prerequisites-resolve.test.ts',
   'src/cli/__tests__/spells/prerequisites-integration.test.ts',
   'tests/bin/gate-helpers.test.ts',
+  // #1447 — same profile as gate-helpers above: every case spawns the real
+  // hook bridges as child processes, and the cross-hook agreement case spawns
+  // ~50 of them in one test. Fine alone (~5 s), over its budget under parallel
+  // fork contention. Behaviour test, not a speed test — isolate it rather than
+  // widen a timeout and leave the contention in place.
+  'tests/bin/gate-prompt-arming-1447.test.ts',
   // First-run downloads the 25 MB ONNX model from GCS and runs real ORT
   // inference — competes for CPU/network with parallel benchmarks under
   // maxForks=2 and pushes neighboring tests over their timeouts. Cached

@@ -41,6 +41,22 @@ if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
 if (typeof hookContext.transcript_path === 'string' && hookContext.transcript_path) {
   env.HOOK_TRANSCRIPT_PATH = hookContext.transcript_path;
 }
+// #1447 — forward the user prompt. `gate.cjs` reads CLAUDE_USER_PROMPT to decide
+// whether a prompt needs a memory search, and this bridge never set it, so the
+// `prompt-state-reset` safety-net hook classified the EMPTY STRING on every
+// prompt, concluded "no memory required", and wrote that over the correct value
+// prompt-hook.mjs had just computed. A safety net that disarmed the gate it
+// exists to protect — intermittently, since the surviving value depended on
+// which of the two UserPromptSubmit hooks wrote last.
+//
+// Same field precedence as prompt-hook.mjs (`user_prompt` then `prompt`) so both
+// UserPromptSubmit paths classify identical text and the reset is genuinely
+// idempotent, which is the only thing that makes a safety-net hook safe.
+if (typeof hookContext.user_prompt === 'string' && hookContext.user_prompt) {
+  env.CLAUDE_USER_PROMPT = hookContext.user_prompt;
+} else if (typeof hookContext.prompt === 'string' && hookContext.prompt) {
+  env.CLAUDE_USER_PROMPT = hookContext.prompt;
+}
 // #1332: structured tool inputs are forwarded as JSON, not dropped.
 //
 // This previously forwarded ONLY string values, so any object-valued input was

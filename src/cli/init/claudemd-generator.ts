@@ -26,15 +26,19 @@ const LEGACY_MARKER_ENDS = [
 
 /**
  * The single moflo section injected into CLAUDE.md.
- * ~22 lines. Points to moflo-core-guidance.md for everything else.
+ *
+ * This lands in EVERY consumer's CLAUDE.md and is read on every prompt, so it
+ * is a running token cost, not a doc. Keep it terse: state the rule, then point
+ * at moflo-core-guidance.md for the detail. Prefer cutting words over adding a
+ * line — anything needing a paragraph belongs in guidance, not here.
  */
 function mofloSection(): string {
   return `${MARKER_START}
 ## MoFlo — AI Agent Orchestration
 
-### FIRST ACTION ON EVERY PROMPT: Search Memory
+### FIRST ACTION ON EVERY PROMPT — AND EVERY TOPIC CHANGE: Search Memory
 
-Your first tool call MUST be \`mcp__moflo__memory_search\` — before any Glob/Grep/Read. Pick the namespace by question shape: \`code-map\` for "where is symbol X defined", \`tests\` for "what tests cover Y", \`patterns\` for "what's our pattern for Z", \`guidance\` for project rules, \`learnings\` for "did we hit this before". Pivot on the bare symbol/keyword (not a natural-language question), and trust similarity ≥ 0.80 as a confident hit. When the user says "remember this", call \`mcp__moflo__memory_store\` with namespace \`learnings\`.
+Your first tool call MUST be \`mcp__moflo__memory_search\` — before any Glob/Grep/Read or read-like Bash (\`cat\`, \`grep\`, \`node -e\`). **Search again on every new subject, mid-prompt** — new symbol, area, subsystem, or sub-question. A long task is many searches, not one. Pick the namespace by question shape: \`code-map\` for "where is symbol X defined", \`tests\` for "what tests cover Y", \`patterns\` for "what's our pattern for Z", \`guidance\` for project rules, \`learnings\` for "did we hit this before". Pivot on the bare symbol/keyword (not a natural-language question), and trust similarity ≥ 0.80 as a confident hit. When the user says "remember this", call \`mcp__moflo__memory_store\` with namespace \`learnings\`.
 
 ### Traverse chunks, don't bulk-retrieve
 
@@ -42,8 +46,9 @@ Search results carry a compact \`navigation\` crumb (parentDoc, prev/next, chunk
 
 ### Gates
 
-- **Blocking** (hook exits non-zero): memory search before Glob/Grep/guidance Read; tests + \`/flo-simplify\` + learnings + \`/verify\` before \`gh pr create\`; \`swarm_init\`/\`hive-mind_init\` before Agent under \`/fl -s|-h\`.
+- **Blocking** (hook exits non-zero): memory search before Glob/Grep/guidance Read and before read-like Bash/PowerShell commands; tests + \`/flo-simplify\` + learnings + \`/verify\` before \`gh pr create\`; \`swarm_init\`/\`hive-mind_init\` before Agent under \`/fl -s|-h\`.
 - **Advisory** (reminder only): \`TaskCreate\` before spawning the Agent tool, entries in ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`.
+- **Not enforced**: re-searching after a mid-prompt topic change — no hook sees the pivot. Do it anyway.
 
 ### Tools
 
