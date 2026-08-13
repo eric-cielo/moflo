@@ -2,8 +2,10 @@
  * Skills that ship in the npm tarball (under `node_modules/moflo/.claude/skills/`)
  * but must NEVER be installed into consumer projects — strictly moflo-internal
  * dev tooling. `/publish` bumps moflo's own version and publishes to npm;
- * `/reset-epic` torches epic test data. Both are meaningless or harmful in a
- * consumer repo.
+ * `/reset-epic` torches epic test data; `/flfl` runs `/fl` preloaded with the
+ * rules that govern developing MOFLO (cross-platform, consumer blast radius,
+ * dogfooding), which are not constraints on a consumer's own project. All three
+ * are meaningless, noisy, or harmful in a consumer repo.
  *
  * The session-start launcher's recursive skills sync (`syncDirRecursive` in
  * `file-sync.mjs`) copies every shipped skill into the consumer on each run, so
@@ -13,4 +15,4 @@
  * so this leaf mirrors it. `tests/bin/internal-skills-parity.test.ts` asserts
  * the two lists never drift.
  */
-export const INTERNAL_SKILLS = ['publish', 'reset-epic'];
+export const INTERNAL_SKILLS = ['publish', 'reset-epic', 'flfl'];

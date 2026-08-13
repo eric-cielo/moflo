@@ -85,6 +85,9 @@ export const SKILLS_MAP: Record<SkillCategory, string[]> = {
 export const INTERNAL_SKILLS: string[] = [
   'publish',    // moflo's own /publish workflow — not consumer-relevant
   'reset-epic', // moflo's own epic test-data reset — would torch a consumer's repo
+  'flfl',       // /fl preloaded with moflo's OWN rules (cross-platform, consumer
+                // blast radius, dogfooding) — those are constraints on developing
+                // moflo, not on a consumer's project, where they read as noise
 ];
 
 /**
