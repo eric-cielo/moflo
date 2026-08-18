@@ -3314,7 +3314,12 @@ const statuslineCommand: Command = {
         intelligencePct = Math.min(100, maturityScore);
       }
 
-      const contextPct = Math.min(100, Math.floor(learning.sessions * 5));
+      // Context-window usage is only knowable from the session payload Claude Code
+      // pipes to a statusline command; `flo hooks status` is a plain CLI invocation
+      // and never receives one. Report null rather than a stand-in (#1453) — this
+      // used to be `learning.sessions * 5`, an activity counter wearing a context
+      // gauge's label, which pinned at 100% after 20 stored sessions.
+      const contextPct: number | null = null;
 
       return { memoryMB, contextPct, intelligencePct, subAgents };
     }
@@ -3367,7 +3372,8 @@ const statuslineCommand: Command = {
 
     // Compact output
     if (ctx.flags.compact) {
-      const line = `DDD:${progress.domainsCompleted}/${progress.totalDomains} CVE:${security.cvesFixed}/${security.totalCves} Swarm:${swarm.activeAgents}/${swarm.maxAgents} Ctx:${system.contextPct}% Int:${system.intelligencePct}%`;
+      const ctxDisplay = system.contextPct === null ? '--' : `${system.contextPct}%`;
+      const line = `DDD:${progress.domainsCompleted}/${progress.totalDomains} CVE:${security.cvesFixed}/${security.totalCves} Swarm:${swarm.activeAgents}/${swarm.maxAgents} Ctx:${ctxDisplay} Int:${system.intelligencePct}%`;
       output.writeln(line);
       return { success: true, data: statusData };
     }

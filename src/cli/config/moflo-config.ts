@@ -264,6 +264,7 @@ export interface MofloConfig {
     show_model: boolean;
     show_session: boolean;
     show_intelligence: boolean;
+    show_context: boolean;
     show_swarm: boolean;
     show_hooks: boolean;
     show_mcp: boolean;
@@ -382,6 +383,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     show_model: true,
     show_session: true,
     show_intelligence: true,
+    show_context: true,
     show_swarm: true,
     show_hooks: true,
     show_mcp: true,
@@ -639,6 +641,7 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       show_model: raw.status_line?.show_model ?? raw.statusLine?.showModel ?? DEFAULT_CONFIG.status_line.show_model,
       show_session: raw.status_line?.show_session ?? raw.statusLine?.showSession ?? DEFAULT_CONFIG.status_line.show_session,
       show_intelligence: raw.status_line?.show_intelligence ?? raw.statusLine?.showIntelligence ?? DEFAULT_CONFIG.status_line.show_intelligence,
+      show_context: raw.status_line?.show_context ?? raw.statusLine?.showContext ?? DEFAULT_CONFIG.status_line.show_context,
       show_swarm: raw.status_line?.show_swarm ?? raw.statusLine?.showSwarm ?? DEFAULT_CONFIG.status_line.show_swarm,
       show_hooks: raw.status_line?.show_hooks ?? raw.statusLine?.showHooks ?? DEFAULT_CONFIG.status_line.show_hooks,
       show_mcp: raw.status_line?.show_mcp ?? raw.statusLine?.showMcp ?? DEFAULT_CONFIG.status_line.show_mcp,
@@ -891,6 +894,7 @@ status_line:
   show_model: true                # Current model name
   show_session: true              # Session duration
   show_intelligence: true         # Intelligence % indicator
+  show_context: true              # Context-window % used (from Claude Code's stdin payload)
   show_swarm: true                # Active swarm agents count
   show_hooks: true                # Enabled hooks count
   show_mcp: true                  # MCP server count

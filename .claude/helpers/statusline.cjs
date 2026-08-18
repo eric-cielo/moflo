@@ -45,6 +45,7 @@ function loadStatusLineConfig() {
     show_model: true,
     show_session: true,
     show_intelligence: true,
+    show_context: true,
     show_swarm: true,
     show_hooks: true,
     show_mcp: true,
@@ -151,6 +152,23 @@ function readJSON(filePath) {
     }
   } catch { /* ignore */ }
   return null;
+}
+
+// Normalize Claude Code's `context_window.used_percentage` into a 0-100 integer.
+// Returns null (never a stand-in number) for anything that isn't a finite number,
+// so every renderer can self-hide rather than publish a value it can't stand
+// behind (#1453).
+function normalizeContextPct(raw) {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+// Colour for a context gauge; lower is better. Matches the thresholds already
+// used by the TypeScript statusline generator (src/cli/hooks/statusline/index.ts).
+function contextColor(pct) {
+  if (pct >= 75) return c.brightRed;
+  if (pct >= 50) return c.brightYellow;
+  return c.brightGreen;
 }
 
 // Safe file stat (returns null on failure)
@@ -386,7 +404,6 @@ function getSystemMetrics() {
   // Intelligence from learning.json
   const learningData = readJSON(path.join(CWD, '.moflo', 'metrics', 'learning.json'));
   let intelligencePct = 0;
-  let contextPct = 0;
 
   if (learningData?.intelligence?.score !== undefined) {
     intelligencePct = Math.min(100, Math.floor(learningData.intelligence.score));
@@ -409,11 +426,20 @@ function getSystemMetrics() {
     intelligencePct = Math.min(100, score);
   }
 
-  if (learningData?.sessions?.total !== undefined) {
-    contextPct = Math.min(100, learningData.sessions.total * 5);
-  } else {
-    contextPct = Math.min(100, Math.floor(learning.sessions * 5));
-  }
+  // Context %: the real value, piped in by Claude Code on stdin (#1453).
+  //
+  // `context_window.used_percentage` is pre-calculated by Claude Code from INPUT
+  // tokens only (input_tokens + cache_creation_input_tokens + cache_read_input_tokens);
+  // it deliberately excludes output_tokens. It already accounts for
+  // `context_window_size`, so it stays correct on a 1M-context model. Do NOT
+  // "correct" this to `exceeds_200k_tokens`, which is a fixed 200k threshold and
+  // is meaningless on anything larger.
+  //
+  // It is null early in a session (before the first API response). Report null,
+  // never a substitute: this field used to be derived from the stored session
+  // count (`sessions * 5`), which pinned at 100% after 20 sessions and had nothing
+  // to do with the window. A blank beats a wrong number.
+  const contextPct = normalizeContextPct(STDIN_PAYLOAD?.context_window?.used_percentage);
 
   // Sub-agents from file metrics (no ps aux)
   let subAgents = 0;
@@ -797,6 +823,12 @@ function generateStatusline() {
     parts.push(`${c.cyan}\u23F1 ${session.duration}${c.reset}`);
   }
 
+  // Context % (#1453). Self-hides when Claude Code hasn't reported a window yet,
+  // rather than rendering a placeholder that reads as a real measurement.
+  if (SL_CONFIG.show_context && system.contextPct !== null) {
+    parts.push(`${contextColor(system.contextPct)}\uD83D\uDCC2 ${system.contextPct}%${c.reset}`);
+  }
+
   // Intelligence %
   if (SL_CONFIG.show_intelligence) {
     const intellColor = system.intelligencePct >= 80 ? c.brightGreen : system.intelligencePct >= 40 ? c.brightYellow : c.dim;
@@ -872,6 +904,14 @@ function generateDashboard() {
       `${c.brightYellow}\uD83E\uDD16 Swarm${c.reset}  ${swarmInd} [${agentsColor}${String(swarm.activeAgents).padStart(2)}${c.reset}/${c.brightWhite}${swarm.maxAgents}${c.reset}]  ` +
       `${c.brightPurple}\uD83D\uDC65 ${system.subAgents}${c.reset}    ` +
       `${c.brightCyan}\uD83D\uDCBE ${system.memoryMB}MB${c.reset}`
+    );
+  }
+
+  // Context % (#1453). Self-hides when the value is unknown.
+  if (SL_CONFIG.show_context && system.contextPct !== null) {
+    lines.push(
+      `${c.brightCyan}\uD83D\uDCC2 Context${c.reset}  ${contextColor(system.contextPct)}${system.contextPct}%${c.reset} ` +
+      `${c.dim}used${c.reset}`
     );
   }
 
@@ -952,8 +992,17 @@ function generateCompactDashboard() {
   pushUpgradeNoticeSegment(lines);
   lines.push(header);
 
-  // Combined swarm + embeddings + mcp line
+  // Combined context + swarm + embeddings + mcp line
   const segments = [];
+  // Context % (#1453). Read straight off the stdin payload rather than via
+  // getSystemMetrics() — compact mode deliberately avoids that call so it stays
+  // probe-free, and this value costs nothing to derive.
+  {
+    const pct = normalizeContextPct(STDIN_PAYLOAD?.context_window?.used_percentage);
+    if (SL_CONFIG.show_context && pct !== null) {
+      segments.push(`${contextColor(pct)}\uD83D\uDCC2 ${pct}%${c.reset}`);
+    }
+  }
   if (SL_CONFIG.show_swarm) {
     const swarm = getSwarmStatus();
     const swarmInd = swarm.coordinationActive ? `${c.brightGreen}\u25C9${c.reset}` : `${c.dim}\u25CB${c.reset}`;
