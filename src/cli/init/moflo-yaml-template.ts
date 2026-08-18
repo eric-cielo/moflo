@@ -333,6 +333,7 @@ status_line:
   branding: "MoFlo V4"
   show_git: true
   show_session: true
+  show_context: true      # Context-window % used; hides until Claude Code reports it
   show_swarm: true
   show_mcp: true
 

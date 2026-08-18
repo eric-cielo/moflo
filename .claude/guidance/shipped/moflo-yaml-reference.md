@@ -103,6 +103,7 @@ status_line:
   show_model: true                # Current model name
   show_session: true              # Session duration
   show_intelligence: true         # Intelligence % indicator
+  show_context: true              # Context-window % used; hides until Claude Code reports it
   show_swarm: true                # Active swarm agents count
   show_hooks: true                # Enabled hooks count
   show_mcp: true                  # MCP server count

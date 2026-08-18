@@ -26,7 +26,13 @@ import { join } from 'path';
 interface ExtendedStatuslineData extends StatuslineData {
   system: {
     memoryMB: number;
-    contextPct: number;
+    /**
+     * Context-window % used. `null` when unknown — this generator has no access
+     * to the session payload Claude Code pipes to a statusline command, so it
+     * renders `--` rather than a threshold-coloured number it can't stand
+     * behind (#1453).
+     */
+    contextPct: number | null;
     intelligencePct: number;
     subAgents: number;
   };
@@ -190,11 +196,19 @@ export class StatuslineGenerator {
     const memoryColor = data.system.memoryMB > 0 ? c.brightCyan : c.dim;
     const memoryDisplay = data.system.memoryMB > 0 ? `${data.system.memoryMB}MB` : '--';
 
-    // Context color (lower is better)
-    let contextColor = c.brightGreen;
-    if (data.system.contextPct >= 75) contextColor = c.brightRed;
-    else if (data.system.contextPct >= 50) contextColor = c.brightYellow;
-    const contextDisplay = String(data.system.contextPct).padStart(3);
+    // Context color (lower is better). An unknown value renders dim `--`, never a
+    // number: a threshold-coloured 0% reads as a real measurement (#1453).
+    const contextPct = data.system.contextPct;
+    let contextColor = c.dim;
+    // Unit lives in the string (as with memoryDisplay above) so the unknown case
+    // reads `--` rather than `--%`.
+    let contextDisplay = ' --';
+    if (contextPct !== null) {
+      contextColor = contextPct >= 75 ? c.brightRed
+        : contextPct >= 50 ? c.brightYellow
+        : c.brightGreen;
+      contextDisplay = `${String(contextPct).padStart(3)}%`;
+    }
 
     // Intelligence color
     let intelColor = c.dim;
@@ -211,7 +225,7 @@ export class StatuslineGenerator {
       `${subAgentColor}👥 ${data.system.subAgents}${c.reset}    ` +
       `${securityIcon} ${securityColor}CVE ${data.security.cvesFixed}${c.reset}/${c.brightWhite}${data.security.totalCves}${c.reset}    ` +
       `${memoryColor}💾 ${memoryDisplay}${c.reset}    ` +
-      `${contextColor}📂 ${contextDisplay}%${c.reset}    ` +
+      `${contextColor}📂 ${contextDisplay}${c.reset}    ` +
       `${intelColor}🧠 ${intelDisplay}%${c.reset}`
     );
 
@@ -596,7 +610,7 @@ export class StatuslineGenerator {
 
     return {
       memoryMB,
-      contextPct: 0, // Requires Claude Code input
+      contextPct: null, // Unknowable here: needs Claude Code's stdin payload (#1453)
       intelligencePct,
       subAgents,
     };
