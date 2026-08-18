@@ -240,10 +240,11 @@ function isEphemeralPath(fp) {
 }
 // #1171 — DANGEROUS gained PowerShell additions to match the matcher widening
 // that now routes the dedicated `PowerShell` tool through check-dangerous-command.
-// POSIX entries still apply because PS will execute them when invoked. Substring
-// match (case-insensitive) inside the gate.
+// POSIX entries still apply because PS will execute them when invoked. Matched
+// case-insensitively by `matchesDangerous` below — substring for most entries,
+// root-anchored for the ones that end at a filesystem root.
 var DANGEROUS = [
-  'rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda',
+  'rm -rf /', 'rm -rf ~', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda',
   // PowerShell destructive patterns. Won't catch every adversarial spelling
   // (PS aliases let `ri -r -force C:\` mean the same thing) but covers the
   // common-typo destruction class — symmetric to the POSIX list's intent.
@@ -253,6 +254,74 @@ var DANGEROUS = [
   'format-volume',
   'clear-disk',
 ];
+
+// #1449 — the entries above that END at a filesystem root are also a PREFIX of
+// every absolute path beneath it, so plain substring matching blocked routine
+// cleanup: `rm -rf /tmp/scratch` reported as `rm -rf /`. Those entries must
+// match ON the root rather than at the head of a longer path.
+//
+// WHICH entries those are is derived, not listed: a pattern is root-shaped iff
+// it ends at a root — a separator or `~`. That selects `rm -rf /`, `rm -rf ~`,
+// `del /s /q c:\` and the three `remove-item` forms, and leaves `format c:`,
+// `mkfs.`, `> /dev/sda`, `format-volume` and `clear-disk` on plain substring
+// matching, where trailing text is still the same dangerous command. Deriving
+// it rather than keeping a parallel list means a future root-shaped addition to
+// DANGEROUS is anchored automatically instead of silently falling back to the
+// prefix bug this fixes.
+//
+// `rm -rf ~` joins DANGEROUS with this change: it was never listed, so wiping a
+// home directory was allowed outright while cleaning a subdirectory of one was
+// blocked. Anchoring is what makes the entry safe to add.
+function endsAtRoot(pat) {
+  var last = pat.charAt(pat.length - 1);
+  return last === '/' || last === '\\' || last === '~';
+}
+// What may legally follow a root target: nothing, whitespace, a glob (`rm -rf /*`
+// still blocks), a shell operator, or a closing quote/paren. A path character —
+// letter, digit, `-`, `_` — means another segment follows, i.e. routine cleanup
+// of something below root. Rule #1: pure string logic, no platform branch; both
+// separators are handled for every OS's spelling.
+var ROOT_BOUNDARY_RE = /[\s;&|)"'`*<>]/;
+function isRootBoundary(cmd, i) {
+  if (i >= cmd.length) return true;
+  var c = cmd.charAt(i);
+  return c === '/' || c === '\\' || ROOT_BOUNDARY_RE.test(c);
+}
+
+/**
+ * Advance past text that does not move OFF the root: repeated separators, and
+ * `.` / `..` segments, which resolve back to where they started. `rm -rf //`,
+ * `rm -rf /.` and `rm -rf /..` all still mean `rm -rf /` and must block, while
+ * `rm -rf //tmp/x` and `rm -rf /.config` are real paths below root and must not.
+ * Without the dot handling the anchoring would OPEN a hole the substring match
+ * did not have — `.` is not a boundary character, so `rm -rf /.` would read as
+ * "a longer path follows" and pass.
+ */
+function skipToRootEnd(cmd, i) {
+  for (;;) {
+    var start = i;
+    while (i < cmd.length && (cmd.charAt(i) === '/' || cmd.charAt(i) === '\\')) i++;
+    var dots = 0;
+    while (cmd.charAt(i + dots) === '.') dots++;
+    // Only a BARE `.` or `..` segment is a no-op; `.config` and `..foo` are names.
+    if ((dots === 1 || dots === 2) && isRootBoundary(cmd, i + dots)) i += dots;
+    if (i === start) return i;
+  }
+}
+
+/**
+ * True when `pat` occurs in `cmd` as a real dangerous command. Root-shaped
+ * patterns must land on the root; every occurrence is examined, so a safe
+ * leading match (`rm -rf /tmp/a && rm -rf /`) never masks a later real one.
+ */
+function matchesDangerous(cmd, pat) {
+  if (!endsAtRoot(pat)) return cmd.indexOf(pat) >= 0;
+  for (var at = cmd.indexOf(pat); at >= 0; at = cmd.indexOf(pat, at + 1)) {
+    var end = skipToRootEnd(cmd, at + pat.length);
+    if (end >= cmd.length || ROOT_BOUNDARY_RE.test(cmd.charAt(end))) return true;
+  }
+  return false;
+}
 
 // #1132 — Bash memory-first gate.
 //
@@ -2143,7 +2212,7 @@ switch (command) {
     var raw = process.env.TOOL_INPUT_command || '';
     var cmd = stripQuotedAndHeredocs(raw).toLowerCase();
     for (var i = 0; i < DANGEROUS.length; i++) {
-      if (cmd.indexOf(DANGEROUS[i]) >= 0) {
+      if (matchesDangerous(cmd, DANGEROUS[i])) {
         console.log('[BLOCKED] Dangerous command: ' + DANGEROUS[i]);
         process.exit(2);
       }

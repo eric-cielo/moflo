@@ -263,6 +263,88 @@ describe('gate.cjs: check-dangerous-command', () => {
     const r = runGate('check-dangerous-command', env);
     expect(r.exitCode).toBe(0);
   });
+
+  // #1449 — the root-shaped DANGEROUS entries were matched as plain substrings,
+  // and every absolute path starts with the root they end at, so each one was
+  // also a PREFIX of every path beneath it: `rm -rf /tmp/scratch` blocked as
+  // `rm -rf /`. The pairs below pin the distinction for EVERY root-shaped
+  // entry — the root itself blocks, a path below it does not. Both halves
+  // matter: dropping the block half turns the fix into a hole in the net.
+  //
+  // Rule #1 — these run identically on all three platforms. The gate matches
+  // the command STRING, so the Windows spellings are asserted on POSIX runners
+  // and the POSIX spellings on Windows; nothing here touches the real FS.
+  it.each([
+    // [dangerous form (blocks), routine form (passes), label]
+    ['rm -rf /', 'rm -rf /tmp/scratch', 'POSIX root vs. a temp dir'],
+    ['rm -rf /', 'rm -rf /var/cache/foo', 'POSIX root vs. a cache dir'],
+    ['rm -rf /', 'rm -rf /home/me/project/build', 'POSIX root vs. a build dir'],
+    ['rm -rf ~', 'rm -rf ~/proj/dist', 'home dir vs. a dir inside it'],
+    ['del /s /q c:\\', 'del /s /q c:\\users\\me\\proj', 'C: drive vs. a dir on it'],
+    ['remove-item -recurse -force c:\\', 'remove-item -recurse -force c:\\users\\me\\proj\\build', 'PS C: drive vs. a dir on it'],
+    ['remove-item -recurse -force /', 'remove-item -recurse -force /var/tmp/x', 'PS POSIX root vs. a temp dir'],
+    ['remove-item -recurse -force ~', 'remove-item -recurse -force ~/proj', 'PS home dir vs. a dir inside it'],
+  ])('root target blocks but a path below it passes: %s (#1449)', (dangerous, routine) => {
+    const env = baseEnv(tmpDir);
+
+    env.TOOL_INPUT_command = dangerous;
+    expect(runGate('check-dangerous-command', env).exitCode, `should block: ${dangerous}`).toBe(2);
+
+    env.TOOL_INPUT_command = routine;
+    expect(runGate('check-dangerous-command', env).exitCode, `should allow: ${routine}`).toBe(0);
+  });
+
+  // #1449 — boundary forms that must still reach the root, and near-misses that
+  // must not. `//` is the same root; `//tmp/x` is not.
+  it.each([
+    ['rm -rf / ', 'trailing space still targets root'],
+    ['rm -rf /*', 'glob of root contents'],
+    ['rm -rf //', 'repeated separator is still root'],
+    ['rm -rf ~/', 'home dir with a trailing separator'],
+    ['rm -rf /;echo done', 'root followed by a shell separator'],
+    ['rm -rf /tmp/a && rm -rf /', 'a safe leading match must not mask a later real one'],
+    // `.` is not a boundary character, so anchoring on "what follows the root"
+    // would have OPENED a hole the old substring match did not have: `/.` and
+    // `/..` resolve straight back to `/`. Bare no-op segments are consumed.
+    ['rm -rf /.', 'dot segment resolves back to root'],
+    ['rm -rf /..', 'dot-dot segment resolves back to root'],
+    ['rm -rf /./', 'dot segment with a trailing separator'],
+    ['rm -rf ~/.', 'dot segment resolves back to the home dir'],
+    ['remove-item -recurse -force c:\\.', 'PS dot segment resolves back to the C: drive'],
+  ])('still blocks root-targeting form: %s (#1449)', (cmd) => {
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = cmd;
+    expect(runGate('check-dangerous-command', env).exitCode, `should block: ${cmd}`).toBe(2);
+  });
+
+  // #1449 — the flip side of consuming no-op segments: a leading dot is part of
+  // a real name far more often than it is a no-op, so only a BARE `.` / `..`
+  // counts. Dotfiles and dot-prefixed dirs below a root stay routine cleanup.
+  it.each([
+    ['rm -rf //tmp/x', 'deletion under a doubled root separator'],
+    ['rm -rf /.config', 'dot-prefixed dir at root is a real name'],
+    ['rm -rf ~/.config', 'dotfile dir inside home is a real name'],
+    ['rm -rf /..foo', 'dot-dot-prefixed dir is a real name'],
+    ['rm -rf /../tmp/x', 'traversal that lands below root'],
+  ])('allows: %s (#1449)', (cmd) => {
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = cmd;
+    expect(runGate('check-dangerous-command', env).exitCode, `should allow: ${cmd}`).toBe(0);
+  });
+
+  // #1449 — anchoring only applies to the root-shaped entries. The rest stay
+  // plain substring matches, where trailing text is part of the same dangerous
+  // command rather than a safer target.
+  it.each([
+    ['mkfs.ext4 /dev/sda1', 'mkfs. with a device argument'],
+    ['dd if=/dev/zero > /dev/sda2', '> /dev/sda with a partition suffix'],
+    ['Format-Volume -DriveLetter D', 'Format-Volume with arguments'],
+    ['Clear-Disk -Number 0 -RemoveData', 'Clear-Disk with arguments'],
+  ])('non-root entries keep substring matching: %s (#1449)', (cmd) => {
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = cmd;
+    expect(runGate('check-dangerous-command', env).exitCode, `should block: ${cmd}`).toBe(2);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
