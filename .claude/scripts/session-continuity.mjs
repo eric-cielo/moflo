@@ -35,6 +35,7 @@ import {
   readContinuityConfig,
   readGitState,
   hasPrivateOptOut,
+  extractFirstUserGoal,
   assembleDigestContent,
   buildDigestMetadata,
   writeDigest,
@@ -46,28 +47,6 @@ const LEARNINGS_SAMPLE = 5;     // how many recent learnings to fold in as "deci
 
 function warn(msg) {
   try { process.stderr.write(`moflo: session-continuity ${msg}\n`); } catch { /* never throw from a hook */ }
-}
-
-/** First user message (the session goal) from a transcript JSONL head. */
-function extractFirstUserGoal(headText) {
-  for (const line of headText.split('\n')) {
-    const t = line.trim();
-    if (!t) continue;
-    let obj;
-    try { obj = JSON.parse(t); } catch { continue; }
-    const role = obj?.message?.role ?? obj?.role;
-    if (role !== 'user') continue;
-    let content = obj?.message?.content ?? obj?.content;
-    if (Array.isArray(content)) {
-      content = content.map((b) => (typeof b === 'string' ? b : b?.text || '')).join(' ');
-    }
-    if (typeof content !== 'string') continue;
-    const firstLine = content.replace(/\s+/g, ' ').trim();
-    // Skip slash-command / hook-noise openers — they aren't a goal statement.
-    if (!firstLine || firstLine.startsWith('<')) continue;
-    return firstLine.slice(0, 200);
-  }
-  return null;
 }
 
 /** Bounded transcript read: goal from the head, `<private>` opt-out scan over
