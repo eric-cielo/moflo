@@ -1191,11 +1191,32 @@ function isPrCreateCommand(cmd) {
 // Fail-safe: any error (no classifier, no git, no merge-base) returns null,
 // which forces /simplify to run as today.
 function classifyForGateSkip(state) {
-  var classify;
+  var mod;
   try {
-    classify = require('./simplify-classify.cjs').classifyDiff;
+    mod = require('./simplify-classify.cjs');
   } catch (e) { return null; }
-  if (typeof classify !== 'function') return null;
+  var classify = mod && mod.classifyDiff;
+  var readUntracked = mod && mod.readUntrackedDiff;
+  // EXEC_MAX_BUFFER is checked alongside the functions because falling back to
+  // Node's 1 MiB default would silently reinstate the very cliff #1451 removed.
+  if (typeof classify !== 'function' || typeof readUntracked !== 'function'
+      || typeof mod.EXEC_MAX_BUFFER !== 'number') return null;
+
+  // Untracked files show up in no `git diff` output, so without them the gate
+  // could auto-pass a branch of brand-new unstaged files as TRIVIAL (#1451).
+  // Reading every one of them is real work, so it is deferred until a path is
+  // actually about to classify. Returns null if the read failed — the caller
+  // must then fall through and force /simplify rather than classify a partial
+  // diff.
+  var untrackedText = null;
+  function untrackedSuffix() {
+    if (untrackedText !== null) return untrackedText;
+    var u;
+    try { u = readUntracked(PROJECT_DIR); } catch (e) { return null; }
+    if (!u || u.unreadable) return null;
+    untrackedText = u.text ? '\n' + u.text : '';
+    return untrackedText;
+  }
 
   function tryClassify(diffText, label, allowSmallReviewFix) {
     try {
@@ -1219,11 +1240,16 @@ function classifyForGateSkip(state) {
     return null;
   }
 
+  // maxBuffer comes FROM the classifier (#1451) rather than being a matching
+  // literal here, so the gate and the skill cannot drift on which diffs are
+  // readable at all. Past it execFileSync throws ENOBUFS and gitDiff returns
+  // null — which every caller below must treat as "unknown", never "empty".
+  var maxBuffer = mod.EXEC_MAX_BUFFER;
   function gitDiff(args) {
     try {
       return cp.execFileSync('git', args, {
         cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 5000, windowsHide: true,
-        stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 8 * 1024 * 1024
+        stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: maxBuffer
       });
     } catch (e) { return null; }
   }
@@ -1231,9 +1257,14 @@ function classifyForGateSkip(state) {
   // Snapshot path: classify everything since /simplify last ran.
   if (state.simplifySnapshotSha) {
     var snapDiff = gitDiff(['diff', state.simplifySnapshotSha + '...HEAD']);
-    var workTreeA = gitDiff(['diff', 'HEAD']) || '';
-    if (snapDiff !== null) {
-      var combined = snapDiff + (workTreeA ? '\n' + workTreeA : '');
+    var workTreeA = gitDiff(['diff', 'HEAD']);
+    // BOTH reads must succeed. Coalescing a failed working-tree read to '' is
+    // how an over-buffer working tree used to read as "no working-tree changes"
+    // and let the gate skip review (#1451).
+    if (snapDiff !== null && workTreeA !== null) {
+      var suffixA = untrackedSuffix();
+      if (suffixA === null) return null;
+      var combined = snapDiff + (workTreeA ? '\n' + workTreeA : '') + suffixA;
       // Snapshot path: allow SMALL review-fix shape because the original /simplify
       // already covered the surface and only tiny no-decl-touching tweaks followed.
       var hit = tryClassify(combined, 'delta since last /simplify', true);
@@ -1253,9 +1284,11 @@ function classifyForGateSkip(state) {
     } catch (e) { continue; }
     if (!base) continue;
     var branchDiff = gitDiff(['diff', base + '...HEAD']);
-    var workTreeB = gitDiff(['diff', 'HEAD']) || '';
-    if (branchDiff !== null) {
-      return tryClassify(branchDiff + (workTreeB ? '\n' + workTreeB : ''), 'branch diff');
+    var workTreeB = gitDiff(['diff', 'HEAD']);
+    if (branchDiff !== null && workTreeB !== null) {
+      var suffixB = untrackedSuffix();
+      if (suffixB === null) return null;
+      return tryClassify(branchDiff + (workTreeB ? '\n' + workTreeB : '') + suffixB, 'branch diff');
     }
     break;
   }

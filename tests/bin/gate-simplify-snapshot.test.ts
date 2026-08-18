@@ -238,6 +238,73 @@ describe('gate baseline path — TRIVIAL whole-branch diff auto-passes', () => {
   });
 });
 
+describe('gate skip must not undercount the diff (#1451)', () => {
+  // Untracked files appear in no `git diff` output, so the gate's skip check
+  // could auto-pass a branch whose real content was a pile of unstaged new
+  // files. Every undercount weakens the gate rather than failing it.
+  it('untracked new files block the baseline auto-pass', () => {
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    // On its own this committed change is the typo-only shape that auto-passes.
+    writeFileSync(join(tmpDir, 'src.ts'), 'export const X = 1; // typo: fixed\n');
+    execSync('git add -A && git commit -q -m "typo"', { cwd: tmpDir });
+
+    // ...but six brand-new unstaged files are a real change the gate must see.
+    for (let i = 0; i < 6; i++) {
+      writeFileSync(
+        join(tmpDir, `created${i}.ts`),
+        `export function created${i}() {\n  const v = ${i};\n  return v;\n}\n`,
+      );
+    }
+
+    writeState(tmpDir, { simplifyRun: false, learningsStored: true });
+    creditTests(env);
+
+    env.TOOL_INPUT_command = 'gh pr create --title "typo"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, `untracked new files must block, stdout=${r.stdout}`).toBe(2);
+    expect(r.stderr).toContain('/flo-simplify (or /distill) has not run');
+  });
+
+  it('a failed working-tree read blocks instead of reading as "no changes"', () => {
+    // `git diff HEAD` needs the index; `git diff <base>...HEAD` and merge-base
+    // are tree-only. Corrupting .git/index therefore fails exactly the read the
+    // old `gitDiff(...) || ''` coalesced away — leaving a TRIVIAL committed diff
+    // that auto-passed. Same shape an ENOBUFS overflow produces, without
+    // needing a 64 MiB diff to provoke it.
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    writeFileSync(join(tmpDir, 'src.ts'), 'export const X = 1; // typo: fixed\n');
+    execSync('git add -A && git commit -q -m "typo"', { cwd: tmpDir });
+
+    writeState(tmpDir, { simplifyRun: false, learningsStored: true });
+    creditTests(env);
+    writeFileSync(join(tmpDir, '.git', 'index'), Buffer.from('not-a-git-index'));
+
+    env.TOOL_INPUT_command = 'gh pr create --title "typo"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, `unreadable working tree must block, stdout=${r.stdout}`).toBe(2);
+    expect(r.stderr).toContain('/flo-simplify (or /distill) has not run');
+  });
+
+  it('the same branch WITHOUT the untracked files still auto-passes', () => {
+    // Discriminator for the test above: proves the block came from the
+    // untracked files, not from some other property of the branch.
+    const env = baseEnv(tmpDir);
+    execSync('git checkout -q -b feature', { cwd: tmpDir });
+    writeFileSync(join(tmpDir, 'src.ts'), 'export const X = 1; // typo: fixed\n');
+    execSync('git add -A && git commit -q -m "typo"', { cwd: tmpDir });
+
+    writeState(tmpDir, { simplifyRun: false, learningsStored: true });
+    creditTests(env);
+
+    env.TOOL_INPUT_command = 'gh pr create --title "typo"';
+    const r = runGate('check-before-pr', env);
+    expect(r.exitCode, `expected pass, stderr=${r.stderr}`).toBe(0);
+    expect(r.stdout).toMatch(/auto-passed.*branch diff is TRIVIAL/i);
+  });
+});
+
 describe('gate no-source-files exemption — check-before-pr (#1176)', () => {
   // The DOCS_ONLY path used to skip the testing/simplify/learnings gates only
   // when EVERY changed file was a doc/image. #1176 widens that to "no source
