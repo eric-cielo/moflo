@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFileSync, execSync } from 'child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import {
@@ -435,6 +435,31 @@ describe('simplify-classify: decide() boundary cases', () => {
     // Security hit alone does not escalate — only security + new declarations
     expect(decision.agentCount).toBeLessThanOrEqual(1);
   });
+
+  it('files with no +/- lines are not "an empty diff" (#1451)', () => {
+    // Pure renames, mode changes, and binary assets are real changes git does
+    // not express as lines. Only a diff with no files at all is truly empty.
+    const renameOnly =
+      'diff --git a/src/a.ts b/src/b.ts\nsimilarity index 100%\nrename from src/a.ts\nrename to src/b.ts\n';
+    const decision = classifyDiff(renameOnly);
+
+    expect(decision.stats.fileCount).toBe(1);
+    expect(decision.stats.added + decision.stats.deleted).toBe(0);
+    expect(decision.reasoning).not.toEqual(['empty diff — nothing to review']);
+  });
+
+  it('measured stats route unchanged when no read failed', () => {
+    // The unmeasurable-diff wrapper must be a pass-through for every ordinary
+    // decision — routing for readable diffs is untouched.
+    const stats = {
+      added: 40, deleted: 5, declAdded: 1, declRemoved: 0,
+      netDecls: 1, fileCount: 2, newFiles: 0, renamedFiles: 0, securityHit: false, files: [],
+    };
+    const decision = decide(stats);
+    expect(decision.tier).toBe('SMALL');
+    expect(decision.agentCount).toBe(1);
+    expect(decision.stats).toBe(stats);
+  });
 });
 
 describe('simplify-classify: opus escalation (DEEP + handoff)', () => {
@@ -602,6 +627,115 @@ describe('simplify-classify: default-branch detection', () => {
     // Not even a git repo — both git calls fail, fallback is 'main'
     const dir = newTempDir('simplify-classify-bare-');
     expect(detectDefaultBranch(dir)).toBe('main');
+  });
+
+  // ── #1451: a measurement the classifier cannot take is never reported as
+  // a measurement of zero. Lives inside this describe to reuse makeRepo /
+  // newTempDir and the shared afterEach that clears the branch cache.
+  it('a failed git read inside a repo forces review instead of stamping the gate clean', () => {
+    // A base ref that does not exist fails `git diff <base>...HEAD` exactly the
+    // way an ENOBUFS overflow does: the exec throws and safeExec returns null.
+    // The decision the gate consumes must never be the empty-diff stamp.
+    const dir = makeRepo();
+    const decision = classifyFromGit('no-such-base-ref', dir);
+
+    expect(decision.tier).not.toBe('TRIVIAL');
+    expect(decision.agentCount).toBeGreaterThan(0);
+    expect(decision.reasoning).not.toEqual(['empty diff — nothing to review']);
+    expect(decision.reasoning.join(' ')).toMatch(/could not be fully read/i);
+    expect(decision.stats.diffUnavailable).toBe(true);
+  });
+
+  it('a diff past the old 1 MiB execSync default still classifies', () => {
+    // The reported symptom: a 2,113,712-byte diff against the 1,048,576-byte
+    // default buffer threw ENOBUFS, which read back as an empty diff.
+    const dir = makeRepo();
+    execSync('git checkout -q -b feature', { cwd: dir });
+    const padded = Array.from(
+      { length: 20000 },
+      (_, i) => `export const v${i} = ${i}; // padding past the old buffer ceiling`,
+    ).join('\n');
+    writeFileSync(join(dir, 'big.ts'), padded + '\n');
+    execSync('git add big.ts', { cwd: dir });
+    execSync('git commit -m big -q', { cwd: dir });
+
+    const decision = classifyFromGit('main', dir);
+    expect(decision.stats.added).toBeGreaterThan(19000);
+    expect(decision.stats.diffUnavailable).toBeFalsy();
+    expect(decision.tier).not.toBe('TRIVIAL');
+  });
+
+  it('outside a git repo there is genuinely nothing to measure — still TRIVIAL', () => {
+    // The counterweight: "fail loud" must not mean forcing a three-agent
+    // fan-out over a directory that has no diff to read in the first place.
+    const dir = newTempDir('simplify-classify-norepo-');
+    const decision = classifyFromGit(undefined, dir);
+
+    expect(decision.tier).toBe('TRIVIAL');
+    expect(decision.agentCount).toBe(0);
+    expect(decision.reasoning).toEqual(['empty diff — nothing to review']);
+  });
+
+  it('untracked non-ignored files count toward the diff without being staged', () => {
+    // 12 new CRUD files classifying SMALL until someone staged them is the same
+    // undercount from the other direction — git diff reports none of them.
+    const dir = makeRepo();
+    for (let i = 0; i < 6; i++) {
+      writeFileSync(
+        join(dir, `created${i}.ts`),
+        `export function created${i}() {\n  const v = ${i};\n  return v;\n}\n`,
+      );
+    }
+
+    const decision = classifyFromGit('main', dir);
+    expect(decision.stats.newFiles).toBe(6);
+    expect(decision.stats.declAdded).toBeGreaterThanOrEqual(6);
+    expect(decision.tier).not.toBe('TRIVIAL');
+    // The index must be untouched — counting a file is not staging it.
+    expect(execSync('git diff --cached --name-only', { cwd: dir, encoding: 'utf-8' }).trim()).toBe('');
+  });
+
+  it('gitignored files stay out of the untracked count', () => {
+    const dir = makeRepo();
+    writeFileSync(join(dir, '.gitignore'), 'secret.ts\n');
+    execSync('git add .gitignore', { cwd: dir });
+    execSync('git commit -m ignore -q', { cwd: dir });
+    writeFileSync(join(dir, 'secret.ts'), 'export function hidden() {\n  return 1;\n}\n');
+
+    const decision = classifyFromGit('main', dir);
+    expect(decision.stats.files).not.toContain('secret.ts');
+    expect(decision.reasoning).toEqual(['empty diff — nothing to review']);
+  });
+
+  it('an untracked binary counts as a new file rather than as an empty diff', () => {
+    const dir = makeRepo();
+    writeFileSync(join(dir, 'asset.bin'), Buffer.from([0x00, 0x01, 0x02, 0x00, 0xff]));
+
+    const decision = classifyFromGit('main', dir);
+    // git emits no +lines for a binary either, so zero added lines is the
+    // honest measurement — but the file itself must still be visible.
+    expect(decision.stats.fileCount).toBe(1);
+    expect(decision.stats.newFiles).toBe(1);
+    expect(decision.stats.added).toBe(0);
+    expect(decision.reasoning).not.toEqual(['empty diff — nothing to review']);
+  });
+
+  // Windows needs elevation (or developer mode) to create symlinks, so the
+  // probe itself is POSIX-only — the lstat behaviour it guards is not.
+  it.skipIf(process.platform === 'win32')('an untracked symlink is not followed into its target', () => {
+    const dir = makeRepo();
+    const target = Array.from({ length: 50 }, (_, i) => `export const t${i} = ${i};`).join('\n');
+    writeFileSync(join(dir, 'target.ts'), target + '\n');
+    execSync('git add target.ts', { cwd: dir });
+    execSync('git commit -m target -q', { cwd: dir });
+    symlinkSync(join(dir, 'target.ts'), join(dir, 'link.ts'));
+
+    const decision = classifyFromGit('main', dir);
+    expect(decision.stats.files).toContain('link.ts');
+    // Following the link would have counted the target's 50 lines — and, for a
+    // link pointing outside the tree, read bytes that are not part of the diff.
+    expect(decision.stats.added).toBe(0);
+    expect(decision.stats.declAdded).toBe(0);
   });
 
   it('detected branch is the merge base, not hardcoded "main"', () => {

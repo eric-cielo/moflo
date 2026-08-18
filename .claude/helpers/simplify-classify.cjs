@@ -31,6 +31,14 @@
  *     "stats": { added, deleted, fileCount, declAdded, declRemoved, tsjsLOC, tsjsNetDecls, otherNetAdded, ... }
  *   }
  *
+ * The diff it measures spans committed-since-base, working-tree, AND untracked
+ * non-ignored files — an untracked file is a change the branch will carry, and
+ * omitting it undercounts the diff exactly as a swallowed read error does.
+ * When a read it needed did not happen, `stats.diffUnavailable` is set and the
+ * decision routes to a review tier: the classifier cannot distinguish "no
+ * changes" from "I could not read the changes", and only the first is safe to
+ * call TRIVIAL (#1451).
+ *
  * Usage:
  *   node bin/simplify-classify.cjs                  # auto-detects default branch
  *   node bin/simplify-classify.cjs --base develop   # explicit override
@@ -42,6 +50,27 @@
 'use strict';
 
 const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+// execSync defaults to a 1 MiB stdout buffer and a real branch diff clears that
+// routinely (#1451 measured 2,113,712 bytes). Overflow throws ENOBUFS, which
+// used to be swallowed into an empty diff — "TRIVIAL, nothing to review" on a
+// branch with plenty to review. 64 MiB puts the cliff well past any diff a
+// human opens a PR for; past it, the classifier now says so instead of
+// reporting zero.
+const EXEC_MAX_BUFFER = 64 * 1024 * 1024;
+
+// Cap on how much of an untracked file is slurped to synthesize its new-file
+// diff. Well past any hand-written source file; anything larger is treated like
+// a binary (counted as a new file with no added lines) rather than read.
+const UNTRACKED_MAX_BYTES = 8 * 1024 * 1024;
+
+// Total budget for synthesized untracked-file content. A repo with a huge
+// un-ignored directory must not be slurped into memory wholesale — past this
+// the remaining files are recorded as new files and the result is flagged
+// unmeasurable, which forces review rather than quietly undercounting.
+const UNTRACKED_TOTAL_BUDGET = 32 * 1024 * 1024;
 
 // Paths where new logic warrants the 3-agent fan-out.
 // Mechanical edits inside these paths are still SMALL; only adding/removing
@@ -98,14 +127,43 @@ function noEscalate() {
   return { suggested: false, target: null, reason: null };
 }
 
+/**
+ * Run a git command, returning its stdout — or `null` if the command failed.
+ *
+ * `null` rather than `''` is load-bearing: a caller that cannot tell "git said
+ * nothing" from "git never answered" will report an unreadable diff as an empty
+ * one, and an empty diff is the one thing it is safe to call TRIVIAL (#1451).
+ */
 function safeExec(cmd, opts) {
   try {
     return execSync(cmd, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: EXEC_MAX_BUFFER,
       ...(opts && opts.cwd ? { cwd: opts.cwd } : {}),
     });
-  } catch { return ''; }
+  } catch { return null; }
+}
+
+/**
+ * Is there a repo with at least one commit here? A git failure only means
+ * "there was something we could not measure" when there is history to read —
+ * outside a repo, or in a fresh `git init` before the first commit, there is
+ * genuinely no diff to miss, and forcing a review fan-out over nothing would be
+ * its own defect.
+ */
+function hasGitHistory(cwd) {
+  return safeExec('git rev-parse --verify HEAD', cwd ? { cwd } : undefined) !== null;
+}
+
+/**
+ * One `git rev-parse` per classification, shared by both diff readers. They
+ * consult it only on their failure paths — and a directory that is not a repo
+ * makes every read fail, so without sharing, the cheapest case pays twice.
+ */
+function makeHistoryProbe(cwd) {
+  let answer;
+  return () => (answer === undefined ? (answer = hasGitHistory(cwd)) : answer);
 }
 
 // Detect the consumer's default branch. Hardcoding 'main' silently miscalibrates
@@ -119,7 +177,7 @@ function detectDefaultBranch(cwd) {
   const opts = cwd ? { cwd } : undefined;
 
   // Preferred: origin/HEAD points to whatever the remote considers default.
-  const symbolic = safeExec('git symbolic-ref --short refs/remotes/origin/HEAD', opts).trim();
+  const symbolic = (safeExec('git symbolic-ref --short refs/remotes/origin/HEAD', opts) || '').trim();
   if (symbolic.startsWith('origin/')) {
     const v = symbolic.slice('origin/'.length);
     if (cwd === undefined) _cachedDefaultBranch = v;
@@ -127,7 +185,7 @@ function detectDefaultBranch(cwd) {
   }
 
   // Fallback: local init.defaultBranch (set by `git init -b <name>` or config).
-  const configured = safeExec('git config --get init.defaultBranch', opts).trim();
+  const configured = (safeExec('git config --get init.defaultBranch', opts) || '').trim();
   if (configured) {
     if (cwd === undefined) _cachedDefaultBranch = configured;
     return configured;
@@ -142,12 +200,95 @@ function _resetCacheForTest() {
   _cachedDefaultBranch = null;
 }
 
-function readDiffFromGit(base, cwd) {
+/**
+ * Read the tracked half of the diff: committed-since-base + working-tree.
+ * Returns `{ text, unreadable, reason }` — `unreadable` means a read we needed
+ * did not happen, so `text` is an undercount and must not be trusted as zero.
+ */
+function readDiffFromGit(base, cwd, historyProbe) {
   const opts = cwd ? { cwd } : undefined;
-  // Combined diff: committed-since-base + working-tree
   const committed = safeExec(`git diff ${base}...HEAD`, opts);
   const working = safeExec('git diff HEAD', opts);
-  return committed + (working ? '\n' + working : '');
+  const text = (committed || '') + (working ? '\n' + working : '');
+
+  if (committed !== null && working !== null) return { text, unreadable: false };
+  if (!(historyProbe ? historyProbe() : hasGitHistory(cwd))) return { text, unreadable: false };
+
+  const failed = [];
+  if (committed === null) failed.push(`git diff ${base}...HEAD`);
+  if (working === null) failed.push('git diff HEAD');
+  return { text, unreadable: true, reason: `${failed.join(' and ')} failed` };
+}
+
+/**
+ * Read the untracked half of the diff.
+ *
+ * Untracked files appear in no `git diff` output at all, so a branch of
+ * brand-new files reads as a far smaller change than it is — 12 new CRUD files
+ * classified SMALL until someone staged them (#1451). Synthesize a new-file
+ * entry per untracked, non-ignored file so `parseDiff` counts it exactly as it
+ * would once staged.
+ *
+ * Built from Node file reads rather than `git diff --no-index` against a null
+ * device, which would need `/dev/null` vs `NUL` branching (Rule #1). The index
+ * is never touched.
+ */
+function readUntrackedDiff(cwd, historyProbe) {
+  const root = cwd || process.cwd();
+  const out = safeExec('git ls-files --others --exclude-standard -z', cwd ? { cwd } : undefined);
+  if (out === null) {
+    return (historyProbe ? historyProbe() : hasGitHistory(cwd))
+      ? { text: '', unreadable: true, reason: 'git ls-files --others failed' }
+      : { text: '', unreadable: false };
+  }
+
+  const parts = [];
+  let budgetSpent = 0;
+  let overBudget = false;
+  // -z keeps paths raw (no shell quoting of unusual characters). git emits them
+  // POSIX-separated on every platform, so they need no separator translation —
+  // only path.resolve to reach the file on disk.
+  for (const rel of out.split('\0')) {
+    if (!rel) continue;
+    const header = `diff --git a/${rel} b/${rel}\nnew file mode 100644\n`;
+
+    let body = null;
+    try {
+      const abs = path.resolve(root, rel);
+      // lstat, not stat: following an untracked symlink would read and count
+      // the TARGET's content — mismeasuring the diff, and pulling bytes from
+      // wherever the link points, which may be outside the working tree.
+      const stat = fs.lstatSync(abs);
+      if (stat.isFile() && stat.size <= UNTRACKED_MAX_BYTES && budgetSpent + stat.size <= UNTRACKED_TOTAL_BUDGET) {
+        const buf = fs.readFileSync(abs);
+        budgetSpent += stat.size;
+        if (!buf.includes(0)) body = buf.toString('utf-8');
+      } else if (stat.isFile()) {
+        overBudget = overBudget || budgetSpent + stat.size > UNTRACKED_TOTAL_BUDGET;
+      }
+    } catch { /* vanished or unreadable — header only */ }
+
+    if (body === null) {
+      // Binary, symlink, oversized, or unreadable. git emits no `+` lines for
+      // these either, so the file still counts toward fileCount/newFiles with
+      // zero added lines — the honest measurement, not a swallowed one.
+      parts.push(`${header}Binary files /dev/null and b/${rel} differ\n`);
+      continue;
+    }
+
+    // Split on \n and drop the trailing empty element from a final newline;
+    // CRLF files keep their \r on each line, which parseDiff trims before
+    // testing for declarations.
+    const lines = body.split('\n');
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    parts.push(`${header}--- /dev/null\n+++ b/${rel}\n@@ -0,0 +1,${lines.length} @@\n`);
+    for (const ln of lines) parts.push(`+${ln}\n`);
+  }
+
+  const text = parts.join('');
+  return overBudget
+    ? { text, unreadable: true, reason: 'untracked files exceeded the diff-synthesis budget' }
+    : { text, unreadable: false };
 }
 
 /**
@@ -240,14 +381,19 @@ function parseDiff(diff) {
 }
 
 /**
- * Pure decision function. Takes parsed stats, returns dispatch decision.
- * No I/O. Easy to unit-test with synthetic stats.
+ * Route a diff we actually managed to measure. Pure — no I/O. Callers reach
+ * this through `decide`, which first handles the case where the measurement
+ * itself failed.
  */
-function decide(stats) {
+function decideMeasured(stats) {
   const reasoning = [];
   const totalChange = stats.added + stats.deleted;
 
-  if (totalChange === 0) {
+  // Only a diff with no files at all is genuinely empty. A diff carrying files
+  // but no +/- lines — binary assets, pure renames, mode changes, an untracked
+  // binary — is a real change git simply does not express as lines, and calling
+  // it "nothing to review" is the same undercount as swallowing a read error.
+  if (totalChange === 0 && stats.fileCount === 0) {
     return { tier: 'TRIVIAL', model: 'sonnet', agentCount: 0, escalate: noEscalate(), reasoning: ['empty diff — nothing to review'], stats };
   }
 
@@ -345,13 +491,46 @@ function decide(stats) {
   return { tier: 'SMALL', model: 'sonnet', agentCount: 1, escalate: noEscalate(), reasoning, stats };
 }
 
+/**
+ * Pure decision function. Takes parsed stats, returns dispatch decision.
+ * No I/O. Easy to unit-test with synthetic stats.
+ *
+ * `stats.diffUnavailable` marks a diff the reader could not fully measure. The
+ * classifier cannot tell "no changes" from "I could not read the changes", and
+ * only the first is safe to call TRIVIAL — so an unmeasurable diff routes to a
+ * review tier and says why, rather than stamping the gate clean (#1451).
+ */
+function decide(stats) {
+  if (!stats.diffUnavailable) return decideMeasured(stats);
+
+  const note = `diff could not be fully read (${stats.diffUnavailableReason || 'git read failed'})`
+    + ' — a diff the classifier cannot measure is never TRIVIAL';
+  // Whatever DID parse may already warrant more than the forced NORMAL floor;
+  // an architectural diff whose working-tree half went missing stays DEEP.
+  const measured = decideMeasured(stats);
+  if (measured.agentCount >= 3) {
+    return { ...measured, reasoning: [note].concat(measured.reasoning) };
+  }
+  return { tier: 'NORMAL', model: 'sonnet', agentCount: 3, escalate: noEscalate(), reasoning: [note], stats };
+}
+
 function classifyDiff(diffText) {
   return decide(parseDiff(diffText));
 }
 
 function classifyFromGit(base, cwd) {
   const resolved = base || detectDefaultBranch(cwd);
-  return classifyDiff(readDiffFromGit(resolved, cwd));
+  const historyProbe = makeHistoryProbe(cwd);
+  const tracked = readDiffFromGit(resolved, cwd, historyProbe);
+  const untracked = readUntrackedDiff(cwd, historyProbe);
+  const stats = parseDiff(tracked.text + (untracked.text ? '\n' + untracked.text : ''));
+  if (tracked.unreadable || untracked.unreadable) {
+    stats.diffUnavailable = true;
+    // Both halves can fail independently; surface every reason, not just the
+    // first, so the printed decision explains the whole gap.
+    stats.diffUnavailableReason = [tracked.reason, untracked.reason].filter(Boolean).join('; ');
+  }
+  return decide(stats);
 }
 
 if (require.main === module) {
@@ -375,4 +554,7 @@ if (require.main === module) {
   }
 }
 
-module.exports = { parseDiff, decide, classifyDiff, classifyFromGit, detectDefaultBranch, _resetCacheForTest };
+module.exports = {
+  parseDiff, decide, classifyDiff, classifyFromGit,
+  readUntrackedDiff, detectDefaultBranch, EXEC_MAX_BUFFER, _resetCacheForTest,
+};
