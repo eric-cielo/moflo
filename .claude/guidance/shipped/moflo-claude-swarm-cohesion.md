@@ -250,14 +250,37 @@ CLI/MCP coordinates; the `Task` tool runs the agents that do the actual work.
 
 ### Spawn-and-Wait Pattern
 
-After spawning background agents:
+After spawning background agents, wait — but wait against a deadline you announced. A wait whose
+failure mode is silence is indistinguishable from a wait that is still working, so **every fan-out
+must end in a report, including the failed ones.**
 
 | Do | Don't |
 |----|-------|
 | Tell the user "I've spawned X agents working in parallel on: [list]" | Continuously poll swarm status |
-| Stop further tool calls and let agents run | Repeatedly call `TaskOutput` |
-| Wait for agent results to arrive (you'll be notified) | Add more tool calls after spawning |
-| Synthesize results when they return | Ask "should I check on the agents?" |
+| State the expected time-to-first-notification in that same message — "first results in ~2–3 min" | Repeatedly call `TaskOutput` to ask "are you done yet?" |
+| Stop further tool calls and let the agents run until that window elapses | Add unrelated tool calls after spawning |
+| Synthesize results when they return | Read continued silence as patience — it looks identical to a dead fan-out |
+| Once the announced window passes with **no** notification, run **one** liveness check — `ListAgents`, or a single `TaskOutput` | Keep waiting past that window because a result "might still arrive" |
+| Treat a stall as a fault: stop the agents, tell the user which ones never reported, and say what you will do instead | Let a fan-out end in silence, or ask the user "should I check on the agents?" |
+
+**Polling and a liveness check are different questions.** Polling asks *"are you done yet?"*
+repeatedly and burns context on agents that are working fine — still banned. A liveness check asks
+*"are you alive at all?"* **once**, after a deadline you stated up front — mandatory. Never make the
+user be the one who notices: in a consumer project, three Opus agents budgeted at ~450k tokens
+returned nothing at all, and the stall surfaced only because the operator saw the token counters
+still climbing.
+
+### Never Pass `name:` to a Fan-Out Spawn
+
+**Label a parallel spawn with `description` and leave the `Agent` tool's `name` unset.** `name`
+registers the spawn as a persistent, `SendMessage`-addressable teammate — use it only when you
+genuinely intend to message that agent later, never for one-shot fan-out work.
+
+Confirmed on Claude Code 2.1.239: a named spawn returned an `agent_id` and "will receive
+instructions via mailbox", then **never executed its `prompt`** — no output file, absent from
+`ListAgents`, no completion notification, and a follow-up `SendMessage` accepted but never
+processed. The identical unnamed spawn ran and reported normally. This is the exact silent stall the
+deadline above exists to catch.
 
 ---
 
