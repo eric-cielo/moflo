@@ -111,22 +111,25 @@ The consumer experiences this as: open a session → wait for the indexers → s
 
 When you change `shipped/` (rename, split, delete, large rewrite), verify the cleanup ran by snapshotting the chunk counts before and after a reindex:
 
+The store is `node:sqlite`, not `sql.js`, and the chunk body lives in `content` (there is no `value`
+column). Run the snapshot, reindex, then run the identical snapshot again:
+
 ```bash
-# BEFORE: snapshot chunk counts for the affected files
-node --input-type=module -e "
-import initSqlJs from 'sql.js';
-import { readFileSync } from 'fs';
-const SQL = await initSqlJs();
-const db = new SQL.Database(readFileSync('.moflo/moflo.db'));
-const r = db.exec(\"SELECT COUNT(*) FROM memory_entries WHERE namespace='guidance' AND key LIKE 'chunk-guidance-<file-stem>%'\");
-console.log('chunks:', r[0]?.values[0][0]);
-"
+# BEFORE: snapshot chunk counts for the affected file
+node -e "const{DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('.moflo/moflo.db',{readOnly:true});console.log('chunks:',db.prepare(\"SELECT COUNT(*) AS n FROM memory_entries WHERE namespace='guidance' AND key LIKE 'chunk-guidance-<file-stem>%'\").get().n)"
 
 # Run the indexer
 node bin/index-guidance.mjs
 
-# AFTER: same query — confirm the count matches the new shape
+# AFTER: same command — confirm the count matches the new shape
 ```
+
+To see which sections actually became chunks (the useful check after an in-place rewrite, where the
+count barely moves), select `key` and `substr(content, 1, 70)` instead of `COUNT(*)`. A new H3
+should appear as its own `chunk-guidance-<file-stem>-<n>` row.
+
+`--input-type=module` with a multi-line `-e` string is POSIX-shell only; the single-line `node -e`
+form above also works in PowerShell and `cmd.exe` (Rule #1).
 
 If chunks remain after deletion, `cleanStaleEntries` did not run (likely `--file` mode) or the doc key is still appearing in `currentDocKeys` (the file is still on disk). If chunks dropped but search still returns the old content, the HNSW sidecar didn't rebuild — re-run with `node bin/build-embeddings.mjs --force`.
 
