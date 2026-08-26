@@ -621,6 +621,35 @@ export function importTeamArtifact(opts: { projectRoot?: string; artifactPath: s
 }
 
 /**
+ * The dominant line ending already in a file. Both writers below rewrite whole
+ * files they did not author, so they must hand back the style they were given —
+ * splitting on `/\r?\n/` and re-joining with `\n` silently converts every
+ * unrelated line in a CRLF checkout, which is the opposite of the narrow,
+ * one-line edit these functions promise (Rule #1).
+ */
+function detectEol(raw: string): '\r\n' | '\n' {
+  const newlines = (raw.match(/\n/g) ?? []).length;
+  const crlf = (raw.match(/\r\n/g) ?? []).length;
+  return crlf > newlines - crlf ? '\r\n' : '\n';
+}
+
+/**
+ * Render one path as a literal gitattributes pattern.
+ *
+ * The artifact path is caller-supplied (`flo memory team-export --to ...`), so
+ * it can carry whitespace or glob metacharacters. Unescaped, `team notes.jsonl`
+ * parses as the pattern `team` plus garbage, and a `*` in the name would match
+ * files the user never named. Glob metacharacters are escaped first; the result
+ * is then C-quoted if it contains whitespace, which doubles the backslashes the
+ * escape pass added — that is correct, since git un-quotes before globbing.
+ */
+function gitattributesPattern(rel: string): string {
+  const pattern = `/${rel.replace(/([\\*?[\]])/g, '\\$1')}`;
+  if (!/[\s"]/.test(pattern)) return pattern;
+  return `"${pattern.replace(/(["\\])/g, '\\$1')}"`;
+}
+
+/**
  * Ensure a git-tracked shared artifact is actually trackable. Once `.moflo/` is
  * gitignored, git won't descend into it to re-include a child — the canonical
  * fix is to ignore the *contents* (`.moflo/*`) and negate the shared subtree.
@@ -647,7 +676,9 @@ export function ensureSharedArtifactTracked(
   const negation = `!/${relDir}`;
 
   const existed = fs.existsSync(gitignorePath);
-  const lines = existed ? fs.readFileSync(gitignorePath, 'utf-8').split(/\r?\n/) : [];
+  const raw = existed ? fs.readFileSync(gitignorePath, 'utf-8') : '';
+  const eol = existed ? detectEol(raw) : '\n';
+  const lines = existed ? raw.split(/\r?\n/) : [];
 
   const isBareMoflo = (t: string): boolean =>
     t === '.moflo/' || t === '/.moflo/' || t === '.moflo' || t === '/.moflo';
@@ -692,7 +723,7 @@ export function ensureSharedArtifactTracked(
   }
 
   if (!changed) return 'unchanged';
-  const content = next.join('\n').replace(/\n+$/, '') + '\n';
+  const content = next.join(eol).replace(/(\r?\n)+$/, '') + eol;
   atomicWriteFileSync(gitignorePath, content);
   return existed ? 'updated' : 'created';
 }
@@ -724,25 +755,37 @@ export function ensureSharedArtifactEol(
   if (rel.startsWith('..') || path.isAbsolute(rel)) return 'unchanged';
 
   const attributesPath = path.join(projectRoot, '.gitattributes');
-  const rule = `/${rel} text eol=lf`;
+  const pattern = gitattributesPattern(rel);
   const existed = fs.existsSync(attributesPath);
-  const lines = existed ? fs.readFileSync(attributesPath, 'utf-8').split(/\r?\n/) : [];
+  const raw = existed ? fs.readFileSync(attributesPath, 'utf-8') : '';
+  const eol = existed ? detectEol(raw) : '\n';
+  const lines = existed ? raw.split(/\r?\n/) : [];
 
-  // Any existing rule naming this exact path wins, whatever it says.
+  // macOS APFS and Windows NTFS are case-insensitive by default, so a rule
+  // differing only in case there names the SAME file and must count as already
+  // ruled. On a case-sensitive filesystem it names a different file, and
+  // skipping ours would leave the artifact unpinned — so the fold is applied
+  // only where the filesystem actually folds (Rule #1).
+  const caseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
+  const fold = (v: string): string => (caseInsensitive ? v.toLowerCase() : v);
+  const candidates = [fold(pattern), fold(`/${rel}`), fold(rel)];
+
+  // Any existing rule naming this path wins, whatever it says.
   const alreadyRuled = lines.some((line) => {
-    const trimmed = line.trim();
+    const trimmed = fold(line.trim());
     if (!trimmed || trimmed.startsWith('#')) return false;
-    const pattern = trimmed.split(/\s+/)[0];
-    return pattern === `/${rel}` || pattern === rel;
+    return candidates.some(
+      (c) => trimmed === c || trimmed.startsWith(`${c} `) || trimmed.startsWith(`${c}\t`),
+    );
   });
   if (alreadyRuled) return 'unchanged';
 
   const next = [...lines];
   if (next.length && next[next.length - 1].trim() !== '') next.push('');
   next.push('# moflo team-shared learnings: LF so the artifact stays diffable and merge-friendly');
-  next.push(rule);
+  next.push(`${pattern} text eol=lf`);
 
-  const content = next.join('\n').replace(/\n+$/, '') + '\n';
+  const content = next.join(eol).replace(/(\r?\n)+$/, '') + eol;
   atomicWriteFileSync(attributesPath, content);
   return existed ? 'updated' : 'created';
 }

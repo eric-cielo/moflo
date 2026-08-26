@@ -612,6 +612,47 @@ describe('ensureSharedArtifactEol — the artifact is git-tracked in someone els
     expect(existsSync(join(root, '.gitattributes'))).toBe(false);
   });
 
+  it('preserves a CRLF file\'s line endings instead of rewriting the whole file', async () => {
+    // The narrow-edit promise is only kept if the writer hands back the EOL
+    // style it was given — otherwise a Windows consumer gets a full-file diff
+    // on every export, which is what this rule exists to prevent.
+    const root = await makeRoot();
+    writeFileSync(join(root, '.gitattributes'), '*.png binary\r\n*.jpg binary\r\n', 'utf-8');
+    ensureSharedArtifactEol(root, join(root, '.moflo', 'shared', 'learnings.jsonl'));
+
+    const attrs = readAttrs(root);
+    expect(attrs).toContain('*.png binary\r\n');
+    expect(attrs.split('\r\n').length).toBeGreaterThan(3);
+    // No bare LF introduced anywhere.
+    expect(/[^\r]\n/.test(attrs)).toBe(false);
+  });
+
+  it('escapes a path with spaces or glob metacharacters', async () => {
+    const root = await makeRoot();
+    // `--to` is caller-supplied: unescaped, `team notes.jsonl` parses as the
+    // pattern `team`, and a `*` would match files the user never named.
+    ensureSharedArtifactEol(root, join(root, '.moflo', 'team notes[1].jsonl'));
+
+    const attrs = readAttrs(root);
+    // Quoted because of the space, and the brackets escaped so the pattern
+    // matches the literal filename rather than a one-character class. The
+    // backslashes are doubled: git un-quotes the C-string first, leaving the
+    // single backslashes the glob layer needs.
+    expect(attrs).toMatch(/^".*" text eol=lf$/m);
+    expect(attrs).toContain('team notes');
+    expect(attrs).toContain('\\\\[1\\\\]');
+  });
+
+  it('recognises its own escaped rule on a second run', async () => {
+    const root = await makeRoot();
+    const artifact = join(root, '.moflo', 'team notes[1].jsonl');
+    ensureSharedArtifactEol(root, artifact);
+    const first = readAttrs(root);
+
+    expect(ensureSharedArtifactEol(root, artifact)).toBe('unchanged');
+    expect(readAttrs(root)).toBe(first);
+  });
+
   it('writes the pattern with forward slashes on every platform', async () => {
     const root = await makeRoot();
     ensureSharedArtifactEol(root, join(root, '.moflo', 'shared', 'learnings.jsonl'));
