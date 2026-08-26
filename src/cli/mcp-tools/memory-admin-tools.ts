@@ -384,10 +384,16 @@ export const memoryAdminTools: MCPTool[] = [
       // Count what the exemption withheld. Without this the operator reads a
       // clean result as "learnings are already tidy" rather than "learnings were
       // not examined" — the same class of quiet lie the missing usage signal was.
+      //
+      // The TTL exclusion is not cosmetic: `lowQualityCond` does not test
+      // `expires_at`, so without it a durable row with an elapsed TTL would be
+      // reported as held back in the same call that deletes it through the
+      // expired bucket.
       const heldBackRows = ageBuckets && exemptDurable
         ? await query(
             `SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`
             + ` AND namespace IN (${durableIn})`
+            + ` AND NOT (expires_at IS NOT NULL AND expires_at < ${now})`
             + ` AND ((${staleCond}) OR (${lowQualityCond}))`
           )
         : [];

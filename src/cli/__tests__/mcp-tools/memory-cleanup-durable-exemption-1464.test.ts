@@ -208,6 +208,18 @@ describe('memory_cleanup durable exemption (#1464)', () => {
     expect(activeKeys()).toEqual(['permanent']);
   });
 
+  it('does not report a TTL-expired durable row as held back while deleting it', async () => {
+    // `lowQualityCond` does not test `expires_at`, so an expired durable row
+    // matches it — and would be counted as withheld in the same call that
+    // removes it through the expired bucket.
+    seed([{ key: 'ephemeral', namespace: 'learnings', expiresAt: Date.now() - 60_000 }]);
+
+    const result = await cleanup.handler({ olderThan: '1d' }) as CleanupResult;
+
+    expect(result.candidates.expired).toBe(1);
+    expect(result.durableHeldBack).toBe(0);
+  });
+
   it('exempts every namespace the durable list names', () => {
     // The exemption is generated from DURABLE_NAMESPACES rather than a literal,
     // so a namespace added to that list is covered without touching this file.

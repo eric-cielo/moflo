@@ -29,7 +29,6 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { _resetProjectRootForTest, shutdownBridge } from '../../memory/bridge-core.js';
 import { bridgeStoreEntry, bridgeSearchEntries } from '../../memory/memory-bridge.js';
-import { _resetSearchAccessForTest } from '../../memory/bridge-entries.js';
 
 /** Must match ACCESS_FLUSH_INTERVAL_MS in bridge-entries.ts. */
 const FLUSH_INTERVAL_MS = 30_000;
@@ -70,18 +69,17 @@ describe('search access recording (#1464)', () => {
     process.env.CLAUDE_PROJECT_DIR = tempDir;
     process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 
+    // The throttle state is keyed by the database handle, so tearing the bridge
+    // down here is also what gives each case a clean flush stamp — there is no
+    // module-global to reset.
     await shutdownBridge();
     _resetProjectRootForTest();
-    // Module-level throttle state — without this each case inherits the
-    // previous one's flush stamp and its first search silently defers.
-    _resetSearchAccessForTest();
   });
 
   afterEach(async () => {
     vi.useRealTimers();
     await shutdownBridge();
     _resetProjectRootForTest();
-    _resetSearchAccessForTest();
     if (originalProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
     else process.env.CLAUDE_PROJECT_DIR = originalProjectDir;
     delete process.env.MOFLO_DISABLE_DAEMON_ROUTING;
@@ -161,6 +159,65 @@ describe('search access recording (#1464)', () => {
     expect(persisted('c', 'knowledge').count).toBe(1);
   });
 
+  it('never flushes one database\'s pending deltas into another', async () => {
+    // The deltas are entry ids, which only mean anything inside the store that
+    // issued them. Held module-globally they would be flushed against whatever
+    // database this process reached next — matching no row there, then cleared
+    // as though written. That is a silent loss of exactly the counts this
+    // feature exists to record.
+    await seed([{ key: 'decision', namespace: 'learnings' }]);
+    await search();
+    expect(persisted('decision', 'learnings').count).toBe(1);
+
+    // Accumulate a delta that is deliberately left unflushed.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 1000);
+    await search();
+    expect(persisted('decision', 'learnings').count).toBe(1);
+
+    // A second store, reached by the same process well past the interval.
+    const otherDir = fs.mkdtempSync(path.join(tmpdir(), 'moflo-1464-other-'));
+    try {
+      fs.mkdirSync(path.join(otherDir, '.moflo'), { recursive: true });
+      vi.setSystemTime(Date.now() + FLUSH_INTERVAL_MS + 1);
+      process.env.CLAUDE_PROJECT_DIR = otherDir;
+      await shutdownBridge();
+      _resetProjectRootForTest();
+
+      await bridgeStoreEntry({ key: 'elsewhere', value: BODY, namespace: 'learnings', upsert: true });
+      await search();
+
+      // The other store recorded its own row, and the first store's pending
+      // delta was never spent against it.
+      const otherDb = new DatabaseSync(path.join(otherDir, '.moflo', 'moflo.db'), { readOnly: true });
+      try {
+        const row = otherDb.prepare(
+          'SELECT access_count FROM memory_entries WHERE key = ?',
+        ).get('elsewhere') as { access_count: number };
+        expect(Number(row.access_count)).toBe(1);
+      } finally {
+        otherDb.close();
+      }
+    } finally {
+      vi.useRealTimers();
+      process.env.CLAUDE_PROJECT_DIR = tempDir;
+      await shutdownBridge();
+      _resetProjectRootForTest();
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+
+    // Back at the first store, on a bridge handle rebuilt from scratch. Its one
+    // unflushed delta died with the old handle — the same bounded residual
+    // #1402 documents for a cache eviction, and the deliberate trade against
+    // spending it on a store where it means nothing. The new handle has never
+    // flushed, so this search writes immediately: 1 (first search) + 1 (this
+    // one) = 2. Held module-globally the count would instead read 1, because
+    // the flush against the other database would have cleared the delta and
+    // left a flush stamp in the future.
+    await search();
+    expect(persisted('decision', 'learnings').count).toBe(2);
+  });
+
   it('skips the bookkeeping entirely for a namespace-scoped structural search', async () => {
     await seed([
       { key: 'chunk', namespace: 'code-map' },
@@ -227,9 +284,14 @@ describe('#1058 regression guard — the read path never writes back a whole-DB 
     const src = read('../../memory/bridge-entries.ts');
     const start = src.indexOf('function recordSearchAccess');
     expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf('\nexport function _resetSearchAccessForTest', start));
+    const body = src.slice(start, src.indexOf('\nexport function serialiseMetadata', start));
 
-    expect(body).toMatch(/UPDATE memory_entries SET access_count = access_count \+ \?/);
+    // The statement it issues is shared with the entry-cache throttle and adds
+    // a delta to one row by id — bounded work, whatever the store's size.
+    expect(body).toMatch(/ACCESS_BUMP_SQL/);
+    expect(src).toMatch(
+      /const ACCESS_BUMP_SQL =\s*`UPDATE memory_entries SET access_count = access_count \+ \?/,
+    );
     expect(body).not.toMatch(/\.export\(\)|persistBridgeDb|atomicWriteFileSync/);
   });
 });
