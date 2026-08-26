@@ -26,6 +26,7 @@ import { BACKEND_LABEL } from '../memory/database-provider.js';
 import { ensureInitialized } from './memory-tools.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { resolveStateRoot } from '../services/project-root.js';
+import { DURABLE_NAMESPACES } from '../services/cherry-pick-learnings.js';
 
 interface ExportedEntry {
   key: string;
@@ -307,7 +308,7 @@ export const memoryAdminTools: MCPTool[] = [
   },
   {
     name: 'memory_cleanup',
-    description: 'Find and optionally delete expired, stale, or unusable memory entries',
+    description: 'Find and optionally delete expired, stale, or unusable memory entries. Durable namespaces (learnings, knowledge) are exempt from the age-based buckets unless named via `namespace`; TTL-expired rows are collected everywhere.',
     category: 'memory',
     inputSchema: {
       type: 'object',
@@ -316,7 +317,7 @@ export const memoryAdminTools: MCPTool[] = [
         dryRun: { type: 'boolean', description: 'Ignored. Cleanup is dry unless apply:true is passed; accepted only so older callers do not error.' },
         olderThan: { type: 'string', description: 'Age cutoff for stale/unusable entries, e.g. "30d"' },
         expiredOnly: { type: 'boolean', description: 'Only consider TTL-expired entries' },
-        namespace: { type: 'string', description: 'Restrict cleanup to one namespace' },
+        namespace: { type: 'string', description: 'Restrict cleanup to one namespace. Naming a durable namespace (learnings, knowledge) also opts it back into the age-based buckets it is exempt from by default.' },
       },
     },
     handler: async (input) => {
@@ -337,13 +338,30 @@ export const memoryAdminTools: MCPTool[] = [
       const select = (cond: string): string =>
         `SELECT key, namespace FROM memory_entries WHERE status = 'active' AND ${cond}${nsClause}`;
 
+      // #1464 — durable namespaces are exempt from the two AGE-based buckets
+      // unless the caller names one explicitly.
+      //
+      // Age is not evidence of worthlessness for a learning: a two-year-old
+      // architectural decision is routinely the most valuable row in the store.
+      // Worse, `COALESCE(last_accessed_at, updated_at, created_at)` collapses to
+      // `created_at` for any row nothing has ever bumped — and until #1464 the
+      // search path, which is how learnings are actually read, bumped nothing.
+      // So "stale (unused)" silently meant "old", and the only purge surface
+      // moflo ships hit the most-consulted learnings exactly as hard as the dead
+      // ones.
+      //
+      // A DEFAULT, not a prohibition — `--namespace learnings` still collects
+      // them. TTL-expired rows stay in scope in every namespace; durable rows
+      // never set a TTL, so nothing durable is lost through that bucket.
+      const exemptDurable = !namespace;
+      const durableIn = DURABLE_NAMESPACES.map(sqlString).join(', ');
+      const durableClause = exemptDurable ? ` AND namespace NOT IN (${durableIn})` : '';
+
       const expired = await query(select(`expires_at IS NOT NULL AND expires_at < ${now}`));
 
-      const stale = !expiredOnly && staleMs != null
-        ? await query(select(
-            `expires_at IS NULL AND COALESCE(last_accessed_at, updated_at, created_at) < ${now - staleMs}`
-          ))
-        : [];
+      const ageCutoff = staleMs != null ? now - staleMs : null;
+      const staleCond = ageCutoff == null ? null
+        : `expires_at IS NULL AND COALESCE(last_accessed_at, updated_at, created_at) < ${ageCutoff}`;
 
       // "Unusable" = no embedding (so invisible to semantic search), never
       // read back, AND older than the caller's cutoff.
@@ -354,12 +372,32 @@ export const memoryAdminTools: MCPTool[] = [
       // selected the entire store for deletion by default. Requiring an
       // explicit cutoff means an unqualified cleanup can only ever remove
       // TTL-expired rows.
-      const lowQuality = !expiredOnly && staleMs != null
-        ? await query(select(
-            `embedding IS NULL AND COALESCE(access_count, 0) = 0 ` +
-            `AND COALESCE(last_accessed_at, updated_at, created_at) < ${now - staleMs}`
-          ))
+      const lowQualityCond = ageCutoff == null ? null
+        : `embedding IS NULL AND COALESCE(access_count, 0) = 0 `
+          + `AND COALESCE(last_accessed_at, updated_at, created_at) < ${ageCutoff}`;
+
+      const ageBuckets = !expiredOnly && staleCond != null && lowQualityCond != null;
+
+      const stale = ageBuckets ? await query(select(staleCond + durableClause)) : [];
+      const lowQuality = ageBuckets ? await query(select(lowQualityCond + durableClause)) : [];
+
+      // Count what the exemption withheld. Without this the operator reads a
+      // clean result as "learnings are already tidy" rather than "learnings were
+      // not examined" — the same class of quiet lie the missing usage signal was.
+      //
+      // The TTL exclusion is not cosmetic: `lowQualityCond` does not test
+      // `expires_at`, so without it a durable row with an elapsed TTL would be
+      // reported as held back in the same call that deletes it through the
+      // expired bucket.
+      const heldBackRows = ageBuckets && exemptDurable
+        ? await query(
+            `SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`
+            + ` AND namespace IN (${durableIn})`
+            + ` AND NOT (expires_at IS NOT NULL AND expires_at < ${now})`
+            + ` AND ((${staleCond}) OR (${lowQualityCond}))`
+          )
         : [];
+      const durableHeldBack = heldBackRows.length ? Number(heldBackRows[0][0] ?? 0) : 0;
 
       const seen = new Set<string>();
       const targets: Array<{ key: string; namespace: string }> = [];
@@ -385,6 +423,7 @@ export const memoryAdminTools: MCPTool[] = [
         return {
           dryRun: true,
           candidates,
+          durableHeldBack,
           deleted: { entries: 0 },
           freed: { bytes: 0, formatted: '0 B' },
           duration: Date.now() - started,
@@ -403,6 +442,7 @@ export const memoryAdminTools: MCPTool[] = [
       return {
         dryRun: false,
         candidates,
+        durableHeldBack,
         deleted: { entries: deleted },
         freed: { bytes: freedBytes, formatted: formatBytes(freedBytes) },
         duration: Date.now() - started,

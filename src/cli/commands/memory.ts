@@ -816,6 +816,12 @@ const cleanupCommand: Command = {
           lowQuality: number;
           total: number;
         };
+        /**
+         * Durable rows the age-based buckets skipped (#1464). Optional so a CLI
+         * running against an older MCP server that never sends it renders the
+         * same as "none held back" rather than "undefined".
+         */
+        durableHeldBack?: number;
         deleted: {
           entries: number;
         };
@@ -872,6 +878,20 @@ const cleanupCommand: Command = {
           { category: output.bold('Total'), count: output.bold(String(result.candidates.total)) }
         ]
       });
+
+      // #1464 — say what was withheld. A zero-candidate result on a store full
+      // of old learnings is otherwise read as "already tidy" when the truth is
+      // "durable entries were never examined".
+      if (result.durableHeldBack) {
+        output.writeln();
+        output.printInfo(
+          `${result.durableHeldBack} durable ${result.durableHeldBack === 1 ? 'entry' : 'entries'} `
+          + `(learnings, knowledge) held back — age is not evidence of staleness there.`
+        );
+        output.printList([
+          'Include them deliberately: flo memory cleanup --older-than <age> --namespace learnings',
+        ]);
+      }
 
       if (dryRun) return { success: true, data: result };
 
