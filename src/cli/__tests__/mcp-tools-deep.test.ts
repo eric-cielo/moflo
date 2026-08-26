@@ -690,6 +690,44 @@ describe('MCP Tools Deep Test Suite', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid operation');
     });
+
+    // #1465 — both operations used to return `{success: true}` with a count
+    // equal to `entries.length` while changing nothing the caller could
+    // address. They are rejected at the tool boundary now, so the redirect
+    // holds even where the bridge is mocked or unavailable.
+    it('moflodb_batch rejects delete and points at memory_delete', async () => {
+      const tool = moflodbTools.find(t => t.name === 'moflodb_batch')!;
+      const result: any = await tool.handler({ operation: 'delete', entries: [{ key: 'k' }] });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('memory_delete');
+    });
+
+    it('moflodb_batch rejects update and points at memory_store', async () => {
+      const tool = moflodbTools.find(t => t.name === 'moflodb_batch')!;
+      const result: any = await tool.handler({ operation: 'update', entries: [{ key: 'k', value: 'v' }] });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('memory_store');
+    });
+
+    // A prototype-chain lookup would make these truthy and return an `error`
+    // that is a function — which JSON.stringify drops, so the caller sees a
+    // failure with no message at all.
+    it.each(['constructor', 'toString', '__proto__', 'valueOf', 'hasOwnProperty'])(
+      'moflodb_batch rejects inherited key %s with a real message',
+      async (operation) => {
+        const tool = moflodbTools.find(t => t.name === 'moflodb_batch')!;
+        const result: any = await tool.handler({ operation, entries: [{ key: 'k' }] });
+        expect(result.success).toBe(false);
+        expect(typeof result.error).toBe('string');
+        expect(result.error).toContain('Invalid operation');
+      },
+    );
+
+    it('moflodb_batch advertises only insert in its schema', () => {
+      const tool = moflodbTools.find(t => t.name === 'moflodb_batch')!;
+      const operation = (tool.inputSchema as any).properties.operation;
+      expect(operation.enum).toEqual(['insert']);
+    });
   });
 
   // --------------------------------------------------------------------------

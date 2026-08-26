@@ -206,6 +206,163 @@ function wrapStatement(stmt: StatementSync): SqlJsLikeStatement {
 const _networkFsWarnedPaths = new Set<string>();
 
 /**
+ * Shared parking buffer for the journal-mode retry sleep. `Atomics.wait` is
+ * the only synchronous sleep that works identically on Linux, macOS and
+ * Windows without shelling out (Rule #1) — and this open path is synchronous,
+ * so there is no `await` to hand the thread back with.
+ */
+const WAL_SLEEP_BUF = new Int32Array(new SharedArrayBuffer(4));
+
+function sleepMs(ms: number): void {
+  Atomics.wait(WAL_SLEEP_BUF, 0, 0, ms);
+}
+
+/**
+ * The open-path `busy_timeout`. Named because two places depend on it being
+ * the same number: the pragma below sets it, and `readJournalModeBounded`
+ * restores it after narrowing it for a probe.
+ */
+const OPEN_BUSY_TIMEOUT_MS = 15_000;
+/**
+ * Budget for the post-exhaustion probe. The query form of `PRAGMA
+ * journal_mode` takes a SHARED lock and IS covered by the busy handler, so it
+ * would otherwise inherit the full `OPEN_BUSY_TIMEOUT_MS` — doubling the
+ * worst case to ~30s before we report anything on the one path where we have
+ * already decided to give up. A few short attempts distinguish "genuinely not
+ * WAL" from "probe lost one more race" without reopening that window.
+ */
+const WAL_PROBE_BUSY_TIMEOUT_MS = 500;
+const WAL_PROBE_ATTEMPTS = 3;
+/**
+ * Total time `setWalWithRetry` will spend losing the conversion race before it
+ * gives up. Matched to `busy_timeout` (15000ms) on purpose: the two cover the
+ * same worst case — a background indexer holding a write lock through its
+ * whole first full-tree pass — and diverging budgets would mean the pragma
+ * that needs the wait most gets the shortest one. Being wrong-high costs one
+ * slow open in a rare race; being wrong-low kills the process outright.
+ */
+const WAL_RETRY_BUDGET_MS = OPEN_BUSY_TIMEOUT_MS;
+/** Backoff bounds: start tight (most races clear in a few ms), cap so a long
+ *  hold is still polled often enough to return promptly once it releases. */
+const WAL_RETRY_MIN_DELAY_MS = 5;
+const WAL_RETRY_MAX_DELAY_MS = 250;
+
+/** The pragma target, duck-typed so tests can drive the retry with a fake. */
+interface WalPragmaTarget {
+  exec(sql: string): unknown;
+  prepare(sql: string): { get(): unknown };
+}
+
+/**
+ * SQLITE_BUSY (5) and SQLITE_LOCKED (6) — the two contention codes. The
+ * message test is a fallback for wrappers that don't propagate `errcode`.
+ */
+function isBusyError(err: unknown): boolean {
+  const e = err as { errcode?: number; message?: string } | null;
+  if (e?.errcode === 5 || e?.errcode === 6) return true;
+  return /database( table)? is locked/i.test(String(e?.message ?? ''));
+}
+
+/** Current journal mode, lowercased. `''` when the probe itself fails. */
+function readJournalMode(db: WalPragmaTarget): string {
+  try {
+    const row = db.prepare('PRAGMA journal_mode').get() as { journal_mode?: string } | undefined;
+    return String(row?.journal_mode ?? '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * `readJournalMode` under a deliberately narrow busy budget, restoring the
+ * open-path budget afterwards so a caller that survives keeps the connection
+ * it asked for. Only ever called once the retry budget is already spent.
+ */
+function readJournalModeBounded(db: WalPragmaTarget): string {
+  try {
+    try {
+      db.exec(`PRAGMA busy_timeout = ${WAL_PROBE_BUSY_TIMEOUT_MS}`);
+    } catch {
+      // Non-fatal: we still probe, just without the narrower budget.
+    }
+    for (let attempt = 0; attempt < WAL_PROBE_ATTEMPTS; attempt++) {
+      const mode = readJournalMode(db);
+      if (mode) return mode;
+    }
+    return '';
+  } finally {
+    try {
+      db.exec(`PRAGMA busy_timeout = ${OPEN_BUSY_TIMEOUT_MS}`);
+    } catch {
+      // Non-fatal: the handle is still usable, and every path out of here
+      // either throws or hands back a database that is already in WAL.
+    }
+  }
+}
+
+/**
+ * Run `PRAGMA journal_mode = WAL`, retrying on contention (#1471).
+ *
+ * `busy_timeout` is set first and covers every other statement, but SQLite
+ * does **not** invoke the busy handler for a journal-mode change — so the one
+ * pragma the budget was put there for never gets it. Concurrent first-opens
+ * of a fresh database therefore threw `SQLITE_BUSY` immediately and killed
+ * whichever process lost the race: the daemon, the MCP server and a
+ * foreground `flo` command starting together is the ordinary consumer
+ * configuration, not a test artifact.
+ *
+ * Note the common path pays nothing: on a database already in WAL the pragma
+ * is a no-op that takes no exclusive lock, so the first attempt succeeds with
+ * no sleep and the loop below never runs.
+ *
+ * Twin: `bin/lib/get-backend.mjs:setWalWithRetry`. Must stay in lockstep until
+ * Phase 5 (#1084) extracts a shared module.
+ *
+ * @internal exported for tests — `budgetMs` lets them exercise exhaustion
+ *           without spending the real 15s.
+ */
+export function setWalWithRetry(
+  db: WalPragmaTarget,
+  dbPath: string,
+  budgetMs: number = WAL_RETRY_BUDGET_MS,
+): void {
+  let lastErr: unknown = null;
+  let waited = 0;
+  let delay = WAL_RETRY_MIN_DELAY_MS;
+
+  for (;;) {
+    try {
+      db.exec('PRAGMA journal_mode = WAL');
+      return;
+    } catch (err) {
+      lastErr = err;
+      // Anything that isn't contention — a corrupt file, a read-only mount —
+      // will not clear by waiting. Surface it now rather than after 15s.
+      if (!isBusyError(err)) throw err;
+    }
+    if (waited >= budgetMs) break;
+    const nap = Math.min(delay, budgetMs - waited);
+    sleepMs(nap);
+    waited += nap;
+    delay = Math.min(delay * 2, WAL_RETRY_MAX_DELAY_MS);
+  }
+
+  // Budget spent. Another opener may have completed the conversion while we
+  // were losing races — the database being in WAL is the outcome we wanted,
+  // whichever process got it there.
+  const mode = readJournalModeBounded(db);
+  if (mode === 'wal') return;
+
+  throw new Error(
+    `[moflo] PRAGMA journal_mode = WAL stayed busy for ${waited}ms on ${dbPath} ` +
+    `(journal_mode is still "${mode || 'unreadable'}"). Another process is holding an ` +
+    `exclusive lock on the database. Original error: ` +
+    `${String((lastErr as Error | null)?.message ?? lastErr)}`,
+    { cause: lastErr },
+  );
+}
+
+/**
  * Read `journal_mode` back after we requested WAL. If the engine returned a
  * different mode (`delete`, `truncate`, `persist`, `memory`, `off`), the
  * underlying filesystem doesn't support WAL's shared-memory sidecar — a
@@ -218,14 +375,10 @@ const _networkFsWarnedPaths = new Set<string>();
  */
 function warnIfNotWal(db: DatabaseSync, dbPath: string): void {
   if (_networkFsWarnedPaths.has(dbPath)) return;
-  let mode: string | undefined;
-  try {
-    const stmt = db.prepare('PRAGMA journal_mode');
-    const row = stmt.get() as { journal_mode?: string } | undefined;
-    mode = String(row?.journal_mode ?? '').toLowerCase();
-  } catch {
-    return;
-  }
+  // A probe that throws yields '' and falls through the guard below without
+  // warning — the WAL pragma above either took effect or didn't, and a failed
+  // read is not evidence either way.
+  const mode = readJournalMode(db);
   if (mode && mode !== 'wal') {
     _networkFsWarnedPaths.add(dbPath);
     process.stderr.write(
@@ -333,8 +486,10 @@ export function openDaemonDatabase(dbPath: string): SqlJsLikeDatabase {
       // (#1098); 15000ms gives the indexer's full first-pass time to finish
       // before doctor's probe gives up. The price of being wrong-high here
       // is one slow probe per session, not lost data.
-      db.exec('PRAGMA busy_timeout = 15000');
-      db.exec('PRAGMA journal_mode = WAL');
+      db.exec(`PRAGMA busy_timeout = ${OPEN_BUSY_TIMEOUT_MS}`);
+      // Not `db.exec` directly: SQLite skips the busy handler for a
+      // journal-mode change, so this one pragma needs its own retry (#1471).
+      setWalWithRetry(db, dbPath);
       db.exec('PRAGMA synchronous = NORMAL');
       // The daemon is the process most exposed to network-FS edge cases
       // (long-lived MCP server, ~30s of writes per indexer pass). NFS/SMB

@@ -163,8 +163,10 @@ function openNodeSqlite(dbPath, opts) {
       // background indexer holds a write lock for 5–8s during its first
       // full-tree pass after `npm install`. See daemon-backend.ts twin for
       // the full rationale (#1098).
-      db.exec('PRAGMA busy_timeout = 15000');
-      db.exec('PRAGMA journal_mode = WAL');
+      db.exec(`PRAGMA busy_timeout = ${OPEN_BUSY_TIMEOUT_MS}`);
+      // Not `db.exec` directly: SQLite skips the busy handler for a
+      // journal-mode change, so this one pragma needs its own retry (#1471).
+      setWalWithRetry(db, dbPath);
       db.exec('PRAGMA synchronous = NORMAL');
       // Phase 4 / #1083 — network-FS detection. SQLite's POSIX advisory locks
       // and WAL shared-memory both fail silently on NFS/SMB; the engine falls
@@ -177,6 +179,148 @@ function openNodeSqlite(dbPath, opts) {
     }
   }
   return wrapNodeSqlite(db, dbPath);
+}
+
+/**
+ * Shared parking buffer for the journal-mode retry sleep. `Atomics.wait` is
+ * the only synchronous sleep that behaves identically on Linux, macOS and
+ * Windows without shelling out (Rule #1), and this open path is synchronous.
+ */
+const WAL_SLEEP_BUF = new Int32Array(new SharedArrayBuffer(4));
+
+/** @param {number} ms */
+function sleepMs(ms) {
+  Atomics.wait(WAL_SLEEP_BUF, 0, 0, ms);
+}
+
+/**
+ * The open-path `busy_timeout`. Named because two places depend on it being
+ * the same number: the pragma below sets it, and `readJournalModeBounded`
+ * restores it after narrowing it for a probe.
+ */
+const OPEN_BUSY_TIMEOUT_MS = 15_000;
+/**
+ * Budget for the post-exhaustion probe. The query form of `PRAGMA
+ * journal_mode` takes a SHARED lock and IS covered by the busy handler, so it
+ * would otherwise inherit the full `OPEN_BUSY_TIMEOUT_MS` — doubling the
+ * worst case to ~30s before we report anything on the one path where we have
+ * already decided to give up.
+ */
+const WAL_PROBE_BUSY_TIMEOUT_MS = 500;
+const WAL_PROBE_ATTEMPTS = 3;
+/** See the daemon-backend.ts twin for the budget rationale (#1471). */
+const WAL_RETRY_BUDGET_MS = OPEN_BUSY_TIMEOUT_MS;
+const WAL_RETRY_MIN_DELAY_MS = 5;
+const WAL_RETRY_MAX_DELAY_MS = 250;
+
+/**
+ * SQLITE_BUSY (5) and SQLITE_LOCKED (6). The message test is a fallback for
+ * wrappers that don't propagate `errcode`.
+ *
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isBusyError(err) {
+  const e = /** @type {{ errcode?: number, message?: string } | null} */ (err);
+  if (e?.errcode === 5 || e?.errcode === 6) return true;
+  return /database( table)? is locked/i.test(String(e?.message ?? ''));
+}
+
+/**
+ * Current journal mode, lowercased. `''` when the probe itself fails.
+ *
+ * @param {object} db
+ * @returns {string}
+ */
+function readJournalMode(db) {
+  try {
+    const row = db.prepare('PRAGMA journal_mode').get();
+    return String(row?.journal_mode ?? '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * `readJournalMode` under a deliberately narrow busy budget, restoring the
+ * open-path budget afterwards so a caller that survives keeps the connection
+ * it asked for. Only ever called once the retry budget is already spent.
+ *
+ * @param {object} db
+ * @returns {string}
+ */
+function readJournalModeBounded(db) {
+  try {
+    try {
+      db.exec(`PRAGMA busy_timeout = ${WAL_PROBE_BUSY_TIMEOUT_MS}`);
+    } catch {
+      // Non-fatal: we still probe, just without the narrower budget.
+    }
+    for (let attempt = 0; attempt < WAL_PROBE_ATTEMPTS; attempt++) {
+      const mode = readJournalMode(db);
+      if (mode) return mode;
+    }
+    return '';
+  } finally {
+    try {
+      db.exec(`PRAGMA busy_timeout = ${OPEN_BUSY_TIMEOUT_MS}`);
+    } catch {
+      // Non-fatal: the handle is still usable, and every path out of here
+      // either throws or hands back a database that is already in WAL.
+    }
+  }
+}
+
+/**
+ * Run `PRAGMA journal_mode = WAL`, retrying on contention (#1471).
+ *
+ * `busy_timeout` is set first and covers every other statement, but SQLite
+ * does NOT invoke the busy handler for a journal-mode change — so the one
+ * pragma the budget was put there for never gets it, and concurrent
+ * first-opens of a fresh database threw `SQLITE_BUSY` immediately, killing
+ * whichever process lost the race. On a database already in WAL the pragma is
+ * a no-op taking no exclusive lock, so the common path never enters the loop.
+ *
+ * Twin: `src/cli/memory/daemon-backend.ts:setWalWithRetry`. Keep in lockstep.
+ *
+ * @param {object} db node:sqlite DatabaseSync handle (or a test fake)
+ * @param {string} dbPath
+ * @param {number} [budgetMs]
+ */
+export function setWalWithRetry(db, dbPath, budgetMs = WAL_RETRY_BUDGET_MS) {
+  let lastErr = null;
+  let waited = 0;
+  let delay = WAL_RETRY_MIN_DELAY_MS;
+
+  for (;;) {
+    try {
+      db.exec('PRAGMA journal_mode = WAL');
+      return;
+    } catch (err) {
+      lastErr = err;
+      // Anything that isn't contention — a corrupt file, a read-only mount —
+      // will not clear by waiting. Surface it now rather than after 15s.
+      if (!isBusyError(err)) throw err;
+    }
+    if (waited >= budgetMs) break;
+    const nap = Math.min(delay, budgetMs - waited);
+    sleepMs(nap);
+    waited += nap;
+    delay = Math.min(delay * 2, WAL_RETRY_MAX_DELAY_MS);
+  }
+
+  // Budget spent. Another opener may have completed the conversion while we
+  // were losing races — the database being in WAL is the outcome we wanted,
+  // whichever process got it there.
+  const mode = readJournalModeBounded(db);
+  if (mode === 'wal') return;
+
+  throw new Error(
+    `[moflo] PRAGMA journal_mode = WAL stayed busy for ${waited}ms on ${dbPath} ` +
+    `(journal_mode is still "${mode || 'unreadable'}"). Another process is holding an ` +
+    `exclusive lock on the database. Original error: ${String(lastErr?.message ?? lastErr)}`,
+    { cause: lastErr },
+  );
 }
 
 /**
@@ -196,16 +340,10 @@ function openNodeSqlite(dbPath, opts) {
  */
 export function warnIfNotWal(db, dbPath) {
   if (_networkFsWarnedPaths.has(dbPath)) return;
-  let mode;
-  try {
-    const stmt = db.prepare('PRAGMA journal_mode');
-    const row = stmt.get();
-    mode = String(row?.journal_mode ?? '').toLowerCase();
-  } catch {
-    // Probe must never break the open path — silent failure is acceptable
-    // because the WAL pragma above already either took effect or didn't.
-    return;
-  }
+  // A probe that throws yields '' and falls through the guard below without
+  // warning — the WAL pragma above either took effect or didn't, and a failed
+  // read is not evidence either way.
+  const mode = readJournalMode(db);
   if (mode && mode !== 'wal') {
     _networkFsWarnedPaths.add(dbPath);
     process.stderr.write(

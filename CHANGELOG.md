@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — concurrent first-open of a database no longer dies on `journal_mode = WAL`
+
+`openDaemonDatabase` sets `PRAGMA busy_timeout = 15000` *before* `PRAGMA journal_mode = WAL`
+specifically so concurrent openers survive the brief EXCLUSIVE lock the conversion takes. That
+ordering is correct but insufficient: SQLite does not invoke the busy handler for a journal-mode
+change, so the retry budget never applied to the one statement it was put there for. Whichever
+processes lost a first-open race threw `SQLITE_BUSY` immediately and died — and the daemon, the MCP
+server and a foreground `flo` command opening the same `.moflo/moflo.db` at session start is the
+ordinary consumer configuration, not a test contrivance. On a fresh install that open *is* the
+conversion.
+
+The journal-mode pragma now retries on contention under its own bounded budget (exponential backoff
+to a 15s ceiling, matching `busy_timeout`), treats "another process already converted it" as the
+success it is, and on exhaustion throws an error naming the database, the wait, and the mode it is
+stuck in. `busy_timeout` is unchanged and still correct for every other statement. Both hand-
+maintained factory twins are fixed — `src/cli/memory/daemon-backend.ts` (daemon, MCP server) and
+`bin/lib/get-backend.mjs` (hooks, indexer, every `bin/*` entry point) — and a shared test drives
+both through the same cases so a one-sided fix fails in CI.
+
+A database already in WAL pays nothing: the pragma is a no-op that takes no exclusive lock, so the
+first attempt succeeds and the retry loop never runs.
+
+**Consumer impact.** None to opt into — a hard throw becomes a bounded retry. No `.moflo/` state
+change, no migration, no hook rewiring. Takes effect after publish + reinstall, since the daemon,
+MCP server and hooks all run from `node_modules/moflo/`. (#1471)
+
+
+### Removed — `moflodb_batch` no longer accepts `delete` or `update`
+
+Both reported `{success: true}` with a non-zero count and changed nothing the caller could address.
+The count was the length of the input array, never rows affected, and the tool's `inputSchema` has
+no `namespace` property — so the operations targeted the `episodes` store and could not reach a
+namespaced `memory_entries` row at all. A maintenance operation that reports success while doing
+nothing is worse than an absent one: there is no signal to retry on, which is why the drift in
+#1463 went unnoticed for weeks.
+
+`moflodb_batch` now advertises `enum: ['insert']` and rejects the two removed operations at the
+tool boundary, naming the tool that does the job — `memory_delete` (with an explicit namespace) for
+removal, `memory_store` for overwrite. `insert` is unchanged except that its `count` now reports
+rows the store actually wrote. A guard test over the bridge handlers fails any mutation count
+derived from input length.
+
+**Consumer impact.** None behavioural — any caller passing `delete`/`update` today is already
+getting a silent no-op, so no working behaviour is removed; they now get an actionable error
+instead of a false success. No `.moflo/` state migration and no hook rewiring. Takes effect after
+publish + reinstall, since the MCP server runs from `node_modules/moflo/`. (#1465)
+
+
 ### Fixed — the no-durable-lesson escape could report success on a write that never landed
 
 `writeState` swallows its own errors so a gate never crashes the hook it runs in. That is right for

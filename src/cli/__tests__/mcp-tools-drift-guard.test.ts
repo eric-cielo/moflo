@@ -53,7 +53,7 @@ const ALLOWLIST: Record<string, string> = {
   'moflodb_hierarchical-store': 'expert API: hierarchical memory write',
   'moflodb_hierarchical-recall': 'expert API: hierarchical memory read',
   'moflodb_consolidate': 'expert API: EWC++ consolidation',
-  'moflodb_batch': 'expert API: batch ops on the bridge',
+  'moflodb_batch': 'expert API: batch insert on the bridge',
   'moflodb_context-synthesize': 'expert API: context synthesis',
   'moflodb_semantic-route': 'expert API: semantic routing',
 
