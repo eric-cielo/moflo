@@ -29,6 +29,7 @@ import { writeThroughDurable } from '../services/durable-sync.js';
 import { archiveDurableRow, isDurableNamespace } from '../services/durable-store-io.js';
 import { resolveStateRoot } from '../services/project-root.js';
 import { generateId } from '../shared/utils/id.js';
+import { detectToolCallMarkup, markupCheckDisabled, toolCallMarkupError } from './tool-call-markup.js';
 
 /**
  * Propagate a just-persisted durable write to the shared store (#1232). The
@@ -68,6 +69,32 @@ export async function storeEntry(options: {
   embedding?: { dimensions: number; model: string };
   error?: string;
 }> {
+  // #1467 — reject a value that carries captured tool-call markup. Every
+  // model-authored write lands here: the CLI (`flo memory store`), the MCP tool
+  // (`memory_store`), and the daemon's own RPC handler. The check runs before
+  // the routing preamble below and before any embedding, so a rejected value
+  // never crosses the wire, produces a vector, or reaches disk.
+  //
+  // `storeEntries` (bulk) is deliberately NOT checked on its bridge path. Its
+  // one production caller is the pattern pre-trainer, whose content is derived
+  // from code rather than written by a model — so it cannot carry this
+  // corruption, and it is exactly where a truncated XML snippet ending on
+  // `</value>` would legitimately arrive. See the blind-spot note in
+  // tool-call-markup.ts.
+  if (!markupCheckDisabled()) {
+    const hit = detectToolCallMarkup(options.value);
+    if (hit) {
+      // Returned, not logged: every caller surfaces `error` in its own idiom
+      // (the CLI prints it, MCP returns it), and a console.error here would
+      // print the same refusal twice on the path users actually see.
+      return {
+        success: false,
+        id: '',
+        error: toolCallMarkupError(hit, options.value, options.namespace ?? 'default', options.key),
+      };
+    }
+  }
+
   // Soft-redirect: `knowledge` is a deprecated alias for `learnings`. Writes
   // are accepted but routed to learnings with provenance tags so future
   // decay/prune treats user-forced entries as locked. Old consumer DBs that
