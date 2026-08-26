@@ -569,6 +569,15 @@ const deleteCommand: Command = {
       if (result.deleted) {
         output.printSuccess(`Deleted "${key}" from namespace "${namespace}"`);
         output.printInfo(`Remaining entries: ${result.remainingEntries}`);
+        // Durable deletes are retained as an archived row so the deletion can
+        // reach the team artifact and sibling worktrees (#1463). Say so — a
+        // user auditing the DB should not be surprised to find the row.
+        const { isDurableNamespace } = await import('../services/cherry-pick-learnings.js');
+        if (isDurableNamespace(namespace)) {
+          output.printInfo(
+            'Retained as an archived row so the deletion propagates on the next share; invisible to search and purged after 90 days.',
+          );
+        }
       } else {
         output.printWarning(`Key not found: "${key}" in namespace "${namespace}"`);
       }
@@ -2837,15 +2846,40 @@ const teamExportCommand: Command = {
     const projectRoot = findProjectRoot();
     const artifactPath = await resolveTeamArtifact(projectRoot, ctx.flags.to);
     try {
-      const { exportTeamArtifact, ensureSharedArtifactTracked } = await import('../services/team-artifact-sync.js');
+      const { exportTeamArtifact, ensureSharedArtifactTracked, ensureSharedArtifactEol } =
+        await import('../services/team-artifact-sync.js');
       const report = exportTeamArtifact({ projectRoot, artifactPath, sharedAt: new Date().toISOString() });
       const gitignore = ensureSharedArtifactTracked(projectRoot, artifactPath);
+      const gitattributes = ensureSharedArtifactEol(projectRoot, artifactPath);
 
       const rel = pathModule.relative(projectRoot, artifactPath) || artifactPath;
       output.printSuccess(`Shared ${report.added} new durable entr${report.added === 1 ? 'y' : 'ies'} → ${rel}`);
-      output.printInfo(`Artifact now holds ${report.total} entr${report.total === 1 ? 'y' : 'ies'}.`);
+      // Report every category, not just the appends (#1463). The old summary
+      // named only `added`, which read as "everything was shared" while 32
+      // corrections and 34 deletions sat unpropagated for weeks.
+      const changes: string[] = [];
+      if (report.updated > 0) changes.push(`${report.updated} corrected`);
+      if (report.deleted > 0) changes.push(`${report.deleted} retired`);
+      if (report.resurrected > 0) changes.push(`${report.resurrected} restored`);
+      if (changes.length > 0) output.printInfo(`Also propagated: ${changes.join(', ')}.`);
+      if (report.keptRemote > 0) {
+        output.printWarning(
+          `${report.keptRemote} local change${report.keptRemote === 1 ? '' : 's'} NOT shared — the artifact's version is newer. Run \`flo memory team-import\` first.`,
+        );
+      }
+      if (report.skippedMalformed > 0) {
+        output.printWarning(`${report.skippedMalformed} malformed line${report.skippedMalformed === 1 ? '' : 's'} skipped.`);
+      }
+      if (!report.wrote) {
+        output.printInfo('Nothing changed — the artifact was left untouched.');
+      }
+      const tombstoneNote = report.tombstones > 0 ? ` (+ ${report.tombstones} tombstone${report.tombstones === 1 ? '' : 's'})` : '';
+      output.printInfo(`Artifact now holds ${report.total} entr${report.total === 1 ? 'y' : 'ies'}${tombstoneNote}.`);
       if (gitignore !== 'unchanged') {
         output.printInfo(`.gitignore ${gitignore} so the shared artifact is tracked while the rest of .moflo/ stays ignored.`);
+      }
+      if (gitattributes !== 'unchanged') {
+        output.printInfo(`.gitattributes ${gitattributes} to pin the artifact to LF — without it a Windows checkout conflicts on every line when two teammates' artifacts merge.`);
       }
       output.printInfo(`Commit it to share: git add ${rel} && git commit -m "share learnings"`);
       return { success: true, data: report };
@@ -2881,8 +2915,13 @@ const teamImportCommand: Command = {
       const { importTeamArtifact } = await import('../services/team-artifact-sync.js');
       const report = importTeamArtifact({ projectRoot, artifactPath });
       output.printSuccess(`Merged ${report.imported} durable entr${report.imported === 1 ? 'y' : 'ies'} from the team artifact`);
-      if (report.considered > report.imported) {
-        output.printInfo(`${report.considered - report.imported} already present (skipped, conflict-free).`);
+      const applied: string[] = [];
+      if (report.updated > 0) applied.push(`${report.updated} corrected`);
+      if (report.deleted > 0) applied.push(`${report.deleted} retired locally`);
+      if (report.resurrected > 0) applied.push(`${report.resurrected} restored`);
+      if (applied.length > 0) output.printInfo(`Also applied: ${applied.join(', ')}.`);
+      if (report.keptLocal > 0) {
+        output.printInfo(`${report.keptLocal} artifact change${report.keptLocal === 1 ? '' : 's'} skipped — the local entry is newer.`);
       }
       if (report.skippedMalformed > 0) {
         output.printWarning(`${report.skippedMalformed} malformed line${report.skippedMalformed === 1 ? '' : 's'} skipped.`);
@@ -2890,7 +2929,7 @@ const teamImportCommand: Command = {
       if (report.skippedNonDurable > 0) {
         output.printWarning(`${report.skippedNonDurable} non-durable entr${report.skippedNonDurable === 1 ? 'y' : 'ies'} skipped (only learnings/knowledge are shared).`);
       }
-      if (report.imported > 0) {
+      if (report.imported > 0 || report.updated > 0 || report.resurrected > 0) {
         output.printInfo(
           'Restart your Claude Code session (or run `flo memory rebuild-index`) so the merged learnings are embedded + searchable.',
         );

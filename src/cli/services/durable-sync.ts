@@ -19,10 +19,21 @@
  *     every durable write, so a new learning propagates to sibling workspaces
  *     by their next session-start.
  *
- * Both directions are a single call to {@link cherryPickLearningsFromLegacy}
- * with source/target swapped — it already copies durable rows with
- * `INSERT OR IGNORE` on `UNIQUE(namespace, key)` (conflict-free, idempotent,
- * embeddings carried forward verbatim). No new SQL lives here.
+ * Both directions are a single call to {@link reconcileDurableStores} with
+ * source/target swapped — the same {@link planReconcile} rule the team artifact
+ * uses, so a correction and a deletion cross between worktrees instead of being
+ * dropped.
+ *
+ * Until #1463 both directions ran `INSERT OR IGNORE`, making the result the
+ * union of durable rows on both sides: an entry purged in one worktree came
+ * straight back at the next session-start seed. That mattered more here than
+ * for the team artifact, because worktree sharing needs no configuration —
+ * `worktree_sharing` defaults on — so every user with a linked worktree had it.
+ *
+ * `cherryPickLearningsFromLegacy` is deliberately NOT used any more for these
+ * two directions, and deliberately still used for the legacy upgrade path it
+ * was written for: reconciling against a legacy DB could archive rows on the
+ * strength of a store that predates tombstones entirely.
  *
  * Safety: the shared store is a plain transfer DB — moflo never *searches* it
  * directly, so it has no HNSW sidecar and no index-divergence concern. Row
@@ -40,12 +51,15 @@ import { findProjectRoot } from './project-root.js';
 import { stableAbsolute, pickConfiguredPath } from './configured-path.js';
 import { memoryDbPath } from './moflo-paths.js';
 import { loadMofloConfig, type MofloConfig } from '../config/moflo-config.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import {
-  cherryPickLearningsFromLegacy,
+  CHERRY_PICK_SKIP_REASONS,
   DURABLE_NAMESPACES,
   isDurableNamespace,
   type CherryPickResult,
 } from './cherry-pick-learnings.js';
+import { planReconcile, TOMBSTONE_TTL_MS } from './durable-reconcile.js';
+import { readDurableSnapshot, applyDurableActions, pruneExpiredArchives } from './durable-store-io.js';
 
 export { isDurableNamespace };
 
@@ -55,8 +69,10 @@ export interface DurableSyncReport {
   durablePath: string | null;
   /** Reason the sync was a no-op, when `durablePath` is null. */
   skipped?: 'not-configured' | 'same-as-local';
-  /** Rows copied local → shared (flush direction). */
+  /** Rows CHANGED local → shared (flush direction) — inserts, corrections, archives. */
   flushedToShared: number;
+  /** Archived rows dropped for being past the retention window (both stores). */
+  prunedArchives: number;
   /** Rows copied shared → local (seed direction). */
   seededToLocal: number;
   /**
@@ -188,6 +204,126 @@ export function resolveDurablePath(
 }
 
 /**
+ * One direction of a durable sync, as a superset of {@link CherryPickResult} so
+ * existing callers reading `copied` keep working. `copied` stays "rows newly
+ * added"; the other counts are what reconciliation added on top.
+ */
+export interface DurableDirectionResult extends CherryPickResult {
+  /** Rows whose content was corrected from the source. */
+  updated: number;
+  /** Rows archived because the source carries a newer deletion. */
+  archived: number;
+  /** Rows restored from an archive because the source re-created them. */
+  resurrected: number;
+  /** Source changes not applied because the target's row is newer. */
+  keptTarget: number;
+}
+
+const emptyDirection = (target: string): DurableDirectionResult => ({
+  copied: 0,
+  considered: 0,
+  sources: [],
+  target,
+  updated: 0,
+  archived: 0,
+  resurrected: 0,
+  keptTarget: 0,
+});
+
+/**
+ * Reconcile the durable slice of `sourcePath` into `targetPath`. Both stores
+ * are real memory DBs; the merge rule is the shared one, so a key present only
+ * in the target is never touched and only an explicit archive deletes.
+ *
+ * Missing source → a zero result rather than a throw: "the sibling worktree has
+ * not written anything yet" is a normal state, not an error.
+ */
+export function reconcileDurableStores(
+  sourcePath: string,
+  targetPath: string,
+  opts: { key?: string } = {},
+): DurableDirectionResult {
+  const result = emptyDirection(targetPath);
+  if (stableAbsolute(sourcePath) === stableAbsolute(targetPath)) {
+    result.sources.push({ path: sourcePath, rowsRead: 0, rowsInserted: 0, reason: CHERRY_PICK_SKIP_REASONS.SELF_REFERENCE });
+    return result;
+  }
+  if (!fs.existsSync(sourcePath)) {
+    result.sources.push({ path: sourcePath, rowsRead: 0, rowsInserted: 0, reason: CHERRY_PICK_SKIP_REASONS.NO_ROWS });
+    return result;
+  }
+
+  let sourceDb;
+  try {
+    sourceDb = openDaemonDatabase(sourcePath);
+  } catch {
+    result.sources.push({ path: sourcePath, rowsRead: 0, rowsInserted: 0, reason: CHERRY_PICK_SKIP_REASONS.OPEN_FAILED });
+    return result;
+  }
+
+  let snapshot;
+  try {
+    snapshot = readDurableSnapshot(sourceDb, DURABLE_NAMESPACES, { withPayloads: true, key: opts.key });
+  } finally {
+    sourceDb.close();
+  }
+
+  result.considered = snapshot.records.size;
+  if (snapshot.records.size === 0) {
+    result.sources.push({ path: sourcePath, rowsRead: 0, rowsInserted: 0, reason: CHERRY_PICK_SKIP_REASONS.NO_ROWS });
+    return result;
+  }
+
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  const targetDb = openDaemonDatabase(targetPath);
+  try {
+    const { records: target } = readDurableSnapshot(targetDb, DURABLE_NAMESPACES, { key: opts.key });
+    const { actions, summary } = planReconcile(snapshot.records, target);
+    const applied = applyDurableActions(targetDb, actions, snapshot.payloads);
+    result.copied = applied.inserted;
+    result.updated = applied.updated;
+    result.archived = applied.archived;
+    result.resurrected = applied.resurrected;
+    result.keptTarget = summary.keptTargetNewer;
+  } finally {
+    targetDb.close();
+  }
+
+  result.sources.push({
+    path: sourcePath,
+    rowsRead: result.considered,
+    rowsInserted: result.copied,
+  });
+  return result;
+}
+
+/**
+ * Apply the archive retention window to one store. Best-effort: a missing or
+ * unopenable store is "nothing to prune", never an error that fails a sync.
+ */
+function pruneStore(dbPath: string): number {
+  if (!fs.existsSync(dbPath)) return 0;
+  let db;
+  try {
+    db = openDaemonDatabase(dbPath);
+  } catch {
+    return 0;
+  }
+  try {
+    return pruneExpiredArchives(db, Date.now(), TOMBSTONE_TTL_MS);
+  } catch {
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
+/** Total rows a direction actually changed — what the launcher reports. */
+export function changedRows(result: DurableDirectionResult): number {
+  return result.copied + result.updated + result.archived + result.resurrected;
+}
+
+/**
  * Seed durable rows from the shared store into this project's local DB.
  * Shared is the source, local `.moflo/moflo.db` the target. No-op when the
  * shared store doesn't exist yet (nothing to seed).
@@ -195,13 +331,8 @@ export function resolveDurablePath(
 export async function seedDurableFromShared(
   projectRoot: string,
   durablePath: string,
-): Promise<CherryPickResult> {
-  return cherryPickLearningsFromLegacy({
-    projectRoot,
-    legacyPaths: [durablePath],
-    toPath: memoryDbPath(projectRoot),
-    namespaces: DURABLE_NAMESPACES,
-  });
+): Promise<DurableDirectionResult> {
+  return reconcileDurableStores(durablePath, memoryDbPath(projectRoot));
 }
 
 /**
@@ -211,7 +342,7 @@ export async function seedDurableFromShared(
 export async function flushDurableToShared(
   projectRoot: string,
   durablePath: string,
-): Promise<CherryPickResult> {
+): Promise<DurableDirectionResult> {
   // Ensure the parent dir exists — auto-derived worktree stores live under
   // `<git-common-dir>/moflo/`, which won't exist on the very first flush.
   try {
@@ -219,20 +350,24 @@ export async function flushDurableToShared(
   } catch {
     /* a real open failure surfaces from cherry-pick below */
   }
-  return cherryPickLearningsFromLegacy({
-    projectRoot,
-    legacyPaths: [memoryDbPath(projectRoot)],
-    toPath: durablePath,
-    namespaces: DURABLE_NAMESPACES,
-  });
+  return reconcileDurableStores(memoryDbPath(projectRoot), durablePath);
 }
 
 /**
  * Bidirectional durable sync run once at session-start: flush local → shared
  * (bootstraps pre-existing local learnings into the shared store), then seed
- * shared → local (pulls in sibling workspaces' learnings). Both directions are
- * `INSERT OR IGNORE`, so the result is the union of durable rows on both sides
- * with no conflicts. Safe to call unconditionally — a no-op when unconfigured.
+ * shared → local (pulls in sibling workspaces' learnings). Both directions run
+ * the shared reconciliation rule, so corrections and deletions converge across
+ * worktrees instead of accumulating as the union of both sides.
+ *
+ * Flush-then-seed order is load-bearing for deletions, and so is doing the
+ * archive pruning only once BOTH have run — see the prune comment in the body.
+ *
+ * Safe to call unconditionally, but no longer a true no-op when unconfigured:
+ * durable deletes archive rather than drop rows, so the local store still needs
+ * its retention window applied with sharing off. That costs one DB open and one
+ * indexed probe per session start, and nothing further unless expired archives
+ * actually exist.
  *
  * Intended to run BEFORE the daemon starts so the freshly-seeded rows are
  * present when the daemon builds its in-memory HNSW index.
@@ -243,18 +378,40 @@ export async function syncDurableAtSessionStart(
   const projectRoot = opts.projectRoot ?? findProjectRoot();
   const { path: durablePath, skipped, autoWorktree } = resolveDurablePath(projectRoot, opts.config);
   if (!durablePath) {
-    return { durablePath: null, skipped, flushedToShared: 0, seededToLocal: 0 };
+    // Sharing off, but deletes still archive — so the local store still needs
+    // its retention window applied. This is the majority case (one checkout,
+    // no team artifact); skipping it here is what would let archived rows grow
+    // without bound for most users.
+    return {
+      durablePath: null,
+      skipped,
+      flushedToShared: 0,
+      seededToLocal: 0,
+      prunedArchives: pruneStore(memoryDbPath(projectRoot)),
+    };
   }
 
   // Flush first so this worktree's existing learnings land in the shared store
   // before we seed — keeps the very first opt-in symmetric across workspaces.
   const flush = await flushDurableToShared(projectRoot, durablePath);
   const seed = await seedDurableFromShared(projectRoot, durablePath);
+
+  // Prune AFTER both directions, never inside one. Pruning during the flush
+  // deletes tombstones the seed has not applied yet: a worktree dormant past
+  // the retention window flushes its stale live row first, the shared
+  // tombstone correctly wins but is then pruned as expired, and the next
+  // flush re-inserts the purged entry into every workspace. Running the seed
+  // first means this store has applied the deletion before anything drops the
+  // evidence for it.
+  const pruned =
+    pruneStore(memoryDbPath(projectRoot)) + pruneStore(durablePath);
+
   return {
     durablePath,
     autoWorktree: autoWorktree ?? false,
-    flushedToShared: flush.copied,
-    seededToLocal: seed.copied,
+    flushedToShared: changedRows(flush),
+    seededToLocal: changedRows(seed),
+    prunedArchives: pruned,
   };
 }
 
@@ -270,7 +427,7 @@ export async function syncDurableAtSessionStart(
  */
 export async function writeThroughDurable(
   namespace: string,
-  opts: { projectRoot?: string; config?: MofloConfig } = {},
+  opts: { projectRoot?: string; config?: MofloConfig; key?: string } = {},
 ): Promise<void> {
   if (!isDurableNamespace(namespace)) return;
   try {
@@ -281,7 +438,12 @@ export async function writeThroughDurable(
     const projectRoot = opts.projectRoot ?? findProjectRoot();
     const { path: durablePath } = resolveDurablePath(projectRoot, opts.config);
     if (!durablePath) return;
-    await flushDurableToShared(projectRoot, durablePath);
+    // Flush ONLY the key that just changed. A full reconciliation here would
+    // read both stores end to end after every single learning written — the
+    // caller already knows exactly what moved, so a one-row plan is enough.
+    // The session-start sync remains the full-store reconciliation.
+    fs.mkdirSync(path.dirname(durablePath), { recursive: true });
+    reconcileDurableStores(memoryDbPath(projectRoot), durablePath, { key: opts.key });
   } catch {
     // Swallow entirely — see the rationale above.
   }

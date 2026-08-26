@@ -1,5 +1,5 @@
 /**
- * Git-tracked team learnings artifact (#1234, epic #1231).
+ * Git-tracked team learnings artifact (#1234, epic #1231; reconciling since #1463).
  *
  * Story 1 (#1232) shared a durable SQLite store between worktrees; Story 2
  * (#1233) carried a durable SQLite artifact between one user's machines. This
@@ -17,15 +17,41 @@
  * normal index pass (or `flo memory rebuild-index`), exactly as any other
  * unembedded row.
  *
- * Conflict policy: **first-write-wins**, applied two ways, both via the existing
- * `UNIQUE(namespace, key)` constraint:
- *   - on re-export, an entry already in the artifact keeps its original line
- *     (and original author/timestamp) — we never rewrite a teammate's row.
- *   - on import, `INSERT OR IGNORE` means a row already present locally wins,
- *     and within the file the first line for a key wins.
+ * ## Conflict policy: last-writer-wins on `updated_at` (#1463)
  *
- * Provenance: each exported entry is stamped with `author` (git user) + `source`
- * (hostname) so a learning's origin is visible in review and retained on import.
+ * This **replaces** the original first-write-wins policy, which was the #1463
+ * bug rather than a design: export skipped any key already in the artifact and
+ * import ran `INSERT OR IGNORE`, so a correction and a deletion were silently
+ * dropped in both directions. The artifact is the effective source of truth
+ * across machines, which made the two operations that most need to propagate
+ * the two the pair could not do.
+ *
+ * Both directions now run the same {@link planReconcile} rule with source and
+ * target swapped. Ties change nothing, and a key present only in the target is
+ * never touched — that is what protects work authored locally and not yet
+ * shared. See `durable-reconcile.ts` for the full matrix.
+ *
+ * ## Tombstones
+ *
+ * A deletion travels as its own line, marked with a namespace that is not
+ * durable:
+ *
+ * ```json
+ * {"namespace":"__moflo_tombstone__","key":"purged-key",
+ *  "deleted":{"namespace":"learnings","key":"purged-key","at":1787751507635},
+ *  "provenance":{...}}
+ * ```
+ *
+ * That marker buys backward compatibility for free. `importTeamArtifact` has
+ * always routed non-durable namespaces to `skippedNonDurable`, so 4.12.11 and
+ * every earlier version silently ignore tombstones — they do not act on
+ * deletions, which is exactly their behaviour today. An old client's *export*
+ * also preserves the lines verbatim, since it re-serialises whatever it read.
+ * No version gate and no artifact-schema field are required.
+ *
+ * Provenance now records who wrote a line **last** rather than first, because a
+ * line can now be rewritten. That is the more useful fact when reviewing a diff
+ * that changes an entry.
  *
  * Opt-in: inert unless `memory.team_artifact` (or `MOFLO_TEAM_ARTIFACT`) points
  * at a path. Solo users see byte-identical behaviour to today.
@@ -40,16 +66,24 @@ import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { findProjectRoot } from './project-root.js';
 import { memoryDbPath } from './moflo-paths.js';
-import { MEMORY_SCHEMA_V3 } from '../memory/memory-initializer.js';
-import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { loadMofloConfig, type MofloConfig } from '../config/moflo-config.js';
+import { isDurableNamespace } from './cherry-pick-learnings.js';
 import {
-  DURABLE_NAMESPACES,
-  DURABLE_INSERT_OR_IGNORE_SQL,
-  hasMemoryEntriesTable,
-  isDurableNamespace,
-} from './cherry-pick-learnings.js';
+  planReconcile,
+  reconcileId,
+  splitReconcileId,
+  isPrunableTombstone,
+  recordStamp,
+  TOMBSTONE_TTL_MS,
+  type ReconcileRecord,
+} from './durable-reconcile.js';
+import {
+  readDurableSnapshot,
+  applyDurableActions,
+  type DurablePayload,
+} from './durable-store-io.js';
 
 /** Allowed `type` values — the schema CHECK set. An out-of-set value would make
  *  INSERT OR IGNORE silently drop a hand-edited artifact row, so we coerce. */
@@ -65,13 +99,22 @@ const coerceType = (t: string | undefined): string => (t && VALID_TYPES.has(t) ?
 /** Default artifact path, relative to the project root. POSIX-joined parts. */
 export const DEFAULT_TEAM_ARTIFACT_REL = path.join('.moflo', 'shared', 'learnings.jsonl');
 
+/**
+ * Namespace marker on a tombstone line. MUST stay outside
+ * {@link isDurableNamespace} — that is the entire backward-compatibility
+ * mechanism (old clients skip it as non-durable). Renaming it silently breaks
+ * deletion propagation for every client that hasn't upgraded, which is why
+ * `imports a tombstone-bearing artifact the way 4.12.11 does` pins it.
+ */
+export const TOMBSTONE_NAMESPACE = '__moflo_tombstone__';
+
 /** Provenance stamped onto each shared entry so its origin survives review. */
 export interface TeamProvenance {
   /** `git config user.name <user.email>`, or the OS user as a fallback. */
   author: string;
   /** Hostname of the machine that first shared the entry. */
   source: string;
-  /** ISO timestamp the entry was first written to the artifact. */
+  /** ISO timestamp the entry was last written to the artifact. */
   sharedAt: string;
 }
 
@@ -84,31 +127,80 @@ export interface TeamArtifactEntry {
   tags?: string[];
   /** Epoch-ms creation time (the `created_at` column is INTEGER NOT NULL). */
   created_at?: number;
+  /**
+   * Epoch-ms of the last edit — the basis for last-writer-wins (#1463). Absent
+   * on lines written before #1463; those are treated as timestamp 0 so they can
+   * still seed a store that lacks the key but can never overwrite one that has
+   * it. Export backfills the field on any such line this machine also holds
+   * (timestamp only — provenance stays with the original author), so the
+   * ambiguity retires after one export per line rather than persisting.
+   */
+  updated_at?: number;
   provenance: TeamProvenance;
+}
+
+/** A deletion, carried as a line so it can propagate. See the module header. */
+export interface TeamTombstone {
+  namespace: string;
+  key: string;
+  deleted: { namespace: string; key: string; at: number };
+  provenance: TeamProvenance;
+}
+
+export type TeamArtifactLine = TeamArtifactEntry | TeamTombstone;
+
+/** True when a parsed line is a tombstone rather than a live entry. */
+export function isTombstoneLine(line: TeamArtifactLine): line is TeamTombstone {
+  return line.namespace === TOMBSTONE_NAMESPACE;
 }
 
 export interface ExportReport {
   artifactPath: string;
-  /** Entries newly added to the artifact this run (excludes ones already present). */
+  /** Entries newly added to the artifact this run. */
   added: number;
-  /** Total entries in the artifact after the merge. */
+  /** Entries whose artifact text was corrected from the local DB. */
+  updated: number;
+  /** Entries tombstoned this run because they were archived locally. */
+  deleted: number;
+  /** Entries re-created locally after a purge, restored over their tombstone. */
+  resurrected: number;
+  /** Entries already in agreement. */
+  unchanged: number;
+  /** Local changes NOT propagated because the artifact's version is newer. */
+  keptRemote: number;
+  /** Expired tombstones dropped from the artifact this run. */
+  prunedTombstones: number;
+  /** Pre-#1463 lines given an `updated_at` this run, so they stop stamping 0. */
+  backfilled: number;
+  /** Malformed JSONL lines skipped while reading the artifact. */
+  skippedMalformed: number;
+  /** Live entries in the artifact after the merge. */
   total: number;
+  /** Tombstone lines retained in the artifact after the merge. */
+  tombstones: number;
+  /** False when nothing changed and the file was left untouched. */
+  wrote: boolean;
 }
 
 export interface ImportReport {
   artifactPath: string;
-  /** Rows actually inserted into the local DB (excludes duplicates). */
+  /** Rows newly inserted into the local DB. */
   imported: number;
-  /** Durable rows read from the artifact (well-formed, durable-namespace lines). */
+  /** Local rows corrected from the artifact. */
+  updated: number;
+  /** Local rows archived because the artifact carries a newer tombstone. */
+  deleted: number;
+  /** Local rows restored from an archive because the artifact has a newer entry. */
+  resurrected: number;
+  /** Artifact changes NOT applied because the local row is newer. */
+  keptLocal: number;
+  /** Durable records read from the artifact (live entries + tombstones). */
   considered: number;
   /** Malformed JSONL lines skipped (bad JSON or missing namespace/key). */
   skippedMalformed: number;
   /** Well-formed lines skipped for being outside the durable namespaces. */
   skippedNonDurable: number;
 }
-
-const KEY_SEP = String.fromCharCode(0); // in-memory dedup separator (collision-proof, kept out of source as a literal NUL)
-const entryMapKey = (namespace: string, key: string): string => `${namespace}${KEY_SEP}${key}`;
 
 /**
  * Resolve the configured team-artifact path to an absolute path, or `null` when
@@ -158,127 +250,313 @@ function resolveSource(): string {
   }
 }
 
-/** Read + parse an existing artifact into a (namespace,key) → entry map. Missing file → empty. */
-function readArtifact(artifactPath: string): { entries: Map<string, TeamArtifactEntry>; malformed: number } {
-  const entries = new Map<string, TeamArtifactEntry>();
+/** The (namespace, key) a line is *about* — its inner target for a tombstone. */
+function lineId(line: TeamArtifactLine): string {
+  return isTombstoneLine(line)
+    ? reconcileId(line.deleted.namespace, line.deleted.key)
+    : reconcileId(line.namespace, line.key);
+}
+
+/** A parsed line as the merge rule sees it. See {@link TeamArtifactEntry.updated_at}. */
+function lineToRecord(line: TeamArtifactLine): ReconcileRecord {
+  if (isTombstoneLine(line)) {
+    return {
+      namespace: line.deleted.namespace,
+      key: line.deleted.key,
+      updatedAt: 0,
+      deletedAt: line.deleted.at,
+    };
+  }
+  return {
+    namespace: line.namespace,
+    key: line.key,
+    updatedAt: typeof line.updated_at === 'number' ? line.updated_at : 0,
+    content: line.content ?? '',
+  };
+}
+
+/** Parse one JSONL line, or `null` when it is malformed. */
+function parseLine(trimmed: string): TeamArtifactLine | null {
+  let obj: Record<string, unknown> | null = null;
+  try {
+    obj = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj.namespace !== 'string' || typeof obj.key !== 'string') return null;
+
+  if (obj.namespace === TOMBSTONE_NAMESPACE) {
+    const deleted = obj.deleted as { namespace?: unknown; key?: unknown; at?: unknown } | undefined;
+    // A marker line whose payload is unusable is malformed, NOT a silent
+    // no-op: swallowing it would drop a deletion with no diagnostic.
+    if (
+      !deleted ||
+      typeof deleted.namespace !== 'string' ||
+      typeof deleted.key !== 'string' ||
+      typeof deleted.at !== 'number'
+    ) {
+      return null;
+    }
+    return obj as unknown as TeamTombstone;
+  }
+  return obj as unknown as TeamArtifactEntry;
+}
+
+/**
+ * Read + parse an existing artifact, keyed by the (namespace, key) each line is
+ * *about* — so a tombstone and the entry it retires occupy one slot and cannot
+ * both survive. Missing file → empty.
+ *
+ * Duplicates within one file are settled by timestamp, newest wins, ties keep
+ * the first. That is not hypothetical: an old client re-appends a live line for
+ * a key we tombstoned (it keys tombstones under the marker namespace, so the
+ * live key looks absent to it). Those re-appended lines carry no `updated_at`,
+ * so they stamp 0 and the tombstone stands — while a genuine re-creation from
+ * an upgraded client carries a real timestamp and wins.
+ */
+function readArtifact(artifactPath: string): {
+  lines: Map<string, TeamArtifactLine>;
+  records: Map<string, ReconcileRecord>;
+  malformed: number;
+  existed: boolean;
+} {
+  const lines = new Map<string, TeamArtifactLine>();
+  const records = new Map<string, ReconcileRecord>();
   let malformed = 0;
-  if (!fs.existsSync(artifactPath)) return { entries, malformed };
+  if (!fs.existsSync(artifactPath)) return { lines, records, malformed, existed: false };
   const raw = fs.readFileSync(artifactPath, 'utf-8');
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    let obj: TeamArtifactEntry | null = null;
-    try {
-      obj = JSON.parse(trimmed) as TeamArtifactEntry;
-    } catch {
+    const parsed = parseLine(trimmed);
+    if (!parsed) {
       malformed++;
       continue;
     }
-    if (!obj || typeof obj.namespace !== 'string' || typeof obj.key !== 'string') {
-      malformed++;
-      continue;
-    }
-    const mapKey = entryMapKey(obj.namespace, obj.key);
-    // First line for a key wins (first-write-wins inside the file).
-    if (!entries.has(mapKey)) entries.set(mapKey, obj);
+    const id = lineId(parsed);
+    const record = lineToRecord(parsed);
+    const existing = records.get(id);
+    // Newest wins, ties keep the first. Built on the merge rule's own
+    // comparison basis so the two cannot disagree about which of a live line
+    // and a tombstone is later.
+    if (existing && recordStamp(existing) >= recordStamp(record)) continue;
+    lines.set(id, parsed);
+    records.set(id, record);
   }
-  return { entries, malformed };
+  return { lines, records, malformed, existed: true };
 }
 
-/** Serialise entries to JSONL, sorted by (namespace, key) for deterministic, reviewable diffs. */
-function serializeArtifact(entries: Iterable<TeamArtifactEntry>): string {
-  const sorted = [...entries].sort((a, b) =>
-    a.namespace === b.namespace ? a.key.localeCompare(b.key) : a.namespace.localeCompare(b.namespace),
-  );
-  return sorted.map((e) => JSON.stringify(e)).join('\n') + (sorted.length ? '\n' : '');
+/**
+ * Serialise lines to JSONL, sorted by the (namespace, key) each line is about —
+ * so a tombstone sorts exactly where the entry it retires used to sit, keeping
+ * the git diff line-local and reviewable.
+ */
+function serializeArtifact(lines: Iterable<[string, TeamArtifactLine]>): string {
+  const sorted = [...lines].sort((a, b) => {
+    const left = splitReconcileId(a[0]);
+    const right = splitReconcileId(b[0]);
+    return left.namespace === right.namespace
+      ? left.key.localeCompare(right.key)
+      : left.namespace.localeCompare(right.namespace);
+  });
+  return sorted.map(([, line]) => JSON.stringify(line)).join('\n') + (sorted.length ? '\n' : '');
 }
 
-/** SELECT the local durable rows (learnings, knowledge) to be shared. */
-function readLocalDurableRows(localDbPath: string): TeamArtifactEntry[] {
-  if (!fs.existsSync(localDbPath)) return [];
-  let db: SqlJsLikeDatabase;
-  try {
-    db = openDaemonDatabase(localDbPath);
-  } catch {
-    return [];
-  }
-  try {
-    if (!hasMemoryEntriesTable(db)) return [];
-    const placeholders = DURABLE_NAMESPACES.map(() => '?').join(',');
-    const stmt = db.prepare(
-      `SELECT namespace, key, content, type, tags, created_at FROM memory_entries ` +
-        `WHERE namespace IN (${placeholders})`,
-    );
-    stmt.bind(DURABLE_NAMESPACES.slice());
-    const rows: TeamArtifactEntry[] = [];
-    while (stmt.step()) {
-      const r = stmt.getAsObject();
-      rows.push({
-        namespace: String(r.namespace),
-        key: String(r.key),
-        content: r.content == null ? '' : String(r.content),
-        type: r.type == null ? 'semantic' : String(r.type),
-        tags: parseTags(r.tags),
-        created_at: r.created_at == null ? undefined : Number(r.created_at),
-        // Provenance is filled by the caller (export) — placeholder here.
-        provenance: { author: '', source: '', sharedAt: '' },
-      });
-    }
-    stmt.free();
-    return rows;
-  } finally {
-    db.close();
-  }
-}
-
-function parseTags(raw: unknown): string[] | undefined {
+/** Parse the DB's JSON-encoded tags column back to the artifact's array form. */
+function parseTags(raw: string | null): string[] | undefined {
   if (raw == null) return undefined;
-  if (Array.isArray(raw)) return raw.map(String);
   try {
-    const parsed = JSON.parse(String(raw));
+    const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.map(String) : undefined;
   } catch {
     return undefined;
   }
 }
 
+/** Build the artifact line for a local row that is winning the merge. */
+function entryFromPayload(payload: DurablePayload, provenance: TeamProvenance): TeamArtifactEntry {
+  return {
+    namespace: payload.namespace,
+    key: payload.key,
+    content: payload.content,
+    type: payload.type,
+    tags: parseTags(payload.tags),
+    created_at: payload.createdAt,
+    updated_at: payload.updatedAt,
+    provenance,
+  };
+}
+
+/** Build the tombstone line for a locally archived row. */
+function tombstoneFromRecord(record: ReconcileRecord, provenance: TeamProvenance): TeamTombstone {
+  return {
+    namespace: TOMBSTONE_NAMESPACE,
+    // Informational for old clients, which key this line under the marker
+    // namespace and skip it; the authoritative target is `deleted`.
+    key: record.key,
+    deleted: { namespace: record.namespace, key: record.key, at: record.deletedAt as number },
+    provenance,
+  };
+}
+
+/** Build the DB row an artifact line becomes. Embeddings are never carried. */
+function payloadFromLine(id: string, line: TeamArtifactEntry): DurablePayload {
+  return {
+    id: createHash('sha1').update(id).digest('hex'),
+    namespace: line.namespace,
+    key: line.key,
+    content: line.content ?? '',
+    // An out-of-CHECK-set type would be silently dropped by INSERT OR IGNORE.
+    type: coerceType(line.type),
+    tags: line.tags ? JSON.stringify(line.tags) : null,
+    metadata: JSON.stringify({ provenance: line.provenance, sharedFrom: 'team-artifact' }),
+    ownerId: line.provenance?.author || null,
+    // created_at/updated_at are INTEGER NOT NULL — never bind null.
+    createdAt: typeof line.created_at === 'number' ? line.created_at : Date.now(),
+    // The row gets the best timestamp available even when the RECORD compared
+    // as 0 (a pre-#1463 line): 0 governs only who wins the merge, while the row
+    // itself should carry the most accurate time we have.
+    updatedAt:
+      typeof line.updated_at === 'number'
+        ? line.updated_at
+        : typeof line.created_at === 'number'
+          ? line.created_at
+          : Date.now(),
+    embedding: null,
+    embeddingModel: null,
+    embeddingDimensions: null,
+  };
+}
+
 /**
- * Export the local durable slice into the team artifact (merge, not overwrite).
- * Existing artifact entries keep their original line/provenance (first-write-wins);
- * only local durable rows whose key is absent are appended, stamped with this
- * machine's provenance. The artifact is rewritten sorted + atomically.
+ * Export the local durable slice into the team artifact by **reconciling**, not
+ * appending: corrections overwrite the artifact line, local archives become
+ * tombstones, and entries the artifact has but this machine does not are left
+ * strictly alone (they may be a teammate's, or ours-not-yet-imported).
+ *
+ * The file is rewritten sorted + atomically, and only when something changed —
+ * a git-tracked file should not churn its mtime for a no-op run.
  */
 export function exportTeamArtifact(opts: {
   projectRoot?: string;
   artifactPath: string;
   sharedAt: string;
   config?: MofloConfig;
+  /** Epoch-ms used for tombstone pruning. Defaults to `sharedAt`, then now. */
+  now?: number;
+  /** Tombstone retention window. Exposed for tests; see {@link TOMBSTONE_TTL_MS}. */
+  tombstoneTtlMs?: number;
 }): ExportReport {
   const projectRoot = opts.projectRoot ?? findProjectRoot();
   const localDbPath = memoryDbPath(projectRoot);
-  const { entries } = readArtifact(opts.artifactPath);
-  const author = resolveAuthor(projectRoot);
-  const source = resolveSource();
+  const parsedSharedAt = Date.parse(opts.sharedAt);
+  const now = opts.now ?? (Number.isNaN(parsedSharedAt) ? Date.now() : parsedSharedAt);
+  const ttlMs = opts.tombstoneTtlMs ?? TOMBSTONE_TTL_MS;
 
-  let added = 0;
-  for (const row of readLocalDurableRows(localDbPath)) {
-    const mapKey = entryMapKey(row.namespace, row.key);
-    if (entries.has(mapKey)) continue; // never rewrite an existing (teammate's) entry
-    entries.set(mapKey, { ...row, provenance: { author, source, sharedAt: opts.sharedAt } });
-    added++;
+  const { lines, records: target, malformed, existed } = readArtifact(opts.artifactPath);
+  const provenance: TeamProvenance = {
+    author: resolveAuthor(projectRoot),
+    source: resolveSource(),
+    sharedAt: opts.sharedAt,
+  };
+
+  // Local DB is the source, the artifact the target.
+  let records = new Map<string, ReconcileRecord>();
+  let payloads = new Map<string, DurablePayload>();
+  if (fs.existsSync(localDbPath)) {
+    let db;
+    try {
+      db = openDaemonDatabase(localDbPath);
+    } catch {
+      db = null;
+    }
+    if (db) {
+      try {
+        // The local DB is the SOURCE here, so it is the side that needs full
+        // payloads. Archive retention is applied by the session-start sync, not
+        // here: pruning before the artifact write could destroy the evidence
+        // for a deletion the write then failed to publish.
+        ({ records, payloads } = readDurableSnapshot(db, undefined, { withPayloads: true }));
+      } finally {
+        db.close();
+      }
+    }
   }
 
-  fs.mkdirSync(path.dirname(opts.artifactPath), { recursive: true });
-  atomicWriteFileSync(opts.artifactPath, serializeArtifact(entries.values()));
-  return { artifactPath: opts.artifactPath, added, total: entries.size };
+  const { actions, summary } = planReconcile(records, target);
+  for (const action of actions) {
+    if (action.op === 'delete') {
+      lines.set(action.id, tombstoneFromRecord(action.record, provenance));
+      continue;
+    }
+    const payload = payloads.get(action.id);
+    if (payload) lines.set(action.id, entryFromPayload(payload, provenance));
+  }
+
+  // Backfill the timestamp on lines this machine holds but that predate #1463.
+  // Content-equal lines are never rewritten, so without this they would keep a
+  // stamp of 0 forever and lose every future comparison to any real timestamp.
+  // Only the timestamp moves — provenance stays with whoever authored the line.
+  let backfilled = 0;
+  for (const [id, line] of lines) {
+    if (isTombstoneLine(line) || typeof line.updated_at === 'number') continue;
+    const payload = payloads.get(id);
+    if (!payload) continue;
+    lines.set(id, { ...line, updated_at: payload.updatedAt });
+    backfilled++;
+  }
+
+  const expired: string[] = [];
+  for (const [id, line] of lines) {
+    if (isTombstoneLine(line) && isPrunableTombstone(lineToRecord(line), now, ttlMs)) expired.push(id);
+  }
+  for (const id of expired) lines.delete(id);
+  const prunedTombstones = expired.length;
+
+  let live = 0;
+  let tombstones = 0;
+  for (const line of lines.values()) {
+    if (isTombstoneLine(line)) tombstones++;
+    else live++;
+  }
+
+  // Skip the write when the merge changed nothing AND the file already exists:
+  // a git-tracked artifact should not show up as modified after a no-op run.
+  const changed = actions.length > 0 || prunedTombstones > 0 || backfilled > 0;
+  const wrote = changed || !existed;
+  if (wrote) {
+    fs.mkdirSync(path.dirname(opts.artifactPath), { recursive: true });
+    atomicWriteFileSync(opts.artifactPath, serializeArtifact(lines));
+  }
+
+  return {
+    artifactPath: opts.artifactPath,
+    added: summary.inserted,
+    updated: summary.updated,
+    deleted: summary.deleted,
+    resurrected: summary.resurrected,
+    unchanged: summary.unchanged,
+    keptRemote: summary.keptTargetNewer,
+    prunedTombstones,
+    backfilled,
+    skippedMalformed: malformed,
+    total: live,
+    tombstones,
+    wrote,
+  };
 }
 
 /**
- * Import-merge the team artifact into the local durable namespaces. `INSERT OR
- * IGNORE` on `UNIQUE(namespace, key)` makes this idempotent and first-write-wins
- * (existing local rows survive). Embeddings are left null — the daemon's index
- * pass fills them. No-op (zero rows) when the artifact is absent. Never throws on
- * a malformed line; those are counted and skipped.
+ * Import-merge the team artifact into the local durable namespaces, applying
+ * the same reconciliation rule with the artifact as source. Corrections update
+ * the local row, tombstones archive it, and local-only rows are never touched.
+ *
+ * Embeddings are left null on insert and cleared on update — the artifact
+ * carries no vectors, so keeping the old one would leave a corrected row
+ * findable under its previous meaning. The daemon's index pass refills them.
+ *
+ * No-op (zero rows) when the artifact is absent. Never throws on a malformed
+ * line; those are counted and skipped.
  */
 export function importTeamArtifact(opts: { projectRoot?: string; artifactPath: string }): ImportReport {
   const projectRoot = opts.projectRoot ?? findProjectRoot();
@@ -286,81 +564,89 @@ export function importTeamArtifact(opts: { projectRoot?: string; artifactPath: s
   const report: ImportReport = {
     artifactPath: opts.artifactPath,
     imported: 0,
+    updated: 0,
+    deleted: 0,
+    resurrected: 0,
+    keptLocal: 0,
     considered: 0,
     skippedMalformed: 0,
     skippedNonDurable: 0,
   };
 
-  const { entries, malformed } = readArtifact(opts.artifactPath);
+  const { lines, records: parsed, malformed } = readArtifact(opts.artifactPath);
   report.skippedMalformed = malformed;
-  if (entries.size === 0) return report;
+  if (lines.size === 0) return report;
+
+  const source = new Map<string, ReconcileRecord>();
+  for (const [id, line] of lines) {
+    const record = parsed.get(id) as ReconcileRecord;
+    // The artifact is hand-editable by design — only durable namespaces belong
+    // in the local durable slice. A tombstone resolves to its inner namespace,
+    // so it passes this check while its marker namespace keeps old clients from
+    // acting on it.
+    if (!isDurableNamespace(record.namespace)) {
+      report.skippedNonDurable++;
+      continue;
+    }
+    report.considered++;
+    source.set(id, record);
+  }
+  if (source.size === 0) return report;
 
   fs.mkdirSync(path.dirname(localDbPath), { recursive: true });
   const db = openDaemonDatabase(localDbPath);
-  let insertStmt: ReturnType<SqlJsLikeDatabase['prepare']> | null = null;
   try {
-    db.run(MEMORY_SCHEMA_V3);
-    // Shared column list with the cherry-pick writer — single source of truth so
-    // the two can't drift (a mismatch would mis-bind under INSERT OR IGNORE).
-    insertStmt = db.prepare(DURABLE_INSERT_OR_IGNORE_SQL);
-    // One transaction for the whole batch → a single fsync instead of one per
-    // row on the (enabled) session-start hot path.
-    db.run('BEGIN');
-    try {
-      for (const entry of entries.values()) {
-        // The artifact is hand-editable by design — only durable namespaces
-        // belong in the local durable slice; skip anything else rather than
-        // polluting the DB (and so it isn't mis-counted as a duplicate).
-        if (!isDurableNamespace(entry.namespace)) {
-          report.skippedNonDurable++;
-          continue;
-        }
-        report.considered++;
-        const id = createHash('sha1').update(entryMapKey(entry.namespace, entry.key)).digest('hex');
-        const metadata = JSON.stringify({ provenance: entry.provenance, sharedFrom: 'team-artifact' });
-        // created_at/updated_at are INTEGER NOT NULL — never bind null (INSERT OR
-        // IGNORE would silently drop the row on the constraint violation).
-        const ts = typeof entry.created_at === 'number' ? entry.created_at : Date.now();
-        insertStmt.bind([
-          id,
-          entry.key,
-          entry.namespace,
-          entry.content ?? '',
-          coerceType(entry.type), // out-of-CHECK-set type would be silently dropped otherwise
-          null, // embedding — regenerated by the daemon's index pass
-          null, // embedding_model
-          null, // embedding_dimensions
-          entry.tags ? JSON.stringify(entry.tags) : null,
-          metadata,
-          entry.provenance?.author || null,
-          ts,
-          ts,
-          'active',
-        ]);
-        insertStmt.step();
-        if (db.getRowsModified() > 0) report.imported++;
-        insertStmt.reset();
-      }
-      db.run('COMMIT');
-    } catch (e) {
-      try {
-        db.run('ROLLBACK');
-      } catch {
-        /* best-effort — the close() below also discards an open transaction */
-      }
-      throw e;
+    const { records: target } = readDurableSnapshot(db);
+    const { actions, summary } = planReconcile(source, target);
+    // Payloads are built only for the actions that need one. In the steady
+    // state the plan is empty, and hashing + re-encoding every line of a
+    // 1,300-entry artifact on every session start would be pure waste.
+    const payloads = new Map<string, DurablePayload>();
+    for (const action of actions) {
+      if (action.op === 'delete') continue;
+      const line = lines.get(action.id);
+      if (!line || isTombstoneLine(line)) continue;
+      payloads.set(action.id, payloadFromLine(action.id, line));
     }
+    const applied = applyDurableActions(db, actions, payloads);
+    report.imported = applied.inserted;
+    report.updated = applied.updated;
+    report.deleted = applied.archived;
+    report.resurrected = applied.resurrected;
+    report.keptLocal = summary.keptTargetNewer;
   } finally {
-    if (insertStmt) {
-      try {
-        insertStmt.free();
-      } catch {
-        /* best-effort cleanup */
-      }
-    }
     db.close();
   }
   return report;
+}
+
+/**
+ * The dominant line ending already in a file. Both writers below rewrite whole
+ * files they did not author, so they must hand back the style they were given —
+ * splitting on `/\r?\n/` and re-joining with `\n` silently converts every
+ * unrelated line in a CRLF checkout, which is the opposite of the narrow,
+ * one-line edit these functions promise (Rule #1).
+ */
+function detectEol(raw: string): '\r\n' | '\n' {
+  const newlines = (raw.match(/\n/g) ?? []).length;
+  const crlf = (raw.match(/\r\n/g) ?? []).length;
+  return crlf > newlines - crlf ? '\r\n' : '\n';
+}
+
+/**
+ * Render one path as a literal gitattributes pattern.
+ *
+ * The artifact path is caller-supplied (`flo memory team-export --to ...`), so
+ * it can carry whitespace or glob metacharacters. Unescaped, `team notes.jsonl`
+ * parses as the pattern `team` plus garbage, and a `*` in the name would match
+ * files the user never named. Glob metacharacters are escaped first; the result
+ * is then C-quoted if it contains whitespace, which doubles the backslashes the
+ * escape pass added — that is correct, since git un-quotes before globbing.
+ */
+function gitattributesPattern(rel: string): string {
+  const pattern = `/${rel.replace(/([\\*?[\]])/g, '\\$1')}`;
+  if (!/[\s"]/.test(pattern)) return pattern;
+  return `"${pattern.replace(/(["\\])/g, '\\$1')}"`;
 }
 
 /**
@@ -390,7 +676,9 @@ export function ensureSharedArtifactTracked(
   const negation = `!/${relDir}`;
 
   const existed = fs.existsSync(gitignorePath);
-  const lines = existed ? fs.readFileSync(gitignorePath, 'utf-8').split(/\r?\n/) : [];
+  const raw = existed ? fs.readFileSync(gitignorePath, 'utf-8') : '';
+  const eol = existed ? detectEol(raw) : '\n';
+  const lines = existed ? raw.split(/\r?\n/) : [];
 
   const isBareMoflo = (t: string): boolean =>
     t === '.moflo/' || t === '/.moflo/' || t === '.moflo' || t === '/.moflo';
@@ -435,7 +723,69 @@ export function ensureSharedArtifactTracked(
   }
 
   if (!changed) return 'unchanged';
-  const content = next.join('\n').replace(/\n+$/, '') + '\n';
+  const content = next.join(eol).replace(/(\r?\n)+$/, '') + eol;
   atomicWriteFileSync(gitignorePath, content);
+  return existed ? 'updated' : 'created';
+}
+
+/**
+ * Pin the shared artifact to LF in the consumer's `.gitattributes`.
+ *
+ * The artifact is a git-tracked file in someone else's repo, and moflo always
+ * writes it with `\n`. On a Windows checkout with `core.autocrlf=true` git
+ * hands back CRLF, so every export rewrites the whole file and — far worse — a
+ * git merge of two divergent artifacts conflicts on EVERY line. That destroys
+ * the merge-friendliness that made JSONL the format in the first place, and it
+ * only bites the platform least likely to be running CI.
+ *
+ * One narrowly-scoped line for one file; never touches unrelated patterns.
+ * Idempotent — an existing rule for this path is left exactly as written, so a
+ * consumer who tuned it keeps their version.
+ *
+ * Gitattributes patterns always use `/` regardless of OS (Rule #1), so the
+ * path is POSIX-normalised here.
+ */
+export function ensureSharedArtifactEol(
+  projectRoot: string,
+  artifactAbsPath: string,
+): 'created' | 'updated' | 'unchanged' {
+  const rel = path.relative(projectRoot, artifactAbsPath).split(path.sep).join('/');
+  // Outside the project entirely (an absolute artifact on a shared drive) —
+  // there is no repo of ours to annotate.
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return 'unchanged';
+
+  const attributesPath = path.join(projectRoot, '.gitattributes');
+  const pattern = gitattributesPattern(rel);
+  const existed = fs.existsSync(attributesPath);
+  const raw = existed ? fs.readFileSync(attributesPath, 'utf-8') : '';
+  const eol = existed ? detectEol(raw) : '\n';
+  const lines = existed ? raw.split(/\r?\n/) : [];
+
+  // macOS APFS and Windows NTFS are case-insensitive by default, so a rule
+  // differing only in case there names the SAME file and must count as already
+  // ruled. On a case-sensitive filesystem it names a different file, and
+  // skipping ours would leave the artifact unpinned — so the fold is applied
+  // only where the filesystem actually folds (Rule #1).
+  const caseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
+  const fold = (v: string): string => (caseInsensitive ? v.toLowerCase() : v);
+  const candidates = [fold(pattern), fold(`/${rel}`), fold(rel)];
+
+  // Any existing rule naming this path wins, whatever it says.
+  const alreadyRuled = lines.some((line) => {
+    const trimmed = fold(line.trim());
+    if (!trimmed || trimmed.startsWith('#')) return false;
+    return candidates.some(
+      (c) => trimmed === c || trimmed.startsWith(`${c} `) || trimmed.startsWith(`${c}\t`),
+    );
+  });
+  if (alreadyRuled) return 'unchanged';
+
+  const next = [...lines];
+  if (next.length && next[next.length - 1].trim() !== '') next.push('');
+  next.push('# moflo team-shared learnings: LF so the artifact stays diffable and merge-friendly');
+  next.push(`${pattern} text eol=lf`);
+
+  const content = next.join(eol).replace(/(\r?\n)+$/, '') + eol;
+  atomicWriteFileSync(attributesPath, content);
   return existed ? 'updated' : 'created';
 }

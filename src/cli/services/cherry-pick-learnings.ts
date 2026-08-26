@@ -75,6 +75,16 @@ export function isDurableNamespace(namespace: string): boolean {
  * between the two writers would silently mis-bind or drop rows (INSERT OR IGNORE
  * swallows the constraint violation). Single source of truth for both.
  */
+/**
+ * The 14 durable-row columns, in the order {@link DURABLE_INSERT_OR_IGNORE_SQL}
+ * binds them. Exported so every reader SELECTs exactly what the writer expects
+ * — the read half used to be retyped per call site, which is the same drift
+ * hazard the shared INSERT exists to prevent.
+ */
+export const DURABLE_ROW_COLUMNS =
+  `id, key, namespace, content, type, embedding, embedding_model, ` +
+  `embedding_dimensions, tags, metadata, owner_id, created_at, updated_at, status`;
+
 export const DURABLE_INSERT_OR_IGNORE_SQL =
   `INSERT OR IGNORE INTO memory_entries ` +
   `(id, key, namespace, content, type, embedding, embedding_model, ` +
@@ -208,9 +218,7 @@ export async function cherryPickLearningsFromLegacy(
 
     const placeholders = namespaces.map(() => '?').join(',');
     const selectSql =
-      `SELECT id, key, namespace, content, type, embedding, embedding_model, ` +
-      `embedding_dimensions, tags, metadata, owner_id, created_at, updated_at, status ` +
-      `FROM memory_entries WHERE namespace IN (${placeholders})`;
+      `SELECT ${DURABLE_ROW_COLUMNS} FROM memory_entries WHERE namespace IN (${placeholders})`;
     // Hoisted prepare — avoids re-parsing the SQL for every INSERT. Matters
     // for legacy DBs with hundreds of learnings rows.
     insertStmt = targetDb.prepare(DURABLE_INSERT_OR_IGNORE_SQL);

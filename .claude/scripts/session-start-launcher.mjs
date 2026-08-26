@@ -2612,11 +2612,19 @@ try {
       const artifactPath = mod.resolveTeamArtifactPath(projectRoot);
       if (artifactPath && existsSync(artifactPath)) {
         const report = mod.importTeamArtifact({ projectRoot, artifactPath });
-        if (report?.imported > 0) {
-          emitMutation(
-            'merged team learnings',
-            `${plural(report.imported, 'shared learning')} imported from the git-tracked team artifact`,
-          );
+        // Corrections and deletions are changes the user needs told about just
+        // as much as inserts (#1463) — reporting only `imported` is what let
+        // the additive bug sit unnoticed.
+        const changed =
+          (report?.imported ?? 0) + (report?.updated ?? 0) + (report?.deleted ?? 0) + (report?.resurrected ?? 0);
+        if (changed > 0) {
+          const detail = [
+            report.imported > 0 ? `${plural(report.imported, 'shared learning')} imported` : null,
+            report.updated > 0 ? `${report.updated} corrected` : null,
+            report.deleted > 0 ? `${report.deleted} retired` : null,
+            report.resurrected > 0 ? `${report.resurrected} restored` : null,
+          ].filter(Boolean).join(', ');
+          emitMutation('merged team learnings', `${detail} from the git-tracked team artifact`);
         }
       }
     }

@@ -31,7 +31,9 @@ Choose by who needs the learnings, not by what is easiest to wire.
 | A team sharing one repo | Git-tracked team artifact | `flo memory team-export` writes `.moflo/shared/learnings.jsonl`; teammates' session-start import-merges it after `git pull` |
 | A fresh/empty workspace that must be ready FAST | Whole-DB snapshot (`memory.hydrate_from`) | `flo memory backup --to <snap>` once; a new workspace restores the entire DB so search works on session one — no cold reindex |
 
-The first three move the SAME durable slice and dedupe on `UNIQUE(namespace, key)`, so combining them is conflict-free. The snapshot is a different tool — a one-time whole-DB seed that composes with the durable-slice modes (see the next section but one).
+The first three move the SAME durable slice and reconcile on `UNIQUE(namespace, key)`, so combining them is safe. The snapshot is a different tool — a one-time whole-DB seed that composes with the durable-slice modes (see the next section but one).
+
+**All three propagate edits and deletions, not just new entries.** The newer `updated_at` wins, a deleted entry travels as a tombstone, and an entry that exists on only one side is never touched — so a learning you wrote and have not shared yet cannot be removed by someone else's sync. Deleting a learning archives it rather than dropping the row, which is what lets the deletion reach the other stores; archived rows are invisible to search, list and stats, and are purged after 90 days.
 
 ---
 
@@ -79,7 +81,9 @@ flo memory team-export                       # writes .moflo/shared/learnings.js
 git add .moflo/shared/learnings.jsonl && git commit -m "share learnings"
 ```
 
-Teammates' session-start import-merges the file after `git pull` (first-write-wins on conflicts; author/host provenance is retained). JSONL keeps git diffs reviewable; embeddings are regenerated on import. Enable it with `memory.team_artifact: .moflo/shared/learnings.jsonl`.
+Teammates' session-start import-merges the file after `git pull`. Conflicts resolve by `updated_at` — the more recently edited version wins — and author/host provenance records who wrote each line last. JSONL keeps git diffs reviewable; embeddings are regenerated on import. Enable it with `memory.team_artifact: .moflo/shared/learnings.jsonl`.
+
+**Run `flo memory team-import` before `team-export` when you have been away.** Export reports any local change it did NOT share because the artifact's version is newer; importing first resolves that. Deletions appear in the artifact as `__moflo_tombstone__` lines — moflo versions older than this one ignore them and keep their copy of the entry, so a team mid-upgrade loses nothing.
 
 ---
 

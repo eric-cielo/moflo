@@ -26,6 +26,7 @@ import { toFloat32 } from './controllers/_shared.js';
 import { serialiseMetadata } from './bridge-entries.js';
 import { logRoutingFault, writeVectorStatsCache } from './entries-shared.js';
 import { writeThroughDurable } from '../services/durable-sync.js';
+import { archiveDurableRow, isDurableNamespace } from '../services/durable-store-io.js';
 import { resolveStateRoot } from '../services/project-root.js';
 import { generateId } from '../shared/utils/id.js';
 
@@ -39,8 +40,8 @@ import { generateId } from '../shared/utils/id.js';
  * reaches the shared store. `writeThroughDurable` swallows its own errors and
  * is a no-op unless `memory.durable_path` is set, so this is safe either way.
  */
-async function propagateDurable(namespace: string, projectRoot: string): Promise<void> {
-  const flush = writeThroughDurable(namespace, { projectRoot });
+async function propagateDurable(namespace: string, projectRoot: string, key: string): Promise<void> {
+  const flush = writeThroughDurable(namespace, { projectRoot, key });
   if (process.env.MOFLO_IS_DAEMON === '1') { void flush; return; }
   await flush;
 }
@@ -155,7 +156,7 @@ export async function storeEntry(options: {
       // this same bridge path, so the flush happens exactly once (in whichever
       // process actually persisted the row). The bridge resolves its DB via
       // findProjectRoot(), so source the flush from the same root.
-      if (bridgeResult.success) await propagateDurable(options.namespace ?? 'default', findProjectRoot());
+      if (bridgeResult.success) await propagateDurable(options.namespace ?? 'default', findProjectRoot(), options.key);
       return bridgeResult;
     }
   }
@@ -319,7 +320,7 @@ export async function storeEntry(options: {
     // fallback. Source the flush from the root the row actually landed under
     // (`dbPath` = <root>/.moflo/moflo.db) rather than process.cwd(), which can
     // differ from the project root.
-    await propagateDurable(namespace, path.dirname(path.dirname(dbPath)));
+    await propagateDurable(namespace, path.dirname(path.dirname(dbPath)), key);
 
     return {
       success: true,
@@ -485,13 +486,27 @@ export async function deleteEntry(options: {
       };
     }
 
-    // Hard-delete the entry. Soft-delete was retired in story #728: tombstones
-    // were write-only (no code ever restored from status='deleted') and bloated
-    // the DB indefinitely.
-    db.run(
-      `DELETE FROM memory_entries WHERE key = ? AND namespace = ? AND status = 'active'`,
-      [key, namespace],
-    );
+    // Durable namespaces ARCHIVE instead of hard-deleting (#1463). A hard
+    // delete cannot propagate — it is indistinguishable from a row that never
+    // existed — so the entry returned at the next session-start import or
+    // worktree seed, and the operator saw a clean local store with no signal
+    // that the purge would be undone.
+    //
+    // This narrows story #728's hard-delete rather than reverting it: #728
+    // retired a soft-delete that nothing read and nothing bounded. The archived
+    // row is read by every sync direction and by a later re-creation that has
+    // to beat its timestamp, and `pruneExpiredArchives` bounds it at the same
+    // 90-day window the artifact tombstones use. Non-durable namespaces are
+    // unchanged — they are never shared, so a tombstone there would be the
+    // write-only kind #728 removed.
+    if (isDurableNamespace(namespace)) {
+      archiveDurableRow(db, namespace, key, Date.now());
+    } else {
+      db.run(
+        `DELETE FROM memory_entries WHERE key = ? AND namespace = ? AND status = 'active'`,
+        [key, namespace],
+      );
+    }
 
     // Get remaining count
     const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`);
