@@ -16,6 +16,7 @@ import { memoryDbPath } from '../services/moflo-paths.js';
 import { resolveBridgeDbPath } from '../memory/bridge-core.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { generateId } from '../shared/utils/id.js';
+import { auditLearningsCommand } from './memory-audit-learnings.js';
 
 // Memory backends
 const BACKENDS = [
@@ -3060,7 +3061,7 @@ const restoreCommand: Command = {
 export const memoryCommand: Command = {
   name: 'memory',
   description: 'Memory management commands',
-  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand, teamExportCommand, teamImportCommand, backupCommand, restoreCommand],
+  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, auditLearningsCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand, teamExportCommand, teamImportCommand, backupCommand, restoreCommand],
   options: [],
   examples: [
     { command: 'flo memory store -k "key" -v "value"', description: 'Store data' },
