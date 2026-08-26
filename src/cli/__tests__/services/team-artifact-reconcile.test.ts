@@ -20,6 +20,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   exportTeamArtifact,
   importTeamArtifact,
+  ensureSharedArtifactEol,
   TOMBSTONE_NAMESPACE,
   type TeamArtifactEntry,
   type TeamTombstone,
@@ -556,5 +557,64 @@ describe('round trip between two machines', () => {
     expect(second.updated).toBe(0);
     expect(second.deleted).toBe(0);
     expect(second.resurrected).toBe(0);
+  });
+});
+
+describe('ensureSharedArtifactEol — the artifact is git-tracked in someone else\'s repo', () => {
+  // Rule #1: moflo always writes the artifact with \n. On a Windows checkout
+  // with core.autocrlf, git hands back CRLF — so every export rewrites the
+  // whole file, and a merge of two divergent artifacts conflicts on every
+  // line, which is exactly the merge-friendliness JSONL was chosen for.
+  const readAttrs = (root: string): string => readFileSync(join(root, '.gitattributes'), 'utf-8');
+
+  it('creates a .gitattributes pinning the artifact to LF', async () => {
+    const root = await makeRoot();
+    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
+
+    expect(ensureSharedArtifactEol(root, artifact)).toBe('created');
+    expect(readAttrs(root)).toContain('/.moflo/shared/learnings.jsonl text eol=lf');
+  });
+
+  it('appends to an existing .gitattributes without disturbing it', async () => {
+    const root = await makeRoot();
+    writeFileSync(join(root, '.gitattributes'), '*.png binary\n', 'utf-8');
+    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
+
+    expect(ensureSharedArtifactEol(root, artifact)).toBe('updated');
+    const attrs = readAttrs(root);
+    expect(attrs).toContain('*.png binary');
+    expect(attrs).toContain('/.moflo/shared/learnings.jsonl text eol=lf');
+  });
+
+  it('is idempotent', async () => {
+    const root = await makeRoot();
+    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
+    ensureSharedArtifactEol(root, artifact);
+    const first = readAttrs(root);
+
+    expect(ensureSharedArtifactEol(root, artifact)).toBe('unchanged');
+    expect(readAttrs(root)).toBe(first);
+  });
+
+  it("leaves a consumer's own rule for the same path exactly as written", async () => {
+    const root = await makeRoot();
+    writeFileSync(join(root, '.gitattributes'), '/.moflo/shared/learnings.jsonl text eol=crlf\n', 'utf-8');
+    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
+
+    expect(ensureSharedArtifactEol(root, artifact)).toBe('unchanged');
+    expect(readAttrs(root)).toContain('eol=crlf');
+  });
+
+  it('writes no rule for an artifact outside the project', async () => {
+    const root = await makeRoot();
+    const elsewhere = await makeRoot();
+    expect(ensureSharedArtifactEol(root, join(elsewhere, 'learnings.jsonl'))).toBe('unchanged');
+    expect(existsSync(join(root, '.gitattributes'))).toBe(false);
+  });
+
+  it('writes the pattern with forward slashes on every platform', async () => {
+    const root = await makeRoot();
+    ensureSharedArtifactEol(root, join(root, '.moflo', 'shared', 'learnings.jsonl'));
+    expect(readAttrs(root)).not.toContain('\\\\');
   });
 });

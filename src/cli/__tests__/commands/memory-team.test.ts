@@ -55,17 +55,50 @@ function run(cmd: Command, root: string, flags: Record<string, string> = {}): Pr
   return cmd.action!(ctxWith(flags));
 }
 
-function seedLearnings(root: string, rows: Array<{ key: string; namespace: string }>): Promise<void> {
+function seedLearnings(
+  root: string,
+  rows: Array<{ key: string; namespace: string; content?: string; updatedAt?: number; status?: string }>,
+): Promise<void> {
   return makeMemoryDb(memoryDbPath(root), MEMORY_SCHEMA_V3, (db: FixtureDb) => {
     for (const r of rows) {
-      db.run(`INSERT INTO memory_entries (id, key, namespace, content) VALUES (?, ?, ?, ?)`, [
-        `id-${r.namespace}-${r.key}`,
-        r.key,
-        r.namespace,
-        `content-${r.key}`,
-      ]);
+      const ts = r.updatedAt ?? Date.now();
+      db.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, created_at, updated_at, status) ` +
+          `VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `id-${r.namespace}-${r.key}`,
+          r.key,
+          r.namespace,
+          r.content ?? `content-${r.key}`,
+          ts,
+          ts,
+          r.status ?? 'active',
+        ],
+      );
     }
   });
+}
+
+/** Capture what the command actually prints, so the summary itself is covered. */
+async function captureRun(
+  cmd: Command,
+  root: string,
+  flags: Record<string, string> = {},
+): Promise<{ result: CommandResult; printed: string }> {
+  const { output } = await import('../../output.js');
+  const chunks: string[] = [];
+  const sinks = ['printSuccess', 'printInfo', 'printWarning', 'printError'] as const;
+  const spies = sinks.map((name) =>
+    vi.spyOn(output as never, name as never).mockImplementation(((msg: string) => {
+      chunks.push(String(msg));
+    }) as never),
+  );
+  try {
+    const result = await run(cmd, root, flags);
+    return { result, printed: chunks.join('\n') };
+  } finally {
+    for (const spy of spies) spy.mockRestore();
+  }
 }
 
 describe('flo memory team-export', () => {
@@ -117,5 +150,68 @@ describe('flo memory team-import', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe('the team-export / team-import summaries report every category (#1463)', () => {
+  // The old summary named only the appends, which read as "everything was
+  // shared" while 32 corrections and 34 deletions sat unpropagated. The
+  // rendering is the part that failed, so the rendering is what gets asserted.
+  it('names corrections and retirements, not just appends', async () => {
+    const root = await makeRoot();
+    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
+    await seedLearnings(root, [
+      { key: 'corrected', namespace: 'learnings', content: 'v1', updatedAt: Date.now() - 5_000 },
+      { key: 'retired', namespace: 'learnings', content: 'v1', updatedAt: Date.now() - 5_000 },
+    ]);
+    await run(teamExport, root);
+
+    // Correct one entry and purge another, then re-export.
+    const db = new DatabaseSync(memoryDbPath(root));
+    db.prepare(`UPDATE memory_entries SET content = ?, updated_at = ? WHERE key = 'corrected'`).run('v2', Date.now());
+    db.prepare(`UPDATE memory_entries SET status = 'archived', updated_at = ? WHERE key = 'retired'`).run(Date.now());
+    db.close();
+
+    const { result, printed } = await captureRun(teamExport, root);
+    expect(result.success).toBe(true);
+    expect(printed).toMatch(/1 corrected/);
+    expect(printed).toMatch(/1 retired/);
+    expect(existsSync(artifact)).toBe(true);
+  });
+
+  it('warns when a local change was NOT shared because the artifact is newer', async () => {
+    const root = await makeRoot();
+    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
+    await seedLearnings(root, [{ key: 'k', namespace: 'learnings', content: 'local', updatedAt: 1_000 }]);
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    mkdirSync(join(root, '.moflo', 'shared'), { recursive: true });
+    writeFileSync(
+      artifact,
+      JSON.stringify({
+        namespace: 'learnings',
+        key: 'k',
+        content: 'newer from a teammate',
+        type: 'semantic',
+        updated_at: Date.now(),
+        provenance: { author: 'A', source: 'h', sharedAt: 'x' },
+      }) + '\n',
+      'utf-8',
+    );
+
+    const { printed } = await captureRun(teamExport, root);
+    expect(printed).toMatch(/NOT shared/);
+    expect(printed).toMatch(/team-import/);
+  });
+
+  it('reports what an import applied beyond plain inserts', async () => {
+    const rootA = await makeRoot();
+    const rootB = await makeRoot();
+    await seedLearnings(rootA, [{ key: 'k', namespace: 'learnings', content: 'v2', updatedAt: Date.now() }]);
+    await seedLearnings(rootB, [{ key: 'k', namespace: 'learnings', content: 'v1', updatedAt: 1_000 }]);
+    await run(teamExport, rootA);
+
+    const artifact = join(rootA, '.moflo', 'shared', 'learnings.jsonl');
+    const { printed } = await captureRun(teamImport, rootB, { from: artifact });
+    expect(printed).toMatch(/1 corrected/);
   });
 });

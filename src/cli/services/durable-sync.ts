@@ -356,9 +356,18 @@ export async function flushDurableToShared(
 /**
  * Bidirectional durable sync run once at session-start: flush local → shared
  * (bootstraps pre-existing local learnings into the shared store), then seed
- * shared → local (pulls in sibling workspaces' learnings). Both directions are
- * `INSERT OR IGNORE`, so the result is the union of durable rows on both sides
- * with no conflicts. Safe to call unconditionally — a no-op when unconfigured.
+ * shared → local (pulls in sibling workspaces' learnings). Both directions run
+ * the shared reconciliation rule, so corrections and deletions converge across
+ * worktrees instead of accumulating as the union of both sides.
+ *
+ * Flush-then-seed order is load-bearing for deletions, and so is doing the
+ * archive pruning only once BOTH have run — see the prune comment in the body.
+ *
+ * Safe to call unconditionally, but no longer a true no-op when unconfigured:
+ * durable deletes archive rather than drop rows, so the local store still needs
+ * its retention window applied with sharing off. That costs one DB open and one
+ * indexed probe per session start, and nothing further unless expired archives
+ * actually exist.
  *
  * Intended to run BEFORE the daemon starts so the freshly-seeded rows are
  * present when the daemon builds its in-memory HNSW index.

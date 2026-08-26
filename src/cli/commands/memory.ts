@@ -2846,9 +2846,11 @@ const teamExportCommand: Command = {
     const projectRoot = findProjectRoot();
     const artifactPath = await resolveTeamArtifact(projectRoot, ctx.flags.to);
     try {
-      const { exportTeamArtifact, ensureSharedArtifactTracked } = await import('../services/team-artifact-sync.js');
+      const { exportTeamArtifact, ensureSharedArtifactTracked, ensureSharedArtifactEol } =
+        await import('../services/team-artifact-sync.js');
       const report = exportTeamArtifact({ projectRoot, artifactPath, sharedAt: new Date().toISOString() });
       const gitignore = ensureSharedArtifactTracked(projectRoot, artifactPath);
+      const gitattributes = ensureSharedArtifactEol(projectRoot, artifactPath);
 
       const rel = pathModule.relative(projectRoot, artifactPath) || artifactPath;
       output.printSuccess(`Shared ${report.added} new durable entr${report.added === 1 ? 'y' : 'ies'} → ${rel}`);
@@ -2875,6 +2877,9 @@ const teamExportCommand: Command = {
       output.printInfo(`Artifact now holds ${report.total} entr${report.total === 1 ? 'y' : 'ies'}${tombstoneNote}.`);
       if (gitignore !== 'unchanged') {
         output.printInfo(`.gitignore ${gitignore} so the shared artifact is tracked while the rest of .moflo/ stays ignored.`);
+      }
+      if (gitattributes !== 'unchanged') {
+        output.printInfo(`.gitattributes ${gitattributes} to pin the artifact to LF — without it a Windows checkout conflicts on every line when two teammates' artifacts merge.`);
       }
       output.printInfo(`Commit it to share: git add ${rel} && git commit -m "share learnings"`);
       return { success: true, data: report };

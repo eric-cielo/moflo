@@ -696,3 +696,53 @@ export function ensureSharedArtifactTracked(
   atomicWriteFileSync(gitignorePath, content);
   return existed ? 'updated' : 'created';
 }
+
+/**
+ * Pin the shared artifact to LF in the consumer's `.gitattributes`.
+ *
+ * The artifact is a git-tracked file in someone else's repo, and moflo always
+ * writes it with `\n`. On a Windows checkout with `core.autocrlf=true` git
+ * hands back CRLF, so every export rewrites the whole file and — far worse — a
+ * git merge of two divergent artifacts conflicts on EVERY line. That destroys
+ * the merge-friendliness that made JSONL the format in the first place, and it
+ * only bites the platform least likely to be running CI.
+ *
+ * One narrowly-scoped line for one file; never touches unrelated patterns.
+ * Idempotent — an existing rule for this path is left exactly as written, so a
+ * consumer who tuned it keeps their version.
+ *
+ * Gitattributes patterns always use `/` regardless of OS (Rule #1), so the
+ * path is POSIX-normalised here.
+ */
+export function ensureSharedArtifactEol(
+  projectRoot: string,
+  artifactAbsPath: string,
+): 'created' | 'updated' | 'unchanged' {
+  const rel = path.relative(projectRoot, artifactAbsPath).split(path.sep).join('/');
+  // Outside the project entirely (an absolute artifact on a shared drive) —
+  // there is no repo of ours to annotate.
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return 'unchanged';
+
+  const attributesPath = path.join(projectRoot, '.gitattributes');
+  const rule = `/${rel} text eol=lf`;
+  const existed = fs.existsSync(attributesPath);
+  const lines = existed ? fs.readFileSync(attributesPath, 'utf-8').split(/\r?\n/) : [];
+
+  // Any existing rule naming this exact path wins, whatever it says.
+  const alreadyRuled = lines.some((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return false;
+    const pattern = trimmed.split(/\s+/)[0];
+    return pattern === `/${rel}` || pattern === rel;
+  });
+  if (alreadyRuled) return 'unchanged';
+
+  const next = [...lines];
+  if (next.length && next[next.length - 1].trim() !== '') next.push('');
+  next.push('# moflo team-shared learnings: LF so the artifact stays diffable and merge-friendly');
+  next.push(rule);
+
+  const content = next.join('\n').replace(/\n+$/, '') + '\n';
+  atomicWriteFileSync(attributesPath, content);
+  return existed ? 'updated' : 'created';
+}
