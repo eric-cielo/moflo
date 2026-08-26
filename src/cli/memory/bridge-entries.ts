@@ -11,6 +11,7 @@
 import { cosineSim, execRows, generateId, logBridgeError, persistBridgeDb, refreshVectorStatsCache, searchCandidateCap, withDb } from './bridge-core.js';
 import { embeddingResponseFrom, getBridgeEmbedder, resolveBridgeEmbedding } from './bridge-embedder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { archiveDurableRow, isDurableNamespace } from '../services/durable-store-io.js';
 
 /**
  * Run `persistBridgeDb` and convert any throw into a `persist failed:`
@@ -1060,12 +1061,21 @@ export async function bridgeDeleteEntry(options: {
 
     let changes = 0;
     try {
-      ctx.db.prepare(`
-        DELETE FROM memory_entries
-        WHERE key = ? AND namespace = ? AND status = 'active'
-      `).run([key, namespace]);
+      // Durable namespaces archive rather than hard-delete, so the deletion can
+      // reach the team artifact and sibling worktrees (#1463). Same rule as the
+      // offline path in `entries-write.deleteEntry` — see the rationale there.
+      if (isDurableNamespace(namespace)) {
+        archiveDurableRow(ctx.db, namespace, key, Date.now());
+      } else {
+        ctx.db.prepare(`
+          DELETE FROM memory_entries
+          WHERE key = ? AND namespace = ? AND status = 'active'
+        `).run([key, namespace]);
+      }
       // sql.js Statement.run returns true/false, not { changes }. Use
-      // db.getRowsModified() to read the row count from the last statement.
+      // db.getRowsModified() to read the row count from the last statement —
+      // an UPDATE reports rows affected the same way, so the zero-rows
+      // inconsistency check below covers the archive path too.
       changes = ctx.db.getRowsModified?.() ?? 0;
     } catch (err) {
       return deleteFail(`DELETE failed: ${errorDetail(err)}`);

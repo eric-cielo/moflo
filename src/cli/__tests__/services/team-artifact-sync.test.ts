@@ -67,14 +67,26 @@ function configWith(root: string, teamArtifact?: string): MofloConfig {
   return cfg;
 }
 
-function makeDbWith(
-  dbPath: string,
-  rows: Array<{ key: string; namespace: string; content?: string; embedding?: number[]; tags?: string[] }>,
-): Promise<void> {
+interface FixtureRow {
+  key: string;
+  namespace: string;
+  content?: string;
+  embedding?: number[];
+  tags?: string[];
+  /** Epoch-ms. Defaults to the schema default (now) when omitted. */
+  createdAt?: number;
+  updatedAt?: number;
+  /** 'archived' makes the row a tombstone source — see durable-store-io. */
+  status?: 'active' | 'archived';
+}
+
+function makeDbWith(dbPath: string, rows: FixtureRow[]): Promise<void> {
   return makeMemoryDb(dbPath, MEMORY_SCHEMA_V3, (db: FixtureDb) => {
     for (const r of rows) {
+      const ts = r.updatedAt ?? r.createdAt ?? Date.now();
       db.run(
-        `INSERT INTO memory_entries (id, key, namespace, content, embedding, tags) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO memory_entries (id, key, namespace, content, embedding, tags, created_at, updated_at, status) ` +
+          `VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           `id-${r.namespace}-${r.key}`,
           r.key,
@@ -82,6 +94,9 @@ function makeDbWith(
           r.content ?? `content-${r.key}`,
           r.embedding ? JSON.stringify(r.embedding) : null,
           r.tags ? JSON.stringify(r.tags) : null,
+          r.createdAt ?? ts,
+          ts,
+          r.status ?? 'active',
         ],
       );
     }
@@ -169,11 +184,12 @@ describe('exportTeamArtifact (#1234)', () => {
     expect(keys).toEqual(['knowledge/mid', 'learnings/alpha', 'learnings/zeta']);
   });
 
-  it('first-write-wins: an existing artifact entry is never overwritten on re-export', async () => {
+  it('last-writer-wins: a locally corrected entry overwrites its stale artifact line (#1463)', async () => {
     const root = await makeRoot();
     const artifact = join(root, 'team.jsonl');
     mkdirSync(dirname(artifact), { recursive: true });
-    // A teammate already shared lesson-1 with their own provenance.
+    // A teammate shared lesson-1 before #1463, so the line carries no
+    // updated_at — the exact shape of the 32 entries measured stale in the wild.
     const original: TeamArtifactEntry = {
       namespace: 'learnings',
       key: 'lesson-1',
@@ -183,18 +199,42 @@ describe('exportTeamArtifact (#1234)', () => {
     };
     writeFileSync(artifact, JSON.stringify(original) + '\n', 'utf-8');
 
-    // Locally we have a different lesson-1 + a brand-new lesson-2.
+    // Locally we corrected lesson-1 and wrote a brand-new lesson-2.
     await makeDbWith(memoryDbPath(root), [
-      { key: 'lesson-1', namespace: 'learnings', content: 'my divergent content' },
+      { key: 'lesson-1', namespace: 'learnings', content: 'corrected content', updatedAt: 5_000 },
       { key: 'lesson-2', namespace: 'learnings' },
     ]);
     const report = exportTeamArtifact({ projectRoot: root, artifactPath: artifact, sharedAt: NOW });
-    expect(report.added).toBe(1); // only lesson-2
+    expect(report.added).toBe(1); // lesson-2
+    expect(report.updated).toBe(1); // lesson-1 — what the old export could never do
 
     const lines = readArtifactLines(artifact);
     const lesson1 = lines.find((l) => l.key === 'lesson-1')!;
-    expect(lesson1.content).toBe('original teammate content'); // preserved
-    expect(lesson1.provenance.author).toBe('Teammate A'); // preserved
+    expect(lesson1.content).toBe('corrected content');
+    // Provenance now records who wrote the line LAST, so a diff reviewer can
+    // see where the correction came from.
+    expect(lesson1.provenance.author).not.toBe('Teammate A');
+    expect(lesson1.updated_at).toBe(5_000);
+  });
+
+  it('leaves an artifact entry this machine does not have strictly alone', async () => {
+    const root = await makeRoot();
+    const artifact = join(root, 'team.jsonl');
+    const theirs: TeamArtifactEntry = {
+      namespace: 'learnings',
+      key: 'theirs',
+      content: 'a teammate learning we never imported',
+      type: 'semantic',
+      updated_at: 1_000,
+      provenance: { author: 'Teammate A', source: 'host-a', sharedAt: '2020-01-01T00:00:00.000Z' },
+    };
+    writeFileSync(artifact, JSON.stringify(theirs) + '\n', 'utf-8');
+    await makeDbWith(memoryDbPath(root), [{ key: 'mine', namespace: 'learnings' }]);
+
+    exportTeamArtifact({ projectRoot: root, artifactPath: artifact, sharedAt: NOW });
+    const lines = readArtifactLines(artifact);
+    expect(lines.find((l) => l.key === 'theirs')!.content).toBe('a teammate learning we never imported');
+    expect(lines.map((l) => l.key).sort()).toEqual(['mine', 'theirs']);
   });
 });
 

@@ -218,6 +218,11 @@
       "notes": "One-time launcher pre-boot cherry-pick"
     },
     {
+      "file": "src/cli/services/durable-store-io.ts",
+      "classification": "daemon-offline",
+      "notes": "Shared DB half of durable-learning reconciliation (#1463): reads the durable slice and applies the merge plan for the team artifact and the worktree durable sync. Both callers run pre-boot at session-start or from a CLI command, the same offline shape as cherry-pick-learnings and team-artifact-sync."
+    },
+    {
       "file": "src/cli/services/team-artifact-sync.ts",
       "classification": "daemon-offline",
       "notes": "Imports the git-tracked team JSONL artifact into local moflo.db at session-start before the daemon spawns (#1234); same pre-boot writer shape as cherry-pick. The team-import CLI path matches restore-learnings' offline usage."
