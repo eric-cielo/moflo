@@ -441,18 +441,40 @@ export const moflodbConsolidate: MCPTool = {
   },
 };
 
-// ===== moflodb_batch — Batch operations (insert, update, delete) =====
+// ===== moflodb_batch — Batch insert into the episodes store =====
+
+/**
+ * `update` and `delete` were removed in #1465 — both reported `success: true`
+ * with a count taken from the input array while changing nothing the caller
+ * could address. Rejected here, at the tool boundary, naming the tool that
+ * does the job.
+ *
+ * A Map, not an object literal: `operation` is caller-controlled, and a plain
+ * object would resolve 'constructor'/'toString'/'__proto__' up the prototype
+ * chain to a truthy function, returning an error whose message JSON-serializes
+ * to nothing.
+ */
+const REMOVED_BATCH_OPERATIONS = new Map<string, string>([
+  [
+    'delete',
+    "moflodb_batch no longer supports 'delete' (#1465): it targeted the episodes store and could not address a namespaced memory entry, while reporting success. Use memory_delete with an explicit namespace.",
+  ],
+  [
+    'update',
+    "moflodb_batch no longer supports 'update' (#1465): it targeted the episodes store and could not address a namespaced memory entry, while reporting success. Use memory_store to overwrite an entry.",
+  ],
+]);
 
 export const moflodbBatch: MCPTool = {
   name: 'moflodb_batch',
-  description: 'Batch operations on memory entries (insert, update, delete)',
+  description: 'Batch-insert episodes into the MofloDb bridge store. Use memory_delete to remove entries and memory_store to overwrite them.',
   inputSchema: {
     type: 'object',
     properties: {
       operation: {
         type: 'string',
-        description: 'Batch operation type',
-        enum: ['insert', 'update', 'delete'],
+        description: "Batch operation type. Only 'insert' is supported; 'update'/'delete' were removed in #1465.",
+        enum: ['insert'],
       },
       entries: {
         type: 'array',
@@ -473,8 +495,10 @@ export const moflodbBatch: MCPTool = {
     try {
       const operation = validateString(params.operation, 'operation', 20);
       if (!operation) return { success: false, error: 'operation is required (string)' };
-      if (!['insert', 'update', 'delete'].includes(operation)) {
-        return { success: false, error: `Invalid operation: ${operation}. Must be insert, update, or delete` };
+      const removed = REMOVED_BATCH_OPERATIONS.get(operation);
+      if (removed) return { success: false, error: removed };
+      if (operation !== 'insert') {
+        return { success: false, error: `Invalid operation: ${operation}. Must be insert` };
       }
       if (!Array.isArray(params.entries) || params.entries.length === 0) {
         return { success: false, error: 'entries is required (non-empty array)' };

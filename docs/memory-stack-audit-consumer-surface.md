@@ -79,8 +79,10 @@ Removal safety assessment: Moderate risk with clear mitigation path.
 - Fallback: If unavailable, returns error
 - Verdict: Safe to remove.
 
-#### 13. batchOperations (Bulk insert/update/delete)
-- memory-bridge methods: bridgeBatchOperation() line 1732-1770
+#### 13. batchOperations (Bulk insert)
+- memory-bridge methods: bridgeBatchOperation() — insert only; the `update` and
+  `delete` operations were removed in #1465 (they reported success while
+  changing nothing addressable by the caller)
 - Fallback: If unavailable, returns error
 - Verdict: Safe to remove.
 

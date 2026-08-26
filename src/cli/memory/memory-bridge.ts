@@ -620,38 +620,49 @@ export async function bridgeConsolidate(_params: { minAge?: number; maxEntries?:
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
+/**
+ * Operations removed in #1465. Both wrote to the `episodes` store via a schema
+ * with no `namespace`, so neither could address a `memory_entries` row the
+ * caller had stored — yet both reported `success: true` with a count taken
+ * from the input array. Callers are redirected to the tools that work.
+ *
+ * A Map, not an object literal: `operation` is caller-controlled, and a plain
+ * object would resolve 'constructor'/'toString'/'__proto__' up the prototype
+ * chain to a truthy function.
+ */
+const BATCH_OPERATION_REDIRECTS = new Map<string, string>([
+  [
+    'delete',
+    "moflodb_batch no longer supports 'delete' (#1465): it targeted the episodes store and could not address a namespaced memory entry, while reporting success. Use memory_delete with an explicit namespace.",
+  ],
+  [
+    'update',
+    "moflodb_batch no longer supports 'update' (#1465): it targeted the episodes store and could not address a namespaced memory entry, while reporting success. Use memory_store to overwrite an entry.",
+  ],
+]);
+
 export async function bridgeBatchOperation(params: { operation: string; entries: any[] }): Promise<any> {
+  // Rejected before the registry lookup so a removed operation reports the
+  // same error whether or not the bridge happens to be available.
+  const redirect = BATCH_OPERATION_REDIRECTS.get(params.operation);
+  if (redirect) return { success: false, error: redirect };
+  if (params.operation !== 'insert') {
+    return { success: false, error: `Unknown operation: ${params.operation}` };
+  }
   const registry = await getRegistry();
   if (!registry) return null;
   try {
     const batch = registry.get('batchOperations');
     if (!batch) return { success: false, error: 'BatchOperations not available' };
-    let result;
-    switch (params.operation) {
-      case 'insert': {
-        const episodes = params.entries.map((e: any) => ({
-          content: e.value || e.content || JSON.stringify(e),
-          metadata: e.metadata || { key: e.key },
-        }));
-        result = await batch.insertEpisodes(episodes);
-        break;
-      }
-      case 'delete': {
-        const keys = params.entries.map((e: any) => e.key).filter(Boolean);
-        for (const key of keys) await batch.bulkDelete('episodes', { key });
-        result = { deleted: keys.length };
-        break;
-      }
-      case 'update': {
-        for (const entry of params.entries) {
-          await batch.bulkUpdate('episodes', { content: entry.value || entry.content }, { key: entry.key });
-        }
-        result = { updated: params.entries.length };
-        break;
-      }
-      default: return { success: false, error: `Unknown operation: ${params.operation}` };
-    }
-    return { success: true, operation: params.operation, count: params.entries.length, result };
+    const episodes = params.entries.map((e: any) => ({
+      content: e.value || e.content || JSON.stringify(e),
+      metadata: e.metadata || { key: e.key },
+    }));
+    // `count` reports rows the store actually wrote, never `entries.length` —
+    // an input-derived count is how #1465's delete/update reported success
+    // while changing nothing.
+    const result = await batch.insertEpisodes(episodes);
+    return { success: true, operation: 'insert', count: result.inserted, result };
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 

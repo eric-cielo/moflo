@@ -6,8 +6,13 @@
  *
  * Consumer surface (from src/cli/memory/memory-bridge.ts):
  *   - insertEpisodes([{content, metadata?, embedding?}])
- *   - bulkDelete(table, conditions)
- *   - bulkUpdate(table, updates, conditions)
+ *
+ * bulkDelete/bulkUpdate remain here — they report rows actually affected and
+ * are covered by this controller's tests — but #1465 removed their only
+ * caller. `moflodb_batch` routed them at the `episodes` store through a schema
+ * with no `namespace`, so they could not address a caller's `memory_entries`
+ * row; entry deletion belongs to `memory_delete`. Do not re-wire a bridge
+ * operation to them without a namespace-aware target.
  *
  * Only the `episodes` table is whitelisted for delete/update to keep the
  * SQL surface narrow; attempts to target any other table throw.
