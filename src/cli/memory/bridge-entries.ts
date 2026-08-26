@@ -12,6 +12,7 @@ import { cosineSim, execRows, generateId, logBridgeError, persistBridgeDb, refre
 import { embeddingResponseFrom, getBridgeEmbedder, resolveBridgeEmbedding } from './bridge-embedder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { archiveDurableRow, isDurableNamespace } from '../services/durable-store-io.js';
+import type { SqlJsLikeDatabase } from './daemon-backend.js';
 
 /**
  * Run `persistBridgeDb` and convert any throw into a `persist failed:`
@@ -112,6 +113,101 @@ interface CachedEntryRecord extends CachedEntry {
  * trade; a systematic undercount of HOT keys — the #1396 defect — is not.
  */
 const ACCESS_FLUSH_INTERVAL_MS = 30_000;
+
+/**
+ * Deferred `access_count` deltas for rows returned by SEARCH, keyed by entry id.
+ *
+ * #1464 — `memory_search` is the read path for durable learnings (CLAUDE.md
+ * routes every prompt through it before any other read), but nothing on that
+ * path recorded usage: `access_count` / `last_accessed_at` moved only on
+ * retrieve-by-key. The most-consulted learning in the store looked untouched
+ * since the day it was written, which in turn made every age-based cleanup
+ * heuristic a guess dressed up as a measurement.
+ *
+ * Scoped to DURABLE namespaces on purpose. Structural namespaces (code-map,
+ * patterns, tests) are re-indexed wholesale on a schedule and their usage
+ * counts are noise — paying a write for them would tax the hot path to record
+ * nothing anyone reads.
+ *
+ * Same trade as the per-key entry-cache throttle above: defer writes, never
+ * lose counts. The flush stamp is GLOBAL rather than per key because a search
+ * touches a whole result set at once — the unit being coalesced here is the
+ * search, not the key.
+ */
+const pendingSearchAccess = new Map<string, number>();
+let lastSearchAccessFlushAt = 0;
+
+/**
+ * Hard bound on {@link pendingSearchAccess}. Durable namespaces are small, so
+ * this is a backstop rather than a working limit — but an unbounded map inside
+ * a daemon that lives for days is a leak regardless of how unlikely it is to
+ * fill. Reaching the cap forces a flush; it never drops deltas.
+ */
+const SEARCH_ACCESS_PENDING_CAP = 1_000;
+
+/**
+ * Accumulate one access per returned durable hit, flushing at most once per
+ * {@link ACCESS_FLUSH_INTERVAL_MS}.
+ *
+ * Best-effort by construction: a throw leaves the deltas pending for the next
+ * attempt and search results are returned either way. Usage is observability,
+ * not correctness — #1058 is the standing proof of what happens when the read
+ * path takes on a write obligation it cannot honour safely.
+ *
+ * The UPDATE adds the accumulated delta and is evaluated by SQLite, so the
+ * stored counter stays correct under concurrency and never depends on a
+ * client-computed absolute. It is a bounded per-row UPDATE — never a whole-DB
+ * `db.export()` writeback, which is the specific #1058 regression.
+ */
+function recordSearchAccess(
+  db: SqlJsLikeDatabase,
+  hits: ReadonlyArray<{ id: string; namespace: string }>,
+  now: number,
+): void {
+  for (const hit of hits) {
+    if (!isDurableNamespace(hit.namespace)) continue;
+    pendingSearchAccess.set(hit.id, (pendingSearchAccess.get(hit.id) ?? 0) + 1);
+  }
+  if (pendingSearchAccess.size === 0) return;
+
+  // A process that has never flushed writes immediately rather than waiting out
+  // the interval — moflo's CLI processes are short-lived and would otherwise
+  // exit with every access still pending, reintroducing the silent undercount
+  // this exists to remove.
+  const forced = pendingSearchAccess.size >= SEARCH_ACCESS_PENDING_CAP;
+  if (!forced && now - lastSearchAccessFlushAt < ACCESS_FLUSH_INTERVAL_MS) return;
+
+  try {
+    const stmt = db.prepare(
+      `UPDATE memory_entries SET access_count = access_count + ?, last_accessed_at = ? WHERE id = ?`,
+    );
+    db.run('BEGIN');
+    try {
+      for (const [id, delta] of pendingSearchAccess) stmt.run([delta, now, id]);
+      db.run('COMMIT');
+    } catch (err) {
+      try { db.run('ROLLBACK'); } catch { /* a failed COMMIT already ended the txn */ }
+      throw err;
+    }
+    // Clear ONLY after the commit lands. Clearing on a throw would discard the
+    // accumulated hits outright — the throttle defers writes, it does not drop
+    // them.
+    pendingSearchAccess.clear();
+    lastSearchAccessFlushAt = now;
+  } catch (err) {
+    logBridgeError('search access flush failed', err);
+  }
+}
+
+/**
+ * @internal Test hook — clears the deferred search-access state so each case
+ * starts from "this process has never flushed". Module-level state otherwise
+ * leaks the previous test's flush stamp into the next one's first search.
+ */
+export function _resetSearchAccessForTest(): void {
+  pendingSearchAccess.clear();
+  lastSearchAccessFlushAt = 0;
+}
 
 /** Normalise `metadata` for the `metadata` TEXT column; `undefined` → `'{}'` (#1064). */
 export function serialiseMetadata(metadata: Record<string, unknown> | string | undefined): string {
@@ -706,6 +802,15 @@ export async function bridgeSearchEntries(options: {
 
     const results: { id: string; key: string; content: string; score: number; namespace: string; provenance?: string; metadata?: string }[] = [];
 
+    // #1464 — usage recording needs the FULL row id; the emitted `id` above is
+    // truncated to 12 chars for the envelope and would match no row. Keyed by
+    // the result object rather than by index because `results` is sorted and
+    // sliced before the returned set is known. Never spread into the response.
+    const fullIdByResult = new Map<object, string>();
+    // A namespace-scoped search of a structural namespace can skip the
+    // bookkeeping entirely — nothing it returns is durable.
+    const trackAccess = namespace === 'all' || isDurableNamespace(namespace);
+
     for (const row of rows) {
       let semanticScore = 0;
       let bm25ScoreVal = 0;
@@ -735,7 +840,7 @@ export async function bridgeSearchEntries(options: {
 
         const metadataStr = row.metadata != null ? String(row.metadata) : undefined;
 
-        results.push({
+        const hit = {
           id: String(row.id).substring(0, 12),
           // The substring is a fallback id-prefix when key is missing —
           // applying it to the full expression truncates valid keys (#845).
@@ -745,15 +850,33 @@ export async function bridgeSearchEntries(options: {
           namespace: String(row.namespace || 'default'),
           provenance,
           metadata: metadataStr,
-        });
+        };
+        results.push(hit);
+        if (trackAccess) fullIdByResult.set(hit, String(row.id));
       }
     }
 
     results.sort((a, b) => b.score - a.score);
 
+    const returned = results.slice(0, limit);
+
+    // #1464 — record usage for the durable rows this search actually returned.
+    // Placed after the slice so an over-fetched candidate the caller never sees
+    // does not count as a read.
+    if (trackAccess) {
+      recordSearchAccess(
+        ctx.db,
+        returned.flatMap(r => {
+          const id = fullIdByResult.get(r);
+          return id ? [{ id, namespace: r.namespace }] : [];
+        }),
+        Date.now(),
+      );
+    }
+
     return {
       success: true,
-      results: results.slice(0, limit),
+      results: returned,
       searchTime: Date.now() - startTime,
       searchMethod: queryEmbedding ? 'hybrid-bm25-semantic' : 'bm25-only',
     };
