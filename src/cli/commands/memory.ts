@@ -2891,6 +2891,12 @@ const teamExportCommand: Command = {
       if (report.skippedMalformed > 0) {
         output.printWarning(`${report.skippedMalformed} malformed line${report.skippedMalformed === 1 ? '' : 's'} skipped.`);
       }
+      if (report.skippedCorrupt > 0) {
+        output.printWarning(
+          `${report.skippedCorrupt} entr${report.skippedCorrupt === 1 ? 'y' : 'ies'} NOT shared — captured tool-call markup in the value (#1467). `
+          + `Run \`flo memory list --namespace learnings\` to find and rewrite them.`,
+        );
+      }
       if (!report.wrote) {
         output.printInfo('Nothing changed — the artifact was left untouched.');
       }
@@ -2946,6 +2952,11 @@ const teamImportCommand: Command = {
       }
       if (report.skippedMalformed > 0) {
         output.printWarning(`${report.skippedMalformed} malformed line${report.skippedMalformed === 1 ? '' : 's'} skipped.`);
+      }
+      if (report.skippedCorrupt > 0) {
+        output.printWarning(
+          `${report.skippedCorrupt} artifact line${report.skippedCorrupt === 1 ? '' : 's'} NOT imported — captured tool-call markup in the content (#1467).`,
+        );
       }
       if (report.skippedNonDurable > 0) {
         output.printWarning(`${report.skippedNonDurable} non-durable entr${report.skippedNonDurable === 1 ? 'y' : 'ies'} skipped (only learnings/knowledge are shared).`);

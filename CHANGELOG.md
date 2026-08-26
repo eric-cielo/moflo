@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — memory writes refuse captured tool-call markup
+
+A `memory_store` call whose `value` arrived carrying the harness' own parameter markup — the value
+cut off, with a `<parameter name="tags">` opener or a stray `</value>` appended to the text — was
+persisted verbatim, embedded, and shared to the team artifact, under a cheerful
+`{success: true, stored: true}`. One consumer store held 68 such entries in `learnings` alone,
+across three machines, at an accelerating rate. The junk sits inside the field that gets embedded,
+so it degrades the vector for that entry and every search that would have matched it, and the tags
+the fragment was carrying never reach the `tags` column at all.
+
+moflo does not cause this — the markup exists only in the model/harness layer — but it is the last
+component that can catch it, and today it writes it to disk.
+
+- **Writes are now rejected, not repaired.** `storeEntry` is the chokepoint every write path reaches
+  (`flo memory store`, the MCP `memory_store` tool, the daemon's RPC handler), and the check runs
+  before daemon routing and before any embedding, so a rejected value never produces a vector. The
+  error names the namespace, the key, and the offending text so the caller can re-send the write —
+  which is exactly what the silent success prevented 68 times.
+- **Already-stored corruption stops propagating.** `flo memory team-export` skips a corrupt local
+  row (without publishing a tombstone for it) and `flo memory team-import` skips a corrupt artifact
+  line, each reporting the count. A consumer whose artifact is already polluted is helped without
+  running a cleanup pass first.
+- **A value that merely discusses the markup is still stored.** The detector fires only on markup
+  that is both unbalanced and trailing, so the lesson documenting this bug — and every guidance doc
+  that quotes the shape — stores normally. The naive marker match rejects all of them.
+
+**Consumer impact.** A write that previously succeeded with a corrupt trailing fragment now fails:
+the CLI exits non-zero, MCP returns `success: false`. That is the intent — the value was being
+stored broken. Nothing about existing `.moflo/` state changes, and no migration is needed; existing
+corrupt rows stay readable and are simply no longer shared. `MOFLO_ALLOW_TOOL_CALL_MARKUP=1` stores
+a flagged value anyway for the case where a value is genuinely shaped like the corruption. (#1467)
+
 ### Fixed — ten `--no-*` flags were silent no-ops
 
 The parser treats `--no-<x>` as boolean negation: it writes `flags[camelCase(x)] = false` and never

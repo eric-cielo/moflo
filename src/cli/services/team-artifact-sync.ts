@@ -84,6 +84,7 @@ import {
   applyDurableActions,
   type DurablePayload,
 } from './durable-store-io.js';
+import { detectToolCallMarkup } from '../memory/tool-call-markup.js';
 
 /** Allowed `type` values — the schema CHECK set. An out-of-set value would make
  *  INSERT OR IGNORE silently drop a hand-edited artifact row, so we coerce. */
@@ -174,6 +175,12 @@ export interface ExportReport {
   backfilled: number;
   /** Malformed JSONL lines skipped while reading the artifact. */
   skippedMalformed: number;
+  /**
+   * Local entries NOT shared because their value carries captured tool-call
+   * markup (#1467). Already-stored corruption stops propagating here, without
+   * waiting for anyone to run a local cleanup pass first.
+   */
+  skippedCorrupt: number;
   /** Live entries in the artifact after the merge. */
   total: number;
   /** Tombstone lines retained in the artifact after the merge. */
@@ -200,6 +207,12 @@ export interface ImportReport {
   skippedMalformed: number;
   /** Well-formed lines skipped for being outside the durable namespaces. */
   skippedNonDurable: number;
+  /**
+   * Artifact lines skipped because their content carries captured tool-call
+   * markup (#1467). The symmetric half of the export skip: a consumer whose
+   * artifact is already polluted stops re-importing the corruption.
+   */
+  skippedCorrupt: number;
 }
 
 /**
@@ -483,6 +496,26 @@ export function exportTeamArtifact(opts: {
     }
   }
 
+  // #1467 — a local row whose value carries captured tool-call markup is not
+  // shared. Dropping it from the SOURCE (rather than the artifact) means it is
+  // simply not propagated: `planReconcile` derives deletions from a local
+  // tombstone, never from an absent key, so this can't publish a retraction of
+  // someone else's line.
+  //
+  // Gated on `record.content`, which a tombstone does not have, NOT on the
+  // payload: archiving leaves `content` intact, so a payload lookup would still
+  // see the corrupt body of a row the user already deleted and would suppress
+  // its tombstone — making a corrupt line already in the artifact permanently
+  // unretractable. Deleting the current entry mid-iteration is well-defined for
+  // a Map, so no copy is needed.
+  let skippedCorrupt = 0;
+  for (const [id, record] of records) {
+    if (typeof record.content !== 'string' || !detectToolCallMarkup(record.content)) continue;
+    records.delete(id);
+    payloads.delete(id);
+    skippedCorrupt++;
+  }
+
   const { actions, summary } = planReconcile(records, target);
   for (const action of actions) {
     if (action.op === 'delete') {
@@ -540,6 +573,7 @@ export function exportTeamArtifact(opts: {
     prunedTombstones,
     backfilled,
     skippedMalformed: malformed,
+    skippedCorrupt,
     total: live,
     tombstones,
     wrote,
@@ -571,6 +605,7 @@ export function importTeamArtifact(opts: { projectRoot?: string; artifactPath: s
     considered: 0,
     skippedMalformed: 0,
     skippedNonDurable: 0,
+    skippedCorrupt: 0,
   };
 
   const { lines, records: parsed, malformed } = readArtifact(opts.artifactPath);
@@ -586,6 +621,13 @@ export function importTeamArtifact(opts: { projectRoot?: string; artifactPath: s
     // acting on it.
     if (!isDurableNamespace(record.namespace)) {
       report.skippedNonDurable++;
+      continue;
+    }
+    // #1467 — never write captured tool-call markup into the local store, even
+    // when a teammate on an older moflo already shared it. Tombstones carry no
+    // content and are always applied: a deletion must still propagate.
+    if (!isTombstoneLine(line) && detectToolCallMarkup(line.content)) {
+      report.skippedCorrupt++;
       continue;
     }
     report.considered++;
