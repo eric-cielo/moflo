@@ -64,7 +64,7 @@ const startCommand: Command = {
     { name: 'max-cpu-load', type: 'string', description: 'Override maxCpuLoad resource threshold (e.g. 4.0)' },
     { name: 'min-free-memory', type: 'string', description: 'Override minFreeMemoryPercent resource threshold (e.g. 15)' },
     { name: 'dashboard-port', type: 'string', description: `Dashboard HTTP port (default: ${DEFAULT_DASHBOARD_PORT})` },
-    { name: 'no-dashboard', type: 'boolean', description: 'Disable the dashboard HTTP server' },
+    { name: 'dashboard', type: 'boolean', default: true, description: 'Dashboard HTTP server (--no-dashboard to disable)' },
   ],
   examples: [
     { command: 'flo daemon start', description: 'Start daemon in background (default)' },
@@ -75,7 +75,10 @@ const startCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
     const foreground = ctx.flags.foreground as boolean;
-    const noDashboard = ctx.flags.noDashboard as boolean;
+    // `--no-dashboard` parses to `dashboard = false`; there has never been a
+    // `noDashboard` flag for the parser to set (#1474). The internal name stays
+    // negative because it is threaded through the start/attach helpers below.
+    const noDashboard = ctx.flags.dashboard === false;
     const rawDashboardPort = ctx.flags.dashboardPort as string | undefined;
     // #1315 — the shared chokepoint. Every daemon-start path lands here:
     // `maybeAutoStartDaemon`, the session-start launcher, bin/hooks.mjs, the

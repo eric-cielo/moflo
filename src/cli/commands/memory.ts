@@ -1860,7 +1860,7 @@ const indexGuidanceCommand: Command = {
       type: 'string'
     },
     {
-      name: 'no-embeddings',
+      name: 'embeddings',
       description: 'Skip embedding generation after indexing',
       type: 'boolean',
       default: false
@@ -1880,7 +1880,7 @@ const indexGuidanceCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const forceReindex = ctx.flags.force as boolean;
     const specificFile = ctx.flags.file as string | undefined;
-    const skipEmbeddings = ctx.flags.noEmbeddings as boolean;
+    const skipEmbeddings = ctx.flags.embeddings === false;
     const overlapPercent = (ctx.flags.overlap as number) || DEFAULT_OVERLAP_PERCENT;
     const NAMESPACE = 'guidance';
 
@@ -2391,7 +2391,7 @@ const codeMapCommand: Command = {
       default: false
     },
     {
-      name: 'no-embeddings',
+      name: 'embeddings',
       description: 'Skip embedding generation after mapping',
       type: 'boolean',
       default: false
@@ -2406,7 +2406,7 @@ const codeMapCommand: Command = {
     const forceRegen = ctx.flags.force as boolean;
     const verbose = ctx.flags.verbose as boolean;
     const statsOnly = ctx.flags.stats as boolean;
-    const skipEmbeddings = ctx.flags.noEmbeddings as boolean;
+    const skipEmbeddings = ctx.flags.embeddings === false;
     const cwd = ctx.cwd || process.cwd();
 
     output.writeln();

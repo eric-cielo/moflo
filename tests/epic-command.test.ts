@@ -66,7 +66,10 @@ describe('epic command structure', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const result = await epicCommand.action({
       args: ['run', '42'],
-      flags: { noMerge: true, strategy: 'auto-merge' },
+      // `merge: false` is what `--no-merge` actually parses to. The previous
+      // `noMerge: true` was a key the parser never produces, so this passed
+      // while the real flag did nothing (#1474).
+      flags: { merge: false, strategy: 'auto-merge' },
     });
     expect(result.success).toBe(false);
     expect(result.message).toContain('--no-merge cannot be combined with --strategy auto-merge');

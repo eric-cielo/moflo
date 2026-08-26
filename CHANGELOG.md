@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — ten `--no-*` flags were silent no-ops
+
+The parser treats `--no-<x>` as boolean negation: it writes `flags[camelCase(x)] = false` and never
+produces a `noX` key. Ten flags were read as `flags.noX` anyway, so they parsed fine, set nothing the
+handler looked at, and did nothing at all. Eight were also *declared* as `no-<x>`, which put their
+declared default under a key nothing reads either.
+
+**These flags begin taking effect on upgrade.** If a script or CI job passes one, its behaviour
+changes — in every case to the thing the flag has always claimed to do:
+
+| Flag | Was | Now |
+|---|---|---|
+| `flo daemon start --no-dashboard` | dashboard HTTP server started anyway | no dashboard |
+| `flo memory index-guidance --no-embeddings` | embeddings generated anyway | generation skipped |
+| `flo memory code-map --no-embeddings` | embeddings generated anyway | generation skipped |
+| `flo hooks coverage-route --no-movector` | native backend used anyway | movector integration off |
+| `flo hooks statusline --no-color` | ANSI colours emitted anyway | plain output |
+| `flo spell schedule --no-autostart` | daemon registered as a login service anyway | registration skipped |
+| `flo hive-mind spawn --no-auto-permissions` | permissions handled automatically anyway | Claude prompts per action |
+| `flo epic run <n> --no-merge` | ran the auto-merge strategy | forces `single-branch` |
+| `--no-color` (global) | coloured output anyway | colour disabled |
+| `--no-update` (global) | startup update check ran anyway | check suppressed |
+
+`flo epic --no-merge` is the one worth reading twice: it is documented as an alias for
+`--strategy single-branch`, and while it was a no-op an epic asked for single-branch silently ran
+auto-merge instead. Anyone who relied on `--no-merge` was not getting it.
+
+Two guards keep this from returning. The first forbids any option — command-level or global — from
+being declared `no-*`. The second forbids any source read of `flags.no<Something>`: with the first
+guard in force the parser can never emit such a key, so every one of those reads is a permanent
+`undefined`. The second guard is the load-bearing one — renaming a declaration changes no parsed key,
+so a test over parser output passes equally before and after the fix. It found two of the ten on its
+first run.
+
+Note for anyone adding a flag: a command-level `default` is only applied when the option shadows a
+global one, so an unset flag arrives as `undefined`, not its declared default. Read `!== false` for
+"is it on" and `=== false` for "was it turned off" rather than testing truthiness.
+
+**Consumer impact:** behavioural. No migration and no state change, but a consumer whose automation
+passes any flag above gets the documented behaviour where it previously got none.
+
 ### Added — `flo memory audit-learnings`, a curation pass for durable learnings
 
 Durable learnings accumulate and go stale — decisions get reversed, vocabulary gets renamed, a rule

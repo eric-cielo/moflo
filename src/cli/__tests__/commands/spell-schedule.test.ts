@@ -652,7 +652,9 @@ describe('spell schedule command', () => {
       mockCallMCP.mockImplementationOnce(async () => ({ success: true }));
 
       await createCmd().action!(makeCtx({
-        flags: { _: [], name: 'audit', cron: '0 9 * * *', noAutostart: true },
+        // `autostart: false` is what `--no-autostart` parses to; the previous
+        // `noAutostart: true` was a key the parser never produces (#1474).
+        flags: { _: [], name: 'audit', cron: '0 9 * * *', autostart: false },
       })) as CommandResult;
 
       expect(mockReconcile).not.toHaveBeenCalled();

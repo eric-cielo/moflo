@@ -93,7 +93,7 @@ const createCommand: Command = {
     { name: 'cron', short: 'c', description: 'Cron expression (5-field)', type: 'string' },
     { name: 'interval', short: 'i', description: 'Interval (e.g., "6h", "30m", "1d")', type: 'string' },
     { name: 'at', short: 'a', description: 'One-time ISO 8601 datetime', type: 'string' },
-    { name: 'no-autostart', description: 'Do not register the daemon as an OS login service', type: 'boolean' },
+    { name: 'autostart', description: 'Register the daemon as an OS login service (--no-autostart to skip)', type: 'boolean', default: true },
   ],
   examples: [
     { command: 'moflo spell schedule create -n audit --cron "0 9 * * *"', description: 'Daily at 9am' },
@@ -192,8 +192,10 @@ const createCommand: Command = {
     // Short-circuit: a fresh create can only ever trigger an install (count
     // just went up). If the service is already installed, the reconcile is a
     // guaranteed noop — skip the count fetch entirely.
-    // Note: parser normalises --no-autostart to ctx.flags.noAutostart (#787).
-    const skipAutostart = ctx.flags.noAutostart === true;
+    // The parser turns `--no-autostart` into `autostart = false`; it has never
+    // produced a `noAutostart` key, so the previous read here was always
+    // undefined and the flag was a no-op (#1474).
+    const skipAutostart = ctx.flags.autostart === false;
     const alreadyInstalled = readiness.daemonInstalled;
     let reconcileTransition: 'installed' | 'uninstalled' | 'noop' = 'noop';
     if (!skipAutostart && !alreadyInstalled) {
