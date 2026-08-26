@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — ten `--no-*` flags were silent no-ops
+
+The parser treats `--no-<x>` as boolean negation: it writes `flags[camelCase(x)] = false` and never
+produces a `noX` key. Ten flags were read as `flags.noX` anyway, so they parsed fine, set nothing the
+handler looked at, and did nothing at all. Eight were also *declared* as `no-<x>`, which put their
+declared default under a key nothing reads either.
+
+**These flags begin taking effect on upgrade.** If a script or CI job passes one, its behaviour
+changes — in every case to the thing the flag has always claimed to do:
+
+| Flag | Was | Now |
+|---|---|---|
+| `flo daemon start --no-dashboard` | dashboard HTTP server started anyway | no dashboard |
+| `flo memory index-guidance --no-embeddings` | embeddings generated anyway | generation skipped |
+| `flo memory code-map --no-embeddings` | embeddings generated anyway | generation skipped |
+| `flo hooks coverage-route --no-movector` | native backend used anyway | movector integration off |
+| `flo hooks statusline --no-color` | ANSI colours emitted anyway | plain output |
+| `flo spell schedule --no-autostart` | daemon registered as a login service anyway | registration skipped |
+| `flo hive-mind spawn --no-auto-permissions` | permissions handled automatically anyway | Claude prompts per action |
+| `flo epic run <n> --no-merge` | ran the auto-merge strategy | forces `single-branch` |
+| `--no-color` (global) | coloured output anyway | colour disabled |
+| `--no-update` (global) | startup update check ran anyway | check suppressed |
+
+`flo epic --no-merge` is the one worth reading twice: it is documented as an alias for
+`--strategy single-branch`, and while it was a no-op an epic asked for single-branch silently ran
+auto-merge instead. Anyone who relied on `--no-merge` was not getting it.
+
+Two guards keep this from returning. The first forbids any option — command-level or global — from
+being declared `no-*`. The second forbids any source read of `flags.no<Something>`: with the first
+guard in force the parser can never emit such a key, so every one of those reads is a permanent
+`undefined`. The second guard is the load-bearing one — renaming a declaration changes no parsed key,
+so a test over parser output passes equally before and after the fix. It found two of the ten on its
+first run.
+
+Note for anyone adding a flag: a command-level `default` is only applied when the option shadows a
+global one, so an unset flag arrives as `undefined`, not its declared default. Read `!== false` for
+"is it on" and `=== false` for "was it turned off" rather than testing truthiness.
+
+**Consumer impact:** behavioural. No migration and no state change, but a consumer whose automation
+passes any flag above gets the documented behaviour where it previously got none.
+
+### Added — `flo memory audit-learnings`, a curation pass for durable learnings
+
+Durable learnings accumulate and go stale — decisions get reversed, vocabulary gets renamed, a rule
+gets promoted into a machine gate — and until now moflo shipped no surface for evaluating them. The
+only purge available was `flo memory cleanup`, which ranks by age; #1464 correctly exempted durable
+namespaces from it, which left `learnings` with no evaluation surface at all. A consumer store
+reached 1,582 entries with no way to tell which of them were still true.
+
+`flo memory audit-learnings` runs mechanical filters first and a model last, which is what makes it
+affordable at that size rather than a full-store LLM sweep. Three cheap passes nominate: near-
+duplicate clustering over the embeddings already on the row (the default path performs no
+re-embedding), a least-used-and-old ranking built on #1464's usage signal, and a retired-vocabulary
+match. Only the nominated entries — typically a few dozen out of a few thousand — are sent to a
+bounded headless Haiku for a KEEP / RETIRE / COMPRESS / MERGE verdict, reusing the decision table
+moflo already documents for auto-memory files rather than inventing a second vocabulary for the same
+judgement. The number sent is always reported.
+
+The run is dry by default. `--apply` **archives** rather than deletes, and it does so by going
+through the same `deleteEntry` chokepoint `flo memory delete` uses rather than opening its own handle
+on the store — the command runs in the foreground while the user's daemon is very likely holding
+`.moflo/moflo.db`, and a raw cross-process write there is the single-writer violation epic #1054
+exists to prevent. Routing means the archive semantics are inherited rather than restated: a delete
+in a durable namespace already archives, so the removal carries a tombstone #1463's reconciler can
+propagate instead of the entry being re-imported from the team artifact at the next session start.
+Archived rows are already invisible to `memory_search`, `flo memory list`, `memory_stats` and the
+HNSW index build.
+
+**Only RETIRE removes anything.** MERGE and COMPRESS both describe work that preserves content —
+fold this into that one, rewrite this shorter — and the audit performs neither, so archiving on them
+would delete the signal the verdict just said to keep. MERGE is the sharper edge: "restates another
+entry listed here" is honestly true of *both* members of a pair, so a model answering it twice would
+take the rule with it. Both are reported for an author to act on. For the same reason a cluster's
+surviving statement is never archived even when a different pass nominates it independently.
+
+Verdicts are recorded in a local `.moflo/learnings-audit.json`, keyed by content hash, so an
+immediate re-run is quiet and a rewritten entry is judged again; `--recheck` forces a fresh look
+without discarding the verdicts it bypasses. Thresholds are tunable —
+`--duplicate-threshold`, `--unused-min-age-days`, `--unused-limit`, `--judge-limit` — and when the
+unused cap holds entries back, the run says how many it matched rather than reporting the cap as
+full coverage.
+
+The retired-vocabulary table **ships empty**, and a guard test keeps it that way. A rename belongs to
+the one project that made it: shipping a row would flag innocent entries in every other consumer's
+store, and the row itself would carry that project's internal vocabulary into a public repository.
+
+**Consumer impact:** additive and opt-in. A new `flo memory` subcommand and one new module; no
+migration, no change to existing `.moflo/` state, and nothing runs unless the command is invoked.
+Consumers on the previous version see no behaviour change until they call it. The model step needs
+the `claude` CLI on PATH; without it the audit still reports its mechanical nominations and archives
+nothing.
+
 ### Fixed — concurrent first-open of a database no longer dies on `journal_mode = WAL`
 
 `openDaemonDatabase` sets `PRAGMA busy_timeout = 15000` *before* `PRAGMA journal_mode = WAL`

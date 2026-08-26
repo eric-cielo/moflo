@@ -611,7 +611,11 @@ const epicCommand: Command = {
           return { success: false, message: 'Usage: flo epic <issue-number> [--strategy] [--no-merge] [--verbose] [--dry-run]' };
         }
         const dryRun = ctx.flags.dryRun === true;
-        const noMerge = ctx.flags.noMerge === true;
+        // `--no-merge` parses to `merge = false`; there has never been a
+        // `noMerge` key, so this read was always undefined and the documented
+        // alias silently did nothing — an epic asked for single-branch ran
+        // auto-merge instead (#1474).
+        const noMerge = ctx.flags.merge === false;
         const verbose = ctx.flags['verbose'] === true;
         const strategyFlag = ctx.flags['strategy'] as string | undefined;
         let strategy: EpicStrategy = 'single-branch';

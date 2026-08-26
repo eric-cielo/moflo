@@ -82,10 +82,14 @@ export class CommandParser {
         choices: ['text', 'json', 'table']
       },
       {
-        name: 'no-color',
-        description: 'Disable colored output',
+        // Declared POSITIVELY. The long-flag branch below turns `--no-<x>` into
+        // `<x> = false`, so an option named `no-color` can never produce a
+        // `noColor` key and every reader of one is dead (#1474). `--no-color`
+        // still works — that spelling IS the negation this parser performs.
+        name: 'color',
+        description: 'Colored output (--no-color to disable)',
         type: 'boolean',
-        default: false
+        default: true
       },
       {
         name: 'interactive',

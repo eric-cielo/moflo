@@ -2512,10 +2512,10 @@ const coverageRouteCommand: Command = {
       default: 80
     },
     {
-      name: 'no-movector',
-      description: 'Disable movector integration',
+      name: 'movector',
+      description: 'movector integration (--no-movector to disable)',
       type: 'boolean',
-      default: false
+      default: true
     }
   ],
   examples: [
@@ -2525,7 +2525,7 @@ const coverageRouteCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const task = ctx.args[0] || ctx.flags.task as string;
     const threshold = ctx.flags.threshold as number || 80;
-    const useNativeBackend = !ctx.flags.noMovector;
+    const useNativeBackend = ctx.flags.movector !== false;
 
     if (!task) {
       output.printError('Task description is required. Use --task or -t flag.');
@@ -3134,10 +3134,10 @@ const statuslineCommand: Command = {
       default: false
     },
     {
-      name: 'no-color',
-      description: 'Disable ANSI colors',
+      name: 'color',
+      description: 'ANSI colors (--no-color to disable)',
       type: 'boolean',
-      default: false
+      default: true
     }
   ],
   examples: [
@@ -3379,7 +3379,7 @@ const statuslineCommand: Command = {
     }
 
     // Full colored output
-    const noColor = ctx.flags.noColor;
+    const noColor = ctx.flags.color === false;
     const c = noColor ? {
       reset: '', bold: '', dim: '', red: '', green: '', yellow: '', blue: '',
       purple: '', cyan: '', brightRed: '', brightGreen: '', brightYellow: '',

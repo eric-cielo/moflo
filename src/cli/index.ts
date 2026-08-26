@@ -169,7 +169,7 @@ export class CLI {
         return;
       }
 
-      if (flags.noColor) {
+      if (flags.color === false) {
         this.output.setColorEnabled(false);
       }
 
@@ -189,7 +189,9 @@ export class CLI {
       }
 
       // Run startup update check (non-blocking, silent on skip)
-      if (!flags.noUpdate && commandPath[0] !== 'update') {
+      // `--no-update` parses to `update = false`; `noUpdate` was never set, so
+      // the check ran even when the user asked it not to (#1474).
+      if (flags.update !== false && commandPath[0] !== 'update') {
         this.checkForUpdatesOnStartup().catch(() => {/* silent */});
       }
 

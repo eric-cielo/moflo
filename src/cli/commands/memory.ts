@@ -16,6 +16,7 @@ import { memoryDbPath } from '../services/moflo-paths.js';
 import { resolveBridgeDbPath } from '../memory/bridge-core.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { generateId } from '../shared/utils/id.js';
+import { auditLearningsCommand } from './memory-audit-learnings.js';
 
 // Memory backends
 const BACKENDS = [
@@ -1859,7 +1860,7 @@ const indexGuidanceCommand: Command = {
       type: 'string'
     },
     {
-      name: 'no-embeddings',
+      name: 'embeddings',
       description: 'Skip embedding generation after indexing',
       type: 'boolean',
       default: false
@@ -1879,7 +1880,7 @@ const indexGuidanceCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const forceReindex = ctx.flags.force as boolean;
     const specificFile = ctx.flags.file as string | undefined;
-    const skipEmbeddings = ctx.flags.noEmbeddings as boolean;
+    const skipEmbeddings = ctx.flags.embeddings === false;
     const overlapPercent = (ctx.flags.overlap as number) || DEFAULT_OVERLAP_PERCENT;
     const NAMESPACE = 'guidance';
 
@@ -2390,7 +2391,7 @@ const codeMapCommand: Command = {
       default: false
     },
     {
-      name: 'no-embeddings',
+      name: 'embeddings',
       description: 'Skip embedding generation after mapping',
       type: 'boolean',
       default: false
@@ -2405,7 +2406,7 @@ const codeMapCommand: Command = {
     const forceRegen = ctx.flags.force as boolean;
     const verbose = ctx.flags.verbose as boolean;
     const statsOnly = ctx.flags.stats as boolean;
-    const skipEmbeddings = ctx.flags.noEmbeddings as boolean;
+    const skipEmbeddings = ctx.flags.embeddings === false;
     const cwd = ctx.cwd || process.cwd();
 
     output.writeln();
@@ -3060,7 +3061,7 @@ const restoreCommand: Command = {
 export const memoryCommand: Command = {
   name: 'memory',
   description: 'Memory management commands',
-  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand, teamExportCommand, teamImportCommand, backupCommand, restoreCommand],
+  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, auditLearningsCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand, syncCommand, teamExportCommand, teamImportCommand, backupCommand, restoreCommand],
   options: [],
   examples: [
     { command: 'flo memory store -k "key" -v "value"', description: 'Store data' },

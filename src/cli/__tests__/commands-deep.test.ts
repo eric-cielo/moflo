@@ -686,7 +686,7 @@ describe('CommandParser', () => {
   });
 
   describe('kebab-case to camelCase normalization', () => {
-    it('should convert --no-color to noColor flag (negation)', () => {
+    it('should convert --no-color to color=false, NOT a noColor flag', () => {
       // --no-color is boolean negation => flags.color = false
       const result = parser.parse(['--no-color']);
       expect(result.flags.color).toBe(false);

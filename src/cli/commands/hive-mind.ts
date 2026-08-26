@@ -268,7 +268,9 @@ async function spawnClaudeCodeInstance(
       // explicitly set to 'autonomous' via flag. Non-interactive mode is
       // required for headless execution, so --dangerously-skip-permissions
       // is always included — but --allowedTools restricts the blast radius.
-      const noAutoPerms = flags.noAutoPermissions;
+      // `--no-auto-permissions` parses to `autoPermissions = false`; there has
+      // never been a `noAutoPermissions` key for the parser to set (#1474).
+      const noAutoPerms = flags.autoPermissions === false;
       if (!noAutoPerms) {
         const permLevel = (flags.permissionLevel as string) ?? 'elevated';
         const resolved = resolvePermissions(permLevel);
@@ -560,10 +562,10 @@ const spawnCommand: Command = {
       default: 'elevated'
     },
     {
-      name: 'no-auto-permissions',
-      description: 'Disable automatic permission handling (Claude will prompt for each action)',
+      name: 'auto-permissions',
+      description: 'Automatic permission handling (--no-auto-permissions to prompt for each action)',
       type: 'boolean',
-      default: false
+      default: true
     },
     {
       name: 'dry-run',
