@@ -81,8 +81,15 @@ describe('optimize-learnings skill', () => {
       expect(fmDescription.length).toBeLessThanOrEqual(700);
     });
 
-    it('declares the audit-only mode in its arguments', () => {
-      expect(fmArguments).toContain('--audit-only');
+    // The harness compiles this field as a regex, so a bracketed flag name with
+    // an internal hyphen (`[--audit-only]` -> `t-o`) stops the skill loading at
+    // all. Flags are documented in the body's Modes table instead. Repo-wide
+    // guard: tests/guards/skill-arguments-regex-safe.test.ts.
+    it('declares a regex-safe arguments placeholder', () => {
+      expect(fmArguments).toBe('[options]');
+      for (const segment of fmArguments.match(/\[[^\]]*\]/g) ?? []) {
+        expect(() => new RegExp(segment)).not.toThrow();
+      }
     });
   });
 
