@@ -32,6 +32,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
+import { globToRegExp } from '../guidance/retriever.js';
 
 /** The `worktree:` block from `moflo.yaml`. Every key optional. */
 export interface WorktreeConfig {
@@ -64,6 +65,13 @@ export interface ProvisionResult {
 
 /** Relative path of the per-worktree state file, from the worktree root. */
 export const WORKTREE_STATE_FILE = path.join('.moflo', 'worktree.json');
+
+/**
+ * The same path in git's spelling. `git status --porcelain` reports forward
+ * slashes on every platform, so a caller comparing against porcelain output
+ * needs this form rather than the host-separator one above.
+ */
+export const WORKTREE_STATE_FILE_POSIX = '.moflo/worktree.json';
 
 /**
  * Turn a branch name into a single flat directory name. Both separators are
@@ -127,16 +135,44 @@ function realpathBestEffort(target: string): string {
 }
 
 /**
- * Is `candidate` inside `root`? Both sides are realpath'd first — the #1145
- * shape, where an unresolved `/var/folders/...` compared against a resolved
+ * A canonical key for path identity: realpath'd, and case-folded on the two
+ * platforms whose filesystems are case-insensitive by default.
+ *
+ * Exported so a caller scanning a list resolves its needle ONCE and compares
+ * keys, rather than realpathing both sides on every iteration. Case-folding is
+ * what makes plain string equality safe here — `C:\Repo` and `C:\repo` are the
+ * same directory on Windows, and `/Users/x/Repo` and `/Users/x/repo` are the
+ * same directory on stock APFS.
+ */
+export function resolveForCompare(target: string): string {
+  const resolved = realpathBestEffort(target);
+  return process.platform === 'win32' || process.platform === 'darwin'
+    ? resolved.toLowerCase()
+    : resolved;
+}
+
+/**
+ * Do two paths name the same location? Realpaths both sides — the #1145 shape,
+ * where an unresolved `/var/folders/...` compared against a resolved
  * `/private/var/folders/...` on macOS made two identical paths look different.
  */
+export function samePath(a: string, b: string): boolean {
+  return resolveForCompare(a) === resolveForCompare(b);
+}
+
+/**
+ * Is `candidate` inside `root`? Both sides are realpath'd first, for the same
+ * reason as {@link samePath}.
+ */
 export function isInside(root: string, candidate: string): boolean {
-  const resolvedRoot = realpathBestEffort(root);
-  const resolvedCandidate = realpathBestEffort(candidate);
+  const resolvedRoot = resolveForCompare(root);
+  const resolvedCandidate = resolveForCompare(candidate);
   if (resolvedCandidate === resolvedRoot) return true;
   const rel = path.relative(resolvedRoot, resolvedCandidate);
-  return rel.length > 0 && !rel.startsWith('..') && !path.isAbsolute(rel);
+  // No `rel.length > 0` guard: `path.relative` returns '' for two spellings of
+  // the SAME directory that the equality check above missed, and treating that
+  // as "not inside" would break every identity test built on this.
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
 /**
@@ -158,17 +194,31 @@ function expandCopyEntry(primaryRoot: string, entry: string): string[] {
   }
   const dir = path.join(primaryRoot, ...normalized.slice(0, -1));
   if (!existsSync(dir)) return [];
-  // Anchor both ends so `.env.*` cannot match `my.env.backup`, and escape every
-  // regex metacharacter except the `*` we are translating.
-  const pattern = new RegExp(`^${last.split('*').map(escapeRegExp).join('[^\\\\/]*')}$`);
+  // Reuse the guidance retriever's translator rather than hand-rolling one: it
+  // is anchored, escapes every metacharacter, and was already hardened for the
+  // `docs/*.md` matching `docsXmd` bug. Its `*` becomes `[^/]*`, which is exact
+  // here because these patterns match bare readdir NAMES, never a path.
+  const pattern = globToRegExp(last);
   return readdirSync(dir)
     .filter(name => pattern.test(name))
     .sort()
     .map(name => path.join(dir, name));
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Does a config entry escape `root` before any symlink resolution?
+ *
+ * Deliberately LEXICAL, unlike {@link isInside}. "Did the user write a path that
+ * climbs out of the tree" is a property of the string they wrote, and resolving
+ * it first gets the answer wrong in the normal case: on a re-add, the worktree's
+ * `node_modules` is already a symlink into the primary checkout, so realpathing
+ * the destination reports it as outside the worktree and rejects a link that is
+ * exactly the one provisioning just made. A primary checkout whose own
+ * `node_modules` is a symlink (pnpm, a shared store) fails the same way.
+ */
+function escapesRoot(root: string, entry: string): boolean {
+  const rel = path.relative(root, path.resolve(root, entry));
+  return rel.startsWith('..') || path.isAbsolute(rel);
 }
 
 /**
@@ -246,7 +296,19 @@ function runLink(
   const linkType = linkTypeForPlatform(process.platform);
   for (const entry of entries) {
     const source = path.resolve(primaryRoot, entry);
-    const dest = path.join(worktreePath, entry);
+    const dest = path.resolve(worktreePath, entry);
+    // Guard BOTH ends against an escaping entry: `link: ["../x"]` would
+    // otherwise source from outside the checkout and write the link outside the
+    // worktree. Lexical on purpose — see escapesRoot().
+    if (escapesRoot(primaryRoot, entry) || escapesRoot(worktreePath, entry)) {
+      steps.push({
+        kind: 'link',
+        target: entry,
+        status: 'failed',
+        detail: 'resolves outside the primary checkout or the worktree',
+      });
+      continue;
+    }
     if (!existsSync(source)) {
       steps.push({ kind: 'link', target: entry, status: 'skipped', detail: 'no such path' });
       continue;

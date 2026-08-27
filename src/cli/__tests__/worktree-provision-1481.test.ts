@@ -29,9 +29,12 @@ import { loadMofloConfig } from '../config/moflo-config.js';
 import {
   WORKTREE_STATE_FILE,
   allocateIndex,
+  WORKTREE_STATE_FILE_POSIX,
   computeWorktreePath,
   isInside,
   linkTypeForPlatform,
+  resolveForCompare,
+  samePath,
   provisionWorktree,
   readWorktreeState,
   slugifyBranch,
@@ -139,6 +142,41 @@ describe('#1481 isInside (AC7, AC8)', () => {
   it('works for a destination that does not exist yet', () => {
     expect(isInside(root, join(root, 'not', 'created', 'yet'))).toBe(true);
   });
+
+  it('treats a path as inside ITSELF even when the equality shortcut misses', () => {
+    // `path.relative` returns '' for two spellings of the same directory that
+    // string equality missed (case differences on win32/APFS). A `rel.length > 0`
+    // guard would call that "not inside" and break every identity test built on
+    // this — remove-by-path and the already-registered scan both depend on it.
+    expect(isInside(root, root)).toBe(true);
+    expect(isInside(join(root, 'a', '..'), root)).toBe(true);
+  });
+});
+
+describe('#1481 samePath / resolveForCompare (AC3, AC8)', () => {
+  it('identifies two spellings of the same directory', () => {
+    mkdirSync(join(root, 'a', 'b'), { recursive: true });
+    expect(samePath(join(root, 'a', 'b'), join(root, 'a', '..', 'a', 'b'))).toBe(true);
+    expect(samePath(join(root, 'a'), join(root, 'a', 'b'))).toBe(false);
+  });
+
+  it('sees through a symlink on both sides', () => {
+    const real = join(root, 'real');
+    mkdirSync(real, { recursive: true });
+    symlinkSync(real, join(root, 'linked'));
+    expect(samePath(real, join(root, 'linked'))).toBe(true);
+  });
+
+  it('produces a stable key so a caller can resolve its needle once', () => {
+    mkdirSync(join(root, 'a'), { recursive: true });
+    const key = resolveForCompare(join(root, 'a'));
+    expect(resolveForCompare(join(root, 'a', '..', 'a'))).toBe(key);
+    // Case-folded on the platforms whose filesystems are case-insensitive, so
+    // plain string equality on the key is a correct identity test there.
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      expect(key).toBe(key.toLowerCase());
+    }
+  });
 });
 
 // ============================================================================
@@ -174,6 +212,20 @@ describe('#1481 provision copy (AC7)', () => {
     expect(existsSync(join(worktree, '.env.test'))).toBe(true);
     // Anchored: `.env.*` must not match `my.env.backup`.
     expect(existsSync(join(worktree, 'my.env.backup'))).toBe(false);
+  });
+
+  it('does not let a dot in the pattern match an arbitrary character', () => {
+    // The `docs/*.md` matching `docsXmd` shape the shared translator was
+    // hardened against: the `.` must be escaped, not treated as a wildcard.
+    writeFileSync(join(root, '.envXlocal'), 'A');
+    provisionWorktree({
+      primaryRoot: root,
+      worktreePath: worktree,
+      branch: 'b',
+      index: 0,
+      config: { copy: ['.env.*'] },
+    });
+    expect(existsSync(join(worktree, '.envXlocal'))).toBe(false);
   });
 
   it('rejects a source resolving outside the primary checkout', () => {
@@ -287,6 +339,52 @@ describe('#1481 provision link (AC7, AC8)', () => {
     expect(result.steps[0]).toMatchObject({ kind: 'link', status: 'skipped' });
   });
 
+  it('rejects a link entry that escapes the primary checkout', () => {
+    const primary = join(root, 'primary');
+    mkdirSync(join(root, 'outside', 'nm'), { recursive: true });
+    mkdirSync(primary, { recursive: true });
+    const result = provisionWorktree({
+      primaryRoot: primary,
+      worktreePath: worktree,
+      branch: 'b',
+      index: 0,
+      config: { link: ['../outside/nm'] },
+    });
+    // Same guard runCopy has: without it the link is written outside the
+    // worktree and sources from outside the checkout.
+    expect(result.provisioned).toBe(false);
+    expect(result.steps[0]).toMatchObject({ kind: 'link', status: 'failed' });
+    expect(existsSync(join(root, 'outside', 'nm', 'x'))).toBe(false);
+  });
+
+  it('re-links cleanly on a RE-ADD, when the destination is already a symlink out of the tree', () => {
+    // Regression from the escape guard: realpathing the destination resolves an
+    // existing node_modules symlink back to the primary checkout, which reads as
+    // "outside the worktree" and rejects the very link provisioning just made.
+    mkdirSync(join(root, 'node_modules', 'pkg'), { recursive: true });
+    const config = { link: ['node_modules'] };
+    const first = provisionWorktree({ primaryRoot: root, worktreePath: worktree, branch: 'b', index: 0, config });
+    expect(first.provisioned).toBe(true);
+    const second = provisionWorktree({ primaryRoot: root, worktreePath: worktree, branch: 'b', index: 0, config });
+    expect(second.provisioned).toBe(true);
+    expect(second.steps[0]).toMatchObject({ kind: 'link', status: 'skipped', detail: 'already exists' });
+  });
+
+  it('links a primary path that is itself a symlink (pnpm / shared store)', () => {
+    const store = join(root, 'store');
+    mkdirSync(join(store, 'pkg'), { recursive: true });
+    symlinkSync(store, join(root, 'node_modules'));
+    const result = provisionWorktree({
+      primaryRoot: root,
+      worktreePath: worktree,
+      branch: 'b',
+      index: 0,
+      config: { link: ['node_modules'] },
+    });
+    expect(result.provisioned).toBe(true);
+    expect(existsSync(join(worktree, 'node_modules', 'pkg'))).toBe(true);
+  });
+
   it('skips a link source that does not exist', () => {
     const result = provisionWorktree({
       primaryRoot: root,
@@ -380,6 +478,13 @@ describe('#1481 worktree state file (AC2, AC6)', () => {
     expect(readWorktreeState(worktree)).toBeNull();
     writeFileSync(join(worktree, WORKTREE_STATE_FILE), '{"branch":1}');
     expect(readWorktreeState(worktree)).toBeNull();
+  });
+
+  it('exposes the state path in git spelling for porcelain comparison', () => {
+    // `git status --porcelain` reports forward slashes on every platform, so a
+    // caller comparing against it needs this form, not the host-separator one.
+    expect(WORKTREE_STATE_FILE_POSIX).toBe('.moflo/worktree.json');
+    expect(WORKTREE_STATE_FILE_POSIX).toBe(WORKTREE_STATE_FILE.split(sep).join('/'));
   });
 
   it('round-trips through writeWorktreeState', () => {

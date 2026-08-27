@@ -110,6 +110,21 @@ describe('#1481 flo worktree add (AC1)', () => {
     // A prior run may have left work here; deleting it is never this command's call.
     expect(readFileSync(join(path, 'in-progress.txt'), 'utf8')).toBe('work');
   });
+
+  it('KEEPS the existing index when re-adding the same branch', async () => {
+    // Regression: `existing` includes the already-registered worktree, so
+    // allocating afresh handed a re-add a NEW index and rewrote worktree.json —
+    // silently shifting every port a consumer derived from MOFLO_WORKTREE_INDEX
+    // in a tree they were already working in.
+    await run(ctx(['add', 'feature/first'], { from: 'main', json: true }));
+    await run(ctx(['add', 'feature/second'], { from: 'main', json: true }));
+    expect(lastJson<{ index: number }>().index).toBe(1);
+
+    await run(ctx(['add', 'feature/first'], { from: 'main', json: true }));
+    expect(lastJson<{ index: number }>().index).toBe(0);
+    await run(ctx(['add', 'feature/second'], { from: 'main', json: true }));
+    expect(lastJson<{ index: number }>().index).toBe(1);
+  });
 });
 
 // ============================================================================
@@ -280,6 +295,21 @@ describe('#1481 flo worktree remove (AC3)', () => {
     expect(existsSync(path)).toBe(false);
   });
 
+  it('refuses when un-pushed SDD specs live in the worktree .moflo/ directory', async () => {
+    // Only .moflo/worktree.json is excused — never the whole .moflo/ directory.
+    // A worktree can hold un-pushed spec/plan work under .moflo/specs/, and
+    // `remove` forces past git's own check, so missing this would delete it.
+    await run(ctx(['add', 'feature/specs'], { from: 'main', json: true }));
+    const path = lastJson<{ path: string }>().path;
+    mkdirSync(join(path, '.moflo', 'specs', 'thing'), { recursive: true });
+    writeFileSync(join(path, '.moflo', 'specs', 'thing', 'spec.md'), '# spec\n');
+
+    const result = await run(ctx(['remove', 'feature/specs'], {}));
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('spec.md');
+    expect(existsSync(join(path, '.moflo', 'specs', 'thing', 'spec.md'))).toBe(true);
+  });
+
   it('still refuses when user work sits alongside the moflo state file', async () => {
     await run(ctx(['add', 'feature/mixed'], { from: 'main', json: true }));
     const path = lastJson<{ path: string }>().path;
@@ -288,6 +318,28 @@ describe('#1481 flo worktree remove (AC3)', () => {
     expect(result.success).toBe(false);
     expect(result.message).toContain('scratch.txt');
     expect(existsSync(path)).toBe(true);
+  });
+
+  it('names the gitignored paths it destroyed that provisioning did not create', async () => {
+    // `git status --porcelain` never lists ignored files, so the dirty gate
+    // cannot see them — but removing the worktree deletes them. Warn, never
+    // block: a project whose setup ran `npm ci` would otherwise be blocked on
+    // every single removal.
+    writeConfig('project:\n  name: t\nworktree:\n  copy: ".env"\n');
+    writeFileSync(join(repo, '.env'), 'SECRET=1');
+    await run(ctx(['add', 'feature/ignored'], { from: 'main', json: true }));
+    const path = lastJson<{ path: string }>().path;
+    writeFileSync(join(path, 'node_modules-note.txt'), 'x');
+    mkdirSync(join(path, 'node_modules'), { recursive: true });
+    writeFileSync(join(path, 'node_modules', 'installed.txt'), 'x');
+
+    const result = await run(ctx(['remove', 'feature/ignored'], { json: true, force: true }));
+    expect(result.success).toBe(true);
+    const out = lastJson<{ discardedIgnored: string[] }>();
+    // node_modules is gitignored and was NOT provisioned here, so it is named.
+    expect(out.discardedIgnored.some(p => p.startsWith('node_modules'))).toBe(true);
+    // .env was copied in by provisioning and still exists in the primary — noise.
+    expect(out.discardedIgnored).not.toContain('.env');
   });
 
   it('refuses a path that is not a registered worktree of this repo', async () => {

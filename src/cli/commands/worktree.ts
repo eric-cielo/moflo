@@ -20,17 +20,17 @@ import { findProjectRoot } from '../services/project-root.js';
 import { loadMofloConfig } from '../config/moflo-config.js';
 import {
   type ProvisionStep,
+  type WorktreeConfig,
   type WorktreeState,
+  WORKTREE_STATE_FILE_POSIX,
   allocateIndex,
   computeWorktreePath,
   isInside,
+  resolveForCompare,
   provisionWorktree,
   readWorktreeState,
   writeWorktreeState,
 } from '../services/worktree-provision.js';
-
-/** moflo's own per-worktree bookkeeping directory, as git reports it. */
-const MOFLO_DIR = '.moflo';
 
 interface WorktreeEntry {
   path: string;
@@ -95,6 +95,12 @@ function listWorktrees(repoRoot: string): WorktreeEntry[] {
  * already assumes) and finally to whichever of `origin/main`/`origin/master`
  * exists. Returns null when none resolve — better a clear error than silently
  * branching off the wrong ref.
+ *
+ * Deliberately NOT shared with `getDefaultBranch` in `commands/github.ts`: that
+ * one returns a bare branch name and falls back to the literal `'main'`, which
+ * is right for generating a CI workflow and wrong here — silently branching a
+ * user's work off a guessed ref is the failure this returns null to avoid. It
+ * also tries `gh` first, where this prefers git (faster, and works offline).
  */
 function resolveDefaultBase(repoRoot: string): string | null {
   const head = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], repoRoot);
@@ -142,7 +148,10 @@ async function cmdAdd(ctx: CommandContext): Promise<CommandResult> {
   const target = computeWorktreePath(repoRoot, branch, worktreeConfig?.dir);
 
   const existing = listWorktrees(repoRoot);
-  const alreadyRegistered = existing.find(entry => isInside(entry.path, target) && isInside(target, entry.path));
+  // Resolve the needle once, then compare resolved strings — realpathing both
+  // sides inside the scan costs 4 walks per worktree for the same answer.
+  const resolvedTarget = resolveForCompare(target);
+  const alreadyRegistered = existing.find(entry => resolveForCompare(entry.path) === resolvedTarget);
 
   // Reuse rather than recreate: a prior run may have left work in this tree, and
   // deleting a directory we did not just create is never this command's call.
@@ -154,7 +163,8 @@ async function cmdAdd(ctx: CommandContext): Promise<CommandResult> {
         exitCode: 1,
       };
     }
-    const base = typeof ctx.flags.from === 'string' ? ctx.flags.from : resolveDefaultBase(repoRoot);
+    const explicitFrom = typeof ctx.flags.from === 'string';
+    const base = explicitFrom ? (ctx.flags.from as string) : resolveDefaultBase(repoRoot);
     if (!base) {
       return {
         success: false,
@@ -162,18 +172,28 @@ async function cmdAdd(ctx: CommandContext): Promise<CommandResult> {
         exitCode: 1,
       };
     }
-    // Fetch so the base ref is current; a failure here is not fatal (the ref may
-    // already be local, and an offline machine should still get its worktree).
-    git(['fetch', 'origin'], repoRoot);
+    // Fetch so the DEFAULT base is current — branching a ticket off a stale
+    // origin/main is the failure this guards. An explicit `--from` that already
+    // resolves locally (a tag, another branch) is the user naming a specific
+    // commit, so skip the network round trip there. A fetch failure is never
+    // fatal: an offline machine should still get its worktree.
+    const baseIsLocal = git(['rev-parse', '--verify', '--quiet', base], repoRoot).ok;
+    if (!(explicitFrom && baseIsLocal)) git(['fetch', 'origin'], repoRoot);
     const created = git(['worktree', 'add', '-b', branch, target, base], repoRoot);
     if (!created.ok) {
       return { success: false, message: `git worktree add failed: ${created.stderr}`, exitCode: 1 };
     }
   }
 
-  const index = allocateIndex(
-    existing.map(entry => entry.state?.index).filter((n): n is number => typeof n === 'number'),
-  );
+  // Re-adding an existing worktree MUST keep its index. `existing` includes that
+  // worktree, so allocating afresh would hand it a new number and rewrite
+  // worktree.json — silently shifting every port a consumer derived from
+  // MOFLO_WORKTREE_INDEX in a tree they are already working in.
+  const index =
+    alreadyRegistered?.state?.index ??
+    allocateIndex(
+      existing.map(entry => entry.state?.index).filter((n): n is number => typeof n === 'number'),
+    );
 
   let provisioned = true;
   // Distinct from `!provisioned`: skipping provisioning by request is not a
@@ -273,23 +293,61 @@ async function cmdList(ctx: CommandContext): Promise<CommandResult> {
  * make `remove` demand `--force` on every worktree this command produced, which
  * trains the user to always pass it and defeats the guard entirely.
  *
+ * Only that ONE file is excused, never the whole `.moflo/` directory: a worktree
+ * may also hold un-pushed SDD specs and plans under `.moflo/specs/`, and those
+ * are user-authored work that must still block removal. Reaching that precision
+ * requires `-uall` at the call site — porcelain otherwise collapses an untracked
+ * directory to a single `?? .moflo/` line, which cannot be told apart from spec
+ * work living inside it.
+ *
  * Each line is `XY <path>`; a rename is `XY <old> -> <new>`, and a path with
- * unusual characters is quoted. Only the leading two status columns are fixed
- * width, so the path starts at index 3.
+ * unusual characters is quoted with C-style escapes. Only the leading two
+ * status columns are fixed width, so the path starts at index 3. A filename
+ * containing a literal ` -> ` inside quotes would mis-split — harmless, because
+ * the mis-split value simply fails to equal the state file and the line counts
+ * as user work, which is the safe direction (refuse removal, never delete).
  */
 function userChanges(porcelain: string): string[] {
-  const mofloPrefix = `${MOFLO_DIR}/`;
+  const stateFile = WORKTREE_STATE_FILE_POSIX;
   return porcelain
     .split(/\r?\n/)
     .filter(line => line.trim().length > 0)
     .filter(line => {
       const entry = line.slice(3).trim();
       const target = (entry.includes(' -> ') ? entry.split(' -> ')[1] : entry).replace(/^"|"$/g, '');
-      // git always reports forward slashes here, on every platform.
-      return target !== MOFLO_DIR && target !== mofloPrefix && !target.startsWith(mofloPrefix);
+      return target !== stateFile;
     });
 }
 
+
+/**
+ * Gitignored paths in the worktree that `remove` is about to destroy and that
+ * provisioning did not put there.
+ *
+ * `git status --porcelain` never lists ignored files, so the dirty gate above
+ * cannot see them — yet removing the worktree deletes them (stock
+ * `git worktree remove` does the same; this is inherent to worktree removal,
+ * not something --force introduces). Anything `copy:` or `link:` created is
+ * excluded: it either still exists in the primary checkout or is a symlink
+ * whose target is untouched, so naming it would be noise on every removal.
+ *
+ * Warns; never blocks. A project whose `setup:` ran `npm ci` has a legitimate
+ * `node_modules` here on every single removal, and blocking on that would just
+ * teach the user to always pass --force.
+ */
+function unprovisionedIgnoredPaths(worktreePath: string, config?: WorktreeConfig): string[] {
+  const status = git(['status', '--porcelain', '--ignored=matching', '-uall'], worktreePath);
+  if (!status.ok) return [];
+  const provisioned = [...(config?.copy ?? []), ...(config?.link ?? [])].map(entry =>
+    entry.split(/[\\/]/).filter(Boolean).join('/'),
+  );
+  return status.stdout
+    .split(/\r?\n/)
+    .filter(line => line.startsWith('!! '))
+    .map(line => line.slice(3).trim().replace(/^"|"$/g, ''))
+    .filter(target => target !== WORKTREE_STATE_FILE_POSIX)
+    .filter(target => !provisioned.some(p => target === p || target.startsWith(`${p}/`)));
+}
 
 async function cmdRemove(ctx: CommandContext): Promise<CommandResult> {
   const which = ctx.args?.[1];
@@ -300,12 +358,11 @@ async function cmdRemove(ctx: CommandContext): Promise<CommandResult> {
 
   const repoRoot = findProjectRoot({ cwd: ctx.cwd });
   const entries = listWorktrees(repoRoot);
-  const candidate = path.resolve(ctx.cwd, which);
-
-  // Match by branch first, then by path. The path comparison realpaths both
-  // sides (inside `isInside`), so a symlinked tempdir on macOS still matches.
+  // Match by branch first, then by path. The path comparison is realpath-based,
+  // so a symlinked tempdir on macOS still matches; the needle resolves once.
+  const resolvedCandidate = resolveForCompare(path.resolve(ctx.cwd, which));
   const match = entries.find(
-    entry => entry.branch === which || (isInside(entry.path, candidate) && isInside(candidate, entry.path)),
+    entry => entry.branch === which || resolveForCompare(entry.path) === resolvedCandidate,
   );
   if (!match) {
     return { success: false, message: `Not a registered worktree of this repo: ${which}`, exitCode: 1 };
@@ -315,7 +372,8 @@ async function cmdRemove(ctx: CommandContext): Promise<CommandResult> {
   }
 
   if (!force) {
-    const status = git(['status', '--porcelain'], match.path);
+    // `-uall` so an untracked directory is not collapsed to one line — see userChanges().
+    const status = git(['status', '--porcelain', '-uall'], match.path);
     const dirty = status.ok ? userChanges(status.stdout) : [];
     if (dirty.length > 0) {
       return {
@@ -330,16 +388,23 @@ async function cmdRemove(ctx: CommandContext): Promise<CommandResult> {
   // has already refused anything the user would miss; git's own check cannot tell
   // moflo's untracked `.moflo/worktree.json` from user work, so without this every
   // worktree this command created would be unremovable without `--force`.
+  const doomed = unprovisionedIgnoredPaths(match.path, loadMofloConfig(repoRoot).worktree);
   const removed = git(['worktree', 'remove', '--force', match.path], repoRoot);
   if (!removed.ok) {
     return { success: false, message: `git worktree remove failed: ${removed.stderr}`, exitCode: 1 };
   }
 
   if (ctx.flags.json === true) {
-    console.log(JSON.stringify({ removed: match.path, branch: match.branch }));
+    console.log(JSON.stringify({ removed: match.path, branch: match.branch, discardedIgnored: doomed }));
     return { success: true, exitCode: 0 };
   }
   console.log(`Removed worktree: ${match.path}`);
+  if (doomed.length > 0) {
+    console.log(
+      `  also discarded ${doomed.length} gitignored path(s) that were not provisioned: ` +
+        `${doomed.slice(0, 5).join(', ')}${doomed.length > 5 ? ', …' : ''}`,
+    );
+  }
   return { success: true, exitCode: 0 };
 }
 

@@ -4,6 +4,8 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+// Type-only: adds no runtime edge to this module's import closure.
+import type { WorktreeConfig } from '../services/worktree-provision.js';
 let yaml: any;
 try {
   yaml = await import('js-yaml');
@@ -162,39 +164,11 @@ export interface MofloConfig {
    * optional; unknown sub-keys are ignored rather than fatal, so a consumer's
    * `moflo.yaml` never fails to parse on an unrecognised entry.
    *
-   * See `src/cli/services/worktree-provision.ts`.
+   * The shape is owned by `src/cli/services/worktree-provision.ts`, which is
+   * what consumes it — declaring it twice would let the parser and the
+   * provisioner drift apart silently.
    */
-  worktree?: {
-    /**
-     * Override the computed worktree parent directory
-     * (`<repo-parent>/<repo-basename>-worktrees`). Relative → project root.
-     */
-    dir?: string;
-    /**
-     * Gitignored files/directories copied from the primary checkout into a new
-     * worktree — typically `.env` material a fresh checkout lacks. Sources must
-     * resolve **inside** the primary checkout (realpath-checked on both sides);
-     * a missing source is skipped, not fatal. Accepts a string or an array; a
-     * single trailing `*` within one directory level is supported.
-     */
-    copy?: string[];
-    /**
-     * Paths symlinked (junctioned on Windows) from the primary checkout into a
-     * new worktree — typically `node_modules`. Opt-in with no default: a
-     * symlinked root `node_modules` is fragile under npm workspaces, so whether
-     * to link or to run `setup` is a per-project call. Accepts a string or an
-     * array. An existing destination is never clobbered.
-     */
-    link?: string[];
-    /**
-     * Command run inside the new worktree after copy/link — e.g. `npm ci`. Runs
-     * with `MOFLO_WORKTREE_INDEX` in its environment (a small integer, unique
-     * among live worktrees) so a project whose dev servers bind fixed ports can
-     * offset them per workspace. A non-zero exit marks the provision failed but
-     * leaves the worktree in place — it is a valid checkout either way.
-     */
-    setup?: string;
-  };
+  worktree?: WorktreeConfig;
 
   hooks: {
     pre_edit: boolean;
