@@ -4,7 +4,7 @@
 
 ---
 
-## CLI Commands (26 Commands, 140+ Subcommands)
+## CLI Commands (27 Commands, 140+ Subcommands)
 
 ### Core Commands
 
@@ -40,6 +40,7 @@
 | `epic`        | 3           | Epic orchestrator — run/status/reset with single-branch or auto-merge strategy |
 | `doctor`      | 1           | System diagnostics with health checks                                         |
 | `completions` | 4           | Shell completions (bash, zsh, fish, powershell)                               |
+| `worktree`    | 3           | Provisioned git worktrees (add, list, remove) — alias `wt`                     |
 
 ### Quick Examples (MCP Preferred)
 
@@ -58,6 +59,49 @@ npx flo daemon start
 ```
 
 ---
+
+## Provisioned Worktrees (`flo worktree`)
+
+A bare `git worktree add` produces a valid checkout and an unrunnable workspace — no
+`node_modules`, none of the gitignored `.env` files, and dev servers that collide with the
+primary checkout on fixed ports. `flo worktree add` creates the worktree **and** provisions it.
+
+```bash
+flo worktree add feature/123-thing        # create + provision (this is what /flo -wt runs)
+flo worktree add feature/123 --json       # {"path":…,"branch":…,"index":0,"provisioned":true}
+flo worktree list                         # every worktree + its provisioning state
+flo worktree remove feature/123-thing     # refuses a dirty tree unless --force
+```
+
+Provisioning is driven by an optional `worktree:` block in `moflo.yaml`. **With no block, `add`
+creates the worktree and provisions nothing** — identical to a plain `git worktree add`.
+
+```yaml
+worktree:
+  dir: ../myrepo-worktrees   # default: <repo-parent>/<repo>-worktrees
+  copy: [".env", ".env.*"]   # gitignored files copied from the primary checkout
+  link: ["node_modules"]     # symlinked (junctioned on Windows) from the primary checkout
+  setup: "npm ci"            # run in the new worktree, with MOFLO_WORKTREE_INDEX in its env
+```
+
+| Key | Use it when | Watch out for |
+|-----|-------------|---------------|
+| `copy` | A fresh checkout is missing gitignored config a build needs | It relocates **secrets** outside the repo and outside its `.gitignore`. Sources must live inside the primary checkout; `../secrets` is rejected. |
+| `link` | `node_modules` is large and the project does not use npm workspaces | A symlinked root `node_modules` is fragile under npm/yarn workspaces — prefer `setup: npm ci` there. An existing destination is never clobbered. |
+| `setup` | Install/build steps must run per workspace | A non-zero exit marks the provision failed but leaves the worktree in place. |
+
+**Port collisions.** moflo cannot rewrite a project's hardcoded ports. It gives each worktree a
+small stable integer — unique among live worktrees, reused when one is removed — as
+`MOFLO_WORKTREE_INDEX` in the `setup` command's environment. Offset your own ports from it:
+
+```yaml
+worktree:
+  setup: "npm ci && node -e \"require('fs').writeFileSync('.env.local','PORT='+(3500+Number(process.env.MOFLO_WORKTREE_INDEX)*20))\""
+```
+
+Memory needs no setup: durable learnings already converge across a repo's worktrees
+automatically. See `moflo-cross-install-memory-sharing.md` for the snapshot recipe that also
+skips the structural cold-start.
 
 ## Available Agents
 

@@ -77,6 +77,11 @@ const commandLoaders: Record<string, CommandLoader> = {
   epic: () => import('./epic.js'),
   // Spec-Driven Development artifacts (Epic #1269)
   sdd: () => import('./sdd.js'),
+  worktree: () => import('./worktree.js'),
+  // Alias key, not just `aliases: ['wt']` on the command: lazy commands resolve
+  // through `commandLoaders` by name, and an alias declared only on the command
+  // object is unreachable until something has already loaded it.
+  wt: () => import('./worktree.js'),
   // GitHub Repository Setup
   github: () => import('./github.js'),
   // /flo run ledger + per-run token rollup (#1333).

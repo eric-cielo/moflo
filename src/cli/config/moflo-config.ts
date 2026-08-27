@@ -155,6 +155,47 @@ export interface MofloConfig {
     snapshot_to?: string;
   };
 
+  /**
+   * Optional worktree provisioning (#1481). Absent = off, and `flo worktree add`
+   * then behaves exactly like the inline `git worktree add` recipe it replaced:
+   * the worktree is created and nothing is copied, linked, or run. Every key is
+   * optional; unknown sub-keys are ignored rather than fatal, so a consumer's
+   * `moflo.yaml` never fails to parse on an unrecognised entry.
+   *
+   * See `src/cli/services/worktree-provision.ts`.
+   */
+  worktree?: {
+    /**
+     * Override the computed worktree parent directory
+     * (`<repo-parent>/<repo-basename>-worktrees`). Relative → project root.
+     */
+    dir?: string;
+    /**
+     * Gitignored files/directories copied from the primary checkout into a new
+     * worktree — typically `.env` material a fresh checkout lacks. Sources must
+     * resolve **inside** the primary checkout (realpath-checked on both sides);
+     * a missing source is skipped, not fatal. Accepts a string or an array; a
+     * single trailing `*` within one directory level is supported.
+     */
+    copy?: string[];
+    /**
+     * Paths symlinked (junctioned on Windows) from the primary checkout into a
+     * new worktree — typically `node_modules`. Opt-in with no default: a
+     * symlinked root `node_modules` is fragile under npm workspaces, so whether
+     * to link or to run `setup` is a per-project call. Accepts a string or an
+     * array. An existing destination is never clobbered.
+     */
+    link?: string[];
+    /**
+     * Command run inside the new worktree after copy/link — e.g. `npm ci`. Runs
+     * with `MOFLO_WORKTREE_INDEX` in its environment (a small integer, unique
+     * among live worktrees) so a project whose dev servers bind fixed ports can
+     * offset them per workspace. A non-zero exit marks the provision failed but
+     * leaves the worktree in place — it is a valid checkout either way.
+     */
+    setup?: string;
+  };
+
   hooks: {
     pre_edit: boolean;
     post_edit: boolean;
@@ -461,6 +502,39 @@ function coerceMemoryBackend(raw: unknown): MofloMemoryBackend {
 }
 
 /**
+ * Coerce a `worktree.copy` / `worktree.link` entry to a string array (#1481).
+ * Both keys accept a bare string for the common single-entry case; anything
+ * that is neither a string nor an array of strings is dropped rather than
+ * throwing — a malformed entry must never stop a consumer's config loading.
+ */
+function coercePathList(raw: unknown): string[] | undefined {
+  const list = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw : undefined;
+  if (!list) return undefined;
+  const cleaned = list
+    .filter((v): v is string => typeof v === 'string')
+    .map(v => v.trim())
+    .filter(v => v.length > 0);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+/**
+ * Parse the optional `worktree:` block (#1481). Returns `undefined` when the
+ * block is absent or contains nothing usable, so "not configured" stays
+ * distinguishable from "configured empty". Unknown sub-keys are ignored.
+ */
+function parseWorktreeConfig(raw: unknown): MofloConfig['worktree'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const block = raw as Record<string, unknown>;
+  const dir = typeof block.dir === 'string' && block.dir.trim().length > 0 ? block.dir.trim() : undefined;
+  const copy = coercePathList(block.copy);
+  const link = coercePathList(block.link);
+  const setup =
+    typeof block.setup === 'string' && block.setup.trim().length > 0 ? block.setup.trim() : undefined;
+  if (!dir && !copy && !link && !setup) return undefined;
+  return { ...(dir && { dir }), ...(copy && { copy }), ...(link && { link }), ...(setup && { setup }) };
+}
+
+/**
  * Parse raw config object into typed config, merging with defaults.
  */
 function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
@@ -535,6 +609,10 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
         return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
       })(),
     },
+    // #1481 — optional worktree provisioning. The whole block stays `undefined`
+    // when absent so an existing consumer `moflo.yaml` is unaffected, and so
+    // `flo worktree add` can distinguish "not configured" from "configured empty".
+    worktree: parseWorktreeConfig(raw.worktree),
     hooks: {
       pre_edit: raw.hooks?.pre_edit ?? raw.hooks?.preEdit ?? DEFAULT_CONFIG.hooks.pre_edit,
       post_edit: raw.hooks?.post_edit ?? raw.hooks?.postEdit ?? DEFAULT_CONFIG.hooks.post_edit,
@@ -791,6 +869,26 @@ memory:
   #   worktrees / Conductor workspaces always hydrate from a current seed. Linked
   #   worktrees never produce. Conductor recipe: set hydrate_from AND snapshot_to
   #   to the SAME absolute path. Overridable per-process via MOFLO_SNAPSHOT_TO.
+
+# Worktree provisioning (#1481) — makes "flo worktree add" (and "/flo -wt")
+# produce a RUNNABLE workspace, not just a valid checkout. Entirely optional:
+# with this block absent, a new worktree is created and nothing is provisioned.
+# worktree:
+#   dir: ../myrepo-worktrees
+#     Where worktrees are created. Defaults to <repo-parent>/<repo>-worktrees.
+#   copy: [".env", ".env.*"]
+#     Gitignored files a fresh checkout lacks, copied from the primary checkout.
+#     Sources must live inside the primary checkout. NOTE: this relocates secret
+#     material to a directory OUTSIDE the repo and outside its .gitignore — keep
+#     the worktree dir out of any repo you commit.
+#   link: ["node_modules"]
+#     Symlinked (junctioned on Windows) from the primary checkout. Opt-in with no
+#     default: a symlinked root node_modules is fragile under npm workspaces —
+#     prefer "setup: npm ci" if your project uses them.
+#   setup: "npm ci"
+#     Run inside the new worktree after copy/link, with MOFLO_WORKTREE_INDEX in
+#     its environment (a small integer unique among live worktrees) so a project
+#     with fixed dev-server ports can offset them per workspace.
 
 # Hook toggles (all on by default — disable to slim down)
 hooks:

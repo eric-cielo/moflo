@@ -106,30 +106,35 @@ implementation, tests, simplify, commit, and PR from inside it. The current chec
 untouched. Durable learnings still converge automatically — a worktree shares the repo's
 `<git-common-dir>/moflo/durable.db` (see `/memory-worktree`).
 
-Compute paths with Node, never string-concatenate — the branch name contains `/`, and the
-worktree dir must sit **outside** the checkout on every OS (Rule #1: no hardcoded separators,
-no `/tmp`, no `mkdir -p`):
+Use `flo worktree add`. It computes the path, creates the branch off the repo's default
+branch, and **provisions** the tree per the optional `worktree:` block in `moflo.yaml` — copying
+gitignored `.env` material, linking `node_modules`, running a `setup` command. A fresh worktree is
+otherwise a valid checkout and an unrunnable workspace. Do not hand-roll the path or shell
+`git worktree add` directly: the path computation and the copy/link/setup steps are
+platform-sensitive (Rule #1) and live in tested code.
 
 ```bash
-# 1. Fresh base — update main in the current checkout first (worktrees share objects).
-git fetch origin main
-
-# 2. Resolve a sibling worktree path: <repo-parent>/<repo>-worktrees/<slugged-branch>
-#    Slug the branch's "/" to "-" so the dir is flat and valid on Windows/macOS/Linux.
-node -e "const p=require('path'),cp=require('child_process');const root=cp.execSync('git rev-parse --show-toplevel').toString().trim();const branch=process.argv[1];const slug=branch.replace(/[\\\\/]/g,'-');const dir=p.join(p.dirname(root),p.basename(root)+'-worktrees',slug);console.log(dir)" "<type>/<issue-number>-<short-desc>"
-
-# 3. Create the worktree + branch off origin/main in one step (the printed path from step 2).
-git worktree add -b <type>/<issue-number>-<short-desc> "<computed-path>" origin/main
+flo worktree add "<type>/<issue-number>-<short-desc>" --json
 ```
 
-Then `cd "<computed-path>"` and run **every** remaining phase (implement → tests → simplify →
-commit → PR) from there. Report the worktree path to the user. Leave the worktree in place
-after the PR — the user may want to inspect it; note that `git worktree remove "<path>"` cleans
-it up when done.
+It prints one JSON object — read `path` from it:
 
-If `git worktree add` fails because the path already exists (a prior run), reuse it:
-`cd "<computed-path>" && git status` and continue, or pick a `-2` suffix — do not delete a dir
-you did not just create.
+```json
+{"path":"/abs/path/to/repo-worktrees/type-123-slug","branch":"type/123-slug","index":0,"provisioned":true}
+```
+
+Then `cd` to that `path` and run **every** remaining phase (implement → tests → simplify → commit →
+PR) from there. Report the worktree path to the user.
+
+Notes:
+- `--from <ref>` overrides the base ref (default: the repo's default branch via `origin/HEAD`).
+- `provisioned: false` means a copy/link/setup step failed — the worktree is still a usable
+  checkout. Surface the failing step to the user rather than silently continuing to run tests that
+  will fail for want of a dependency.
+- If the branch's worktree already exists (a prior run), `add` reuses it rather than deleting it.
+- Leave the worktree in place after the PR — the user may want to inspect it. Clean up with
+  `flo worktree remove "<branch>"` (it refuses a tree with uncommitted changes unless `--force`).
+  `flo worktree list` shows every worktree and its provisioning state.
 
 ### 3.3 Implement
 Follow the plan from the ticket.
