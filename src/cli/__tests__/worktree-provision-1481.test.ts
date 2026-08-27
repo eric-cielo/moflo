@@ -25,7 +25,7 @@ import {
 } from 'node:fs';
 import { join, sep, dirname, basename, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadMofloConfig } from '../config/moflo-config.js';
+import { generateMofloConfig, loadMofloConfig } from '../config/moflo-config.js';
 import {
   WORKTREE_STATE_FILE,
   allocateIndex,
@@ -541,6 +541,32 @@ describe('#1481 moflo.yaml worktree block (AC4, AC5)', () => {
   it('drops non-string entries from copy/link', () => {
     writeConfig('project:\n  name: t\nworktree:\n  copy: [".env", 42, null]\n');
     expect(loadMofloConfig(root).worktree).toEqual({ copy: ['.env'] });
+  });
+});
+
+// ============================================================================
+// AC10 — the generated moflo.yaml documents the surface
+// ============================================================================
+
+describe('#1481 moflo.yaml template (AC10)', () => {
+  const template = generateMofloConfig(root);
+
+  it('ships a commented worktree block naming every key', () => {
+    expect(template).toMatch(/# worktree:/);
+    for (const key of ['dir:', 'copy:', 'link:', 'setup:']) expect(template).toContain(key);
+  });
+
+  it('documents the port-offset contract and the secret-relocation caveat', () => {
+    // These two are the surprising parts: a consumer cannot discover the env
+    // var from the schema, and `copy:` moving secrets outside the repo is the
+    // kind of thing that must be stated where the user configures it.
+    expect(template).toContain('MOFLO_WORKTREE_INDEX');
+    expect(template).toMatch(/secret/i);
+  });
+
+  it('stays commented out, so a fresh project provisions nothing by default', () => {
+    const active = template.split(/\r?\n/).filter(l => /^worktree:/.test(l));
+    expect(active).toEqual([]);
   });
 });
 
