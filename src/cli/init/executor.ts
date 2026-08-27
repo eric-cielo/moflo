@@ -69,6 +69,7 @@ export const SKILLS_MAP: Record<SkillCategory, string[]> = {
     'vector-search',
     'memory-worktree', // guided memory.durable_path setup (same-machine worktrees)
     'memory-team', // guided memory.team_artifact setup + PR pre-commit hook
+    'optimize-learnings', // curation pass over the `learnings` namespace, wrapping `flo memory audit-learnings`
   ],
   spells: [
     'spell-builder',
