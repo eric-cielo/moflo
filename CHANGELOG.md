@@ -53,6 +53,32 @@ Code restart.
 The report this came from also flagged team-artifact first-write-wins as blocking corrections and
 deletions; that was #1463 and is already fixed. No action was needed.
 
+### Fixed — `npm test` no longer exits 0 on a run vitest failed
+
+The test-runner wrapper read vitest's JSON results and ignored its exit code. That is right for
+*test* failures — vitest exits non-zero when a worker fork dies of OOM even with everything green,
+which is why the exit code alone was never trusted — but the results file cannot express every way
+a run goes wrong. An unhandled rejection escaping a test makes vitest exit 1 and print the error
+while the JSON reports `numFailedTests: 0`, `numFailedTestSuites: 0` and `success: true`. The
+wrapper announced "✓ All tests passed" and exited 0, so CI went green on a failed run.
+
+Both signals now have to agree. A non-zero exit that names no failing test is reported as its own
+outcome — a runner fault, naming which pass and its exit code — and fails the run;
+`MOFLO_TEST_TOLERATE_RUNNER_EXIT=1` downgrades it to a warning for anyone genuinely chasing the OOM
+case. Failing by default is a deliberate policy change with owner sign-off: an OOM'd fork is a real
+problem and should be visible rather than silently green. A pass whose results file could not be
+read is a fault for the same reason even when vitest exited 0 — the wrapper verified nothing, and
+that case previously read as a clean run with zero tests passed. Alongside that: the failure count
+now matches the list printed under it (it summed
+`numFailedTests + numFailedTestSuites`, and vitest counts the file *and* each enclosing `describe`
+as suites, so one failing test read "Total failed: 3"); the results file is cleared before each run
+as well as after, so a run interrupted at the terminal cannot leave stale green results for a later
+crash to be judged against; and `main()` is no longer invoked bare, so a throw outside a test — a
+malformed `vitest.config.ts`, say — surfaces as the runner's own failure.
+
+Contributors only: `scripts/` is not in the published `files` list, so no consumer ships or runs
+this.
+
 ### Fixed — memory writes refuse captured tool-call markup
 
 A `memory_store` call whose `value` arrived carrying the harness' own parameter markup — the value
