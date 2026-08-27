@@ -10,10 +10,16 @@
  *
  * The shape that makes this affordable at that size is **mechanical filters
  * first, model judgement last**. The filters here do not decide anything — they
- * nominate. Three cheap passes (near-duplicate clustering over the embeddings
- * already stored on the row, least-used-and-old ranking, and retired-vocabulary
- * matching) narrow ~1,500 entries to a few dozen, and only those go to a model.
- * A full-store LLM sweep is the design this exists to avoid.
+ * nominate. Four cheap passes (near-duplicate clustering over the embeddings
+ * already stored on the row, least-used-and-old ranking, retired-vocabulary
+ * matching, and dead-path resolution) narrow ~1,500 entries to a few dozen, and
+ * only those go to a model. A full-store LLM sweep is the design this exists to
+ * avoid.
+ *
+ * The dead-path pass (#1479) is the only one grounded in ground truth rather
+ * than prose shape — a repo-relative path either resolves in the tree or it does
+ * not. It is carved into `memory/learnings-dead-paths.ts` and re-exported from
+ * here; its filesystem half is `memory/learnings-tree.ts`.
  *
  * This module is pure by construction: no filesystem, no database, no spawning.
  * Rows come in, a plan comes out. The command layer
@@ -22,6 +28,20 @@
  *
  * @module memory/learnings-audit
  */
+
+// The dead-path pass lives in its own module so this one stays the place the
+// passes are ASSEMBLED. Re-exported here because `learnings-audit.js` is the
+// audit's public surface — a caller configuring the pass should not have to
+// know which file the detector was carved into.
+import { findDeadPaths, type DeadPathScanOptions } from './learnings-dead-paths.js';
+
+export {
+  DEFAULT_DEAD_PATHS_PER_ENTRY,
+  extractCandidatePaths,
+  findDeadPaths,
+  resolvesInTree,
+  type DeadPathScanOptions,
+} from './learnings-dead-paths.js';
 
 /** The namespace this audit is scoped to. */
 export const LEARNINGS_NAMESPACE = 'learnings';
@@ -44,7 +64,7 @@ export interface AuditRow {
 }
 
 /** Why an entry was nominated. An entry can be nominated by more than one pass. */
-export type AuditBucket = 'duplicate' | 'unused' | 'superseded';
+export type AuditBucket = 'duplicate' | 'unused' | 'superseded' | 'dead-path';
 
 /**
  * The verdict vocabulary, taken verbatim from the auto-memory decision table in
@@ -105,6 +125,12 @@ export interface AuditCandidate {
   similarity?: number;
   /** For a `superseded` nomination, the retired terms found in the content. */
   supersededTerms?: SupersededTerm[];
+  /**
+   * For a `dead-path` nomination, the cited paths that resolved nowhere — as
+   * written and under every workspace prefix. Evidence for a reader, never a
+   * verdict: see {@link findDeadPaths}.
+   */
+  deadPaths?: string[];
 }
 
 /** Per-bucket nomination counts, reported before any model is involved. */
@@ -112,6 +138,7 @@ export interface AuditBucketCounts {
   duplicate: number;
   unused: number;
   superseded: number;
+  deadPath: number;
 }
 
 /**
@@ -173,6 +200,13 @@ export interface AuditPlanOptions {
   judgeLimit?: number;
   /** Retired vocabulary to match against. Defaults to the (empty) shipped table. */
   vocabulary?: readonly SupersededTerm[];
+  /**
+   * Enables the dead-path pass. Omitted, the pass does not run at all — this
+   * module cannot reach a filesystem, so a caller with no tree to resolve
+   * against (a unit test, a store audited away from its repo) gets no
+   * nominations rather than every cited path read as dead.
+   */
+  deadPaths?: DeadPathScanOptions;
   /** Verdicts recorded by a previous `--apply`, keyed by entry key. */
   decided?: ReadonlyMap<string, DecidedEntry>;
   /** Stable content hash, injected so the module stays free of `node:crypto`. */
@@ -305,7 +339,7 @@ export function findSuperseded(
 }
 
 /**
- * Run the three mechanical passes and assemble the candidate set.
+ * Run the mechanical passes and assemble the candidate set.
  *
  * Entries with a recorded verdict whose content has not changed since are
  * dropped before any pass runs — that is what makes a second run immediately
@@ -382,10 +416,20 @@ export function buildAuditPlan(
     candidate.supersededTerms = hit.terms;
   }
 
+  // Runs over `pending` rather than every row: unlike clustering, this pass
+  // reads one entry at a time and has no representative to protect, so a
+  // previously-judged entry contributes nothing to another entry's nomination.
+  const deadPaths = options.deadPaths ? findDeadPaths(pending, options.deadPaths) : [];
+  for (const hit of deadPaths) {
+    const candidate = nominate(hit.row, 'dead-path');
+    candidate.deadPaths = hit.deadPaths;
+  }
+
   const counts: AuditBucketCounts = {
     duplicate: duplicates.length,
     unused: unused.length,
     superseded: superseded.length,
+    deadPath: deadPaths.length,
   };
 
   // Most-nominated first, then oldest — an entry three passes agree on is the
@@ -419,6 +463,8 @@ function describeBuckets(candidate: AuditCandidate): string {
       );
     } else if (bucket === 'unused') {
       parts.push('never returned by a search since usage recording began');
+    } else if (bucket === 'dead-path') {
+      parts.push(`cites path(s) that resolve nowhere in the tree: ${(candidate.deadPaths ?? []).join(', ')}`);
     } else {
       const terms = (candidate.supersededTerms ?? [])
         .map((t) => `"${t.from}" → "${t.to}"`)
@@ -476,6 +522,16 @@ export function buildJudgePrompt(candidates: readonly AuditCandidate[], now: num
     '',
     'A near-duplicate flag is evidence, not a verdict: two entries can restate one rule',
     '(MERGE) or cover genuinely different cases that merely read alike (KEEP).',
+    '',
+    'A dead-path flag is evidence with FOUR possible causes, and only reading the entry tells',
+    'them apart. Never read one as RETIRE on sight — the moved-file case is the common one:',
+    '',
+    '| Why the cited path does not resolve | Verdict |',
+    '|---|---|',
+    '| The file MOVED; the lesson still holds | COMPRESS — keep the rule, correct or drop the path |',
+    '| Deleted, and the lesson was about that code | RETIRE |',
+    '| Deleted, but the lesson generalises past it | COMPRESS — drop the path, keep the rule |',
+    '| The entry is a historical record, correct as written | KEEP |',
     '',
     `Answer with exactly ${candidates.length} line(s), nothing else. One line per entry:`,
     '',
