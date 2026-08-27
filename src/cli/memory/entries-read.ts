@@ -110,9 +110,32 @@ export async function searchEntries(options: {
     const queryEmb = await generateEmbedding(query);
     const queryEmbedding = queryEmb.embedding;
 
-    // Try HNSW search first (approximate-nearest-neighbor)
+    // Try HNSW search first (approximate-nearest-neighbor).
+    //
+    // #1468 — the short-circuit used to be `length > 0`, which made recall
+    // non-deterministic. Whenever the index could serve only part of the store —
+    // a truncated metadata map, or an index merely stale between rebuilds — a
+    // query that found ONE in-index hit suppressed the complete scan below,
+    // while a query that found zero got correct and complete results. Both
+    // shapes returned `success: true`, so the caller could not tell them apart.
+    //
+    // The ANN is now trusted only when it FILLED the request. Short of that we
+    // fall through and merge, so a partial fast path can add to the answer but
+    // never replace it. The test is on the raw count, before the threshold
+    // filter: what matters is whether the index could supply the candidates at
+    // all, not how similar they turned out to be.
+    //
+    // A namespace holding fewer than `limit` entries therefore falls through on
+    // every query, permanently. That is intended and its cost is proportionate:
+    // the scan below filters by the same namespace, so it parses that
+    // namespace's handful of embeddings, not the whole cap. The expensive scan
+    // is reserved for `all` and for namespaces large enough to fill the request
+    // in the first place — which do not reach it. `searchHNSWIndex` widens its
+    // retrieval before answering short (#1468), so a shortfall here means the
+    // entries genuinely are not in the index rather than that the namespace
+    // filter starved a global top-k.
     const hnswResults = await searchHNSWIndex(queryEmbedding, { k: limit, namespace });
-    if (hnswResults && hnswResults.length > 0) {
+    if (hnswResults && hnswResults.length >= limit) {
       // Filter by threshold
       const filtered = hnswResults.filter(r => r.score >= threshold);
       return {
@@ -178,6 +201,27 @@ export async function searchEntries(options: {
     }
 
     db.close();
+
+    // #1468 — merge the partial ANN hits in rather than discarding them. The
+    // scan is capped at `searchCandidateCap()` and the index is not, so each
+    // side can hold something the other misses; keeping only one of them would
+    // trade the old non-determinism for a different gap. Same id from both keeps
+    // the higher score — the scan's is exact, the ANN's approximate, and
+    // `Math.max` picks the exact one whenever they disagree in its favour.
+    if (hnswResults) {
+      const byId = new Map(results.map(r => [r.id, r]));
+      for (const hit of hnswResults) {
+        if (hit.score < threshold) continue;
+        const existing = byId.get(hit.id);
+        if (!existing) {
+          byId.set(hit.id, hit);
+        } else if (hit.score > existing.score) {
+          existing.score = hit.score;
+        }
+      }
+      results.length = 0;
+      results.push(...byId.values());
+    }
 
     // Sort by score
     results.sort((a, b) => b.score - a.score);

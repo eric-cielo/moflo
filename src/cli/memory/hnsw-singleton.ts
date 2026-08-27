@@ -21,6 +21,7 @@ import { parseEmbeddingJson } from './controllers/_shared.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { openDaemonDatabase } from './daemon-backend.js';
 import { getBridge, isBridgeLoaded } from './bridge-loader.js';
+import { searchCandidateCap } from './bridge-core.js';
 import { resolveStateRoot } from '../services/project-root.js';
 
 interface HNSWEntry {
@@ -94,6 +95,7 @@ export async function getHNSWIndex(options?: {
         return hnsw.search(query.vector, query.k);
       },
       len: async () => hnsw.size,
+      remove: (id: string) => hnsw.remove(id),
     };
 
     const entries = new Map<string, HNSWEntry>();
@@ -118,11 +120,17 @@ export async function getHNSWIndex(options?: {
         const sqlDb = openDaemonDatabase(dbPath);
 
         const cols = sidecarLoaded ? SELECT_METADATA_ONLY : SELECT_WITH_EMBEDDING;
+        // #1468 — recency-ordered candidate cap, the same one `entries-read.ts`
+        // and `memory-bridge.ts` already use. This load was a bare `LIMIT 10000`,
+        // so which rows survived was b-tree order under `idx_memory_status` —
+        // arbitrary with respect to both recency and namespace. That is #1201
+        // recurring here; the sibling paths got the fix and this loader did not.
         const result = sqlDb.exec(`
           SELECT ${cols}
           FROM memory_entries
           WHERE status = 'active' AND embedding IS NOT NULL
-          LIMIT 10000
+          ORDER BY created_at DESC
+          LIMIT ${searchCandidateCap()}
         `);
 
         let parseSkipped = 0;
@@ -154,6 +162,35 @@ export async function getHNSWIndex(options?: {
         }
         if (parseSkipped > 0) {
           console.warn(`[memory-initializer] skipped ${parseSkipped} rows with malformed embeddings`);
+        }
+
+        // #1468 — drop graph vectors the metadata load did not cover, so the two
+        // structures agree.
+        //
+        // Only the sidecar path can disagree. When the sidecar is absent the loop
+        // above inserts each vector alongside its metadata row, so the cap bounds
+        // both together. `hnsw-persistence` builds the sidecar over every embedded
+        // row with no LIMIT, so a store past the cap pairs a complete graph with a
+        // truncated map — and `searchHNSWIndex` silently skips a hit it cannot
+        // resolve (`if (!entry) continue`). Those vectors are unreachable by
+        // construction: they consume graph space and ANN slots that would
+        // otherwise hold a result the caller can actually receive. Rows past the
+        // cap stay reachable through the complete brute-force scan in
+        // `entries-read.ts`, which now runs whenever the ANN under-fills.
+        //
+        // Guarded on a non-empty map, which covers the SELECT that succeeds and
+        // returns nothing: far more likely a read that went wrong than a store
+        // whose rows all vanished, and emptying the graph on that reading is
+        // unrecoverable until the next rebuild. A read that *throws* needs no
+        // guard — it exits to the catch below and never reaches here, leaving the
+        // graph exactly as the sidecar supplied it. Both ways out leave a stale
+        // graph rather than an empty one, which is the cheaper mistake.
+        if (sidecarLoaded && hnswIndex.entries.size > 0) {
+          const orphaned: string[] = [];
+          for (const id of hnsw.ids()) {
+            if (!hnswIndex.entries.has(id)) orphaned.push(id);
+          }
+          for (const id of orphaned) hnsw.remove(id);
         }
 
         sqlDb.close();
@@ -207,6 +244,48 @@ export async function addToHNSWIndex(
 }
 
 /**
+ * Remove an entry from the in-process HNSW index — graph vector and metadata
+ * row both (#1468).
+ *
+ * `deleteEntry` used to delete the row and stop there. The store path maintains
+ * the index (`addToHNSWIndex`); the delete path had no counterpart and there was
+ * no removal function to call, even though `HnswLite.remove` has always existed.
+ * `entries` is an in-process map rebuilt from SQL, so the consequence was not
+ * merely an orphaned vector: the deleted entry's metadata outlived the row and
+ * the local HNSW path could keep **returning deleted content** until the process
+ * restarted. A curation pass had no way to see that.
+ *
+ * Addressed by (namespace, key) rather than id because that is what every caller
+ * of `deleteEntry` has. The scan is linear, which is fine — deletes are rare and
+ * searches are not, so the cost belongs here rather than in a second index.
+ *
+ * Never forces a load. When this process holds no initialized index there is
+ * nothing stale to correct, and the next load reads a DB the row is already gone
+ * from. Returns the number of entries removed.
+ */
+export function removeFromHNSWIndex(namespace: string, key: string): number {
+  const index = hnswIndex;
+  if (!index?.initialized) return 0;
+
+  const ids: string[] = [];
+  for (const [id, entry] of index.entries) {
+    if (entry.key === key && entry.namespace === namespace) ids.push(id);
+  }
+
+  for (const id of ids) {
+    index.entries.delete(id);
+    try {
+      index.db.remove?.(id);
+    } catch {
+      // A graph that refuses the removal leaves an unreachable vector, which is
+      // the pre-#1468 state and strictly better than the metadata row surviving.
+    }
+  }
+
+  return ids.length;
+}
+
+/**
  * Search HNSW index (approximate-nearest-neighbor; scales sub-linearly vs. brute-force)
  * Returns results sorted by similarity (highest first)
  */
@@ -227,15 +306,13 @@ export async function searchHNSWIndex(
   const index = await getHNSWIndex({ dimensions: queryEmbedding.length });
   if (!index) return null;
 
-  try {
-    const vector = new Float32Array(queryEmbedding);
-    const k = options?.k ?? 10;
+  const k = options?.k ?? 10;
 
-    // HNSW search returns results with cosine distance (lower = more similar)
-    const results = await index.db.search({ vector, k: k * 2 }); // Get extra for filtering
+  type Hit = { id: string; key: string; content: string; score: number; namespace: string; metadata?: string };
 
-    const filtered: Array<{ id: string; key: string; content: string; score: number; namespace: string; metadata?: string }> = [];
-
+  /** Resolve raw graph hits through the metadata map, applying the namespace filter. */
+  const collect = (results: Array<{ id: string; score: number }>): Hit[] => {
+    const hits: Hit[] = [];
     for (const result of results) {
       const entry = index.entries.get(result.id);
       if (!entry) continue;
@@ -249,7 +326,7 @@ export async function searchHNSWIndex(
       // Cosine distance: 0 = identical, 2 = opposite
       const score = 1 - (result.score / 2);
 
-      filtered.push({
+      hits.push({
         id: entry.id.substring(0, 12),
         key: entry.key || entry.id.substring(0, 15),
         content: entry.content.substring(0, 60) + (entry.content.length > 60 ? '...' : ''),
@@ -258,7 +335,36 @@ export async function searchHNSWIndex(
         metadata: entry.metadata
       });
 
-      if (filtered.length >= k) break;
+      if (hits.length >= k) break;
+    }
+    return hits;
+  };
+
+  try {
+    const vector = new Float32Array(queryEmbedding);
+
+    // HNSW search returns results with cosine distance (lower = more similar)
+    let filtered = collect(await index.db.search({ vector, k: k * 2 })); // Get extra for filtering
+
+    // #1468 — widen once when a namespace filter starved the result.
+    //
+    // The graph is one shared structure and the namespace filter runs AFTER
+    // retrieval, so a namespace holding a small share of the store routinely
+    // loses most of its `k * 2` candidates to rows in other namespaces and comes
+    // back short. That shortfall is not a signal about the store — those entries
+    // exist and a full scan would find them — and `searchEntries` reads a short
+    // result as "the index could not serve this", which would send every
+    // namespaced query on to a SQL scan that JSON.parses thousands of embeddings.
+    //
+    // `HnswLite.search` brute-forces whenever `k * 2` reaches the graph size, so
+    // passing the size guarantees complete coverage. It is a cosine pass over
+    // Float32Arrays already resident in memory — far cheaper than the SQL
+    // fallback it replaces. Skipped when the first search already covered the
+    // whole graph, since a second identical pass would add nothing.
+    const graphSize: number = await index.db.len();
+    const namespaced = Boolean(options?.namespace && options.namespace !== 'all');
+    if (namespaced && filtered.length < k && graphSize > k * 2) {
+      filtered = collect(await index.db.search({ vector, k: graphSize }));
     }
 
     // Sort by score descending (highest similarity first)
