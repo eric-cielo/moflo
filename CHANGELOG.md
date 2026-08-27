@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the local HNSW path no longer silently drops search results
+
+Three defects in the approximate-nearest-neighbor path combined into non-deterministic recall
+(#1468). All three bite when the AgentDB bridge is unavailable, which is why they went unnoticed:
+`bridgeSearchHNSW` is a brute-force cosine scan that already carried the #1201 recency-cap fix, and
+`searchHNSWIndex` tries it first.
+
+- **The metadata map was capped at 10,000 rows with no `ORDER BY`.** `getHNSWIndex` populates the
+  map every hit is resolved through; which rows survived truncation was b-tree order under
+  `idx_memory_status` — arbitrary with respect to both recency and namespace. That is #1201
+  recurring in a sibling path: `entries-read.ts` and `memory-bridge.ts` were both fixed, the HNSW
+  loader was missed. It now uses the same recency-ordered `searchCandidateCap()`.
+- **A complete graph could be paired with a truncated map.** The binary sidecar is built over every
+  embedded row with no `LIMIT`, so past the cap a sidecar-loaded index held vectors with no metadata
+  row — and `searchHNSWIndex` skips a hit it cannot resolve. On a store measured at 13,825 vectors,
+  3,825 of them consumed graph space and ANN slots while being unreturnable, taking 28% of that
+  project's `learnings` out of reach of the fast path. The loader now drops any vector the metadata
+  load did not cover, so the two structures agree.
+- **One in-index hit suppressed the complete fallback.** `searchEntries` returned early on
+  `hnswResults.length > 0`, so a query that found a single ANN hit skipped the full brute-force
+  scan while a query that found none got correct and complete results — both reporting
+  `success: true` with no way to tell them apart. The fast path is now trusted only when it filled
+  the request; short of that the scan runs and the two result sets are merged by score.
+- **The namespace filter starved the ANN.** `searchHNSWIndex` retrieves `k * 2` neighbours from one
+  shared graph and filters by namespace *afterwards*, so a namespace holding a small share of the
+  store routinely lost every candidate to rows in other namespaces and answered empty — entries that
+  plainly exist. It now widens the retrieval to cover the graph when that happens, which is a cosine
+  pass over vectors already in memory rather than the SQL scan the shortfall would otherwise trigger.
+- **`deleteEntry` maintained no index.** The store path has always called `addToHNSWIndex`; the
+  delete path had no counterpart, and no removal function existed to call — though
+  `HnswLite.remove()` did. Because `entries` is an in-process map, the consequence was worse than an
+  orphaned vector: a deleted entry's metadata outlived its row and the local HNSW path kept
+  **returning deleted content** until the process restarted. `removeFromHNSWIndex(namespace, key)`
+  now runs on every successful delete, archived durable rows included.
+
+**Consumer impact.** Search recall improves and no state migration is needed, but the in-memory
+metadata map may now hold up to 25,000 rows where it previously held 10,000 — roughly 2.5× the
+per-process footprint for that map on a store large enough to reach the old cap. Stores below
+10,000 embedded rows are unaffected. `MOFLO_SEARCH_CANDIDATE_CAP` sets the bound for both this map
+and the brute-force scan, so a memory-constrained environment can lower it. Because the daemon and
+MCP server run from `node_modules/moflo/`, this takes effect after publish + reinstall + a Claude
+Code restart.
+
+The report this came from also flagged team-artifact first-write-wins as blocking corrections and
+deletions; that was #1463 and is already fixed. No action was needed.
+
+### Fixed — `npm test` no longer exits 0 on a run vitest failed
+
+The test-runner wrapper read vitest's JSON results and ignored its exit code. That is right for
+*test* failures — vitest exits non-zero when a worker fork dies of OOM even with everything green,
+which is why the exit code alone was never trusted — but the results file cannot express every way
+a run goes wrong. An unhandled rejection escaping a test makes vitest exit 1 and print the error
+while the JSON reports `numFailedTests: 0`, `numFailedTestSuites: 0` and `success: true`. The
+wrapper announced "✓ All tests passed" and exited 0, so CI went green on a failed run.
+
+Both signals now have to agree. A non-zero exit that names no failing test is reported as its own
+outcome — a runner fault, naming which pass and its exit code — and fails the run;
+`MOFLO_TEST_TOLERATE_RUNNER_EXIT=1` downgrades it to a warning for anyone genuinely chasing the OOM
+case. Failing by default is a deliberate policy change with owner sign-off: an OOM'd fork is a real
+problem and should be visible rather than silently green. A pass whose results file could not be
+read is a fault for the same reason even when vitest exited 0 — the wrapper verified nothing, and
+that case previously read as a clean run with zero tests passed. Alongside that: the failure count
+now matches the list printed under it (it summed
+`numFailedTests + numFailedTestSuites`, and vitest counts the file *and* each enclosing `describe`
+as suites, so one failing test read "Total failed: 3"); the results file is cleared before each run
+as well as after, so a run interrupted at the terminal cannot leave stale green results for a later
+crash to be judged against; and `main()` is no longer invoked bare, so a throw outside a test — a
+malformed `vitest.config.ts`, say — surfaces as the runner's own failure.
+
+Contributors only: `scripts/` is not in the published `files` list, so no consumer ships or runs
+this.
+
 ### Fixed — memory writes refuse captured tool-call markup
 
 A `memory_store` call whose `value` arrived carrying the harness' own parameter markup — the value

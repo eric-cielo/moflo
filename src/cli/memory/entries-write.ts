@@ -18,7 +18,7 @@ import { findProjectRoot } from '../services/project-root.js';
 import { openDaemonDatabase } from './daemon-backend.js';
 import { ensureSchemaColumns } from './schema.js';
 import { generateEmbedding } from './embedding-model.js';
-import { addToHNSWIndex } from './hnsw-singleton.js';
+import { addToHNSWIndex, removeFromHNSWIndex } from './hnsw-singleton.js';
 import { getBridge } from './bridge-loader.js';
 import { tryDaemonStore, tryDaemonDelete } from './daemon-write-client.js';
 import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder, isEphemeralNamespace } from './bridge-embedder.js';
@@ -429,6 +429,15 @@ export async function deleteEntry(options: {
         key: options.key,
       });
       if (routed.routed && routed.ok) {
+        // #1468 — the row left the daemon's DB; drop it from any index THIS
+        // process holds too. Usually nothing (a CLI invocation loads no index
+        // before routing), but a long-lived client that routes its writes and
+        // still searches locally would otherwise keep serving the deleted entry.
+        // Gated on `deleted` for the same reason the bridge branch below is: a
+        // daemon can report success for a key that was already gone.
+        if (routed.deleted ?? true) {
+          removeFromHNSWIndex(options.namespace ?? 'default', options.key);
+        }
         return {
           success: true,
           deleted: routed.deleted ?? true,
@@ -460,7 +469,13 @@ export async function deleteEntry(options: {
   const bridge = await getBridge();
   if (bridge) {
     const bridgeResult = await bridge.bridgeDeleteEntry(options);
-    if (bridgeResult) return bridgeResult;
+    if (bridgeResult) {
+      // #1468 — see the note on the direct path below.
+      if (bridgeResult.deleted) {
+        removeFromHNSWIndex(options.namespace ?? 'default', options.key);
+      }
+      return bridgeResult;
+    }
   }
 
   // Fallback: direct node:sqlite write via the unified factory.
@@ -541,6 +556,14 @@ export async function deleteEntry(options: {
 
     // WAL persisted the DELETE incrementally — no whole-file dump needed.
     db.close();
+
+    // #1468 — keep the in-process index in step with the row. The store path
+    // has always called `addToHNSWIndex`; the delete path called nothing, so a
+    // deleted entry's metadata outlived it in `hnswIndex.entries` and the local
+    // HNSW path kept returning it until the process restarted. Archived rows
+    // count: the index loads `status = 'active'`, so an archived entry has to
+    // leave it exactly as a hard-deleted one does.
+    removeFromHNSWIndex(namespace, key);
 
     return {
       success: true,
