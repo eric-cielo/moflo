@@ -515,4 +515,60 @@ describe('flo memory audit-learnings (#1466)', () => {
     expect((result.data as { archived: number }).archived).toBe(0);
     expect(statusOf('stale-retire')).toBe('active');
   });
+
+  it('nominates entries citing paths that no longer resolve, and names them (#1479)', async () => {
+    // A real tree under the project root — the point of this case over the pure
+    // ones is that resolution goes through the filesystem, separator and all.
+    fs.mkdirSync(path.join(tmp, 'src', 'cli'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'src', 'cli', 'output.ts'), '', 'utf-8');
+    fs.mkdirSync(path.join(tmp, 'packages', 'api', 'src', 'routes'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'packages', 'api', 'src', 'routes', 'foo.ts'), '', 'utf-8');
+    fs.writeFileSync(
+      path.join(tmp, 'package.json'),
+      JSON.stringify({ name: 'fixture', workspaces: ['packages/*'] }),
+      'utf-8',
+    );
+
+    seed([
+      { key: 'live-keep', content: 'the writer is src/cli/output.ts', accessCount: 5, updatedAt: now },
+      // Authored from inside the workspace: correct as written, must NOT flag.
+      { key: 'workspace-keep', content: 'the handler is src/routes/foo.ts', accessCount: 5, updatedAt: now },
+      { key: 'dead-keep', content: 'the writer was src/cli/removed.ts', accessCount: 5, updatedAt: now },
+    ]);
+
+    const result = await auditLearningsCommand.action(ctx());
+    const printed = written.join('\n');
+    const data = result.data as {
+      counts: { deadPath: number };
+      deadPaths: Array<{ key: string; paths: string[] }>;
+    };
+
+    expect(printed).toContain('Dead path reference');
+    expect(data.counts.deadPath).toBe(1);
+    expect(data.deadPaths).toEqual([{ key: 'dead-keep', paths: ['src/cli/removed.ts'] }]);
+
+    // The report names the path, because a reader cannot tell a moved file from
+    // a deleted one without seeing it.
+    const log = JSON.parse(fs.readFileSync(judgeLog, 'utf-8')) as { keys: string[]; promptLength: number };
+    expect(log.keys).toEqual(['dead-keep']);
+
+    fs.rmSync(path.join(tmp, 'package.json'), { force: true });
+    fs.rmSync(path.join(tmp, 'packages'), { recursive: true, force: true });
+  });
+
+  it('--no-dead-paths skips the pass and says so, so a 0 is never mistaken for a clean tree', async () => {
+    const parser = new CommandParser();
+    parser.registerCommand(auditLearningsCommand);
+    const parsed = parser.parse(['audit-learnings', '--no-dead-paths', '--no-judge']);
+
+    expect(parsed.flags.deadPaths).toBe(false);
+    seed([{ key: 'dead-keep', content: 'the writer was src/cli/removed.ts', accessCount: 5, updatedAt: now }]);
+
+    const result = await auditLearningsCommand.action({ ...ctx(), flags: parsed.flags });
+    const data = result.data as { counts: { deadPath: number }; deadPathsScanned: boolean };
+
+    expect(data.counts.deadPath).toBe(0);
+    expect(data.deadPathsScanned).toBe(false);
+    expect(written.join('\n')).toContain('dead-path resolution skipped');
+  });
 });

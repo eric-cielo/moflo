@@ -387,3 +387,94 @@ describe('selectArchivable', () => {
     expect(selectArchivable(plan.candidates, new Map())).toEqual([]);
   });
 });
+
+describe('buildAuditPlan — dead-path bucket (#1479)', () => {
+  const resolves = (known: string[]) => (p: string) => known.includes(p);
+
+  it('nominates a citing entry and carries the unresolved paths as evidence', () => {
+    const rows = [
+      row({ key: 'cites-live', content: 'the check is in src/cli/output.ts' }),
+      row({ key: 'cites-dead', content: 'the check was in src/cli/removed.ts' }),
+    ];
+
+    const plan = buildAuditPlan(rows, {
+      now: NOW,
+      deadPaths: { resolves: resolves(['src/cli/output.ts']) },
+    });
+
+    expect(plan.counts.deadPath).toBe(1);
+    expect(plan.candidates.map((c) => c.key)).toEqual(['cites-dead']);
+    expect(plan.candidates[0].buckets).toEqual(['dead-path']);
+    expect(plan.candidates[0].deadPaths).toEqual(['src/cli/removed.ts']);
+  });
+
+  it('does not run the pass at all when no resolver is supplied', () => {
+    // A caller with no tree to resolve against — a unit test, a store audited
+    // away from its repo — must get no nominations rather than every cited path
+    // read as dead.
+    const plan = buildAuditPlan([row({ key: 'cites', content: 'see src/cli/anything.ts' })], { now: NOW });
+
+    expect(plan.counts.deadPath).toBe(0);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it('ranks an entry two passes agree on above one only the path pass flagged', () => {
+    const rows = [
+      row({ key: 'path-only', content: 'see src/cli/gone.ts', accessCount: 4, updatedAt: NOW }),
+      row({
+        key: 'path-and-unused',
+        content: 'see src/cli/also-gone.ts',
+        accessCount: 0,
+        updatedAt: NOW - 300 * DAY,
+      }),
+    ];
+
+    const plan = buildAuditPlan(rows, { now: NOW, deadPaths: { resolves: () => false } });
+
+    expect(plan.counts.deadPath).toBe(2);
+    expect(plan.counts.unused).toBe(1);
+    expect(plan.candidates.map((c) => c.key)).toEqual(['path-and-unused', 'path-only']);
+    expect(plan.candidates[0].buckets.sort()).toEqual(['dead-path', 'unused']);
+  });
+
+  it('skips entries a prior --apply already decided, like every other pass', () => {
+    const decided = new Map([
+      ['judged', { verdict: 'KEEP' as AuditVerdict, hash: 'h', at: NOW }],
+    ]);
+    const plan = buildAuditPlan(
+      [row({ key: 'judged', content: 'see src/cli/gone.ts' })],
+      { now: NOW, decided, hashContent: () => 'h', deadPaths: { resolves: () => false } },
+    );
+
+    expect(plan.alreadyDecided).toBe(1);
+    expect(plan.counts.deadPath).toBe(0);
+  });
+});
+
+describe('buildJudgePrompt — dead paths (#1479)', () => {
+  function promptFor(content: string): string {
+    const plan = buildAuditPlan([row({ key: 'cites-dead', content })], {
+      now: NOW,
+      deadPaths: { resolves: () => false },
+    });
+    return buildJudgePrompt(plan.candidates, NOW);
+  }
+
+  it('names the unresolved paths as the evidence', () => {
+    const prompt = promptFor('the guard was in src/cli/old-home/guard.ts');
+
+    expect(prompt).toContain('resolve nowhere in the tree');
+    expect(prompt).toContain('src/cli/old-home/guard.ts');
+  });
+
+  it('tells the judge the moved-file case is COMPRESS, never RETIRE on sight', () => {
+    // The whole reason this bucket nominates rather than decides: treating a
+    // dead path as a deletion throws away lessons that are still entirely true.
+    const prompt = promptFor('the guard was in src/cli/old-home/guard.ts');
+
+    expect(prompt).toContain('FOUR possible causes');
+    expect(prompt).toContain('Never read one as RETIRE on sight');
+    expect(prompt).toMatch(/The file MOVED.*COMPRESS/);
+    expect(prompt).toMatch(/historical record.*KEEP/);
+  });
+});

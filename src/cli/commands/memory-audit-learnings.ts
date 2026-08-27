@@ -12,6 +12,10 @@
  * deletion carries a tombstone the #1463 reconciler can propagate instead of
  * being silently re-imported on the next session start.
  *
+ * The dead-path pass (#1479) follows the same split: the detector is pure and
+ * takes a `resolves` predicate, and `memory/learnings-tree.ts` supplies it from
+ * a real checkout. This file only decides whether the pass runs at all.
+ *
  * Cross-platform (Rule #1): `path.join` throughout, `child_process.spawn` with
  * an argument array (no shell), `windowsHide` on the child, and no POSIX-only
  * utilities.
@@ -33,6 +37,7 @@ import { findProjectRoot } from '../services/project-root.js';
 import { hasMemoryEntriesTable } from '../services/cherry-pick-learnings.js';
 import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { hashContent } from '../memory/auto-memory-bridge.js';
+import { listWorkspacePrefixes, makeTreeResolver } from '../memory/learnings-tree.js';
 import {
   LEARNINGS_NAMESPACE,
   buildAuditPlan,
@@ -242,7 +247,7 @@ function unusedMinAgeMs(flag: unknown): number {
   return Number.isFinite(days) && days > 0 ? days * 24 * 60 * 60 * 1000 : DEFAULT_UNUSED_MIN_AGE_MS;
 }
 
-function printPlan(plan: AuditPlan): void {
+function printPlan(plan: AuditPlan, deadPathsScanned: boolean): void {
   output.writeln();
   output.writeln(output.bold('Nominations'));
   output.printTable({
@@ -254,6 +259,7 @@ function printPlan(plan: AuditPlan): void {
       { bucket: 'Near-duplicate', count: plan.counts.duplicate },
       { bucket: 'Unused and old', count: plan.counts.unused },
       { bucket: 'Superseded vocabulary', count: plan.counts.superseded },
+      { bucket: 'Dead path reference', count: plan.counts.deadPath },
       { bucket: output.bold('To judge'), count: output.bold(String(plan.candidates.length)) },
     ],
   });
@@ -274,10 +280,34 @@ function printPlan(plan: AuditPlan): void {
   if (plan.withoutEmbedding > 0) {
     notes.push(`${plan.withoutEmbedding} have no stored vector — invisible to the duplicate pass`);
   }
+  if (!deadPathsScanned) {
+    // A zero in the table has to be distinguishable from a pass that never ran.
+    notes.push('dead-path resolution skipped (--no-dead-paths) — that bucket reads 0 regardless');
+  }
   if (plan.overflow > 0) {
     notes.push(`${plan.overflow} nomination(s) over the judge limit — they resurface next run`);
   }
   output.printList(notes);
+}
+
+/**
+ * Name the unresolved paths that nominated an entry.
+ *
+ * The verdict table gets the counts; this gets the evidence, because a reader
+ * cannot tell a moved file from a deleted one without seeing the path — and
+ * that distinction is the whole difference between COMPRESS and RETIRE.
+ */
+function printDeadPaths(plan: AuditPlan): void {
+  const cited = plan.candidates.filter((c) => (c.deadPaths?.length ?? 0) > 0);
+  if (cited.length === 0) return;
+
+  output.writeln();
+  output.printInfo(
+    `${cited.length} entr${cited.length === 1 ? 'y cites a path' : 'ies cite paths'} that resolve nowhere in the tree. `
+    + 'A moved file reads exactly like a deleted one here — check `git log --diff-filter=D -- <path>` '
+    + 'before treating any of these as stale:',
+  );
+  output.printList(cited.map((c) => `${c.key} — ${(c.deadPaths ?? []).join(', ')}`));
 }
 
 function printVerdicts(
@@ -345,6 +375,15 @@ export const auditLearningsCommand: Command = {
       default: true,
     },
     {
+      // Declared positively for the same reason as `judge` above: the parser
+      // turns `--no-<x>` into `<x> = false`, so an option named `no-dead-paths`
+      // would be unreachable.
+      name: 'dead-paths',
+      description: 'Nominate entries citing paths that no longer resolve (--no-dead-paths to skip)',
+      type: 'boolean',
+      default: true,
+    },
+    {
       name: 'recheck',
       description: 'Re-examine entries that already carry a recorded verdict',
       type: 'boolean',
@@ -381,6 +420,7 @@ export const auditLearningsCommand: Command = {
   examples: [
     { command: 'flo memory audit-learnings', description: 'Dry run — nominate, judge, and report' },
     { command: 'flo memory audit-learnings --no-judge', description: 'Mechanical nominations only, no model call' },
+    { command: 'flo memory audit-learnings --no-dead-paths', description: 'Skip the path-resolution pass' },
     { command: 'flo memory audit-learnings --apply', description: 'Archive the entries judged RETIRE' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -400,6 +440,7 @@ async function runAudit(ctx: CommandContext): Promise<CommandResult> {
     const apply = ctx.flags.apply === true;
     const judge = ctx.flags.judge !== false;
     const recheck = ctx.flags.recheck === true;
+    const scanDeadPaths = ctx.flags.deadPaths !== false;
     const force = ctx.flags.force === true;
     const asJson = ctx.flags.format === 'json';
 
@@ -432,12 +473,19 @@ async function runAudit(ctx: CommandContext): Promise<CommandResult> {
       judgeLimit: toPositiveNumber(ctx.flags.judgeLimit, DEFAULT_JUDGE_LIMIT),
       decided: decidedForPlan,
       unusedMinAgeMs: unusedMinAgeMs(ctx.flags.unusedMinAgeDays),
+      // Injected rather than reached for: the detector is pure, so the tree it
+      // resolves against is this layer's to supply. Omitted under
+      // `--no-dead-paths`, which is what makes the pass not run at all.
+      deadPaths: scanDeadPaths
+        ? { resolves: makeTreeResolver(projectRoot), workspacePrefixes: listWorkspacePrefixes(projectRoot) }
+        : undefined,
       hashContent,
     });
 
     if (!asJson) {
       if (!apply) output.writeln(output.warning('DRY RUN - No changes will be made'));
-      printPlan(plan);
+      printPlan(plan, scanDeadPaths);
+      printDeadPaths(plan);
     }
 
     // Report the number sent for a verdict on every path, including the paths
@@ -480,6 +528,10 @@ async function runAudit(ctx: CommandContext): Promise<CommandResult> {
       counts: plan.counts,
       nominated: plan.candidates.length,
       overflow: plan.overflow,
+      deadPathsScanned: scanDeadPaths,
+      deadPaths: plan.candidates
+        .filter((c) => (c.deadPaths?.length ?? 0) > 0)
+        .map((c) => ({ key: c.key, paths: c.deadPaths ?? [] })),
       judged,
       judgeSkipped: !judge,
       judgeError,
