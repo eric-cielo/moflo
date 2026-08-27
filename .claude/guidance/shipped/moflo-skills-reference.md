@@ -64,6 +64,7 @@ These help build retrieval and stateful-agent layers on moflo's memory stack.
 | `/memory-optimization` | Tune the memory stack for speed/RAM/index quality (HNSW params, quantization) at scale (100k+ entries). |
 | `/vector-search` | Build a retrieval layer — RAG over your own docs, similarity matching, context assembly. |
 | `/reasoningbank-intelligence` | Add adaptive cross-run learning to agents — trajectory storage, verdict judgment, memory distillation, MMR retrieval. |
+| `/optimize-learnings` | Search keeps returning stale or duplicated learnings — audit the `learnings` namespace, decide keep/retire/compress/merge entry by entry, and propagate the result to the shared artifact. |
 
 ---
 
@@ -96,6 +97,7 @@ These help build retrieval and stateful-agent layers on moflo's memory stack.
 | "Is this change slow / can it be faster?" | `/quicken` |
 | "What isn't tested in what I changed?" | `/ward` |
 | "I just finished something worth remembering" | `/meditate` (or let auto-meditate catch it) |
+| "Memory search keeps returning stale or duplicated hits" | `/optimize-learnings` |
 | "Claude feels lost in this project" | `/eldar` |
 | "Is moflo itself healthy?" | `/healer` |
 | "Why does Claude already know where I left off?" | session-continuity (automatic) |

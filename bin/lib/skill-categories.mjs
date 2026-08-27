@@ -56,6 +56,7 @@ export const SKILL_CATEGORIES_MAP = {
     'vector-search',
     'memory-worktree',
     'memory-team',
+    'optimize-learnings',
   ],
   spells: [
     'spell-builder',
