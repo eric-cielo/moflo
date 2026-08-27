@@ -342,6 +342,20 @@ describe('#1481 flo worktree remove (AC3)', () => {
     expect(out.discardedIgnored).not.toContain('.env');
   });
 
+  it('does not misattribute a GLOB-provisioned file as unprovisioned', async () => {
+    writeConfig('project:\n  name: t\nworktree:\n  copy: ".env.*"\n');
+    writeFileSync(join(repo, '.gitignore'), 'node_modules\n.env\n.env.*\n');
+    writeFileSync(join(repo, '.env.local'), 'A=1');
+    git(['commit', '-aqm', 'ignore env globs'], repo);
+    await run(ctx(['add', 'feature/globbed'], { from: 'main', json: true }));
+
+    const result = await run(ctx(['remove', 'feature/globbed'], { json: true, force: true }));
+    expect(result.success).toBe(true);
+    // `.env.*` must match the concrete `.env.local` git reports, or provisioning
+    // gets blamed for its own file on every removal.
+    expect(lastJson<{ discardedIgnored: string[] }>().discardedIgnored).not.toContain('.env.local');
+  });
+
   it('refuses a path that is not a registered worktree of this repo', async () => {
     const stranger = join(root, 'stranger');
     mkdirSync(stranger, { recursive: true });

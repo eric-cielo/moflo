@@ -152,17 +152,10 @@ export function resolveForCompare(target: string): string {
 }
 
 /**
- * Do two paths name the same location? Realpaths both sides — the #1145 shape,
- * where an unresolved `/var/folders/...` compared against a resolved
- * `/private/var/folders/...` on macOS made two identical paths look different.
- */
-export function samePath(a: string, b: string): boolean {
-  return resolveForCompare(a) === resolveForCompare(b);
-}
-
-/**
- * Is `candidate` inside `root`? Both sides are realpath'd first, for the same
- * reason as {@link samePath}.
+ * Is `candidate` inside `root`? Both sides go through
+ * {@link resolveForCompare} first — the #1145 shape, where an unresolved
+ * `/var/folders/...` compared against a resolved `/private/var/folders/...` on
+ * macOS made two identical paths look different.
  */
 export function isInside(root: string, candidate: string): boolean {
   const resolvedRoot = resolveForCompare(root);
@@ -411,6 +404,36 @@ export function provisionWorktree(opts: {
   const provisioned = steps.every(step => step.status !== 'failed');
   writeWorktreeState(worktreePath, { branch, index, primaryRoot, provisioned });
   return { provisioned, steps };
+}
+
+/**
+ * Did `copy:`/`link:` put this worktree-relative path there?
+ *
+ * Lives here, next to {@link provisionWorktree}, because answering it needs the
+ * same glob translation provisioning used: a raw config entry is not a filename.
+ * Comparing `.env.*` literally against the `.env.local` git reports never
+ * matches, which would blame provisioning's own files on the user.
+ *
+ * Every ancestor prefix is tested, so a directory entry (glob or literal) also
+ * claims the files inside it — `git status -uall` reports those individually.
+ *
+ * @param target a path in git's spelling (forward slashes), relative to the worktree
+ */
+export function isProvisionedPath(target: string, config?: WorktreeConfig): boolean {
+  const entries = [...(config?.copy ?? []), ...(config?.link ?? [])]
+    .map(entry => entry.split(/[\\/]/).filter(Boolean).join('/'))
+    .filter(Boolean);
+  if (entries.length === 0) return false;
+
+  const segments = target.split('/').filter(Boolean);
+  for (const entry of entries) {
+    const matcher = entry.includes('*') ? globToRegExp(entry) : null;
+    for (let depth = 1; depth <= segments.length; depth++) {
+      const prefix = segments.slice(0, depth).join('/');
+      if (matcher ? matcher.test(prefix) : prefix === entry) return true;
+    }
+  }
+  return false;
 }
 
 /** Write `.moflo/worktree.json` into a worktree. Atomic — the daemon may read it. */

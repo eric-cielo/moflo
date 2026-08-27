@@ -32,9 +32,9 @@ import {
   WORKTREE_STATE_FILE_POSIX,
   computeWorktreePath,
   isInside,
+  isProvisionedPath,
   linkTypeForPlatform,
   resolveForCompare,
-  samePath,
   provisionWorktree,
   readWorktreeState,
   slugifyBranch,
@@ -153,31 +153,33 @@ describe('#1481 isInside (AC7, AC8)', () => {
   });
 });
 
-describe('#1481 samePath / resolveForCompare (AC3, AC8)', () => {
-  it('identifies two spellings of the same directory', () => {
+describe('#1481 resolveForCompare (AC3, AC8)', () => {
+  it('produces the same key for two spellings of one directory', () => {
     mkdirSync(join(root, 'a', 'b'), { recursive: true });
-    expect(samePath(join(root, 'a', 'b'), join(root, 'a', '..', 'a', 'b'))).toBe(true);
-    expect(samePath(join(root, 'a'), join(root, 'a', 'b'))).toBe(false);
+    const key = resolveForCompare(join(root, 'a', 'b'));
+    expect(resolveForCompare(join(root, 'a', '..', 'a', 'b'))).toBe(key);
+    expect(resolveForCompare(join(root, 'a'))).not.toBe(key);
   });
 
   it('sees through a symlink on both sides', () => {
     const real = join(root, 'real');
     mkdirSync(real, { recursive: true });
     symlinkSync(real, join(root, 'linked'));
-    expect(samePath(real, join(root, 'linked'))).toBe(true);
+    expect(resolveForCompare(join(root, 'linked'))).toBe(resolveForCompare(real));
   });
 
-  it('produces a stable key so a caller can resolve its needle once', () => {
-    mkdirSync(join(root, 'a'), { recursive: true });
-    const key = resolveForCompare(join(root, 'a'));
-    expect(resolveForCompare(join(root, 'a', '..', 'a'))).toBe(key);
-    // Case-folded on the platforms whose filesystems are case-insensitive, so
-    // plain string equality on the key is a correct identity test there.
+  it('case-folds exactly on the platforms with a case-insensitive filesystem', () => {
+    // This is what makes plain string equality on the key a correct identity
+    // test on win32/APFS, where `C:\\Repo` and `C:\\repo` are one directory.
+    mkdirSync(join(root, 'MixedCase'), { recursive: true });
+    const key = resolveForCompare(join(root, 'MixedCase'));
     if (process.platform === 'win32' || process.platform === 'darwin') {
       expect(key).toBe(key.toLowerCase());
+    } else {
+      expect(key).toContain('MixedCase');
     }
   });
-});
+})
 
 // ============================================================================
 // AC7 — copy
@@ -541,6 +543,46 @@ describe('#1481 moflo.yaml worktree block (AC4, AC5)', () => {
   it('drops non-string entries from copy/link', () => {
     writeConfig('project:\n  name: t\nworktree:\n  copy: [".env", 42, null]\n');
     expect(loadMofloConfig(root).worktree).toEqual({ copy: ['.env'] });
+  });
+});
+
+// ============================================================================
+// AC3 — attributing a worktree path back to provisioning
+// ============================================================================
+
+describe('#1481 isProvisionedPath (AC3)', () => {
+  it('matches a GLOB copy entry against the concrete filename git reports', () => {
+    // The bug this exists to prevent: comparing `.env.*` literally against
+    // `.env.local` never matches, so `remove` blamed provisioning's own files
+    // on the user on every single removal.
+    const config = { copy: ['.env.*'] };
+    expect(isProvisionedPath('.env.local', config)).toBe(true);
+    expect(isProvisionedPath('.env.test', config)).toBe(true);
+    expect(isProvisionedPath('scratch.txt', config)).toBe(false);
+  });
+
+  it('matches literal file and directory entries', () => {
+    const config = { copy: ['.env'], link: ['node_modules'] };
+    expect(isProvisionedPath('.env', config)).toBe(true);
+    expect(isProvisionedPath('node_modules', config)).toBe(true);
+    // `git status -uall` reports a directory's files individually.
+    expect(isProvisionedPath('node_modules/pkg/index.js', config)).toBe(true);
+    expect(isProvisionedPath('node_modules-backup', config)).toBe(false);
+  });
+
+  it('claims the contents of a directory a glob entry matched', () => {
+    expect(isProvisionedPath('cfgs/a.json', { copy: ['cfg*'] })).toBe(true);
+    expect(isProvisionedPath('other/a.json', { copy: ['cfg*'] })).toBe(false);
+  });
+
+  it('matches a nested entry written with either separator', () => {
+    expect(isProvisionedPath('config/local.json', { copy: ['config/local.json'] })).toBe(true);
+    expect(isProvisionedPath('config/local.json', { copy: ['config\\local.json'] })).toBe(true);
+  });
+
+  it('claims nothing when no block is configured', () => {
+    expect(isProvisionedPath('.env', undefined)).toBe(false);
+    expect(isProvisionedPath('.env', {})).toBe(false);
   });
 });
 

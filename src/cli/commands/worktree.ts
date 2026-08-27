@@ -26,6 +26,7 @@ import {
   allocateIndex,
   computeWorktreePath,
   isInside,
+  isProvisionedPath,
   resolveForCompare,
   provisionWorktree,
   readWorktreeState,
@@ -338,15 +339,12 @@ function userChanges(porcelain: string): string[] {
 function unprovisionedIgnoredPaths(worktreePath: string, config?: WorktreeConfig): string[] {
   const status = git(['status', '--porcelain', '--ignored=matching', '-uall'], worktreePath);
   if (!status.ok) return [];
-  const provisioned = [...(config?.copy ?? []), ...(config?.link ?? [])].map(entry =>
-    entry.split(/[\\/]/).filter(Boolean).join('/'),
-  );
   return status.stdout
     .split(/\r?\n/)
     .filter(line => line.startsWith('!! '))
     .map(line => line.slice(3).trim().replace(/^"|"$/g, ''))
     .filter(target => target !== WORKTREE_STATE_FILE_POSIX)
-    .filter(target => !provisioned.some(p => target === p || target.startsWith(`${p}/`)));
+    .filter(target => !isProvisionedPath(target, config));
 }
 
 async function cmdRemove(ctx: CommandContext): Promise<CommandResult> {
