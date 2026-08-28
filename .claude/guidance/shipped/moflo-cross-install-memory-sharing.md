@@ -138,3 +138,4 @@ A foreign-writer warning from the Writers Audit check (`flo doctor -c writers`) 
 - `.claude/guidance/moflo-memory-strategy.md` — Namespaces, RAG indexing, and the durable-vs-derived split this doc builds on
 - `.claude/guidance/moflo-memory-protocol.md` — Search-and-traverse protocol for the shared `learnings` once it is populated
 - `.claude/guidance/moflo-core-guidance.md` — CLI, daemon, and `moflo.yaml` reference (the `memory` config block)
+- `.claude/guidance/moflo-cli-reference.md` — `flo worktree`, which provisions a new worktree's gitignored files, `node_modules`, and per-workspace port index (memory sharing needs no setup; the rest of the workspace does)
