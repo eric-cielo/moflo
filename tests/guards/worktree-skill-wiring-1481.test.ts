@@ -29,16 +29,47 @@ describe('#1481 /flo -wt drives the worktree command', () => {
     expect(text).toMatch(/flo worktree add/);
   });
 
-  it('carries no raw `git worktree add -b` recipe', () => {
-    // The command owns branch creation now; a raw recipe here bypasses
-    // provisioning and the tested path computation.
-    expect(text).not.toMatch(/git worktree add\s+-b/);
+  it('reaches for the command BEFORE any raw git recipe', () => {
+    // The command owns branch creation. A raw `git worktree add -b` is allowed
+    // only as the documented fallback for a `flo` older than these skills — so
+    // what matters is ordering: the command must be the primary path.
+    const command = text.indexOf('flo worktree add');
+    const raw = text.search(/git worktree add\s+-b/);
+    expect(command).toBeGreaterThan(-1);
+    if (raw !== -1) expect(command).toBeLessThan(raw);
   });
 
-  it('computes no worktree path inline', () => {
-    // The `-worktrees` sibling-directory convention lives in
-    // computeWorktreePath(); a second copy in markdown will drift from it.
-    expect(text).not.toMatch(/node -e[^\n]*worktrees/);
+  it('confines any raw recipe to the fallback section', () => {
+    const raw = text.search(/git worktree add\s+-b/);
+    if (raw === -1) return;
+    const fallback = text.indexOf('**Fallback');
+    // A raw recipe outside the fallback is the regression this guards: it
+    // bypasses provisioning and the tested path computation silently.
+    expect(fallback).toBeGreaterThan(-1);
+    expect(raw).toBeGreaterThan(fallback);
+  });
+
+  it('tells the agent the fallback leaves the tree unprovisioned', () => {
+    // Without this the agent silently continues into a run whose tests fail for
+    // want of node_modules, with no idea why.
+    expect(text).toMatch(/Unknown command: worktree/);
+    expect(text).toMatch(/no `node_modules`/);
+  });
+
+  it('binds the repo root to the worktree call itself', () => {
+    // `flo worktree` resolves the repo from cwd. Run from the wrong directory
+    // it targets a different repository entirely — and the cwd reset makes that
+    // the DEFAULT outcome in Claude Code, not an edge case.
+    expect(text).toMatch(/cd "<repo-root>" && flo worktree add/);
+  });
+
+  it('warns that a bare cd does not persist between Bash calls', () => {
+    // Claude Code resets the Bash cwd to the project root after every call, so
+    // `cd <path>` then `npm test` runs in the PRIMARY checkout and the run looks
+    // green while producing an empty PR. The skill must bind the directory to
+    // each command instead.
+    expect(text).toMatch(/bare `cd` does not stick/i);
+    expect(text).toMatch(/git -C/);
   });
 
   it('documents `flo worktree remove` as the cleanup path', () => {

@@ -349,6 +349,89 @@ Inside Claude Code, the `/flo` (or `/fl`) slash command drives GitHub issue exec
 
 Flags compose: e.g. `/flo -sd -m <issue>` runs the SDD cycle and auto-merges. Each modifier has a `--no-*` form (`--no-sdd`, `--no-verify`, `--no-merge`) to override a `moflo.yaml` default for a single run — including `--no-verify`, since verify-before-done is on by default. For full options and details, type `/flo` with no arguments — Claude Code will display the complete skill documentation. Also available as `/fl`.
 
+### Provisioned worktrees (`-w` / `flo worktree`)
+
+Running two tickets at once means two worktrees, and a bare `git worktree add` gives you a valid
+checkout that you cannot actually run: no `node_modules`, none of your gitignored `.env` files, and
+dev servers that fight the primary checkout over the same ports. `/flo -w` drives `flo worktree add`,
+which creates the worktree **and** provisions it.
+
+Provisioning is opt-in per project. **With no `worktree:` block in `moflo.yaml`, `flo worktree add`
+creates the worktree and provisions nothing** — exactly what a plain `git worktree add` would do.
+
+```yaml
+worktree:
+  dir: ../myrepo-worktrees   # default: <repo-parent>/<repo>-worktrees
+  copy: [".env", ".env.*"]   # gitignored files copied from the primary checkout
+  link: ["node_modules"]     # symlinked (junctioned on Windows) from the primary checkout
+  setup: "npm ci"            # run inside the new worktree after copy/link
+```
+
+| Key | Reach for it when | Watch out for |
+|-----|-------------------|---------------|
+| `copy` | A fresh checkout is missing gitignored config your build needs | It relocates **secrets** outside the repo, and outside its `.gitignore`. Sources must live inside the primary checkout — `../secrets` is refused. |
+| `link` | `node_modules` is large and you are not using npm workspaces | A symlinked root `node_modules` is fragile under npm/yarn workspaces — prefer `setup: npm ci` there. An existing path is never clobbered. |
+| `setup` | Install or build steps must run per workspace | A non-zero exit marks the provision failed but leaves the worktree in place. |
+
+**Ports.** MoFlo cannot rewrite your hardcoded ports — it has no way to know which files hold them.
+Instead each worktree gets a small integer, unique among live worktrees and reused when one is
+removed, exported to the `setup` command as `MOFLO_WORKTREE_INDEX`. Offset your own ports from it:
+
+```yaml
+worktree:
+  setup: "npm ci && node -e \"require('fs').writeFileSync('.env.local','PORT='+(3000+Number(process.env.MOFLO_WORKTREE_INDEX)*20))\""
+```
+
+`flo worktree remove` refuses a tree with uncommitted changes unless you pass `--force`, and names
+any gitignored files it discarded that provisioning did not create. MoFlo's own
+`.moflo/worktree.json` never counts as "uncommitted work" — otherwise every worktree it created
+would demand `--force` — but un-pushed specs under `.moflo/specs/` do.
+
+Memory needs no setup at all: durable learnings already converge across a repo's worktrees
+automatically — see [Sharing learnings across installations](#sharing-learnings-across-installations).
+
+#### Running it inside a Claude session
+
+`flo worktree` is a plain CLI command with no MCP wrapper, so it works the same whether you type it
+in a terminal or Claude runs it through Bash. `/flo -w` takes the second path — that is all the flag
+does.
+
+One thing to know if you drive it yourself from a session, and the reason `/flo -w` handles it for
+you: **Claude Code resets the Bash working directory to the project root after every call.** Two
+consequences, both silent when you get them wrong:
+
+```bash
+# ✗ the cd is gone by the next call — this resolves the WRONG repo
+cd path/to/repo
+flo worktree add feature/42-thing --json
+
+# ✓ bind the directory to the call
+cd path/to/repo && flo worktree add feature/42-thing --json
+```
+
+```bash
+# ✗ runs the tests in the PRIMARY checkout; the run goes green and the PR is empty
+cd "$WORKTREE"
+npm test
+
+# ✓ bind it, or skip cd entirely where the tool supports it
+cd "$WORKTREE" && npm test
+git -C "$WORKTREE" status
+```
+
+`flo worktree` resolves the repository from its working directory, so a call made from the wrong
+place targets a different repository — usually reported as `Not a registered worktree of this repo`,
+occasionally as work landing somewhere you did not intend. When editing files in the worktree, use
+absolute paths under the path `add` printed rather than repo-relative ones.
+
+Read the worktree location from `--json` rather than reconstructing it; the sibling-directory
+convention lives in one tested function, and a second copy of that rule will drift from it.
+
+If you are on a `flo` older than the skills synced into `.claude/` — which happens in a MoFlo source
+checkout before a change is published, or when a global `flo` lags the project's devDependency —
+the command reports `Unknown command: worktree`. `/flo -w` falls back to a plain `git worktree add`
+and tells you provisioning was skipped, rather than failing the run.
+
 ### Spec-Driven Development (SDD)
 
 `/flo` can run the full **spec → plan → (review) → implement → verify** cycle — the 2026 agentic-coding pattern — with two independent modifiers. Turning SDD on is opt-in, but once a run is armed for it (via `-sd` or `sdd.default`) **both halves are enforced**: the front half by an implement gate, the back half by verify-before-done.
@@ -635,6 +718,17 @@ flo gate check-before-scan       # Blocks Glob/Grep if memory not searched
 flo gate check-before-agent      # Blocks Agent tool if no TaskCreate
 flo gate prompt-reminder         # Context bracket tracking
 flo gate session-reset           # Reset gate state
+```
+
+### Worktrees
+
+```bash
+flo worktree add feature/123-thing   # Create a worktree and provision it (alias: flo wt)
+flo worktree add feature/123 --json  # {"path":…,"branch":…,"index":0,"provisioned":true}
+flo worktree add feature/123 --from v2.1.0    # Branch off a specific ref
+flo worktree add feature/123 --no-provision   # Create it, skip copy/link/setup
+flo worktree list                    # Every worktree and its provisioning state
+flo worktree remove feature/123-thing         # Refuses a dirty tree unless --force
 ```
 
 ### Diagnostics

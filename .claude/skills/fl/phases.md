@@ -114,8 +114,13 @@ otherwise a valid checkout and an unrunnable workspace. Do not hand-roll the pat
 platform-sensitive (Rule #1) and live in tested code.
 
 ```bash
-flo worktree add "<type>/<issue-number>-<short-desc>" --json
+cd "<repo-root>" && flo worktree add "<type>/<issue-number>-<short-desc>" --json
 ```
+
+Bind the repo root to the call. `flo worktree` resolves the repo from its working directory, and in
+Claude Code that resets between calls — run it from the wrong place and it silently targets a
+different repository (`Not a registered worktree of this repo` on the good day, the wrong repo's
+worktree on the bad one).
 
 It prints one JSON object — read `path` from it:
 
@@ -123,8 +128,32 @@ It prints one JSON object — read `path` from it:
 {"path":"/abs/path/to/repo-worktrees/type-123-slug","branch":"type/123-slug","index":0,"provisioned":true}
 ```
 
-Then `cd` to that `path` and run **every** remaining phase (implement → tests → simplify → commit →
-PR) from there. Report the worktree path to the user.
+Then run **every** remaining phase (implement → tests → simplify → commit → PR) against that
+`path`, and report it to the user.
+
+**A bare `cd` does not stick.** In Claude Code the Bash working directory resets to the project root
+after each call, so `cd <path>` in one call and `npm test` in the next runs the test in the WRONG
+tree — the primary checkout — and everything looks fine until the PR contains no changes. Bind the
+directory to each command instead:
+
+- shell commands — put the `cd` in the *same* call: `cd "<path>" && npm test`
+- git — prefer `git -C "<path>" status` over cd'ing at all
+- file edits — use the absolute path under `<path>`; never a repo-relative one
+
+**Fallback — `flo worktree` not available.** The command ships in the same package as this skill,
+so normally they move together. They can still drift apart: a `flo` binary on PATH older than the
+synced `.claude/skills/`, or a moflo source checkout whose change has not been published and
+reinstalled yet. If the command errors with `Unknown command: worktree`, do NOT stop — create the
+worktree the plain way and continue the run, noting to the user that provisioning was skipped:
+
+```bash
+git fetch origin
+node -e "const p=require('path'),cp=require('child_process');const root=cp.execSync('git rev-parse --show-toplevel').toString().trim();const branch=process.argv[1];const dir=p.join(p.dirname(root),p.basename(root)+'-worktrees',branch.replace(/[\\/]/g,'-'));console.log(dir)" "<type>/<issue-number>-<short-desc>"
+git worktree add -b "<type>/<issue-number>-<short-desc>" "<computed-path>" origin/main
+```
+
+The tree is then a valid checkout with no `node_modules` and no gitignored `.env` files — fine for a
+typecheck-only ticket, and not for one that runs the app.
 
 Notes:
 - `--from <ref>` overrides the base ref (default: the repo's default branch via `origin/HEAD`).
