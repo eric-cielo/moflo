@@ -2342,6 +2342,25 @@ describe('end-to-end: spell lifecycle', () => {
         'mvn test',
         'gradle test',
         './gradlew test',
+        // #1484 — monorepo invocations put workspace selection BETWEEN the
+        // package manager and the script name, which the old `<pm> [run] test`
+        // shape had no slot for. A green suite earned no credit and
+        // check-before-pr hard-blocked `gh pr create` with no way out.
+        'npm run --prefix packages/api test',
+        'npm --prefix packages/api test',
+        'npm run --workspace=packages/api test',
+        'npm -w packages/api test',
+        'yarn workspace @acme/api test',
+        'pnpm --filter @acme/api test',
+        'pnpm -r test',
+        'pnpm --filter ./packages/* test',
+        'turbo run test',
+        'lerna run test',
+        'nx run-many -t test',
+        // Windows form. A positive path class such as [-\w=/.:@] passes on
+        // POSIX and silently misses this; the class must be separator-negated
+        // (Rule #1).
+        'npm run --prefix C:\\repo\\packages\\api test',
       ].forEach(expectTestsRecognised);
     });
 
@@ -2361,6 +2380,25 @@ describe('end-to-end: spell lifecycle', () => {
         'git commit -m "add jest config"',
         'echo "running pytest"',
         'cat package.json | grep jest',
+        // #1484 — the selector-token widening credits the gate, so each of
+        // these is a way it could fail OPEN. Shell separators bound the run:
+        'npm run build && rm -rf test',
+        'npm run build; cat testdata',
+        'npm run build | grep test',
+        // Claude Code runs multi-line Bash blocks as ONE string, so a newline
+        // must not bridge into the unrelated Unix `test` builtin.
+        'npm run build\ntest -f dist/index.js && echo ok',
+        'npm run build\ngrep -c test file.log',
+        'npm install\nt',
+        // A trailing shell comment must not supply the keyword.
+        'npm run build # need to fix test later',
+        // The bare `t` alias is reachable only directly after the package
+        // manager, never after selector tokens.
+        'npm run build --env t',
+        // The script name keeps its [:\s]|$ terminator.
+        'npm run lint -- --fix test/',
+        'npm view moflo dist-tags.test',
+        'npm install @scope/test',
       ].forEach(expectTestsNotRecognised);
     });
 

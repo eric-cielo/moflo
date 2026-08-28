@@ -920,10 +920,39 @@ function applyPromptStateReset(state, promptText, opts) {
   state.sddMode = detectSddMode(promptText);
   state.activeSddSlug = null;
 }
-// Match npm/yarn/pnpm/bun test, npx vitest|jest|..., bare runners at command-start only,
-// and language-native test commands. The bare-runner arm is anchored so that
-// `npm install jest`, `grep -r vitest src/`, and similar don't false-positive.
-var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:test|t)(?:[:\s]|$)|\b(?:npx|pnpx)\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\b|(?:^|;|&&|\|\|)\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\s|\b(?:cargo|go|deno|dotnet|mvn)\s+test\b|\bgradle\w*\s+test\b/i;
+// Match npm/yarn/pnpm/bun/turbo/nx/lerna test, npx vitest|jest|..., bare runners
+// at command-start only, and language-native test commands. The bare-runner arm
+// is anchored so that `npm install jest`, `grep -r vitest src/`, and similar
+// don't false-positive.
+//
+// #1484 — the package-manager arm allows a BOUNDED run of selector tokens
+// between the tool and the script name. Every monorepo invocation puts the
+// workspace selection there (`npm run --prefix packages/api test`,
+// `pnpm --filter @acme/api test`, `yarn workspace @acme/api test`), and the old
+// `<pm> [run] test` shape had no slot for it — so a green suite earned no
+// credit and check-before-pr hard-blocked `gh pr create` with no way out.
+//
+// This arm credits the gate, so every way it can over-match is a way the gate
+// fails OPEN. Four properties bound it, and each is pinned by a test:
+//   * separators are HORIZONTAL-only (`[ \t]`, not `\s`). Claude Code runs
+//     multi-line Bash blocks as one string, so a `\s` separator would let
+//     `npm run build\ntest -f dist/x` bridge a newline into the unrelated Unix
+//     `test` builtin and credit a suite that never ran.
+//   * the token class excludes shell separators (; & | < > ( ) $ `) so a match
+//     can never span `npm run build && rm -rf test`, and excludes `#` so a
+//     trailing comment (`npm run build # fix test later`) can't supply the
+//     keyword.
+//   * the class is NEGATED rather than a positive path class. `[-\w=/.:@]`
+//     would pass on POSIX and silently keep missing Windows' `--prefix
+//     C:\repo\pkg` form (Rule #1).
+//   * the `t` alias keeps its own NARROW arm below — reachable only directly
+//     after the package manager, never after selector tokens, so a stray bare
+//     `t` argument (`npm run build --env t`) can't credit the gate.
+// The script name keeps its `(?:[:\s]|$)` terminator, so `test-utils`, `test/`
+// and `dist-tags.test` still don't match. The repetition is bounded at 8 and its
+// character classes are disjoint from the separator, so there is no backtracking
+// blowup (27k-char pathological input: 0 ms).
+var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun|turbo|nx|lerna)[ \t]+(?:[^\s;&|<>()$`#]+[ \t]+){0,8}test(?:[:\s]|$)|(?:^|[^a-z])(?:npm|yarn|pnpm|bun)[ \t]+(?:run[ \t]+)?t(?:[:\s]|$)|\b(?:npx|pnpx)\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\b|(?:^|;|&&|\|\|)\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\s|\b(?:cargo|go|deno|dotnet|mvn)\s+test\b|\bgradle\w*\s+test\b/i;
 // #1322 — failure markers in a test runner's own OUTPUT.
 //
 // This is deliberately not an exit-code check: Claude Code's PostToolUse payload
