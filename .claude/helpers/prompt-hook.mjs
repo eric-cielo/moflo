@@ -32,6 +32,16 @@ if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
   env.HOOK_SESSION_ID = hookContext.session_id;
 }
 
+// #1487 — forward the transcript path so `prompt-reminder` can report REAL
+// context usage instead of a turn counter. Claude Code writes per-turn token
+// usage into this file, and it is the only place a UserPromptSubmit hook can
+// read it: the payload carries no usage field of its own. Absent or non-string
+// (an older host, a test harness) simply leaves the var unset, and gate.cjs
+// falls back to the turn count.
+if (typeof hookContext.transcript_path === 'string' && hookContext.transcript_path) {
+  env.HOOK_TRANSCRIPT_PATH = hookContext.transcript_path;
+}
+
 // Run prompt-reminder via gate.cjs
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');

@@ -38,7 +38,8 @@ code_map:
 gates:
   memory_first: true              # Block Glob/Grep/Read until memory is searched
   task_create_first: true         # Advisory reminder before Agent tool (not blocking)
-  context_tracking: true          # Track context bracket (FRESH/MODERATE/DEPLETED/CRITICAL)
+  context_tracking: true          # Report measured context usage, once per band crossing
+  # context_limit: 200k           # Optional window size (200000 / 200k / 1m); unset = raw token counts
 
 # Auto-index on session start
 auto_index:
@@ -230,7 +231,8 @@ skills:
 | `session_continuity.inject: false` | Keep capturing digests but never auto-inject them at session start |
 | `gates.memory_first: true` | Block Glob/Grep/Read until memory is searched first |
 | `gates.task_create_first: true` | Advisory reminder before Agent tool (not blocking) |
-| `gates.context_tracking: true` | Show FRESH/MODERATE/DEPLETED/CRITICAL context bracket |
+| `gates.context_tracking: true` | Report measured context usage, once per band crossing |
+| `gates.context_limit: 200k` | Your model's context window, so the notice quotes a percentage. Unset by default — a hook cannot observe the window, and moflo will not guess one |
 | `hooks.pre_edit: false` | Disable file-edit tracking (skips pre-edit hook) |
 | `hooks.post_edit: false` | Disable edit outcome recording and neural training |
 | `hooks.pre_task: false` | Disable agent routing recommendations before spawn |

@@ -1203,28 +1203,160 @@ describe('gate.cjs: prompt-reminder', () => {
     expect(readState(tmpDir).interactionCount).toBe(6);
   });
 
-  it('shows context warning at >10 interactions', () => {
-    writeState(tmpDir, { interactionCount: 11 });
+  // ── Context tracking (#1487) ───────────────────────────────────────────────
+  //
+  // The banner used to be `interactionCount > 30` → "Context: CRITICAL. Commit,
+  // store learnings, suggest new session.", level-triggered, with no reset
+  // anywhere — not on compaction, which is the one event that falsifies it. Past
+  // 30 prompts it fired every turn for the life of the session state while real
+  // usage sat near 12%, and because it read as an instruction the model obeyed:
+  // truncated investigations, partial hand-backs, "start a fresh session" over a
+  // nearly empty window. These pin all four properties of the fix: measured, not
+  // guessed; edge-triggered; observation-shaped; and re-armed when usage falls.
+
+  /** One transcript line in the shape Claude Code writes. */
+  function transcriptLine(over: Record<string, unknown> = {}): string {
+    return JSON.stringify({
+      type: 'assistant',
+      message: {
+        model: 'claude-opus-5',
+        usage: { input_tokens: 1_000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 40 },
+      },
+      ...over,
+    });
+  }
+
+  /** Write a transcript into the fixture and point the env at it. */
+  function stageTranscript(env: Record<string, string>, lines: string[]): void {
+    const file = join(tmpDir, 'transcript.jsonl');
+    writeFileSync(file, lines.join('\n') + '\n');
+    env.HOOK_TRANSCRIPT_PATH = file;
+  }
+
+  it('reports measured token usage, not a turn count, when the transcript has it', () => {
+    writeState(tmpDir, { interactionCount: 1 });
     const env = baseEnv(tmpDir);
     env.CLAUDE_USER_PROMPT = 'implement the feature';
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 20_000, cache_read_input_tokens: 100_000 } },
+    })]);
+
     const r = runGate('prompt-reminder', env);
-    expect(r.stdout).toContain('MODERATE');
+    expect(r.stdout).toContain('Context: 120k tokens in the window.');
   });
 
-  it('shows depleted warning at >20 interactions', () => {
-    writeState(tmpDir, { interactionCount: 21 });
+  it('claims no percentage when the window size is not configured', () => {
     const env = baseEnv(tmpDir);
     env.CLAUDE_USER_PROMPT = 'implement the feature';
+    // The trap this test exists to hold shut: Claude Code's transcript records
+    // `claude-opus-5` for a 1M-context session and a 200k one alike, so 120k is
+    // either 60% or 12% and nothing here can tell which. Quoting either is
+    // #1487's failure re-created with better arithmetic.
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 20_000, cache_read_input_tokens: 100_000 } },
+    })]);
+
     const r = runGate('prompt-reminder', env);
-    expect(r.stdout).toContain('DEPLETED');
+    expect(r.stdout).toContain('Context: 120k tokens');
+    expect(r.stdout, 'a percentage requires a denominator moflo cannot see').not.toContain('%');
   });
 
-  it('shows critical warning at >30 interactions', () => {
-    writeState(tmpDir, { interactionCount: 31 });
+  it('quotes a percentage once the operator states the window', () => {
+    writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  context_limit: 200k\n');
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 20_000, cache_read_input_tokens: 100_000 } },
+    })]);
+
+    expect(runGate('prompt-reminder', env).stdout).toContain('Context: 60% used (120k of 200k tokens)');
+  });
+
+  it('MOFLO_CONTEXT_LIMIT overrides the configured window', () => {
+    writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  context_limit: 200k\n');
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    env.MOFLO_CONTEXT_LIMIT = '1000000';
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 20_000, cache_read_input_tokens: 100_000 } },
+    })]);
+
+    // 12% of a 1M window — below the first band, so nothing is announced at all.
+    expect(runGate('prompt-reminder', env).stdout).not.toContain('Context:');
+  });
+
+  it('ignores subagent turns — a sidechain window is not the main loop\'s', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    stageTranscript(env, [
+      transcriptLine({ message: { model: 'claude-opus-5', usage: { input_tokens: 180_000 } } }),
+      // Newest entry, but a freshly-spawned subagent's tiny context.
+      transcriptLine({ isSidechain: true, message: { model: 'claude-opus-5', usage: { input_tokens: 3_000 } } }),
+    ]);
+
+    const r = runGate('prompt-reminder', env);
+    expect(r.stdout).toContain('Context: 180k tokens in the window.');
+  });
+
+  it('emits once on crossing a band, then stays silent while the band holds', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 160_000 } },
+    })]);
+
+    expect(runGate('prompt-reminder', env).stdout).toContain('Context: 160k tokens');
+    expect(readState(tmpDir).contextBand).toBe('tokens:100000');
+    expect(
+      runGate('prompt-reminder', env).stdout,
+      'A banner repeated verbatim every turn carries no new information and ' +
+        'reads as a standing instruction — that is the whole of #1487.',
+    ).not.toContain('Context:');
+  });
+
+  it('re-arms when usage falls, so a genuine re-crossing is announced again', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 160_000 } },
+    })]);
+    runGate('prompt-reminder', env);
+
+    // What a compaction looks like from here: the same transcript grows a turn
+    // whose context is a fraction of the last one's. This is the reported bug's
+    // core — the old counter could not fall, so the banner never stopped.
+    stageTranscript(env, [
+      transcriptLine({ message: { model: 'claude-opus-5', usage: { input_tokens: 160_000 } } }),
+      transcriptLine({ message: { model: 'claude-opus-5', usage: { input_tokens: 24_000 } } }),
+    ]);
+    expect(runGate('prompt-reminder', env).stdout).not.toContain('Context:');
+    expect(readState(tmpDir).contextBand).toBe('FRESH');
+
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 160_000 } },
+    })]);
+    expect(runGate('prompt-reminder', env).stdout).toContain('Context: 160k tokens');
+  });
+
+  it('falls back to the turn count, and says so, when no transcript is available', () => {
+    writeState(tmpDir, { interactionCount: 30 });
     const env = baseEnv(tmpDir);
     env.CLAUDE_USER_PROMPT = 'implement the feature';
     const r = runGate('prompt-reminder', env);
-    expect(r.stdout).toContain('CRITICAL');
+    expect(r.stdout).toContain('Context: 31 turns since session start');
+    expect(
+      r.stdout,
+      'The fallback must read as an observation. Instruction-shaped text the ' +
+        'model cannot verify gets obeyed even when it is wrong.',
+    ).toContain('not a measurement');
+  });
+
+  it('falls back to the turn count when the transcript is unreadable', () => {
+    writeState(tmpDir, { interactionCount: 30 });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    env.HOOK_TRANSCRIPT_PATH = join(tmpDir, 'does-not-exist.jsonl');
+    expect(runGate('prompt-reminder', env).stdout).toContain('Context: 31 turns since session start');
   });
 
   it('long non-task prompts require memory (>20 chars)', () => {
@@ -1357,7 +1489,7 @@ describe('gate.cjs: moflo.yaml config', () => {
     const env = baseEnv(tmpDir);
     env.CLAUDE_USER_PROMPT = 'implement the feature';
     const r = runGate('prompt-reminder', env);
-    expect(r.stdout).not.toContain('CRITICAL');
+    expect(r.stdout).not.toContain('Context:');
   });
 });
 

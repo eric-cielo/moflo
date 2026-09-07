@@ -84,6 +84,7 @@ function stageMidRunState(): Record<string, unknown> {
     verifyOutcome: 'pass',
     verifyFingerprint: 'abc123',
     interactionCount: 12,
+    contextBand: 'DEPLETED',
     sessionStart: '2026-01-01T00:00:00.000Z',
     lastBlockedAt: null,
     lastNamespaceHint: '',
@@ -150,11 +151,15 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
     runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
 
     const after = readStateFile();
-    // Everything except the memory credit survives — the work it describes still
-    // stands after a compaction (tests ran, /verify passed, the diff is unchanged).
-    const memoryKeys = new Set(['memorySearched', 'memorySearchedBy', 'memoryRequired']);
+    // Everything except the memory credit and the context-tracking fields
+    // survives — the work those describe still stands after a compaction (tests
+    // ran, /verify passed, the diff is unchanged).
+    const resetKeys = new Set([
+      'memorySearched', 'memorySearchedBy', 'memoryRequired',
+      'interactionCount', 'contextBand', // #1487
+    ]);
     for (const [key, value] of Object.entries(staged)) {
-      if (memoryKeys.has(key)) continue;
+      if (resetKeys.has(key)) continue;
       expect(
         after[key],
         `SessionStart:compact dropped "${key}". A compaction continues the SAME run — ` +
@@ -179,6 +184,30 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
     // deliberately independent of prompt text, because AUTO compaction happens
     // with no prompt submitted at all.
     expect(after.memoryRequired).toBe(true);
+  });
+
+  // #1487 — the counter behind the "Context: CRITICAL. Commit, store learnings,
+  // suggest new session." banner had no reset ANYWHERE, so past 30 prompts it
+  // fired every turn for the life of the session state and a compaction — the
+  // one event that makes it obsolete — did not clear it. The banner is now
+  // driven by measured token usage, but the turn counter remains as the fallback
+  // for a host that sends no transcript, and it has to be reset here for the
+  // same reason the memory credit is.
+  it('clears the context turn counter and band on SessionStart source="compact"', () => {
+    stageMidRunState(); // interactionCount: 12, contextBand: 'DEPLETED'
+    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
+
+    const after = readStateFile();
+    expect(
+      after.interactionCount,
+      'The turn counter survived a compaction, so the fallback context banner ' +
+        'keeps reporting a window that no longer exists (#1487).',
+    ).toBe(0);
+    expect(
+      after.contextBand,
+      'The edge-trigger memo survived a compaction, so the next genuine ' +
+        'crossing would be swallowed as "already announced" (#1487).',
+    ).toBeNull();
   });
 
   it('re-arms the memory gate after a compaction that followed a disarming prompt', () => {
@@ -226,7 +255,7 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
     );
 
     expect(readFileSync(join(fixture, STATE_REL), 'utf-8')).toBe('{ this is not json');
-    expect(stderr).toContain('re-arm the memory gate');
+    expect(stderr).toContain('reset gate state after compaction');
 
     // The fallback that makes leaving it alone safe — assert it rather than
     // assume it, since this branch's correctness rests on it.
