@@ -94,7 +94,13 @@ function loadGateConfig() {
     // Optional and OFF by default (#1487). Only an explicit value lets the
     // context notice quote a percentage — see contextLimit() for why nothing
     // infers one.
-    var climit = /context_limit:\s*['"]?([0-9.]+\s*[km]?)['"]?/i.exec(content);
+    // Anchored to the start of a line, unlike the boolean keys above, because
+    // this one is DOCUMENTED as a commented-out example (`# context_limit: 200k`
+    // in the README and the yaml reference). An unanchored match would read that
+    // comment as configuration the moment anyone pasted the block, quietly
+    // pinning a 200k denominator onto a 1M session — this issue's exact failure,
+    // redelivered through the docs.
+    var climit = /^[ \t]*context_limit:\s*['"]?([0-9.]+\s*[km]?)['"]?/im.exec(content);
     if (climit) defaults.context_limit = parseTokenCount(climit[1]);
     if (/testing_gate:\s*false/i.test(content)) defaults.testing_gate = false;
     if (/simplify_gate:\s*false/i.test(content)) defaults.simplify_gate = false;

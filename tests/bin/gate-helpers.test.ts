@@ -1471,6 +1471,21 @@ describe('gate.cjs: prompt-reminder', () => {
     else expect(out).toContain(expected);
   });
 
+  it('does not read a commented-out context_limit as configuration', () => {
+    // The key is documented as a commented example, so this is the shape a user
+    // arrives at by pasting the README block: an unanchored match would pin a
+    // 200k denominator onto a 1M session — this issue's failure, via the docs.
+    writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  # context_limit: 200k\n');
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    stageTranscript(env, [transcriptLine({
+      message: { model: 'claude-opus-5', usage: { input_tokens: 120_000 } },
+    })]);
+    const out = runGate('prompt-reminder', env).stdout;
+    expect(out).toContain('Context: 120k tokens in the window.');
+    expect(out).not.toContain('%');
+  });
+
   it('declines a context_limit too small to be a window', () => {
     // A typo must not become a denominator. `200` would render every session as
     // tens of thousands of percent used.
