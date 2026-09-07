@@ -86,8 +86,14 @@ describe('#1397 — prompt-hook forwards session_id to gate.cjs', () => {
 // nothing.
 describe('#1487 — prompt-hook forwards transcript_path to gate.cjs', () => {
   it('sets HOOK_TRANSCRIPT_PATH from the stdin payload', () => {
-    const env = runPromptHook({ transcript_path: '/tmp/t.jsonl', prompt: 'hello' });
-    expect(env.HOOK_TRANSCRIPT_PATH).toBe('/tmp/t.jsonl');
+    // Built from os.tmpdir() rather than a `/tmp/...` literal. The stub gate
+    // only echoes the variable, so nothing opens this path and any string would
+    // work — but a hardcoded POSIX path in a suite that runs on Windows is the
+    // shape Rule #1 exists to keep out, and it trips the publish gate's
+    // homedir-tmpdir trigger on every release.
+    const transcript = join(tmpdir(), 'moflo-1487-transcript.jsonl');
+    const env = runPromptHook({ transcript_path: transcript, prompt: 'hello' });
+    expect(env.HOOK_TRANSCRIPT_PATH).toBe(transcript);
   });
 
   it('leaves HOOK_TRANSCRIPT_PATH unset for an absent, empty, or non-string value', () => {
