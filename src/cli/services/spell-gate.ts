@@ -97,10 +97,18 @@ const DIRECTIVE_PATTERNS = [
   /^(what about|how about)\s+(the\s+)?(other|rest|same)\b/i,
 ];
 
+/**
+ * Phrased as observations, and each says out loud that the bracket comes from a
+ * turn count rather than measured tokens (#1487). This code path has no
+ * transcript to read — it is the legacy `npx flo gate prompt-reminder` CLI, not
+ * the hook — so the honest thing it can do is not sound like a measurement.
+ * Instruction-shaped text the model cannot verify gets obeyed: the old CRITICAL
+ * line had agents abandoning work over a nearly empty window.
+ */
 const BRACKET_MESSAGES: Record<Exclude<ContextBracket, 'FRESH'>, string> = {
-  MODERATE: 'Context: MODERATE. Re-state goal before architectural decisions. Use agents for >300 LOC.',
-  DEPLETED: 'Context: DEPLETED. Checkpoint progress. Recommend /compact or fresh session.',
-  CRITICAL: 'Context: CRITICAL. Stop accepting complex tasks. Commit, store learnings, suggest new session.',
+  MODERATE: 'Context: 11-20 turns since session start (turn count, not measured token usage).',
+  DEPLETED: 'Context: 21-30 turns since session start (turn count, not measured token usage). Checkpointing progress is worth considering.',
+  CRITICAL: 'Context: 30+ turns since session start (turn count, not measured token usage). /compact or a fresh session is worth considering.',
 };
 
 /** Paths exempt from memory-first gate (they ARE the memory system) */
@@ -383,8 +391,20 @@ export class GateService {
     }
 
     if (this.config.context_tracking) {
+      // Edge-triggered (#1487): the old level-triggered form re-emitted the same
+      // line every turn once past the threshold, with no reset anywhere, so it
+      // read as a standing instruction long after it stopped being true.
+      //
+      // Derived from the counter rather than remembered in a field, deliberately.
+      // This file and bin/gate.cjs write the SAME .claude/workflow-state.json,
+      // and gate.cjs owns `contextBand` with a richer vocabulary (`tokens:400000`
+      // as well as the brackets). A second writer with an incompatible vocabulary
+      // would silently invalidate gate.cjs's edge-trigger on any project wired to
+      // both. Comparing this turn's bracket with the previous turn's is exactly
+      // the same edge, needs no state, and cannot collide.
       const bracket = this.getContextBracket(state.interactionCount);
-      if (bracket !== 'FRESH') {
+      const previous = this.getContextBracket(state.interactionCount - 1);
+      if (bracket !== 'FRESH' && bracket !== previous) {
         result.bracket = BRACKET_MESSAGES[bracket];
       }
     }

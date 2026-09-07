@@ -324,7 +324,9 @@ gates:
   memory_first: true          # Set to false to disable memory-first enforcement
   task_create_first: true     # Set to false to disable TaskCreate enforcement (disables task_status_gate too)
   task_status_gate: block     # Open tasks block `gh pr create`; warn → report only; off → silent
-  context_tracking: true      # Set to false to disable context bracket warnings
+  context_tracking: true      # Set to false to disable the context-usage notice
+  # context_limit: 200k       # Optional. Your model's window, so the notice can quote a %.
+                              # Unset (default) = report raw tokens; moflo never guesses a window.
   verify_before_done: true    # On by default (#1294); set false to skip /verify before `gh pr create`
 ```
 
@@ -1013,7 +1015,8 @@ gates:
   memory_first: true                 # Must search memory before file exploration
   task_create_first: true            # Must TaskCreate before Agent tool
   task_status_gate: block            # Open tasks block `gh pr create`; warn → report only; off → silent
-  context_tracking: true             # Track context window depletion
+  context_tracking: true             # Report measured context-window usage once per band crossing
+  # context_limit: 200k              # Optional window size (200000 / 200k / 1m) to get a % instead of raw tokens
   verify_before_done: true           # On by default (#1294); /verify before `gh pr create` (unless --no-verify). false to disable
 
 sdd:

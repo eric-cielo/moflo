@@ -13,7 +13,7 @@ var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 // the code it describes, so a change made outside Write/Edit/MultiEdit (a Bash
 // write, a branch switch, the next issue in the same session) invalidates it.
 // See creditFingerprint() for why the boolean flags alone cannot.
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, tasksAcknowledged: false, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, testsFingerprint: null, simplifyRun: false, simplifySnapshotSha: null, simplifyFingerprint: null, verifyRun: false, verifyOutcome: null, verifyFingerprint: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, tasksAcknowledged: false, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, testsFingerprint: null, simplifyRun: false, simplifySnapshotSha: null, simplifyFingerprint: null, verifyRun: false, verifyOutcome: null, verifyFingerprint: null, interactionCount: 0, contextBand: null, compactedAt: null, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false, sddMode: false, activeSddSlug: null };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -76,7 +76,7 @@ function loadGateConfig() {
   // consecutive ignores in one session is not a control. Blocking is the default
   // because the honest "these stay open on purpose" outcome is one command away
   // (record-tasks-acknowledged), so nothing here can deadlock a run.
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true, task_status_gate: 'block' };
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, context_limit: null, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true, verify_before_done: true, sdd_gate: true, task_status_gate: 'block' };
   var content = MOFLO_YAML;
   if (content) {
     // Boolean forms are accepted so this key reads like every other gate in the
@@ -91,6 +91,17 @@ function loadGateConfig() {
     if (/memory_first:\s*false/i.test(content)) defaults.memory_first = false;
     if (/task_create_first:\s*false/i.test(content)) defaults.task_create_first = false;
     if (/context_tracking:\s*false/i.test(content)) defaults.context_tracking = false;
+    // Optional and OFF by default (#1487). Only an explicit value lets the
+    // context notice quote a percentage — see contextLimit() for why nothing
+    // infers one.
+    // Anchored to the start of a line, unlike the boolean keys above, because
+    // this one is DOCUMENTED as a commented-out example (`# context_limit: 200k`
+    // in the README and the yaml reference). An unanchored match would read that
+    // comment as configuration the moment anyone pasted the block, quietly
+    // pinning a 200k denominator onto a 1M session — this issue's exact failure,
+    // redelivered through the docs.
+    var climit = /^[ \t]*context_limit:\s*['"]?([0-9.]+\s*[km]?)['"]?/im.exec(content);
+    if (climit) defaults.context_limit = parseTokenCount(climit[1]);
     if (/testing_gate:\s*false/i.test(content)) defaults.testing_gate = false;
     if (/simplify_gate:\s*false/i.test(content)) defaults.simplify_gate = false;
     if (/learnings_gate:\s*false/i.test(content)) defaults.learnings_gate = false;
@@ -861,6 +872,226 @@ function classifyBashNamespaceHint(cmd) {
     return 'Memory namespace hint: search "guidance" and "learnings" for project rules and decisions.';
   }
   return '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Context usage (#1487)
+//
+// The banner this feeds used to be driven by `interactionCount` — a monotonic
+// per-prompt counter with no reset anywhere, including on compaction. Past 30
+// prompts it emitted "Context: CRITICAL. Commit, store learnings, suggest new
+// session." on EVERY subsequent turn for the life of the session state, while
+// real usage sat around 12%. Because the text was shaped as an instruction
+// rather than a metric, the model complied: truncated investigations, handed
+// back partial findings, and recommended a fresh session over a nearly empty
+// window. A wrong instruction-shaped hook message is worse than none — the
+// model cannot check it and will generally obey.
+//
+// So: measure instead of guess. Claude Code already writes the per-turn token
+// usage into the session transcript it hands every hook, and that number drops
+// the moment a compaction lands, which makes the whole class of "stuck after
+// compact" impossible rather than merely patched.
+
+// Accepts `200000`, `200k`, `1m`, `1.5m`. One parser for BOTH the yaml key and
+// the env override, because they were two: `parseInt('200k')` is 200, so an
+// operator who wrote the documented `MOFLO_CONTEXT_LIMIT=200k` got a 200-token
+// window and `Context: 61000% used` every single turn — #1487 reproduced by the
+// fix for #1487. Anything below 1000 tokens is not a context window; treat it as
+// a typo and decline rather than quote arithmetic off it.
+function parseTokenCount(raw) {
+  var m = /^\s*(\d+(?:\.\d+)?)\s*([km])?\s*$/i.exec(String(raw || ''));
+  if (!m) return null;
+  var unit = (m[2] || '').toLowerCase();
+  var n = Math.round(parseFloat(m[1]) * (unit === 'm' ? 1000000 : unit === 'k' ? 1000 : 1));
+  return n >= 1000 ? n : null;
+}
+
+// The context LIMIT is not observable from a hook, and this is the one place it
+// would be tempting to guess. Claude Code's transcript records `claude-opus-5`
+// for a 1M-context session and for a 200k one alike — there is no marker, no
+// limit field, and nothing in the UserPromptSubmit payload. Guessing 200k would
+// have reported a 122k 1M-window session as "61% used", which is #1487's
+// original failure re-created with better arithmetic: a confident, wrong number
+// the model cannot check.
+//
+// So a percentage is quoted ONLY when the operator states the window, via
+// `gates.context_limit` in moflo.yaml or MOFLO_CONTEXT_LIMIT in the environment.
+// Otherwise the notice reports the raw token count, which cannot be wrong.
+function contextLimit(config) {
+  var override = parseTokenCount(process.env.MOFLO_CONTEXT_LIMIT);
+  if (override) return override;
+  return config && config.context_limit > 0 ? config.context_limit : null;
+}
+
+// Absolute-token milestones for the no-limit case, descending. Crossing one is a
+// real event about a real number, and it keeps the notice rare without implying
+// anything about how full the window is.
+var CONTEXT_MILESTONES = [800000, 400000, 200000, 100000];
+
+// Ordinal for "is this worse than the last thing we announced". Only an UPWARD
+// move is announced: emitting "checkpointing progress is worth considering" on
+// the way DOWN — right after a compaction freed the window — is the same
+// backwards advice #1487 is about. A downward move still updates the memo, which
+// is what re-arms the next genuine crossing.
+function contextBandRank(band) {
+  if (!band || band === 'FRESH') return 0;
+  if (band.indexOf('tokens:') === 0) {
+    var n = parseInt(band.slice(7), 10);
+    for (var i = CONTEXT_MILESTONES.length - 1, rank = 1; i >= 0; i--, rank++) {
+      if (CONTEXT_MILESTONES[i] === n) return rank;
+    }
+    return 1;
+  }
+  return band === 'CRITICAL' ? 3 : band === 'DEPLETED' ? 2 : 1;
+}
+
+// First read. Sized for the common case: the newest assistant record is within a
+// few KB of EOF.
+var CONTEXT_TAIL_BYTES = 64 * 1024;
+// Escalation, used only when the first window held no assistant usage record at
+// all. One assistant turn carrying a large tool result can exceed the first
+// window entirely, leaving a tail with no newline in it — and without this the
+// gate would fall silent permanently, which is the failure this whole change
+// exists to remove.
+var CONTEXT_TAIL_MAX_BYTES = 8 * 1024 * 1024;
+
+// Scan the last `tailBytes` of the transcript backwards for the newest main-loop
+// assistant turn's context size. Returns { used, sawUsage }: `used` is null when
+// nothing qualified, and `sawUsage` distinguishes "no record in this window"
+// (escalate) from "records found but all older than minTs" (do not escalate —
+// a wider window can only find even older ones).
+//
+// Cross-platform (Rule #1): fs primitives and an env-supplied absolute path —
+// no shell, no `tail`, no path separators of our own.
+function scanTranscriptTail(transcript, tailBytes, minTs) {
+  var fd = null;
+  var result = { used: null, sawUsage: false };
+  try {
+    var st = fs.statSync(transcript);
+    if (!st.isFile() || !st.size) return result;
+    var start = st.size > tailBytes ? st.size - tailBytes : 0;
+    var length = st.size - start;
+    // allocUnsafe, not alloc: `filled` bounds every read below, so the
+    // uninitialised tail is never observed — and zero-filling this on every
+    // prompt in every consumer session buys nothing.
+    var buf = Buffer.allocUnsafe(length);
+    fd = fs.openSync(transcript, 'r');
+    // Loop: readSync is permitted to return a short read, and a partial fill
+    // would leave the tail of the buffer as garbage — which lands on the NEWEST
+    // record, the one record this function exists to find.
+    var filled = 0;
+    while (filled < length) {
+      var n = fs.readSync(fd, buf, filled, length - filled, start + filled);
+      if (n <= 0) break;
+      filled += n;
+    }
+    var text = buf.toString('utf-8', 0, filled);
+    // Walked backwards by newline index rather than split(): the split would
+    // allocate a substring per line of a window whose last few records are all
+    // we want, and this loop normally exits after one or two of them.
+    var end = text.length;
+    while (end > 0) {
+      var nl = text.lastIndexOf('\n', end - 1);
+      // A window that starts mid-file cuts its first record in half. Stop rather
+      // than parse the fragment — and note that a window holding NO newline at
+      // all leaves sawUsage false, which is what triggers escalation.
+      if (nl < 0) { if (start > 0) break; nl = -1; }
+      var line = text.slice(nl + 1, end).trim();
+      end = nl;
+      // Cheap pre-filter, same shape as readTaskLedger's. A transcript tail is
+      // dominated by large tool_result and user records; JSON.parse on every one
+      // of them is the whole cost of this function.
+      if (!line || line.indexOf('"input_tokens"') < 0) continue;
+      var entry;
+      try { entry = JSON.parse(line); } catch (e) { continue; }
+      if (!entry || entry.type !== 'assistant') continue;
+      // Subagent turns carry their OWN small context. Counting one would report
+      // a freshly-spawned agent's window as the main loop's.
+      if (entry.isSidechain === true) continue;
+      var usage = entry.message && entry.message.usage;
+      if (!usage || typeof usage.input_tokens !== 'number') continue;
+      // Cached and uncached input are both resident context; the split is a
+      // billing detail. Output is excluded — it is this turn's reply, not the
+      // window it was produced from, and it lands in the next turn's input.
+      var used = usage.input_tokens +
+        (usage.cache_read_input_tokens || 0) +
+        (usage.cache_creation_input_tokens || 0);
+      if (!(used > 0)) continue;
+      result.sawUsage = true;
+      // Older than the last compaction: this record describes a window that no
+      // longer exists. See readTranscriptUsage for why that matters.
+      if (minTs && !(String(entry.timestamp || '') > minTs)) continue;
+      result.used = used;
+      return result;
+    }
+  } catch (e) {
+    // Unreadable transcript — the caller stays silent rather than guessing.
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch (e) { /* already gone */ } }
+  }
+  return result;
+}
+
+// Newest main-loop assistant turn's context size in tokens, or null when the
+// transcript is absent, unreadable, or carries nothing newer than `minTs`.
+//
+// `minTs` is the last compaction's timestamp, and skipping past it is essential
+// rather than tidy: UserPromptSubmit fires BEFORE the first post-compaction
+// assistant turn exists, so the newest record on disk is still the pre-compaction
+// one. Without this the very first prompt after a `/compact` would report the
+// window the user just emptied — the reported bug, one turn wide.
+function readTranscriptUsage(minTs) {
+  var transcript = process.env.HOOK_TRANSCRIPT_PATH || '';
+  if (!transcript) return null;
+  var r = scanTranscriptTail(transcript, CONTEXT_TAIL_BYTES, minTs);
+  if (r.used !== null || r.sawUsage) return r.used;
+  // Nothing in the first window even looked like a usage record — a single
+  // oversized turn can be wider than the window itself. Widen once.
+  return scanTranscriptTail(transcript, CONTEXT_TAIL_MAX_BYTES, minTs).used;
+}
+
+function contextBandForPct(pct) {
+  if (pct >= 90) return 'CRITICAL';
+  if (pct >= 75) return 'DEPLETED';
+  if (pct >= 50) return 'MODERATE';
+  return 'FRESH';
+}
+
+function formatTokens(n) {
+  return n >= 1000 ? Math.round(n / 1000) + 'k' : String(n);
+}
+
+// { band, line } for the current context, or null when it cannot be measured.
+//
+// There is deliberately NO fallback here. The obvious one — fall back to the
+// turn counter when the transcript is unreadable — reintroduces the bug twice
+// over: a turn count is not context usage (that IS #1487), and mixing the two
+// sources makes the memo oscillate, so a transcript that reads intermittently
+// would emit, fall silent, and emit the same line again forever. A hook with
+// nothing to measure has nothing to say.
+function describeContext(config, minTs) {
+  var used = readTranscriptUsage(minTs);
+  if (used === null) return null;
+  var limit = contextLimit(config);
+  if (limit) {
+    var pct = Math.round((used / limit) * 100);
+    var band = contextBandForPct(pct);
+    var line = 'Context: ' + pct + '% used (' + formatTokens(used) + ' of ' +
+      formatTokens(limit) + ' tokens).';
+    if (band === 'DEPLETED') line += ' Checkpointing progress is worth considering.';
+    else if (band === 'CRITICAL') line += ' /compact or a fresh session is worth considering.';
+    return { band: band, line: line };
+  }
+  var milestone = 0;
+  for (var i = 0; i < CONTEXT_MILESTONES.length; i++) {
+    if (used >= CONTEXT_MILESTONES[i]) { milestone = CONTEXT_MILESTONES[i]; break; }
+  }
+  // No advice attached on purpose: without a window size there is nothing
+  // honest to advise, and the model already knows its own limit.
+  return {
+    band: milestone ? 'tokens:' + milestone : 'FRESH',
+    line: 'Context: ' + formatTokens(used) + ' tokens in the window.',
+  };
 }
 
 // Apply per-prompt state reset shared by `prompt-reminder` (full) and
@@ -2266,6 +2497,24 @@ switch (command) {
     // written after it; refreshed every prompt, so a /clear that mints a new id
     // is picked up on the next turn rather than going stale.
     if (process.env.HOOK_SESSION_ID) s.sessionId = process.env.HOOK_SESSION_ID;
+    // #1487 — resolved BEFORE the write so the edge-trigger memo rides the same
+    // one, and emitted after the /flo modifiers below so the authoritative run
+    // modes stay at the top of the hook's output.
+    var contextNotice = '';
+    if (config.context_tracking) {
+      var ctx = describeContext(config, s.compactedAt);
+      // Nothing measurable → nothing said, and the memo is left exactly as it
+      // was so a transient read failure cannot re-arm an already-announced band.
+      if (ctx) {
+        // Edge-triggered, not level-triggered, and only upward. A banner
+        // repeated verbatim for dozens of turns carries no information after the
+        // first one and trains the model to treat it as a standing instruction.
+        // A downward move still updates the memo — that is what re-arms the next
+        // genuine crossing after a compaction.
+        if (contextBandRank(ctx.band) > contextBandRank(s.contextBand)) contextNotice = ctx.line;
+        s.contextBand = ctx.band;
+      }
+    }
     writeState(s);
     // Announce the resolved /flo run modifiers. The gate already parsed
     // moflo.yaml in THIS process (fresh per prompt — a git pull or a mid-session
@@ -2294,12 +2543,7 @@ switch (command) {
         console.log('[moflo] merge is ON via ' + floRun.mergeSrc + ' — the PR will be auto-merged. Opt out: --no-merge.');
       }
     }
-    if (config.context_tracking) {
-      var ic = s.interactionCount;
-      if (ic > 30) console.log('Context: CRITICAL. Commit, store learnings, suggest new session.');
-      else if (ic > 20) console.log('Context: DEPLETED. Checkpoint progress. Recommend /compact or fresh session.');
-      else if (ic > 10) console.log('Context: MODERATE. Re-state goal before architectural decisions. Use agents for >300 LOC.');
-    }
+    if (contextNotice) console.log(contextNotice);
     break;
   }
   case 'prompt-state-reset': {

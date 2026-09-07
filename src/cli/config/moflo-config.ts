@@ -812,7 +812,8 @@ ${srcDirs.map(d => `    - ${d}`).join('\n')}
 gates:
   memory_first: true          # Search memory before Glob/Grep
   task_create_first: true     # TaskCreate before Agent tool
-  context_tracking: true      # Track context bracket (FRESH/MODERATE/DEPLETED/CRITICAL)
+  context_tracking: true      # Report measured context usage, once per band crossing (#1487)
+  # context_limit: 200k       # Optional window size (200000 / 200k / 1m) so the notice quotes a %
   verify_before_done: true    # Epic #1269/#1294: run /verify before 'gh pr create'. On by default; opt out with false or per-run --no-verify
 
 # Auto-index on session start

@@ -20,6 +20,35 @@ import {
   readOwnMofloVersion,
 } from '../../services/daemon-lock.js';
 
+/**
+ * A PID that is genuinely not running right now.
+ *
+ * These two tests hardcoded 99999 as "definitely not running". On Linux
+ * `pid_max` defaults to 4194304 and this suite spawns hundreds of node
+ * processes, so 99999 is routinely a LIVE pid during a full run — the stale-lock
+ * checks then saw a live process, declined to treat the lock as stale, and
+ * failed. Only under full-suite contention; green in isolation every time, which
+ * is exactly the shape that gets waved through as "probably flaky".
+ *
+ * Searches DOWNWARD from this process. Those pids sit behind the allocator's
+ * cursor, so nothing will be assigned one until pid wraparound millions of
+ * allocations later — searching upward would pick a pid the very next spawn
+ * could claim mid-test.
+ *
+ * `process.kill(pid, 0)` sends no signal; it only probes. ESRCH means no such
+ * process; EPERM means one exists that we may not signal, so keep looking.
+ */
+function findDeadPid(): number {
+  for (let pid = process.pid - 1; pid > 1; pid--) {
+    try {
+      process.kill(pid, 0);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ESRCH') return pid;
+    }
+  }
+  throw new Error('no unused PID below process.pid — cannot test stale-lock recovery');
+}
+
 describe('daemon-lock', () => {
   let tempDir: string;
 
@@ -106,8 +135,7 @@ describe('daemon-lock', () => {
   // =========================================================================
   describe('stale lock recovery', () => {
     it('should recover lock when PID file references a dead process', () => {
-      // Write a lock with a PID that is definitely not running
-      const deadPid = 99999;
+      const deadPid = findDeadPid();
       const lock = lockPath(tempDir);
       writeFileSync(lock, JSON.stringify({
         pid: deadPid,
@@ -189,7 +217,7 @@ describe('daemon-lock', () => {
     it('should return null for dead PID and clean up stale lock', () => {
       const lock = lockPath(tempDir);
       writeFileSync(lock, JSON.stringify({
-        pid: 99999,
+        pid: findDeadPid(),
         startedAt: Date.now(),
         label: 'moflo-daemon',
       }));

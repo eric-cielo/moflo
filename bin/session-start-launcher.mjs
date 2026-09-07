@@ -803,6 +803,26 @@ const KNOWN_SESSION_SOURCES = new Set(['startup', 'clear', 'compact', 'resume'])
 // thing this whole issue is about.
 const MEMORY_CREDIT_KEYS = ['memorySearched', 'memorySearchedBy', 'memoryRequired'];
 
+// #1487 — the context banner's two fields are invalidated by a compaction for
+// the same reason. `interactionCount` is the fallback turn heuristic, and a
+// compaction is precisely the event that falsifies its premise; before this it
+// had no reset ANYWHERE, so past 30 prompts the banner fired every turn for the
+// life of the session state and a compaction did not clear it. `contextBand` is
+// the edge-trigger memo, which must clear so the next genuine crossing is
+// announced rather than swallowed as "already said that".
+const CONTEXT_TRACKING_KEYS = ['interactionCount', 'contextBand'];
+const COMPACTION_RESET_KEYS = [...MEMORY_CREDIT_KEYS, ...CONTEXT_TRACKING_KEYS];
+
+// …and `compactedAt` is STAMPED rather than cleared, because clearing it is not
+// enough. UserPromptSubmit fires BEFORE the first post-compaction assistant turn
+// exists, so on the very next prompt the newest usage record in the transcript is
+// still the pre-compaction one. gate.cjs skips records at or older than this
+// stamp, so the first prompt after a compaction reports nothing instead of
+// reporting the window the user just emptied.
+function compactionStamp() {
+  return { compactedAt: new Date().toISOString() };
+}
+
 // Full shape, not the 4-field literal this used to write. gate.cjs readState()
 // merges STATE_DEFAULTS over whatever it parses, so the short shape behaved
 // identically THERE — but it left a half-populated file for every other reader
@@ -827,6 +847,8 @@ function freshWorkflowState() {
     verifyOutcome: null,
     verifyFingerprint: null,
     interactionCount: 0,
+    contextBand: null,
+    compactedAt: null,
     sessionStart: new Date().toISOString(),
     lastBlockedAt: null,
     lastNamespaceHint: '',
@@ -840,11 +862,12 @@ function freshWorkflowState() {
 }
 
 // Derived from freshWorkflowState(), not a second literal: a re-armed memory
-// gate is by definition the fresh-session value of those keys, and one place to
-// change beats two that agree only by inspection.
-function rearmedMemoryState() {
+// gate and a cleared context counter are by definition the fresh-session values
+// of those keys, and one place to change beats two that agree only by
+// inspection.
+function rearmedCompactionState() {
   const fresh = freshWorkflowState();
-  return Object.fromEntries(MEMORY_CREDIT_KEYS.map((key) => [key, fresh[key]]));
+  return Object.fromEntries(COMPACTION_RESET_KEYS.map((key) => [key, fresh[key]]));
 }
 
 // Bounded at 500ms by readHookStdin and short-circuited on a TTY, so a withheld
@@ -873,8 +896,8 @@ if (!CONTINUING_SESSION_SOURCES.has(sessionSource)) {
     // Non-fatal - workflow gate will use defaults
   }
 } else if (sessionSource === 'compact') {
-  // Merge, never rewrite: everything the run has earned stays, only the memory
-  // credit is re-armed. Skipped entirely when there is no state file yet — a
+  // Merge, never rewrite: everything the run has earned stays; only the memory
+  // credit and the context-tracking fields (#1487) are reset. Skipped entirely when there is no state file yet — a
   // compaction before any prompt has nothing to re-arm, and writing a partial
   // file here would defeat freshWorkflowState()'s shape guarantee.
   //
@@ -890,13 +913,13 @@ if (!CONTINUING_SESSION_SOURCES.has(sessionSource)) {
       const parsed = JSON.parse(readFileSync(stateFile, 'utf-8'));
       writeFileSync(
         stateFile,
-        JSON.stringify({ ...parsed, ...rearmedMemoryState() }, null, 2),
+        JSON.stringify({ ...parsed, ...rearmedCompactionState(), ...compactionStamp() }, null, 2),
       );
     }
   } catch (err) {
     // Non-fatal, but not silent (#854): a failure here leaves the memory gate
     // credited over a context that no longer holds the results.
-    emitWarning(`could not re-arm the memory gate after compaction (${errMessage(err)})`);
+    emitWarning(`could not reset gate state after compaction (${errMessage(err)})`);
   }
 }
 
