@@ -38,6 +38,7 @@ function runPromptHook(payload: Record<string, unknown>): Record<string, string>
     // Report both vars so an absent id is distinguishable from an empty one.
     'process.stdout.write(JSON.stringify({\n' +
     '  HOOK_SESSION_ID: process.env.HOOK_SESSION_ID === undefined ? "<unset>" : process.env.HOOK_SESSION_ID,\n' +
+    '  HOOK_TRANSCRIPT_PATH: process.env.HOOK_TRANSCRIPT_PATH === undefined ? "<unset>" : process.env.HOOK_TRANSCRIPT_PATH,\n' +
     '  CLAUDE_USER_PROMPT: process.env.CLAUDE_USER_PROMPT === undefined ? "<unset>" : process.env.CLAUDE_USER_PROMPT,\n' +
     '}));\n',
   );
@@ -77,6 +78,27 @@ describe('#1397 — prompt-hook forwards session_id to gate.cjs', () => {
   });
 });
 
+// #1487 — the same wrapper-forwards asymmetry, one field over. gate.cjs reports
+// context usage by reading the transcript, and `prompt-reminder` is reached only
+// through THIS wrapper. Every test of the reporting itself sets
+// HOOK_TRANSCRIPT_PATH directly, so without this the forwarding could be deleted
+// outright and the suite would stay green while every consumer silently reported
+// nothing.
+describe('#1487 — prompt-hook forwards transcript_path to gate.cjs', () => {
+  it('sets HOOK_TRANSCRIPT_PATH from the stdin payload', () => {
+    const env = runPromptHook({ transcript_path: '/tmp/t.jsonl', prompt: 'hello' });
+    expect(env.HOOK_TRANSCRIPT_PATH).toBe('/tmp/t.jsonl');
+  });
+
+  it('leaves HOOK_TRANSCRIPT_PATH unset for an absent, empty, or non-string value', () => {
+    // Unset is the correct outcome: gate.cjs then declines to report rather than
+    // measuring against a path it invented.
+    expect(runPromptHook({ prompt: 'x' }).HOOK_TRANSCRIPT_PATH).toBe('<unset>');
+    expect(runPromptHook({ transcript_path: '', prompt: 'x' }).HOOK_TRANSCRIPT_PATH).toBe('<unset>');
+    expect(runPromptHook({ transcript_path: 42, prompt: 'x' }).HOOK_TRANSCRIPT_PATH).toBe('<unset>');
+  });
+});
+
 describe('#1397 — the copy a consumer runs stays in sync', () => {
   it('bin/prompt-hook.mjs and .claude/helpers/prompt-hook.mjs are byte-identical', () => {
     // `.claude/helpers/` is what actually executes; bin/ is the sync source
@@ -102,5 +124,7 @@ describe('#1397 — the copy a consumer runs stays in sync', () => {
     const generated: string = generatePromptHookScript();
     expect(generated).toContain('HOOK_SESSION_ID');
     expect(generated).toContain("typeof hookContext.session_id === 'string'");
+    expect(generated).toContain('HOOK_TRANSCRIPT_PATH');
+    expect(generated).toContain("typeof hookContext.transcript_path === 'string'");
   });
 });

@@ -813,6 +813,16 @@ const MEMORY_CREDIT_KEYS = ['memorySearched', 'memorySearchedBy', 'memoryRequire
 const CONTEXT_TRACKING_KEYS = ['interactionCount', 'contextBand'];
 const COMPACTION_RESET_KEYS = [...MEMORY_CREDIT_KEYS, ...CONTEXT_TRACKING_KEYS];
 
+// …and `compactedAt` is STAMPED rather than cleared, because clearing it is not
+// enough. UserPromptSubmit fires BEFORE the first post-compaction assistant turn
+// exists, so on the very next prompt the newest usage record in the transcript is
+// still the pre-compaction one. gate.cjs skips records at or older than this
+// stamp, so the first prompt after a compaction reports nothing instead of
+// reporting the window the user just emptied.
+function compactionStamp() {
+  return { compactedAt: new Date().toISOString() };
+}
+
 // Full shape, not the 4-field literal this used to write. gate.cjs readState()
 // merges STATE_DEFAULTS over whatever it parses, so the short shape behaved
 // identically THERE — but it left a half-populated file for every other reader
@@ -838,6 +848,7 @@ function freshWorkflowState() {
     verifyFingerprint: null,
     interactionCount: 0,
     contextBand: null,
+    compactedAt: null,
     sessionStart: new Date().toISOString(),
     lastBlockedAt: null,
     lastNamespaceHint: '',
@@ -902,7 +913,7 @@ if (!CONTINUING_SESSION_SOURCES.has(sessionSource)) {
       const parsed = JSON.parse(readFileSync(stateFile, 'utf-8'));
       writeFileSync(
         stateFile,
-        JSON.stringify({ ...parsed, ...rearmedCompactionState() }, null, 2),
+        JSON.stringify({ ...parsed, ...rearmedCompactionState(), ...compactionStamp() }, null, 2),
       );
     }
   } catch (err) {

@@ -32,11 +32,6 @@ export interface GateState {
   memorySearched: boolean;
   memoryRequired: boolean;
   interactionCount: number;
-  /**
-   * Last context bracket announced, so the banner is edge-triggered (#1487).
-   * `null` until the first non-FRESH crossing.
-   */
-  contextBand: ContextBracket | null;
   sessionStart: string | null;
   lastBlockedAt: string | null;
 }
@@ -58,7 +53,6 @@ const DEFAULT_STATE: GateState = {
   memorySearched: false,
   memoryRequired: true,
   interactionCount: 0,
-  contextBand: null,
   sessionStart: null,
   lastBlockedAt: null,
 };
@@ -397,16 +391,21 @@ export class GateService {
     }
 
     if (this.config.context_tracking) {
-      const bracket = this.getContextBracket(state.interactionCount);
       // Edge-triggered (#1487): the old level-triggered form re-emitted the same
       // line every turn once past the threshold, with no reset anywhere, so it
       // read as a standing instruction long after it stopped being true.
-      if (bracket !== 'FRESH' && bracket !== state.contextBand) {
+      //
+      // Derived from the counter rather than remembered in a field, deliberately.
+      // This file and bin/gate.cjs write the SAME .claude/workflow-state.json,
+      // and gate.cjs owns `contextBand` with a richer vocabulary (`tokens:400000`
+      // as well as the brackets). A second writer with an incompatible vocabulary
+      // would silently invalidate gate.cjs's edge-trigger on any project wired to
+      // both. Comparing this turn's bracket with the previous turn's is exactly
+      // the same edge, needs no state, and cannot collide.
+      const bracket = this.getContextBracket(state.interactionCount);
+      const previous = this.getContextBracket(state.interactionCount - 1);
+      if (bracket !== 'FRESH' && bracket !== previous) {
         result.bracket = BRACKET_MESSAGES[bracket];
-      }
-      if (bracket !== state.contextBand) {
-        state.contextBand = bracket;
-        this.writeState(state);
       }
     }
 

@@ -85,6 +85,7 @@ function stageMidRunState(): Record<string, unknown> {
     verifyFingerprint: 'abc123',
     interactionCount: 12,
     contextBand: 'DEPLETED',
+    compactedAt: null,
     sessionStart: '2026-01-01T00:00:00.000Z',
     lastBlockedAt: null,
     lastNamespaceHint: '',
@@ -156,7 +157,7 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
     // ran, /verify passed, the diff is unchanged).
     const resetKeys = new Set([
       'memorySearched', 'memorySearchedBy', 'memoryRequired',
-      'interactionCount', 'contextBand', // #1487
+      'interactionCount', 'contextBand', 'compactedAt', // #1487
     ]);
     for (const [key, value] of Object.entries(staged)) {
       if (resetKeys.has(key)) continue;
@@ -208,6 +209,20 @@ describe('#1441 session-start launcher: continuing sessions keep their gate stat
       'The edge-trigger memo survived a compaction, so the next genuine ' +
         'crossing would be swallowed as "already announced" (#1487).',
     ).toBeNull();
+  });
+
+  it('stamps compactedAt so pre-compaction token usage is not reported', () => {
+    // Clearing state is not enough. UserPromptSubmit fires BEFORE the first
+    // post-compaction assistant turn exists, so on the next prompt the newest
+    // usage record in the transcript still describes the window the user just
+    // emptied. gate.cjs skips records at or older than this stamp.
+    stageMidRunState();
+    const before = Date.now();
+    runLauncher(JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
+
+    const stamped = readStateFile().compactedAt;
+    expect(typeof stamped, 'compactedAt must be an ISO timestamp').toBe('string');
+    expect(Date.parse(stamped as string)).toBeGreaterThanOrEqual(before - 1000);
   });
 
   it('re-arms the memory gate after a compaction that followed a disarming prompt', () => {
