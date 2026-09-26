@@ -64,6 +64,18 @@ export const EMBEDDING_MODEL_LEGACY_DEFAULT = 'local';
  * - `tasklist`      — Spell run records (sp-*) written by spells/core/runner.ts + daemon-dashboard.ts
  * - `epic-state`    — Epic progress (epic-N, story-M) written by commands/epic.ts
  * - `test-bridge-fix` — Single 2026-04-23 row left over from a one-off test
+ * - `swarm-agents`, `swarm-topology`, `swarm-tasks`, `swarm-consensus` —
+ *   coordinator state written through by `swarm/swarm-persistence.ts` and
+ *   read back by key on hydrate, never by similarity (#1492). Embed-skip
+ *   ONLY: they are deliberately absent from the purge sets below, because the
+ *   swarm must survive an MCP-server restart (Story #806).
+ *
+ * The rule is enforced at write time AND at backfill time. The writers leave
+ * `embedding` NULL; every backfill selector (`bin/build-embeddings.mjs`, the
+ * backlog probe in `bin/lib/embedding-backlog.mjs`, `flo memory rebuild-index`)
+ * excludes these rows via {@link backfillExclusionSql} or its `bin/` mirror —
+ * otherwise NULL reads as "not embedded yet" and the backfill embeds them
+ * anyway (#1492). The `bin/` copy is parity-guarded against this set.
  *
  * Membership is also extended by {@link EPHEMERAL_NAMESPACE_PREFIXES} for
  * dynamic-name namespaces (e.g. `doctor-memprobe-<persona>`). Most callers
@@ -81,6 +93,10 @@ export const EPHEMERAL_NAMESPACES: ReadonlySet<string> = new Set([
   'tasklist',
   'epic-state',
   'test-bridge-fix',
+  'swarm-agents',
+  'swarm-topology',
+  'swarm-tasks',
+  'swarm-consensus',
 ]);
 
 /**
@@ -158,6 +174,49 @@ export function isEphemeralNamespace(namespace: string): boolean {
     if (namespace.startsWith(prefix)) return true;
   }
   return false;
+}
+
+/**
+ * SQL match for a namespace set: exact `names` or any `prefixes` (as
+ * `LIKE 'p%'`). Returned parenthesised with positional bindings so callers can
+ * wrap it in `NOT (...)` or use it as a positive filter; an empty set matches
+ * nothing.
+ */
+export function namespaceMatchSql(
+  names: Iterable<string>,
+  prefixes: Iterable<string>,
+): { sql: string; params: string[] } {
+  const exact = [...names];
+  const likes = [...prefixes].map((p) => `${p}%`);
+  const clauses: string[] = [];
+  // COALESCE: the column is nullable, and `NOT (NULL IN (...))` is NULL — a
+  // NULL-namespace row would silently drop out of a negated match.
+  if (exact.length > 0) clauses.push(`COALESCE(namespace, '') IN (${exact.map(() => '?').join(', ')})`);
+  for (let i = 0; i < likes.length; i++) clauses.push(`COALESCE(namespace, '') LIKE ?`);
+  return {
+    sql: clauses.length > 0 ? `(${clauses.join(' OR ')})` : '(0)',
+    params: [...exact, ...likes],
+  };
+}
+
+/** {@link namespaceMatchSql} over the ephemeral (embed-skip) namespaces. */
+export function ephemeralNamespaceSql(): { sql: string; params: string[] } {
+  return namespaceMatchSql(EPHEMERAL_NAMESPACES, EPHEMERAL_NAMESPACE_PREFIXES);
+}
+
+/**
+ * `AND ...` fragment every embedding backfill appends to its selector (#1492):
+ * skip ephemeral namespaces and rows a writer explicitly opted out of
+ * (`embedding_model = 'none'`). Both write a NULL `embedding` that means
+ * "deliberately unembedded", which the backfill must not read as "pending".
+ * Mirrored in `bin/lib/embedding-backlog.mjs` (parity-guarded).
+ */
+export function backfillExclusionSql(): { sql: string; params: string[] } {
+  const ephemeral = ephemeralNamespaceSql();
+  return {
+    sql: `AND NOT ${ephemeral.sql} AND COALESCE(embedding_model, '') <> ?`,
+    params: [...ephemeral.params, EMBEDDING_MODEL_OPT_OUT],
+  };
 }
 
 /**

@@ -2438,6 +2438,12 @@ try {
         `${plural(result.superseded, 'stale learnings row')} whose verdict already exists in the verify namespace`,
       );
     }
+    if (result?.stripped > 0) {
+      emitMutation(
+        'unindexed run records',
+        `${plural(result.stripped, 'row')} of run state removed from semantic search`,
+      );
+    }
   }
 } catch (err) {
   // Non-fatal — leftover rows just sit until the next session retries.

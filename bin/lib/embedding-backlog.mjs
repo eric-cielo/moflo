@@ -26,16 +26,67 @@ import { existsSync } from 'node:fs';
 import { openBackendSync } from './get-backend.mjs';
 import { memoryDbPath } from './moflo-paths.mjs';
 
-/**
- * Rows `build-embeddings` will pick up on its next run. Active rows whose
- * embedding is absent — either NULL (never written) or empty string (a
- * producer that failed and wrote a placeholder).
- */
 /** Retry budget for the probe's read-only open. See {@link hasPendingEmbeddings}. */
 const PROBE_BUSY_TIMEOUT_MS = 2000;
 
+/**
+ * Mirrors of `EPHEMERAL_NAMESPACES` / `EPHEMERAL_NAMESPACE_PREFIXES` /
+ * `EMBEDDING_MODEL_OPT_OUT` in `src/cli/memory/bridge-embedder.ts`. `bin/`
+ * cannot import TypeScript source, so the values are restated here and
+ * `tests/bin/embedding-backfill-ephemeral-1492.test.ts` fails if the two
+ * copies drift.
+ */
+export const EPHEMERAL_NAMESPACES = Object.freeze([
+  'hive-mind',
+  'tasklist',
+  'epic-state',
+  'test-bridge-fix',
+  'swarm-agents',
+  'swarm-topology',
+  'swarm-tasks',
+  'swarm-consensus',
+]);
+export const EPHEMERAL_NAMESPACE_PREFIXES = Object.freeze([]);
+export const EMBEDDING_MODEL_OPT_OUT = 'none';
+
+const sqlString = (s) => `'${s.replace(/'/g, "''")}'`;
+
+/**
+ * Rows written deliberately without an embedding — ephemeral run state and
+ * explicit opt-outs. The writers leave `embedding` NULL for these, which is
+ * indistinguishable from "not embedded yet" unless every backfill excludes
+ * them (#1492). Inlined literals rather than bindings so the clause drops into
+ * any statement unchanged; every value is a compile-time constant above.
+ */
+export const DELIBERATELY_UNEMBEDDED_WHERE = (() => {
+  const clauses = [];
+  if (EPHEMERAL_NAMESPACES.length > 0) {
+    clauses.push(`COALESCE(namespace, '') IN (${EPHEMERAL_NAMESPACES.map(sqlString).join(', ')})`);
+  }
+  for (const prefix of EPHEMERAL_NAMESPACE_PREFIXES) {
+    clauses.push(`COALESCE(namespace, '') LIKE ${sqlString(`${prefix}%`)}`);
+  }
+  clauses.push(`COALESCE(embedding_model, '') = ${sqlString(EMBEDDING_MODEL_OPT_OUT)}`);
+  // COALESCE on the nullable column: `NOT (NULL IN (...))` is NULL, which would
+  // silently drop a NULL-namespace row out of every negated use below.
+  return `(${clauses.join(' OR ')})`;
+})();
+
+/**
+ * Every row a backfill may embed: active, and not deliberately unembedded.
+ * `build-embeddings --force` selects on this alone.
+ */
+export const EMBEDDABLE_WHERE = `status = 'active' AND NOT ${DELIBERATELY_UNEMBEDDED_WHERE}`;
+
+/**
+ * Rows `build-embeddings` will pick up on its next run. Embeddable rows whose
+ * embedding is absent — either NULL (never written) or empty string (a
+ * producer that failed and wrote a placeholder). The embedding test leads so
+ * the steady-state probe — nearly every row embedded — rejects each row before
+ * evaluating the exclusion.
+ */
 export const PENDING_EMBEDDING_WHERE =
-  `status = 'active' AND (embedding IS NULL OR embedding = '')`;
+  `(embedding IS NULL OR embedding = '') AND ${EMBEDDABLE_WHERE}`;
 
 /**
  * Does the memory DB hold rows that still need embedding?

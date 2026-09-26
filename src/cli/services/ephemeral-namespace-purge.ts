@@ -26,6 +26,16 @@
  *    it on every session start, leaving the tab permanently empty. Trim
  *    instead so users see recent history without unbounded growth.
  *
+ * 4. **Strip vectors** from surviving rows in any ephemeral namespace
+ *    ({@link ephemeralNamespaceSql} — `tasklist`, `swarm-*`, …). Their writers
+ *    leave `embedding` NULL, but until #1492 the background backfill read that
+ *    NULL as "pending" and embedded them, so run records ranked in ordinary
+ *    `memory_search` results. The backfill no longer does; this heals the rows
+ *    every existing install already carries, and re-heals if anything embeds
+ *    them again. Rows are kept — only their vector is cleared, back to the
+ *    shape the writer produced. The next index chain drops them from the HNSW
+ *    sidecar (the DB write invalidates the `hnsw-rebuild` fingerprint).
+ *
  * All passes share the file open + final VACUUM + atomic write, so disk I/O
  * is the same as before. Writes back to disk only when something changed.
  *
@@ -41,6 +51,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
+  ephemeralNamespaceSql,
+  namespaceMatchSql,
   PURGE_ON_SESSION_START_NAMESPACES,
   PURGE_ON_SESSION_START_PREFIXES,
   TASKLIST_RETENTION_CAP,
@@ -87,6 +99,12 @@ export interface PurgeEphemeralNamespacesResult {
    * step in this pass is never silently folded into a "moved N rows" count.
    */
   superseded: number;
+  /**
+   * Number of ephemeral-namespace rows whose embedding was cleared (#1492).
+   * Non-zero on the first session after upgrading from a release whose
+   * backfill embedded them.
+   */
+  stripped: number;
 }
 
 /** Namespace stray verdict records are re-filed OUT of (#1375). */
@@ -107,7 +125,7 @@ export async function purgeEphemeralNamespaces(
   const path = await import('path');
 
   const nothingToDo: PurgeEphemeralNamespacesResult = {
-    purged: 0, trimmed: 0, relocated: 0, superseded: 0,
+    purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0,
   };
 
   const dbPath = path.resolve(options.dbPath ?? memoryDbPath(resolveStateRoot()));
@@ -132,19 +150,15 @@ export async function purgeEphemeralNamespaces(
     // Purge match shape: exact namespace IN (...) OR namespace LIKE 'prefix-%'.
     // The prefix clause covers runtime-suffixed namespaces like
     // `doctor-memprobe-<persona>` whose set of suffixes isn't known upfront.
-    const namespaces = Array.from(PURGE_ON_SESSION_START_NAMESPACES);
-    const prefixes = Array.from(PURGE_ON_SESSION_START_PREFIXES);
     const caps: Array<[string, number]> = [
       ['tasklist', options.tasklistRetentionCap ?? TASKLIST_RETENTION_CAP],
       [VERIFY_RECORD_NAMESPACE, options.verifyRetentionCap ?? VERIFY_RETENTION_CAP],
     ];
 
-    const exactClause = namespaces.length
-      ? `namespace IN (${namespaces.map(() => '?').join(', ')})`
-      : '0';
-    const prefixClause = prefixes.map(() => 'namespace LIKE ?').join(' OR ');
-    const purgeWhere = prefixClause ? `(${exactClause} OR ${prefixClause})` : exactClause;
-    const purgeBindings = [...namespaces, ...prefixes.map((p) => `${p}%`)];
+    const { sql: purgeWhere, params: purgeBindings } = namespaceMatchSql(
+      PURGE_ON_SESSION_START_NAMESPACES,
+      PURGE_ON_SESSION_START_PREFIXES,
+    );
 
     // GLOB, not LIKE: SQLite's LIKE is case-INSENSITIVE for ASCII, so
     // `key LIKE 'verify:%'` would also sweep a `Verify:...` row that
@@ -156,6 +170,9 @@ export async function purgeEphemeralNamespaces(
     const strayVerifyWhere = 'namespace = ? AND key GLOB ?';
     const strayVerifyBindings = [LEARNINGS_NAMESPACE, `${VERIFY_RECORD_NAMESPACE}:*`];
 
+    const ephemeral = ephemeralNamespaceSql();
+    const embeddedEphemeralWhere = `${ephemeral.sql} AND embedding IS NOT NULL`;
+
     // EVERY column needs a distinct alias. `exec` maps each row to an object
     // keyed by column name, so two columns that SQLite names identically
     // collapse into one and silently shift every later index. Unaliased
@@ -166,13 +183,15 @@ export async function purgeEphemeralNamespaces(
       `SELECT
          (SELECT COUNT(*) FROM memory_entries WHERE ${purgeWhere}) AS purgeable,
          (SELECT COUNT(*) FROM memory_entries WHERE ${strayVerifyWhere}) AS relocatable,
+         (SELECT COUNT(*) FROM memory_entries WHERE ${embeddedEphemeralWhere}) AS strippable,
          ${caps.map((_, i) => `(SELECT COUNT(*) FROM memory_entries WHERE namespace = ?) AS capTotal${i}`).join(',\n         ')}`,
-      [...purgeBindings, ...strayVerifyBindings, ...caps.map(([ns]) => ns)],
+      [...purgeBindings, ...strayVerifyBindings, ...ephemeral.params, ...caps.map(([ns]) => ns)],
     );
     const counts = countRows[0]?.values?.[0] ?? [];
     const purgeable = Number(counts[0] ?? 0);
     const relocatable = Number(counts[1] ?? 0);
-    const capTotals = caps.map((_, i) => Number(counts[i + 2] ?? 0));
+    const strippable = Number(counts[2] ?? 0);
+    const capTotals = caps.map((_, i) => Number(counts[i + 3] ?? 0));
 
     let purged = 0;
     if (purgeable > 0) {
@@ -209,6 +228,19 @@ export async function purgeEphemeralNamespaces(
       relocated = db.getRowsModified?.() ?? 0;
     }
 
+    // After the purge, so rows it already deleted are not counted twice. Model
+    // goes back to NULL — the exact shape the ephemeral writers produce.
+    let stripped = 0;
+    if (strippable > 0) {
+      db.run(
+        `UPDATE memory_entries
+            SET embedding = NULL, embedding_model = NULL, embedding_dimensions = NULL
+          WHERE ${embeddedEphemeralWhere}`,
+        ephemeral.params,
+      );
+      stripped = db.getRowsModified?.() ?? 0;
+    }
+
     let trimmed = 0;
     for (const [i, [ns, cap]] of caps.entries()) {
       // Rows just relocated into `verify` count toward its cap in this same run.
@@ -230,16 +262,19 @@ export async function purgeEphemeralNamespaces(
       trimmed += db.getRowsModified?.() ?? 0;
     }
 
-    if (purged === 0 && trimmed === 0 && relocated === 0 && superseded === 0) return nothingToDo;
+    if (purged === 0 && trimmed === 0 && relocated === 0 && superseded === 0 && stripped === 0) {
+      return nothingToDo;
+    }
 
     // VACUUM only after a DELETE actually freed pages. A relocation is an
-    // UPDATE — it reclaims nothing, so VACUUMing for it would rewrite the whole
-    // file (60+ MB on a populated store) in the foreground of session start for
-    // no benefit. Has to run outside any open transaction; node:sqlite/sql.js
+    // UPDATE that reclaims nothing; a vector strip frees some pages, but later
+    // writes reuse them. VACUUMing for either would rewrite the whole file
+    // (60+ MB on a populated store) in the foreground of session start for no
+    // real benefit. Has to run outside any open transaction; node:sqlite/sql.js
     // both auto-commit each `db.run`, so this is safe to chain.
     if (purged > 0 || trimmed > 0 || superseded > 0) db.run('VACUUM');
 
-    return { purged, trimmed, relocated, superseded };
+    return { purged, trimmed, relocated, superseded, stripped };
   } finally {
     db.close();
   }

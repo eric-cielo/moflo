@@ -544,12 +544,14 @@ describe('read-only busy budget is opt-in (#1383)', () => {
 describe('gate/producer predicate parity (#1383)', () => {
   it('build-embeddings selects on the exported clause rather than restating it', () => {
     const src = readFileSync(resolve(__dirname, '..', '..', 'bin', 'build-embeddings.mjs'), 'utf-8');
-    expect(src).toMatch(/import\s*\{\s*PENDING_EMBEDDING_WHERE\s*\}\s*from\s*'\.\/lib\/embedding-backlog\.mjs'/);
+    expect(src).toMatch(/import\s*\{\s*DELIBERATELY_UNEMBEDDED_WHERE,\s*EMBEDDABLE_WHERE,\s*PENDING_EMBEDDING_WHERE\s*\}\s*from\s*'\.\/lib\/embedding-backlog\.mjs'/);
     // The selection query must be built from the shared constant, not from an
     // inline copy of the clause. (The namespace-stats summary further down the
     // file legitimately mentions the same columns; this pins the SELECT that
     // decides what gets embedded.)
-    expect(src).toMatch(/WHERE\s*`?\s*\n?\s*\+?\s*\(forceAll\s*\?[^)]*:\s*PENDING_EMBEDDING_WHERE\)/);
+    // Both branches use a shared clause — `--force` included, so it cannot
+    // resurrect deliberately-unembedded rows (#1492).
+    expect(src).toMatch(/WHERE\s*`?\s*\n?\s*\+?\s*\(forceAll\s*\?\s*EMBEDDABLE_WHERE\s*:\s*PENDING_EMBEDDING_WHERE\)/);
   });
 
   it('the exported clause is the one that filters unembedded active rows', () => {

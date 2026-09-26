@@ -20,7 +20,7 @@ import { existsSync, readFileSync } from 'fs';
 import { mofloInternalURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, hnswIndexPath, findProjectRoot } from './lib/moflo-paths.mjs';
 import { openBackend } from './lib/get-backend.mjs';
-import { PENDING_EMBEDDING_WHERE } from './lib/embedding-backlog.mjs';
+import { DELIBERATELY_UNEMBEDDED_WHERE, EMBEDDABLE_WHERE, PENDING_EMBEDDING_WHERE } from './lib/embedding-backlog.mjs';
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 const BRIDGE_CORE = 'dist/src/cli/memory/bridge-core.js';
 const HNSW_PERSISTENCE = 'dist/src/cli/memory/hnsw-persistence.js';
@@ -100,12 +100,12 @@ function saveDb(db) {
 // The backlog clause is imported, not restated (#1383): the indexer gate asks
 // this exact question to decide whether to run this script at all, and a gate
 // that approximates its step's own query is how new chunks got left unembedded
-// in the first place. `PENDING_EMBEDDING_WHERE` already carries `status =
-// 'active'`, so the non-forced branch below replaces the base clause rather
-// than appending to it.
+// in the first place. Both clauses carry `status = 'active'` and exclude rows
+// deliberately left unembedded (ephemeral namespaces, opt-outs — #1492), so
+// `--force` re-embeds everything embeddable without resurrecting those.
 function getEntriesNeedingEmbeddings(db, namespace, forceAll) {
   let sql = `SELECT id, key, namespace, content FROM memory_entries WHERE `
-    + (forceAll ? `status = 'active'` : PENDING_EMBEDDING_WHERE);
+    + (forceAll ? EMBEDDABLE_WHERE : PENDING_EMBEDDING_WHERE);
   const params = [];
 
   if (namespace) {
@@ -136,7 +136,7 @@ function getNamespaceStats(db) {
       namespace,
       COUNT(*) as total,
       SUM(CASE WHEN embedding IS NOT NULL AND embedding != '' THEN 1 ELSE 0 END) as vectorized,
-      SUM(CASE WHEN embedding IS NULL OR embedding = '' THEN 1 ELSE 0 END) as missing
+      SUM(CASE WHEN (embedding IS NULL OR embedding = '') AND NOT ${DELIBERATELY_UNEMBEDDED_WHERE} THEN 1 ELSE 0 END) as missing
     FROM memory_entries
     WHERE status = 'active'
     GROUP BY namespace
