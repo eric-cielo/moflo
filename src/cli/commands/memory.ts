@@ -2179,9 +2179,13 @@ const rebuildIndexCommand: Command = {
 
     const { db, dbPath } = await openDb(cwd);
 
-    // Build query
-    let sql = `SELECT id, key, namespace, content FROM memory_entries WHERE status = 'active'`;
-    const params: string[] = [];
+    // Build query. Rows deliberately left unembedded (ephemeral namespaces,
+    // explicit opt-outs) are excluded even under --force: NULL there means
+    // "never embed", not "not embedded yet" (#1492).
+    const { backfillExclusionSql } = await import('../memory/bridge-embedder.js');
+    const exclusion = backfillExclusionSql();
+    let sql = `SELECT id, key, namespace, content FROM memory_entries WHERE status = 'active' ${exclusion.sql}`;
+    const params: string[] = [...exclusion.params];
 
     if (!forceAll) {
       sql += ` AND (embedding IS NULL OR embedding = '')`;

@@ -80,7 +80,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     const result = await purgeEphemeralNamespaces({
       dbPath: join(tmpdir(), 'moflo-missing-729', 'nope.db'),
     });
-    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
   });
 
   it('hard-deletes only PURGE_ON_SESSION_START_NAMESPACES and preserves tasklist + others', async () => {
@@ -204,7 +204,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     });
 
     const result = await purgeEphemeralNamespaces({ dbPath });
-    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
 
     // Pre-WAL the test verified byte-equality of the file, but the daemon
     // factory rewrites journal_mode pragma bytes in the header on every open
@@ -230,7 +230,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     expect(first.trimmed).toBe(0);
 
     const second = await purgeEphemeralNamespaces({ dbPath });
-    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
+    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
   });
 
   it('skips DBs that lack a memory_entries table', async () => {
@@ -242,7 +242,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     db.close();
 
     const result = await purgeEphemeralNamespaces({ dbPath });
-    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
   });
 
   it('hard-purges prefix-match namespaces (doctor-memprobe-*) alongside exact-match', async () => {
@@ -458,7 +458,7 @@ describe('verify-record relocation + retention (#1375)', () => {
     expect(first.relocated).toBe(1);
 
     const second = await purgeEphemeralNamespaces({ dbPath });
-    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0 });
+    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
     expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1375']);
   });
 
@@ -620,11 +620,66 @@ describe('purgeMemoryProbeNamespaces (#1166)', () => {
   });
 });
 
-describe('namespace constants (#729, #968)', () => {
-  it('EPHEMERAL_NAMESPACES contains exactly the four embedding-skip namespaces', () => {
-    expect(Array.from(EPHEMERAL_NAMESPACES).sort()).toEqual(
-      ['epic-state', 'hive-mind', 'tasklist', 'test-bridge-fix'],
+describe('purgeEphemeralNamespaces vector strip (#1492)', () => {
+  const VEC = JSON.stringify([0.1, 0.2, 0.3]);
+
+  function readRow(dbPath: string, id: string): { embedding: unknown; model: unknown; dims: unknown } | null {
+    const db = openDaemonDatabase(dbPath);
+    try {
+      const rows = db.exec(
+        `SELECT embedding, embedding_model, embedding_dimensions FROM memory_entries WHERE id = ?`,
+        [id],
+      );
+      const v = rows[0]?.values?.[0];
+      return v ? { embedding: v[0], model: v[1], dims: v[2] } : null;
+    } finally {
+      db.close();
+    }
+  }
+
+  it('clears vectors on surviving ephemeral rows and leaves real namespaces embedded', async () => {
+    const dbPath = await makeTmpDb((db) => {
+      const insert = (id: string, ns: string) =>
+        db.run(
+          `INSERT INTO memory_entries (id, key, namespace, content, embedding, embedding_model, embedding_dimensions, status)
+           VALUES (?, ?, ?, ?, ?, 'fast-all-MiniLM-L6-v2', 3, 'active')`,
+          [id, `k-${id}`, ns, `content ${id}`, VEC],
+        );
+      insert('tl', 'tasklist');
+      insert('sw', 'swarm-agents');
+      insert('keep', 'learnings');
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath });
+    expect(result.stripped).toBe(2);
+    // Rows survive — only the vector goes, back to the writer's null/null shape.
+    expect(readRow(dbPath, 'tl')).toEqual({ embedding: null, model: null, dims: null });
+    expect(readRow(dbPath, 'sw')).toEqual({ embedding: null, model: null, dims: null });
+    expect(readRow(dbPath, 'keep')).toEqual({ embedding: VEC, model: 'fast-all-MiniLM-L6-v2', dims: 3 });
+
+    // Idempotent: a second session has nothing left to strip.
+    expect(await purgeEphemeralNamespaces({ dbPath })).toEqual(
+      { purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 },
     );
+  });
+});
+
+describe('namespace constants (#729, #968)', () => {
+  it('EPHEMERAL_NAMESPACES contains exactly the embedding-skip namespaces', () => {
+    expect(Array.from(EPHEMERAL_NAMESPACES).sort()).toEqual([
+      'epic-state', 'hive-mind',
+      'swarm-agents', 'swarm-consensus', 'swarm-tasks', 'swarm-topology',
+      'tasklist', 'test-bridge-fix',
+    ]);
+  });
+
+  it('swarm-* coordinator state is embed-skip but never purged (#1492, Story #806)', () => {
+    // The swarm hydrates from these namespaces after an MCP-server restart;
+    // purging them on session start would silently empty the swarm.
+    for (const ns of ['swarm-agents', 'swarm-topology', 'swarm-tasks', 'swarm-consensus']) {
+      expect(isEphemeralNamespace(ns)).toBe(true);
+      expect(shouldPurgeOnSessionStart(ns)).toBe(false);
+    }
   });
 
   it('PURGE_ON_SESSION_START_NAMESPACES is a strict subset that excludes tasklist (#968)', () => {
