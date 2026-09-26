@@ -189,10 +189,10 @@ export function namespaceMatchSql(
   const exact = [...names];
   const likes = [...prefixes].map((p) => `${p}%`);
   const clauses: string[] = [];
-  // COALESCE: the column is nullable, and `NOT (NULL IN (...))` is NULL — a
-  // NULL-namespace row would silently drop out of a negated match.
-  if (exact.length > 0) clauses.push(`COALESCE(namespace, '') IN (${exact.map(() => '?').join(', ')})`);
-  for (let i = 0; i < likes.length; i++) clauses.push(`COALESCE(namespace, '') LIKE ?`);
+  // Bare column, not COALESCE'd, so positive filters (the session-start purge)
+  // keep using the namespace index. Negate via `NOT COALESCE(match, 0)`.
+  if (exact.length > 0) clauses.push(`namespace IN (${exact.map(() => '?').join(', ')})`);
+  for (let i = 0; i < likes.length; i++) clauses.push('namespace LIKE ?');
   return {
     sql: clauses.length > 0 ? `(${clauses.join(' OR ')})` : '(0)',
     params: [...exact, ...likes],
@@ -214,7 +214,9 @@ export function ephemeralNamespaceSql(): { sql: string; params: string[] } {
 export function backfillExclusionSql(): { sql: string; params: string[] } {
   const ephemeral = ephemeralNamespaceSql();
   return {
-    sql: `AND NOT ${ephemeral.sql} AND COALESCE(embedding_model, '') <> ?`,
+    // COALESCE: `namespace` is nullable and `NOT (NULL IN (...))` is NULL,
+    // which would silently drop a NULL-namespace row from the backfill.
+    sql: `AND NOT COALESCE(${ephemeral.sql}, 0) AND COALESCE(embedding_model, '') <> ?`,
     params: [...ephemeral.params, EMBEDDING_MODEL_OPT_OUT],
   };
 }

@@ -61,15 +61,13 @@ const sqlString = (s) => `'${s.replace(/'/g, "''")}'`;
 export const DELIBERATELY_UNEMBEDDED_WHERE = (() => {
   const clauses = [];
   if (EPHEMERAL_NAMESPACES.length > 0) {
-    clauses.push(`COALESCE(namespace, '') IN (${EPHEMERAL_NAMESPACES.map(sqlString).join(', ')})`);
+    clauses.push(`namespace IN (${EPHEMERAL_NAMESPACES.map(sqlString).join(', ')})`);
   }
-  for (const prefix of EPHEMERAL_NAMESPACE_PREFIXES) {
-    clauses.push(`COALESCE(namespace, '') LIKE ${sqlString(`${prefix}%`)}`);
-  }
+  for (const prefix of EPHEMERAL_NAMESPACE_PREFIXES) clauses.push(`namespace LIKE ${sqlString(`${prefix}%`)}`);
   clauses.push(`COALESCE(embedding_model, '') = ${sqlString(EMBEDDING_MODEL_OPT_OUT)}`);
-  // COALESCE on the nullable column: `NOT (NULL IN (...))` is NULL, which would
-  // silently drop a NULL-namespace row out of every negated use below.
-  return `(${clauses.join(' OR ')})`;
+  // COALESCE to a strict 0/1: `namespace` is nullable and `NULL IN (...)` is
+  // NULL, so every negated use below would silently drop a NULL-namespace row.
+  return `COALESCE((${clauses.join(' OR ')}), 0)`;
 })();
 
 /**
