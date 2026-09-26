@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Worktrees That Actually Run</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fg: #1f2328;
+      --fg-muted: #57606a;
+      --bg: #faf9f6;
+      --accent: #b91c1c;
+      --accent-hover: #7f1d1d;
+      --code-bg: #f1ece4;
+      --code-fg: #1f2328;
+      --rule: #e3dfd8;
+      --shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--fg);
+      max-width: 740px;
+      margin: 3rem auto;
+      padding: 0 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.018em;
+      line-height: 1.22;
+      color: var(--fg);
+    }
+    h1 {
+      font-size: 2.25rem;
+      margin: 1.25rem 0 1rem;
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 0.25rem;
+    }
+    h3 {
+      font-size: 1.1rem;
+      margin: 1.75rem 0 0.5rem;
+    }
+    p {
+      margin: 0.95rem 0;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(185, 28, 28, 0.35);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      border-bottom-color: var(--accent-hover);
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: inset 0 0 0 1px rgba(31, 35, 40, 0.04);
+      margin: 1.25rem 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+    li::marker {
+      color: var(--fg-muted);
+    }
+    em {
+      font-style: italic;
+      color: var(--fg);
+    }
+    strong {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2rem 0;
+    }
+    blockquote {
+      margin: 1.25rem 0;
+      padding: 0.5rem 1.25rem;
+      border-left: 3px solid var(--accent);
+      color: var(--fg-muted);
+      font-style: italic;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.8rem;
+      border: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    th {
+      background: var(--code-bg);
+      font-weight: 600;
+    }
+    h1 + p em {
+      color: var(--fg-muted);
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; margin: 1.5rem auto; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.25rem; }
+      table { font-size: 0.88rem; }
+      th, td { padding: 0.4rem 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/Moflo_wide.png" alt="MoFlo — provisioned git worktrees" /></p>
+
+<h1>Worktrees That Actually Run</h1>
+
+<p><em><a href="https://github.com/eric-cielo/moflo">MoFlo</a> now provisions git worktrees: it creates the tree, then copies in your gitignored config, links or installs your dependencies, and hands each tree a stable index so the dev servers don't fight over ports. You can drive it from your shell with <code>flo worktree</code>, or from inside Claude Code with <code>/flo -wt</code>. Same code underneath.</em></p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+<hr />
+
+<h2>The problem it solves</h2>
+
+<p>You know this one. <code>git worktree add</code> gives you a checkout in about a second, and then nothing runs in it:</p>
+
+<pre><code>$ git worktree add ../app-review feature/some-pr
+$ cd ../app-review
+$ npm run dev
+Error: Cannot find module 'vite'</code></pre>
+
+<p>Three things are missing, and they're missing for the same reason — they're gitignored, so a fresh checkout has never seen them:</p>
+
+<ul>
+  <li><code>node_modules</code> — empty tree, and a few minutes of install before you can do anything.</li>
+  <li><code>.env</code>, <code>.env.local</code> — the local config your build reads.</li>
+  <li>A free port. Your first tree already owns <code>3000</code>; the second one just fails to bind.</li>
+</ul>
+
+<p>So you do it by hand: copy the env files, symlink or reinstall <code>node_modules</code>, hunt down the port. Every time, in the same order, and you get it slightly wrong when you're in a hurry. That's the whole feature — it does those steps for you, from a config block you write once.</p>
+
+<p>What it buys you in practice: worktrees become cheap enough to actually use. Spin one up to review a PR without stashing, run a long test suite in one tree while you keep editing in another, or let an agent work a ticket in an isolated tree while your own checkout stays exactly where you left it.</p>
+
+<hr />
+
+<h2>Two ways to run it</h2>
+
+<p>Both entry points call the same provisioning code and read the same config. Pick based on where you already are:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Outside Claude</th>
+      <th>Inside Claude Code</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Command</strong></td>
+      <td><code>flo worktree add &lt;branch&gt;</code></td>
+      <td><code>/flo -wt &lt;issue&gt;</code></td>
+    </tr>
+    <tr>
+      <td><strong>You get</strong></td>
+      <td>A provisioned worktree. You go work in it.</td>
+      <td>A provisioned worktree <em>and</em> the ticket done in it — branch, commits, PR.</td>
+    </tr>
+    <tr>
+      <td><strong>Use it when</strong></td>
+      <td>You're driving. Also scripts, Makefiles, CI.</td>
+      <td>You're handing off a ticket and want your checkout left alone.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>They're not alternatives to each other so much as the same tool at two altitudes — the second one shells out to the first.</p>
+
+<hr />
+
+<h2>Option 1 — <code>flo worktree</code>, from your shell</h2>
+
+<p>Three subcommands. The alias is <code>wt</code> if you're typing it a lot.</p>
+
+<pre><code>$ flo worktree add feature/123-thing
+Worktree: /home/you/app-worktrees/feature-123-thing
+Branch:   feature/123-thing
+Index:    0
+Provisioning:
+  ✓ copy .env
+  ✓ copy .env.local
+  ✓ link node_modules
+  ✓ setup npm ci
+Remove with: flo worktree remove feature/123-thing
+
+$ cd /home/you/app-worktrees/feature-123-thing &amp;&amp; npm run dev   # works</code></pre>
+
+<p>Steps are marked <code>✓</code> done, <code>·</code> skipped, or <code>✗</code> failed, with the reason appended — a missing <code>.env.local</code> is a skip, not an error, because it legitimately doesn't exist on every machine. <code>--from &lt;ref&gt;</code> picks the base ref if you don't want the repo default; <code>--no-provision</code> gets you the bare tree.</p>
+
+<p>The tree lands at <code>&lt;repo-parent&gt;/&lt;repo&gt;-worktrees/&lt;branch-slug&gt;</code> by default — a sibling of your checkout, not a subdirectory of it. Nesting it inside the repo means your own tooling finds it: test globs match it, the linter walks it, the file watcher fires on it, and you lose an afternoon working out why the suite suddenly runs everything twice.</p>
+
+<p>Scripting it? <code>--json</code> gives you one object on stdout:</p>
+
+<pre><code>$ flo worktree add feature/123 --json
+{"path":"/home/you/app-worktrees/feature-123","branch":"feature/123","index":0,"provisioned":true,"steps":[…]}</code></pre>
+
+<p>Note <code>provisioned</code> — it's <code>false</code> if any step failed, and the failure detail is in the steps array. The worktree still exists either way; more on that below.</p>
+
+<p>The other two:</p>
+
+<pre><code>$ flo worktree list
+  main  [primary]
+    /home/you/app
+  feature/123-thing  [provisioned #0]
+    /home/you/app-worktrees/feature-123-thing
+  experiment  [unmanaged]
+    /home/you/scratch
+
+$ flo worktree remove feature/123-thing</code></pre>
+
+<p>That last entry is a worktree you made yourself with plain <code>git worktree add</code>. It shows up, it's tagged <code>unmanaged</code>, and nothing breaks — moflo tracks its own trees with a small <code>.moflo/worktree.json</code> in each one, and treats "no such file" as the answer rather than an error. A tree moflo made but couldn't fully provision reads <code>unprovisioned #&lt;n&gt;</code>, so you can tell the two apart.</p>
+
+<h3>What <code>remove</code> refuses to do</h3>
+
+<p><code>remove</code> won't delete a tree with uncommitted work unless you pass <code>--force</code>. The part worth knowing is what it <em>doesn't</em> count as work: its own <code>.moflo/worktree.json</code>, and anything <code>copy:</code> or <code>link:</code> put there. Those are ignored files matched back against the config entries that created them, globs included — so a <code>copy: [".env.*"]</code> correctly claims the <code>.env.local</code> that <code>git status</code> reports.</p>
+
+<p>Skip that and every tree the tool itself produced needs <code>--force</code> to remove. Which teaches you to type <code>--force</code> without reading, and then the guard isn't guarding anything. A check that always fires is worse than no check.</p>
+
+<hr />
+
+<h2>Option 2 — <code>/flo -wt</code>, from inside Claude Code</h2>
+
+<p><code>/flo</code> is moflo's ticket runner: hand it an issue number and it does the analysis, branch, implementation, tests, commit and PR. Adding <code>-wt</code> moves all of that into a fresh worktree.</p>
+
+<pre><code>/flo -wt 1481</code></pre>
+
+<p>Concretely, that changes one thing: the branch is created in a new provisioned worktree, and every phase after it — implement, test, simplify, commit, push, PR — runs against that path instead of your checkout. Your working tree keeps whatever half-finished thing you had open. When it's done you get the worktree path back, so you can go look at it.</p>
+
+<p>The flag is orthogonal to the rest of the skill's flags: it changes <em>where</em> the work happens, not <em>what</em> runs. <code>/flo -sd -s -wt 42</code> runs the spec-driven cycle, in a swarm, in a worktree. It's ignored (with a note) for <code>--epic-branch</code>, where the epic orchestrator owns branch layout, and in research and ticket-only modes, which never touch a branch at all.</p>
+
+<h3>It's a wrapper, not a reimplementation</h3>
+
+<p>Under the hood the skill runs the same command you'd run:</p>
+
+<pre><code>cd "&lt;repo-root&gt;" &amp;&amp; flo worktree add "feature/1481-worktrees" --json</code></pre>
+
+<p>…and reads <code>path</code> out of the JSON. That's deliberate, and it's the reason the skill is explicitly told <em>not</em> to hand-roll the path or shell <code>git worktree add</code> directly: path computation and the copy/link/setup steps are platform-sensitive, and they live in tested code. A second, subtly-different implementation inside a Markdown skill file is how you end up shipping a Windows bug nobody can reproduce.</p>
+
+<p>Two gotchas in that snippet are worth calling out, because they'll bite anyone scripting around Claude Code:</p>
+
+<ul>
+  <li><strong>The <code>cd</code> to the repo root is load-bearing.</strong> <code>flo worktree</code> resolves the repo from its working directory. Run it from the wrong place and on a good day you get <code>Not a registered worktree of this repo</code>; on a bad day it quietly targets a different repository.</li>
+  <li><strong>A bare <code>cd</code> doesn't stick between calls.</strong> Claude Code resets the Bash working directory to the project root after every call. <code>cd &lt;path&gt;</code> in one call and <code>npm test</code> in the next runs the tests in the <em>primary</em> checkout — everything looks green and the PR contains no changes. So the directory gets bound per-command: <code>cd "&lt;path&gt;" &amp;&amp; npm test</code> for shell commands, <code>git -C "&lt;path&gt;" status</code> for git.</li>
+</ul>
+
+<hr />
+
+<h2>The config both paths read</h2>
+
+<p>Provisioning is driven by an optional <code>worktree:</code> block in <code>moflo.yaml</code>. Worth being explicit: <strong>with no block, <code>add</code> provisions nothing</strong> — it's a plain <code>git worktree add</code> with a state file. Nothing gets copied, linked, or executed until you ask for it.</p>
+
+<pre><code>worktree:
+  dir: ../myrepo-worktrees   # default: &lt;repo-parent&gt;/&lt;repo&gt;-worktrees
+  copy: [".env", ".env.*"]   # gitignored files copied from the primary checkout
+  link: ["node_modules"]     # symlinked (junctioned on Windows) from the primary checkout
+  setup: "npm ci"            # run in the new worktree, with MOFLO_WORKTREE_INDEX in its env</code></pre>
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Use it when</th>
+      <th>Watch out for</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>copy</code></td>
+      <td>A fresh checkout is missing gitignored config a build needs</td>
+      <td>It relocates <strong>secrets</strong> outside the repo and outside its <code>.gitignore</code>. Sources must live inside the primary checkout; <code>../secrets</code> is rejected.</td>
+    </tr>
+    <tr>
+      <td><code>link</code></td>
+      <td><code>node_modules</code> is large and the project doesn't use npm workspaces</td>
+      <td>A symlinked root <code>node_modules</code> is fragile under npm/yarn workspaces — use <code>setup: npm ci</code> there instead. An existing destination is never clobbered.</td>
+    </tr>
+    <tr>
+      <td><code>setup</code></td>
+      <td>Install or build steps have to run per workspace</td>
+      <td>A non-zero exit marks the provision failed but leaves the worktree in place.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Steps run <strong>copy → link → setup</strong>, in that order, and the order matters. <code>setup</code> is usually <code>npm ci</code>, which may read the <code>.env</code> files <code>copy</code> brings in, and shouldn't race the <code>link</code> that's about to drop <code>node_modules</code> underneath it.</p>
+
+<p>If a step fails, <strong>the worktree stays</strong>. It's a valid checkout regardless, and deleting a directory you might already be working in is a much worse failure mode than leaving it half-provisioned. You'll see it in <code>list</code> as not provisioned, fix the step, and re-run.</p>
+
+<h3>Ports</h3>
+
+<p>MoFlo can't rewrite your hardcoded ports — it doesn't know which of your files means "dev server" and shouldn't be editing them anyway. What it can give you is the one thing you can't compute yourself: a small integer, unique across your live worktrees, in <code>MOFLO_WORKTREE_INDEX</code> when <code>setup</code> runs. Offset from it:</p>
+
+<pre><code>worktree:
+  setup: "npm ci &amp;&amp; node -e \"require('fs').writeFileSync('.env.local','PORT='+(3500+Number(process.env.MOFLO_WORKTREE_INDEX)*20))\""</code></pre>
+
+<p>The index is the smallest free non-negative integer, so removing a tree frees its slot for reuse. That's not neatness — a monotonic counter would eventually push <code>3500 + index * 20</code> past 65535, and you'd hit it weeks later, in someone else's worktree, where it looks like anything but a counter.</p>
+
+<hr />
+
+<h2>Implementation notes, if you're going to rely on this</h2>
+
+<p>MoFlo installs into projects that build on Windows, macOS, and Linux, so the platform branches all live in one service rather than being sprinkled through the command:</p>
+
+<ul>
+  <li><strong>Windows gets junctions, not symlinks.</strong> A directory junction needs no admin rights and no developer mode; a <code>'dir'</code> symlink needs one of them. Link targets are resolved to absolute paths first on every platform — a relative target silently produces a <em>broken</em> junction on Windows.</li>
+  <li><strong>No shell-outs for file work.</strong> Copies go through <code>fs.cpSync</code>. There's no <code>cp</code>, <code>ln -s</code>, <code>mkdir -p</code>, or <code>find</code> anywhere on this path, because none of them are on a stock Windows box.</li>
+  <li><strong>Path comparisons realpath both sides</strong>, and case-fold on Windows and macOS. Otherwise macOS hands you <code>/var/folders/…</code> on one side and <code>/private/var/folders/…</code> on the other — same directory, compares unequal. We've paid for that one already.</li>
+  <li><strong><code>setup</code> runs through a shell on both platforms.</strong> It's a user-authored command <em>string</em>, not an argv array — <code>npm ci &amp;&amp; npm run build</code> is a legitimate value, and without a shell you'd exec a file literally named that. Windows needs a shell regardless, since <code>npm</code> there is <code>npm.cmd</code>. Trust boundary is the same as a <code>package.json</code> script: your own config.</li>
+  <li><strong>Glob support in <code>copy</code> is narrow</strong> — one <code>*</code> in the last segment, so <code>.env.*</code> works. Anything more matches nothing and is reported skipped, rather than silently matching a subset. The alternatives were shelling out to <code>find</code> or walking your whole tree for a pattern you assumed was cheap.</li>
+</ul>
+
+<p>On the guards: <code>copy</code> sources must resolve inside the primary checkout, and the destination is always the new worktree. <code>link</code> is checked <em>lexically</em> — on the string you wrote, before resolving symlinks — which looks sloppy until you hit the case it exists for. On a re-add, the worktree's <code>node_modules</code> is already a symlink into the primary checkout; resolve first and the check calls the destination "outside the worktree" and rejects the exact link provisioning just made. Same failure if your primary checkout uses pnpm or a shared store. "Did the user write a path that climbs out of the tree" is a property of the string, so it's answered on the string.</p>
+
+<hr />
+
+<h2>One thing you don't have to configure</h2>
+
+<p>MoFlo's durable learnings already converge across a repo's worktrees automatically. Linked worktrees share a <code>.git</code> common directory, so each one derives the same store path and meets the others there — a new tree starts knowing what the others figured out. Structural data (code map, guidance chunks, test index) stays local and rebuilds itself, since it's specific to that branch's code and sharing it would just serve you stale search results. Details are in <a href="https://github.com/eric-cielo/moflo/blob/main/docs/blog/memory-sharing.html">the memory-sharing writeup</a>.</p>
+
+<hr />
+
+<h2>Getting started</h2>
+
+<pre><code>npm install --save-dev moflo
+npx flo init
+
+# add a worktree: block to moflo.yaml, then either:
+npx flo worktree add feature/my-branch     # you drive
+# or, in Claude Code:
+/flo -wt 1481                              # hand off the ticket</code></pre>
+
+</body>
+</html>
