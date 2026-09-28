@@ -85,6 +85,13 @@ export interface PurgeEphemeralNamespacesOptions {
   /** Path to the memory DB. Defaults to `<resolved project root>/.moflo/moflo.db` (#1315). */
   dbPath?: string;
   /**
+   * Project whose `.moflo/learnings-audit.json` the run-summary count consults
+   * (#1495). Defaults to the resolved state root when `dbPath` is also
+   * defaulted. A caller passing only a custom `dbPath` gets no verdict
+   * filtering — guessing the root from the DB's location is not done.
+   */
+  projectRoot?: string;
+  /**
    * Override the tasklist retention cap. Defaults to
    * {@link TASKLIST_RETENTION_CAP}. Tests use this to drive the trim path
    * without seeding hundreds of rows.
@@ -148,7 +155,8 @@ export async function purgeEphemeralNamespaces(
     purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0,
   };
 
-  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(resolveStateRoot()));
+  const stateRoot = options.dbPath ? options.projectRoot : (options.projectRoot ?? resolveStateRoot());
+  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(options.projectRoot ?? resolveStateRoot()));
   if (!fs.existsSync(dbPath)) return nothingToDo;
 
   // node:sqlite via the unified factory (Phase 5 / #1084). WAL persists each
@@ -284,8 +292,7 @@ export async function purgeEphemeralNamespaces(
       trimmed += db.getRowsModified?.() ?? 0;
     }
 
-    // The DB is `<root>/.moflo/moflo.db`; the audit's verdict record sits beside it.
-    const runSummaries = countRunSummaries(db, path.dirname(path.dirname(dbPath)));
+    const runSummaries = countRunSummaries(db, stateRoot);
 
     if (purged === 0 && trimmed === 0 && relocated === 0 && superseded === 0 && stripped === 0) {
       return { ...nothingToDo, runSummaries };
@@ -313,7 +320,7 @@ export async function purgeEphemeralNamespaces(
  * human saying "this one is a lesson", and a notice that ignored it would print
  * on every session forever.
  */
-function countRunSummaries(db: ReturnType<typeof openDaemonDatabase>, projectRoot: string): number {
+function countRunSummaries(db: ReturnType<typeof openDaemonDatabase>, projectRoot: string | undefined): number {
   const rows = db.exec(
     `SELECT key FROM memory_entries WHERE namespace = ? AND status = 'active'`,
     [LEARNINGS_NAMESPACE],
@@ -323,7 +330,7 @@ function countRunSummaries(db: ReturnType<typeof openDaemonDatabase>, projectRoo
   for (const [raw] of rows[0]?.values ?? []) {
     const key = String(raw);
     if (!isRunSummaryKey(key)) continue;
-    decided ??= readAuditState(projectRoot);
+    decided ??= projectRoot ? readAuditState(projectRoot) : new Map();
     if (!decided.has(key)) count++;
   }
   return count;

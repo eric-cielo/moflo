@@ -225,7 +225,7 @@
   {
    "file": "src/cli/services/durable-store-io.ts",
    "classification": "daemon-offline",
-   "notes": "Shared DB half of durable-learning reconciliation (#1463): reads the durable slice and applies the merge plan for the team artifact and the worktree durable sync. Both callers run pre-boot at session-start or from a CLI command, the same offline shape as cherry-pick-learnings and team-artifact-sync."
+   "notes": "Shared DB half of durable-learning reconciliation (#1463): reads the durable slice and applies the merge plan for the team artifact and the worktree durable sync. Both callers run pre-boot at session-start or from a CLI command, the same offline shape as cherry-pick-learnings and team-artifact-sync. Also deletes misfiled verify:* learnings from the shared transfer store at session-start (#1495), same pre-boot shape."
   },
   {
    "file": "src/cli/services/team-artifact-sync.ts",

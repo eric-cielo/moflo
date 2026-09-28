@@ -279,14 +279,16 @@ describe('#1495 run-summary classification', () => {
       { key: 'flo-100-old-done', status: 'archived' },
       { key: 'real-lesson' },
     ]);
-    const result = await purgeEphemeralNamespaces({ dbPath });
+    const result = await purgeEphemeralNamespaces({ dbPath, projectRoot: root });
     expect(result.runSummaries).toBe(2);
     expect(rows(dbPath).filter((r) => r.namespace === 'learnings')).toHaveLength(4);
 
     // A key the audit already judged no longer counts, so the notice clears
     // once a human has curated the store.
     writeAuditState(root, new Map([['2679-mutation-choice', { verdict: 'KEEP', hash: 'h', at: Date.now() }]]));
-    expect((await purgeEphemeralNamespaces({ dbPath })).runSummaries).toBe(1);
+    expect((await purgeEphemeralNamespaces({ dbPath, projectRoot: root })).runSummaries).toBe(1);
+    // Without a project root there is no verdict record to consult — never a guessed one.
+    expect((await purgeEphemeralNamespaces({ dbPath })).runSummaries).toBe(2);
   });
 
   it('flo memory audit-learnings nominates run summaries for a verdict', () => {

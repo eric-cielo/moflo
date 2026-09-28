@@ -30,6 +30,7 @@ import {
   legacyHnswIndexPath,
 } from '../../../bin/lib/moflo-paths.mjs';
 import { MIGRATED_FROM_KNOWLEDGE } from '../../../bin/migrations/lib/markers.mjs';
+import { runDurableHealCheck } from './durable-heal.mjs';
 
 /**
  * Kill every background process the launcher spawned so row-count assertions
@@ -372,14 +373,14 @@ function seedFilesystemFixtures(consumerDir) {
   record('populated:seed-fs', 'pass', `${LEGACY_CLAUDE_FLOW_DIR} + ${LEGACY_SWARM_DIR} + ${MOFLO_DIR} fixtures placed`);
 }
 
-function runLauncher(consumerDir) {
+function runLauncher(consumerDir, { env, label = 'populated:launcher-exit' } = {}) {
   const launcher = join(consumerDir, 'node_modules', 'moflo', 'bin', 'session-start-launcher.mjs');
   if (!existsSync(launcher)) {
     record('populated:launcher-present', 'fail', `launcher missing at ${relative(consumerDir, launcher)}`);
     throw new Error('launcher missing');
   }
-  const r = runNode(launcher, [], { cwd: consumerDir, timeout: 120_000 });
-  if (!recordExit('populated:launcher-exit', r)) {
+  const r = runNode(launcher, [], { cwd: consumerDir, timeout: 120_000, env });
+  if (!recordExit(label, r)) {
     throw new Error('launcher exited non-zero');
   }
   // Stop background tasks before any DB inspection. With `auto_index`
@@ -1077,4 +1078,8 @@ export async function runPopulatedConsumerProfile(consumerDir) {
   assertLauncherAnnouncements(launcherResult.stdout);
 
   await runMcpClobberCheck(consumerDir, rows);
+
+  // Last, because it turns on durable sharing and writes a team artifact —
+  // state none of the assertions above were written against.
+  runDurableHealCheck(consumerDir, runLauncher);
 }

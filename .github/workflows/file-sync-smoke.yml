@@ -28,6 +28,12 @@ name: File-sync smoke (#976)
 #                                       macOS/Linux/Windows branches are all
 #                                       stub-driven, so every leg asserts every
 #                                       branch in ~2s.
+#   - durable-misfiled-convergence-1495.test.ts — two session starts over a
+#                                       local DB, shared durable store and team
+#                                       artifact must converge (#1495). Rides
+#                                       here for the same reason: real
+#                                       node:sqlite files in os.tmpdir() on
+#                                       NTFS/APFS, not just ext4.
 #
 # These three together cover the six #976 acceptance behaviors:
 #   B1 hash-skip preserves mtime
@@ -70,6 +76,12 @@ on:
       - 'src/cli/__tests__/shipped-scripts-manifest.test.ts'
       - 'src/cli/services/daemon-service.ts'
       - 'src/cli/__tests__/services/daemon-service.test.ts'
+      - 'src/cli/services/durable-key-rules.ts'
+      - 'src/cli/services/durable-store-io.ts'
+      - 'src/cli/services/durable-sync.ts'
+      - 'src/cli/services/team-artifact-sync.ts'
+      - 'src/cli/services/ephemeral-namespace-purge.ts'
+      - 'src/cli/__tests__/services/durable-misfiled-convergence-1495.test.ts'
       - '.github/workflows/file-sync-smoke.yml'
   workflow_dispatch:
 
@@ -139,3 +151,4 @@ jobs:
           src/cli/__tests__/shipped-scripts-manifest.test.ts
           src/cli/__tests__/services/daemon-service.test.ts
           tests/bin/launcher-854-fixes.test.ts
+          src/cli/__tests__/services/durable-misfiled-convergence-1495.test.ts
