@@ -59,7 +59,12 @@ import {
   type CherryPickResult,
 } from './cherry-pick-learnings.js';
 import { planReconcile, TOMBSTONE_TTL_MS } from './durable-reconcile.js';
-import { readDurableSnapshot, applyDurableActions, pruneExpiredArchives } from './durable-store-io.js';
+import {
+  readDurableSnapshot,
+  applyDurableActions,
+  pruneExpiredArchives,
+  deleteMisfiledDurableRows,
+} from './durable-store-io.js';
 
 export { isDurableNamespace };
 
@@ -75,6 +80,11 @@ export interface DurableSyncReport {
   prunedArchives: number;
   /** Rows copied shared → local (seed direction). */
   seededToLocal: number;
+  /**
+   * Misfiled rows (`verify:*` in `learnings`, #1495) deleted from the shared
+   * store. Non-zero on the first session after upgrading; 0 once converged.
+   */
+  healedShared: number;
   /**
    * True when the durable store was auto-derived from the git worktree layout
    * (no explicit `durable_path` / env), rather than user-configured. Lets the
@@ -298,10 +308,10 @@ export function reconcileDurableStores(
 }
 
 /**
- * Apply the archive retention window to one store. Best-effort: a missing or
- * unopenable store is "nothing to prune", never an error that fails a sync.
+ * Run one best-effort maintenance write against a store. A missing or
+ * unopenable store is "nothing to do", never an error that fails a sync.
  */
-function pruneStore(dbPath: string): number {
+function maintainStore(dbPath: string, op: (db: ReturnType<typeof openDaemonDatabase>) => number): number {
   if (!fs.existsSync(dbPath)) return 0;
   let db;
   try {
@@ -310,13 +320,17 @@ function pruneStore(dbPath: string): number {
     return 0;
   }
   try {
-    return pruneExpiredArchives(db, Date.now(), TOMBSTONE_TTL_MS);
+    return op(db);
   } catch {
     return 0;
   } finally {
     db.close();
   }
 }
+
+/** Apply the archive retention window to one store. */
+const pruneStore = (dbPath: string): number =>
+  maintainStore(dbPath, (db) => pruneExpiredArchives(db, Date.now(), TOMBSTONE_TTL_MS));
 
 /** Total rows a direction actually changed — what the launcher reports. */
 export function changedRows(result: DurableDirectionResult): number {
@@ -387,6 +401,7 @@ export async function syncDurableAtSessionStart(
       skipped,
       flushedToShared: 0,
       seededToLocal: 0,
+      healedShared: 0,
       prunedArchives: pruneStore(memoryDbPath(projectRoot)),
     };
   }
@@ -403,14 +418,26 @@ export async function syncDurableAtSessionStart(
   // flush re-inserts the purged entry into every workspace. Running the seed
   // first means this store has applied the deletion before anything drops the
   // evidence for it.
+  //
+  // The shared store also sheds misfiled rows (#1495) in the same open — it is
+  // the store sibling worktrees contend on, so a second open is a second lock
+  // wait. Neither direction above can move such a row (the snapshot read
+  // excludes them), so this only shrinks the store. The local copy is the
+  // purge's job, which relocates rather than deletes.
+  let healedShared = 0;
   const pruned =
-    pruneStore(memoryDbPath(projectRoot)) + pruneStore(durablePath);
+    pruneStore(memoryDbPath(projectRoot)) +
+    maintainStore(durablePath, (db) => {
+      healedShared = deleteMisfiledDurableRows(db);
+      return pruneExpiredArchives(db, Date.now(), TOMBSTONE_TTL_MS);
+    });
 
   return {
     durablePath,
     autoWorktree: autoWorktree ?? false,
     flushedToShared: changedRows(flush),
     seededToLocal: changedRows(seed),
+    healedShared,
     prunedArchives: pruned,
   };
 }

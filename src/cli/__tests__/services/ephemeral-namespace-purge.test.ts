@@ -80,7 +80,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     const result = await purgeEphemeralNamespaces({
       dbPath: join(tmpdir(), 'moflo-missing-729', 'nope.db'),
     });
-    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0 });
   });
 
   it('hard-deletes only PURGE_ON_SESSION_START_NAMESPACES and preserves tasklist + others', async () => {
@@ -204,7 +204,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     });
 
     const result = await purgeEphemeralNamespaces({ dbPath });
-    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0 });
 
     // Pre-WAL the test verified byte-equality of the file, but the daemon
     // factory rewrites journal_mode pragma bytes in the header on every open
@@ -230,7 +230,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     expect(first.trimmed).toBe(0);
 
     const second = await purgeEphemeralNamespaces({ dbPath });
-    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
+    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0 });
   });
 
   it('skips DBs that lack a memory_entries table', async () => {
@@ -242,7 +242,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     db.close();
 
     const result = await purgeEphemeralNamespaces({ dbPath });
-    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
+    expect(result).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0 });
   });
 
   it('hard-purges prefix-match namespaces (doctor-memprobe-*) alongside exact-match', async () => {
@@ -458,7 +458,7 @@ describe('verify-record relocation + retention (#1375)', () => {
     expect(first.relocated).toBe(1);
 
     const second = await purgeEphemeralNamespaces({ dbPath });
-    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 });
+    expect(second).toEqual({ purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0 });
     expect(keysIn(dbPath, VERIFY_RECORD_NAMESPACE)).toEqual(['verify:1375']);
   });
 
@@ -659,7 +659,7 @@ describe('purgeEphemeralNamespaces vector strip (#1492)', () => {
 
     // Idempotent: a second session has nothing left to strip.
     expect(await purgeEphemeralNamespaces({ dbPath })).toEqual(
-      { purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0 },
+      { purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0 },
     );
   });
 });

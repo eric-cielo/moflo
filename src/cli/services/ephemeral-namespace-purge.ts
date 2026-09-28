@@ -36,6 +36,16 @@
  *    shape the writer produced. The next index chain drops them from the HNSW
  *    sidecar (the DB write invalidates the `hnsw-rebuild` fingerprint).
  *
+ * 5. **Count run summaries** (#1495) — active `learnings` rows whose key is
+ *    shaped like a per-ticket run summary ({@link isRunSummaryKey}). Report
+ *    only: key shape is a heuristic, so nothing moves on it here.
+ *    `flo memory audit-learnings` nominates them for a verdict instead.
+ *
+ * The relocation in pass 2 is one of three halves of the #1495 heal: the
+ * durable sync never reads a misfiled row (so the shared store and the team
+ * artifact cannot seed it back), and each of those stores drops its own copy.
+ * Healing this DB alone is what #1375 did, and the next seed undid it.
+ *
  * All passes share the file open + final VACUUM + atomic write, so disk I/O
  * is the same as before. Writes back to disk only when something changed.
  *
@@ -60,12 +70,27 @@ import {
   VERIFY_RETENTION_CAP,
 } from '../memory/bridge-embedder.js';
 import { memoryDbPath } from './moflo-paths.js';
+import {
+  isRunSummaryKey,
+  LEARNINGS_NAMESPACE,
+  MISFILED_DURABLE_RULES,
+  misfiledDurableSql,
+  misfiledRuleSql,
+} from './durable-key-rules.js';
+import { readAuditState } from '../memory/learnings-audit-state.js';
 import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import { resolveStateRoot } from './project-root.js';
 
 export interface PurgeEphemeralNamespacesOptions {
   /** Path to the memory DB. Defaults to `<resolved project root>/.moflo/moflo.db` (#1315). */
   dbPath?: string;
+  /**
+   * Project whose `.moflo/learnings-audit.json` the run-summary count consults
+   * (#1495). Defaults to the resolved state root when `dbPath` is also
+   * defaulted. A caller passing only a custom `dbPath` gets no verdict
+   * filtering — guessing the root from the DB's location is not done.
+   */
+  projectRoot?: string;
   /**
    * Override the tasklist retention cap. Defaults to
    * {@link TASKLIST_RETENTION_CAP}. Tests use this to drive the trim path
@@ -105,10 +130,12 @@ export interface PurgeEphemeralNamespacesResult {
    * backfill embedded them.
    */
   stripped: number;
+  /**
+   * Active `learnings` rows whose key looks like a per-ticket run summary
+   * (#1495). A count, not a write — see pass 5 in the module header.
+   */
+  runSummaries: number;
 }
-
-/** Namespace stray verdict records are re-filed OUT of (#1375). */
-const LEARNINGS_NAMESPACE = 'learnings';
 
 /**
  * Hard-delete rows in {@link PURGE_ON_SESSION_START_NAMESPACES}, relocate
@@ -125,10 +152,11 @@ export async function purgeEphemeralNamespaces(
   const path = await import('path');
 
   const nothingToDo: PurgeEphemeralNamespacesResult = {
-    purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0,
+    purged: 0, trimmed: 0, relocated: 0, superseded: 0, stripped: 0, runSummaries: 0,
   };
 
-  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(resolveStateRoot()));
+  const stateRoot = options.dbPath ? options.projectRoot : (options.projectRoot ?? resolveStateRoot());
+  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(options.projectRoot ?? resolveStateRoot()));
   if (!fs.existsSync(dbPath)) return nothingToDo;
 
   // node:sqlite via the unified factory (Phase 5 / #1084). WAL persists each
@@ -160,15 +188,13 @@ export async function purgeEphemeralNamespaces(
       PURGE_ON_SESSION_START_PREFIXES,
     );
 
+    // The misfiled-row rule is shared with the durable sync (#1495), so this
+    // pass and the stores it cannot reach agree on exactly which rows move.
     // GLOB, not LIKE: SQLite's LIKE is case-INSENSITIVE for ASCII, so
     // `key LIKE 'verify:%'` would also sweep a `Verify:...` row that
     // `gate.cjs`'s `record-verify-outcome` — which tests
-    // `key.indexOf('verify:') !== 0` — would never have credited. GLOB is
-    // case-sensitive, so this matches exactly the keys /verify writes and the
-    // gate recognises. Neither `*`, `?` nor `[` appears in the literal prefix,
-    // so the only wildcard in the pattern is the trailing `*`.
-    const strayVerifyWhere = 'namespace = ? AND key GLOB ?';
-    const strayVerifyBindings = [LEARNINGS_NAMESPACE, `${VERIFY_RECORD_NAMESPACE}:*`];
+    // `key.indexOf('verify:') !== 0` — would never have credited.
+    const misfiled = misfiledDurableSql();
 
     const ephemeral = ephemeralNamespaceSql();
     const embeddedEphemeralWhere = `${ephemeral.sql} AND embedding IS NOT NULL`;
@@ -182,10 +208,10 @@ export async function purgeEphemeralNamespaces(
     const countRows = db.exec(
       `SELECT
          (SELECT COUNT(*) FROM memory_entries WHERE ${purgeWhere}) AS purgeable,
-         (SELECT COUNT(*) FROM memory_entries WHERE ${strayVerifyWhere}) AS relocatable,
+         (SELECT COUNT(*) FROM memory_entries WHERE ${misfiled.sql}) AS relocatable,
          (SELECT COUNT(*) FROM memory_entries WHERE ${embeddedEphemeralWhere}) AS strippable,
          ${caps.map((_, i) => `(SELECT COUNT(*) FROM memory_entries WHERE namespace = ?) AS capTotal${i}`).join(',\n         ')}`,
-      [...purgeBindings, ...strayVerifyBindings, ...ephemeral.params, ...caps.map(([ns]) => ns)],
+      [...purgeBindings, ...misfiled.params, ...ephemeral.params, ...caps.map(([ns]) => ns)],
     );
     const counts = countRows[0]?.values?.[0] ?? [];
     const purgeable = Number(counts[0] ?? 0);
@@ -204,28 +230,32 @@ export async function purgeEphemeralNamespaces(
 
     let relocated = 0;
     let superseded = 0;
-    if (relocatable > 0) {
+    let relocatedIntoVerify = 0;
+    for (const rule of relocatable > 0 ? MISFILED_DURABLE_RULES : []) {
+      const { sql: ruleWhere, params: ruleBindings } = misfiledRuleSql(rule);
       // UNIQUE(namespace, key): a stray row whose key already exists in the
       // target cannot simply move — the UPDATE would violate the constraint,
       // and `UPDATE OR REPLACE` would clobber the newer record with the older.
-      // Drop the `learnings` copy instead, and COUNT it: this is the one place
-      // the pass destroys a row rather than re-filing it, so it must surface in
-      // the result rather than hide inside `relocated`.
+      // Drop the stray copy instead, and COUNT it: this is the one place the
+      // pass destroys a row rather than re-filing it, so it must surface in the
+      // result rather than hide inside `relocated`.
       db.run(
         `DELETE FROM memory_entries
-          WHERE ${strayVerifyWhere}
+          WHERE ${ruleWhere}
             AND key IN (SELECT key FROM memory_entries WHERE namespace = ?)`,
-        [...strayVerifyBindings, VERIFY_RECORD_NAMESPACE],
+        [...ruleBindings, rule.relocateTo],
       );
-      superseded = db.getRowsModified?.() ?? 0;
+      superseded += db.getRowsModified?.() ?? 0;
       // Content is unchanged, so the row's existing embedding stays valid: the
       // HNSW sidecar is keyed by row id and re-reads `namespace` from SQL on
       // every index build, so this is a re-filing, not a re-index.
       db.run(
-        `UPDATE memory_entries SET namespace = ? WHERE ${strayVerifyWhere}`,
-        [VERIFY_RECORD_NAMESPACE, ...strayVerifyBindings],
+        `UPDATE memory_entries SET namespace = ? WHERE ${ruleWhere}`,
+        [rule.relocateTo, ...ruleBindings],
       );
-      relocated = db.getRowsModified?.() ?? 0;
+      const moved = db.getRowsModified?.() ?? 0;
+      relocated += moved;
+      if (rule.relocateTo === VERIFY_RECORD_NAMESPACE) relocatedIntoVerify += moved;
     }
 
     // After the purge, so rows it already deleted are not counted twice. Model
@@ -244,7 +274,7 @@ export async function purgeEphemeralNamespaces(
     let trimmed = 0;
     for (const [i, [ns, cap]] of caps.entries()) {
       // Rows just relocated into `verify` count toward its cap in this same run.
-      const total = capTotals[i] + (ns === VERIFY_RECORD_NAMESPACE ? relocated : 0);
+      const total = capTotals[i] + (ns === VERIFY_RECORD_NAMESPACE ? relocatedIntoVerify : 0);
       if (total <= cap) continue;
       // Keep the newest `cap` rows by created_at, falling back to `id DESC`
       // for legacy rows that predate the created_at-not-null schema (#728-era).
@@ -262,8 +292,10 @@ export async function purgeEphemeralNamespaces(
       trimmed += db.getRowsModified?.() ?? 0;
     }
 
+    const runSummaries = countRunSummaries(db, stateRoot);
+
     if (purged === 0 && trimmed === 0 && relocated === 0 && superseded === 0 && stripped === 0) {
-      return nothingToDo;
+      return { ...nothingToDo, runSummaries };
     }
 
     // VACUUM only after a DELETE actually freed pages. A relocation is an
@@ -274,10 +306,34 @@ export async function purgeEphemeralNamespaces(
     // both auto-commit each `db.run`, so this is safe to chain.
     if (purged > 0 || trimmed > 0 || superseded > 0) db.run('VACUUM');
 
-    return { purged, trimmed, relocated, superseded, stripped };
+    return { purged, trimmed, relocated, superseded, stripped, runSummaries };
   } finally {
     db.close();
   }
+}
+
+/**
+ * Count active `learnings` rows keyed like a per-ticket run summary. Keys only
+ * — a single indexed read of short strings, cheap on a store of thousands.
+ *
+ * Keys `flo memory audit-learnings` already judged are skipped: a KEEP is a
+ * human saying "this one is a lesson", and a notice that ignored it would print
+ * on every session forever.
+ */
+function countRunSummaries(db: ReturnType<typeof openDaemonDatabase>, projectRoot: string | undefined): number {
+  const rows = db.exec(
+    `SELECT key FROM memory_entries WHERE namespace = ? AND status = 'active'`,
+    [LEARNINGS_NAMESPACE],
+  );
+  let decided: ReadonlyMap<string, unknown> | null = null;
+  let count = 0;
+  for (const [raw] of rows[0]?.values ?? []) {
+    const key = String(raw);
+    if (!isRunSummaryKey(key)) continue;
+    decided ??= projectRoot ? readAuditState(projectRoot) : new Map();
+    if (!decided.has(key)) count++;
+  }
+  return count;
 }
 
 export interface PurgeMemoryProbeNamespacesOptions {

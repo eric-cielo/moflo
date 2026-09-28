@@ -307,7 +307,7 @@ export async function restoreSnapshot(
   let purged = 0;
   try {
     const { purgeEphemeralNamespaces } = await import('./ephemeral-namespace-purge.js');
-    const result = await purgeEphemeralNamespaces({ dbPath: target });
+    const result = await purgeEphemeralNamespaces({ dbPath: target, projectRoot });
     purged = (result?.purged ?? 0) + (result?.trimmed ?? 0);
   } catch {
     // Non-fatal — a leftover ephemeral row is harmless and the next session

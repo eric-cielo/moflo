@@ -85,6 +85,7 @@ import {
   type DurablePayload,
 } from './durable-store-io.js';
 import { detectToolCallMarkup } from '../memory/tool-call-markup.js';
+import { isMisfiledDurable } from './durable-key-rules.js';
 
 /** Allowed `type` values — the schema CHECK set. An out-of-set value would make
  *  INSERT OR IGNORE silently drop a hand-edited artifact row, so we coerce. */
@@ -181,6 +182,13 @@ export interface ExportReport {
    * waiting for anyone to run a local cleanup pass first.
    */
   skippedCorrupt: number;
+  /**
+   * Lines dropped from the artifact because they are about a row no durable
+   * store may hold — a `verify:*` record in `learnings` (#1495). Live and
+   * tombstone lines alike: a tombstone for such a key has nothing to delete,
+   * since every store's durable read already ignores it.
+   */
+  droppedMisfiled: number;
   /** Live entries in the artifact after the merge. */
   total: number;
   /** Tombstone lines retained in the artifact after the merge. */
@@ -213,6 +221,8 @@ export interface ImportReport {
    * artifact is already polluted stops re-importing the corruption.
    */
   skippedCorrupt: number;
+  /** Lines skipped as misfiled (#1495) — see {@link ExportReport.droppedMisfiled}. */
+  skippedMisfiled: number;
 }
 
 /**
@@ -331,12 +341,15 @@ function readArtifact(artifactPath: string): {
   lines: Map<string, TeamArtifactLine>;
   records: Map<string, ReconcileRecord>;
   malformed: number;
+  /** Lines about a misfiled row (#1495), dropped here so no caller ever sees one. */
+  misfiled: number;
   existed: boolean;
 } {
   const lines = new Map<string, TeamArtifactLine>();
   const records = new Map<string, ReconcileRecord>();
   let malformed = 0;
-  if (!fs.existsSync(artifactPath)) return { lines, records, malformed, existed: false };
+  let misfiled = 0;
+  if (!fs.existsSync(artifactPath)) return { lines, records, malformed, misfiled, existed: false };
   const raw = fs.readFileSync(artifactPath, 'utf-8');
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -348,6 +361,13 @@ function readArtifact(artifactPath: string): {
     }
     const id = lineId(parsed);
     const record = lineToRecord(parsed);
+    // Dropped at the read both directions share, so import never applies one
+    // and export rewrites the file without it — the artifact shrinks instead of
+    // re-seeding every teammate's `learnings` on their next session (#1495).
+    if (isMisfiledDurable(record.namespace, record.key)) {
+      misfiled++;
+      continue;
+    }
     const existing = records.get(id);
     // Newest wins, ties keep the first. Built on the merge rule's own
     // comparison basis so the two cannot disagree about which of a live line
@@ -356,7 +376,7 @@ function readArtifact(artifactPath: string): {
     lines.set(id, parsed);
     records.set(id, record);
   }
-  return { lines, records, malformed, existed: true };
+  return { lines, records, malformed, misfiled, existed: true };
 }
 
 /**
@@ -424,8 +444,16 @@ function payloadFromLine(id: string, line: TeamArtifactEntry): DurablePayload {
     tags: line.tags ? JSON.stringify(line.tags) : null,
     metadata: JSON.stringify({ provenance: line.provenance, sharedFrom: 'team-artifact' }),
     ownerId: line.provenance?.author || null,
-    // created_at/updated_at are INTEGER NOT NULL — never bind null.
-    createdAt: typeof line.created_at === 'number' ? line.created_at : Date.now(),
+    // created_at/updated_at are INTEGER NOT NULL — never bind null. A line with
+    // no created_at falls back to its edit time, never the import time: stamping
+    // now makes a re-imported old entry read as a new learning, which is what
+    // inflated growth metrics after every re-seed (#1495).
+    createdAt:
+      typeof line.created_at === 'number'
+        ? line.created_at
+        : typeof line.updated_at === 'number'
+          ? line.updated_at
+          : Date.now(),
     // The row gets the best timestamp available even when the RECORD compared
     // as 0 (a pre-#1463 line): 0 governs only who wins the merge, while the row
     // itself should carry the most accurate time we have.
@@ -466,7 +494,7 @@ export function exportTeamArtifact(opts: {
   const now = opts.now ?? (Number.isNaN(parsedSharedAt) ? Date.now() : parsedSharedAt);
   const ttlMs = opts.tombstoneTtlMs ?? TOMBSTONE_TTL_MS;
 
-  const { lines, records: target, malformed, existed } = readArtifact(opts.artifactPath);
+  const { lines, records: target, malformed, misfiled, existed } = readArtifact(opts.artifactPath);
   const provenance: TeamProvenance = {
     author: resolveAuthor(projectRoot),
     source: resolveSource(),
@@ -555,7 +583,7 @@ export function exportTeamArtifact(opts: {
 
   // Skip the write when the merge changed nothing AND the file already exists:
   // a git-tracked artifact should not show up as modified after a no-op run.
-  const changed = actions.length > 0 || prunedTombstones > 0 || backfilled > 0;
+  const changed = actions.length > 0 || prunedTombstones > 0 || backfilled > 0 || misfiled > 0;
   const wrote = changed || !existed;
   if (wrote) {
     fs.mkdirSync(path.dirname(opts.artifactPath), { recursive: true });
@@ -574,6 +602,7 @@ export function exportTeamArtifact(opts: {
     backfilled,
     skippedMalformed: malformed,
     skippedCorrupt,
+    droppedMisfiled: misfiled,
     total: live,
     tombstones,
     wrote,
@@ -606,10 +635,12 @@ export function importTeamArtifact(opts: { projectRoot?: string; artifactPath: s
     skippedMalformed: 0,
     skippedNonDurable: 0,
     skippedCorrupt: 0,
+    skippedMisfiled: 0,
   };
 
-  const { lines, records: parsed, malformed } = readArtifact(opts.artifactPath);
+  const { lines, records: parsed, malformed, misfiled } = readArtifact(opts.artifactPath);
   report.skippedMalformed = malformed;
+  report.skippedMisfiled = misfiled;
   if (lines.size === 0) return report;
 
   const source = new Map<string, ReconcileRecord>();

@@ -34,6 +34,7 @@
 // audit's public surface — a caller configuring the pass should not have to
 // know which file the detector was carved into.
 import { findDeadPaths, type DeadPathScanOptions } from './learnings-dead-paths.js';
+import { isRunSummaryKey, LEARNINGS_NAMESPACE } from '../services/durable-key-rules.js';
 
 export {
   DEFAULT_DEAD_PATHS_PER_ENTRY,
@@ -44,7 +45,7 @@ export {
 } from './learnings-dead-paths.js';
 
 /** The namespace this audit is scoped to. */
-export const LEARNINGS_NAMESPACE = 'learnings';
+export { LEARNINGS_NAMESPACE };
 
 /**
  * One row of the audit's input, already parsed out of `memory_entries`.
@@ -64,7 +65,7 @@ export interface AuditRow {
 }
 
 /** Why an entry was nominated. An entry can be nominated by more than one pass. */
-export type AuditBucket = 'duplicate' | 'unused' | 'superseded' | 'dead-path';
+export type AuditBucket = 'duplicate' | 'unused' | 'superseded' | 'dead-path' | 'run-summary';
 
 /**
  * The verdict vocabulary, taken verbatim from the auto-memory decision table in
@@ -139,6 +140,8 @@ export interface AuditBucketCounts {
   unused: number;
   superseded: number;
   deadPath: number;
+  /** Keys shaped like a per-ticket run summary (#1495). */
+  runSummary: number;
 }
 
 /**
@@ -425,11 +428,18 @@ export function buildAuditPlan(
     candidate.deadPaths = hit.deadPaths;
   }
 
+  // A run summary is git history stored as a learning (#1495). The key shape
+  // only nominates — a lesson can carry its ticket number as provenance, which
+  // is the case the model verdict tells apart.
+  const runSummaries = pending.filter((row) => isRunSummaryKey(row.key));
+  for (const row of runSummaries) nominate(row, 'run-summary');
+
   const counts: AuditBucketCounts = {
     duplicate: duplicates.length,
     unused: unused.length,
     superseded: superseded.length,
     deadPath: deadPaths.length,
+    runSummary: runSummaries.length,
   };
 
   // Most-nominated first, then oldest — an entry three passes agree on is the
@@ -465,6 +475,8 @@ function describeBuckets(candidate: AuditCandidate): string {
       parts.push('never returned by a search since usage recording began');
     } else if (bucket === 'dead-path') {
       parts.push(`cites path(s) that resolve nowhere in the tree: ${(candidate.deadPaths ?? []).join(', ')}`);
+    } else if (bucket === 'run-summary') {
+      parts.push('key is shaped like a per-ticket run summary');
     } else {
       const terms = (candidate.supersededTerms ?? [])
         .map((t) => `"${t.from}" → "${t.to}"`)
@@ -532,6 +544,10 @@ export function buildJudgePrompt(candidates: readonly AuditCandidate[], now: num
     '| Deleted, and the lesson was about that code | RETIRE |',
     '| Deleted, but the lesson generalises past it | COMPRESS — drop the path, keep the rule |',
     '| The entry is a historical record, correct as written | KEEP |',
+    '',
+    'A run-summary flag means the key looks like a ticket record ("flo-123-...", "...-done").',
+    'What one ticket changed is git history, not a lesson: RETIRE it unless the content states a',
+    'rule that would help a DIFFERENT task, in which case COMPRESS it down to that rule.',
     '',
     `Answer with exactly ${candidates.length} line(s), nothing else. One line per entry:`,
     '',
