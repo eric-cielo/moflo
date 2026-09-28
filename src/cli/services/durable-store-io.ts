@@ -50,6 +50,7 @@ import {
   type ReconcileAction,
   type ReconcileRecord,
 } from './durable-reconcile.js';
+import { misfiledDurableSql } from './durable-key-rules.js';
 
 /** The `status` value that marks a durable row as deleted-but-propagatable. */
 export const ARCHIVED_STATUS = 'archived';
@@ -92,9 +93,15 @@ export interface DurableSnapshot {
 // Same column list as the shared INSERT, so a future column can never be added
 // to one half of the round trip only. The status filter is what differs from
 // the legacy cherry-pick read: archived rows are the deletions we must carry.
+//
+// Misfiled rows (#1495) are excluded HERE, at the one read every sync direction
+// shares, so none of them — flush, seed, artifact import, artifact export — can
+// carry a `verify:*` record in either state. Filtering per call site is what let
+// the local cleanup be undone by the next seed.
 const selectDurableSql = (placeholders: string, columns: string, byKey: boolean): string =>
   `SELECT ${columns} FROM memory_entries ` +
-  `WHERE namespace IN (${placeholders}) AND status IN ('active', '${ARCHIVED_STATUS}')` +
+  `WHERE namespace IN (${placeholders}) AND status IN ('active', '${ARCHIVED_STATUS}') ` +
+  `AND NOT ${misfiledDurableSql().sql}` +
   (byKey ? ` AND key = ?` : '');
 
 /**
@@ -138,7 +145,10 @@ export function readDurableSnapshot(
     selectDurableSql(placeholders, withPayloads ? DURABLE_ROW_COLUMNS : RECORD_ONLY_COLUMNS, opts.key != null),
   );
   try {
-    stmt.bind(opts.key != null ? [...namespaces, opts.key] : namespaces.slice());
+    const misfiled = misfiledDurableSql().params;
+    stmt.bind(
+      opts.key != null ? [...namespaces, ...misfiled, opts.key] : [...namespaces, ...misfiled],
+    );
     while (stmt.step()) {
       const row = stmt.getAsObject();
       const namespace = String(row.namespace);
@@ -393,5 +403,26 @@ export function pruneExpiredArchives(
       `AND namespace IN (${placeholders}) AND updated_at < ?`,
     [...namespaces, now - ttlMs],
   );
+  return db.getRowsModified();
+}
+
+/**
+ * Hard-delete every misfiled row (#1495) from a DURABLE TRANSFER store — the
+ * worktree shared store, never a project's own `.moflo/moflo.db` (the local
+ * purge relocates those instead, since the local copy is the one worth keeping).
+ *
+ * A shared store holds only durable namespaces, so a `verify:*` record there has
+ * no home to move to, and a tombstone for it would be pointless: the snapshot
+ * read already ignores the key in every store. Deleting is what makes the store
+ * shrink rather than carry the rows forever. Returns rows removed.
+ */
+export function deleteMisfiledDurableRows(db: SqlJsLikeDatabase): number {
+  if (!hasMemoryEntriesTable(db)) return 0;
+  const { sql, params } = misfiledDurableSql();
+  // Probe first: the steady state is a clean store, and a DELETE would open a
+  // write transaction on every session start for nothing.
+  const probe = db.exec(`SELECT 1 FROM memory_entries WHERE ${sql} LIMIT 1`, params);
+  if (!probe[0]?.values?.[0]) return 0;
+  db.run(`DELETE FROM memory_entries WHERE ${sql}`, params);
   return db.getRowsModified();
 }

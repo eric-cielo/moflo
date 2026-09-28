@@ -2886,6 +2886,7 @@ const teamExportCommand: Command = {
       if (report.updated > 0) changes.push(`${report.updated} corrected`);
       if (report.deleted > 0) changes.push(`${report.deleted} retired`);
       if (report.resurrected > 0) changes.push(`${report.resurrected} restored`);
+      if (report.droppedMisfiled > 0) changes.push(`${report.droppedMisfiled} verify record${report.droppedMisfiled === 1 ? '' : 's'} removed (not learnings, #1495)`);
       if (changes.length > 0) output.printInfo(`Also propagated: ${changes.join(', ')}.`);
       if (report.keptRemote > 0) {
         output.printWarning(
@@ -2960,6 +2961,11 @@ const teamImportCommand: Command = {
       if (report.skippedCorrupt > 0) {
         output.printWarning(
           `${report.skippedCorrupt} artifact line${report.skippedCorrupt === 1 ? '' : 's'} NOT imported — captured tool-call markup in the content (#1467).`,
+        );
+      }
+      if (report.skippedMisfiled > 0) {
+        output.printInfo(
+          `${report.skippedMisfiled} verify record${report.skippedMisfiled === 1 ? '' : 's'} in the artifact ignored (not learnings, #1495) — \`flo memory team-export\` removes them.`,
         );
       }
       if (report.skippedNonDurable > 0) {

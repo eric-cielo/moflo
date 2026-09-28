@@ -144,6 +144,13 @@ function emitWarning(message) {
     process.stderr.write(`moflo: ${message}\n`);
   } catch { /* stderr write must not throw */ }
 }
+// Advisory stdout line for a condition the user can act on but the launcher
+// deliberately did not change. Not counted in `mutationCount` — nothing mutated.
+function emitNotice(message) {
+  try {
+    process.stdout.write(`moflo: ${message}\n`);
+  } catch { /* writing must never throw */ }
+}
 function errMessage(err) {
   return err && err.message ? err.message : String(err);
 }
@@ -2444,6 +2451,14 @@ try {
         `${plural(result.stripped, 'row')} of run state removed from semantic search`,
       );
     }
+    // Report-only (#1495): key shape is a heuristic, so these are never moved
+    // automatically — the audit nominates them for a model verdict.
+    if (result?.runSummaries > 0) {
+      emitNotice(
+        `${result.runSummaries} learning${result.runSummaries === 1 ? ' looks' : 's look'} like per-ticket run summaries, not lessons ` +
+          '— review with `flo memory audit-learnings`',
+      );
+    }
   }
 } catch (err) {
   // Non-fatal — leftover rows just sit until the next session retries.
@@ -2525,6 +2540,12 @@ try {
       emitMutation(
         'shared local learnings',
         `${plural(result.flushedToShared, 'durable entry')} pushed to the shared store`,
+      );
+    }
+    if (result?.healedShared > 0) {
+      emitMutation(
+        'removed verify records from the shared store',
+        `${plural(result.healedShared, 'row')} that are not learnings`,
       );
     }
   }
