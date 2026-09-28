@@ -530,13 +530,14 @@ describe('execSync to execFileSync migration', () => {
 
   describe('generate-code-map.mjs', () => {
     it('should use execFileSync for git ls-files in bin/', () => {
+      // #1497 — enumeration moved to the scope helper shared with index-patterns.
       const src = readFileSync(
-        join(__dirname, '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        join(__dirname, '..', '..', '..', 'bin', 'lib', 'source-scope.mjs'),
         'utf-8'
       );
 
       // git ls-files should use execFileSync with array args
-      expect(src).toContain("execFileSync(\n      'git', ['ls-files', '--'");
+      expect(src).toContain("execFileSync(\n      'git', ['ls-files', '--cached'");
     });
 
     it('should use execFileSync for node embed script in bin/', () => {
@@ -691,9 +692,9 @@ describe('path normalization fixes', () => {
   });
 
   describe('git ls-files output normalization', () => {
-    it('should normalize backslashes in generate-code-map.mjs', () => {
+    it('should normalize backslashes in the code-map/patterns scope helper', () => {
       const src = readFileSync(
-        join(__dirname, '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        join(__dirname, '..', '..', '..', 'bin', 'lib', 'source-scope.mjs'),
         'utf-8'
       );
 
@@ -710,15 +711,16 @@ describe('path normalization fixes', () => {
       expect(src).toContain(".map(f => f.replace(/\\\\/g, '/'))");
     });
 
-    it('should only check forward slash in exclude dir filtering (generate-code-map)', () => {
+    it('should only check forward slash in exclude dir filtering (code-map/patterns scope helper)', () => {
       const src = readFileSync(
-        join(__dirname, '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        join(__dirname, '..', '..', '..', 'bin', 'lib', 'source-scope.mjs'),
         'utf-8'
       );
 
       // After normalization, only forward slashes should be checked
-      const filterBlock = src.slice(src.indexOf('.filter(f =>'), src.indexOf('.filter(f =>') + 200);
-      expect(filterBlock).not.toContain("ex + '\\\\'");
+      const filterBlock = src.slice(src.indexOf('export function createScopeFilter'), src.indexOf('Git enumeration'));
+      expect(filterBlock.length).toBeGreaterThan(0);
+      expect(filterBlock).not.toContain("'\\\\'");
     });
   });
 });

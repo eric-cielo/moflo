@@ -287,10 +287,28 @@ describe('index-fingerprint — per-step gate (#858)', () => {
     // tmpdir is not a git repo → git ls-files fails → null hash
     for (const stepName of GIT_BACKED_STEPS) {
       const fp = computeStepFingerprint(stepName, tree.root);
-      const values = Object.values(fp);
-      expect(values).toHaveLength(1);
-      expect(values[0]).toBeNull();
+      const gitKey = stepName === 'test-index' ? 'testList' : 'sourceList';
+      expect(fp[gitKey]).toBeNull();
     }
+  });
+
+  // #1497 — code-map + patterns scope comes from moflo.yaml and from the
+  // installed moflo's scope rules; either changing must re-run the step or
+  // out-of-scope rows survive until an unrelated source edit.
+  it.each(['code-map', 'patterns-index'])('%s re-runs when moflo.yaml or the moflo install changes', async (step) => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    const yaml = join(tree.root, 'moflo.yaml');
+    writeFileSync(yaml, 'code_map:\n  directories: [src]\n');
+
+    saveStepFingerprint(step, tree.root, computeStepFingerprint(step, tree.root));
+    expect(decideStepGate(step, tree.root, {}).skip).toBe(true);
+
+    bumpMtime(yaml);
+    expect(decideStepGate(step, tree.root, {}).skip).toBe(false);
+
+    saveStepFingerprint(step, tree.root, computeStepFingerprint(step, tree.root));
+    bumpMtime(tree.mofloPkg, 10);
+    expect(decideStepGate(step, tree.root, {}).skip).toBe(false);
   });
 
   it('git-backed steps skip when null fingerprint round-trips', async () => {

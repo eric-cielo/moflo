@@ -87,6 +87,11 @@ export const EMBEDDING_MODEL_LEGACY_DEFAULT = 'local';
  * `tasklist`, because the dashboard's Flo Runs tab
  * (`daemon-dashboard.ts handleSpells`) reads tasklist; purging it on every
  * session would empty the tab between sessions (#968).
+ *
+ * `verify` is deliberately NOT here (decided in #1497): `/verify` Step 0 runs a
+ * semantic `memory_search` over that namespace to surface prior verdicts for
+ * the area being changed, which needs embeddings. Its size is bounded by
+ * {@link VERIFY_RETENTION_CAP} instead.
  */
 export const EPHEMERAL_NAMESPACES: ReadonlySet<string> = new Set([
   'hive-mind',

@@ -119,7 +119,18 @@ function loadGuidanceDirs() {
     resolve(bundledGuidanceDir) !== resolve(projectGuidanceDir) &&
     resolve(bundledGuidanceDir) !== resolve(projectGuidanceDir, 'shipped')
   ) {
-    dirs.push({ path: bundledGuidanceDir, prefix: 'moflo-bundled', absolute: true });
+    // #1497 — session-start syncs every shipped doc into `.claude/guidance/`,
+    // so once that copy exists the bundled one is a byte-identical twin that
+    // halves the distinct docs per search. Shadow it — but only when the
+    // project's `.claude/guidance` is itself a configured directory; otherwise
+    // the synced copy is never indexed and the bundled one is the only copy.
+    const projectGuidanceIndexed = userDirs.some(d => resolve(projectRoot, d) === projectGuidanceDir);
+    dirs.push({
+      path: bundledGuidanceDir,
+      prefix: 'moflo-bundled',
+      absolute: true,
+      shadowDir: projectGuidanceIndexed ? projectGuidanceDir : null,
+    });
   }
 
   // 3. CLAUDE.md files are NOT indexed — Claude loads them into context automatically.
@@ -134,7 +145,17 @@ function loadGuidanceDirs() {
   // 5. Bundled moflo skills — gated by isSelfRef to prevent double-indexing
   const bundledSkillsDir = resolve(mofloRoot, '.claude/skills');
   if (!isSelfRef && existsSync(bundledSkillsDir) && resolve(bundledSkillsDir) !== resolve(projectSkillsDir)) {
-    dirs.push({ path: bundledSkillsDir, prefix: 'skill-bundled', fileFilter: ['SKILL.md'], kind: 'skill', absolute: true });
+    // #1497 — skills synced into `.claude/skills/<name>/` are indexed by step 4;
+    // index a bundled skill only when the project holds no copy of it (e.g. a
+    // skill excluded by a `skills: categories` selection).
+    dirs.push({
+      path: bundledSkillsDir,
+      prefix: 'skill-bundled',
+      fileFilter: ['SKILL.md'],
+      kind: 'skill',
+      absolute: true,
+      shadowDir: projectSkillsDir,
+    });
   }
 
   // 6. SDD spec/plan artifacts are NOT indexed.
@@ -683,6 +704,17 @@ function walkMdFiles(dir, excludeRoots = []) {
   return files;
 }
 
+/**
+ * True when a bundled file's project-side copy (same relative path under
+ * `dirConfig.shadowDir`) exists and is therefore indexed by another entry.
+ * Skipping it here also drops it from the run's live prefix set, so the stale
+ * sweep removes rows a previous run wrote for the bundled twin.
+ */
+function isShadowed(dirConfig, dirPath, filePath) {
+  if (!dirConfig.shadowDir) return false;
+  return existsSync(resolve(dirConfig.shadowDir, relative(dirPath, filePath)));
+}
+
 function indexDirectory(db, dirConfig) {
   const dirPath = dirConfig.absolute ? dirConfig.path : resolve(projectRoot, dirConfig.path);
   const results = [];
@@ -693,9 +725,10 @@ function indexDirectory(db, dirConfig) {
   }
 
   const allMdFiles = walkMdFiles(dirPath, EXCLUDE_ROOTS);
-  const filtered = dirConfig.fileFilter
+  const filtered = (dirConfig.fileFilter
     ? allMdFiles.filter(f => dirConfig.fileFilter.includes(basename(f)))
-    : allMdFiles;
+    : allMdFiles
+  ).filter(f => !isShadowed(dirConfig, dirPath, f));
 
   for (const filePath of filtered) {
     let options = {};

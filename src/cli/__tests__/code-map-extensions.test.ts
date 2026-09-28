@@ -34,7 +34,8 @@ const read = (rel: string) => readFileSync(path.join(repoRoot, rel), 'utf-8');
 
 /** Every enumeration surface that must agree on which JS flavours are sources. */
 const JS_SOURCE_SURFACES = [
-  { file: 'bin/generate-code-map.mjs', anchor: "'.ts', '.tsx', '.js'" },
+  // #1497 — code-map's default list lives in the scope helper it shares with patterns.
+  { file: 'bin/lib/source-scope.mjs', anchor: "'.ts', '.tsx', '.js'" },
   { file: 'bin/index-patterns.mjs', anchor: 'SOURCE_EXTENSIONS' },
   { file: 'bin/index-tests.mjs', anchor: 'TEST_EXTENSIONS' },
 ];
@@ -76,7 +77,7 @@ describe('#1337 extension coverage', () => {
 describe('#1337 case normalisation (Rule #1)', () => {
   it('every extname() comparison in the indexers is case-normalised', () => {
     const offenders: string[] = [];
-    for (const file of ['bin/generate-code-map.mjs', 'bin/index-patterns.mjs', 'bin/index-tests.mjs']) {
+    for (const file of ['bin/generate-code-map.mjs', 'bin/lib/source-scope.mjs', 'bin/index-patterns.mjs', 'bin/index-tests.mjs']) {
       read(file).split('\n').forEach((line, i) => {
         if (!line.includes('extname(')) return;
         if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) return;
@@ -95,7 +96,7 @@ describe('#1337 case normalisation (Rule #1)', () => {
     // array (generate-code-map), so scan every line that constructs one.
     const bare: string[] = [];
     let globLines = 0;
-    for (const file of ['bin/generate-code-map.mjs', 'bin/index-tests.mjs']) {
+    for (const file of ['bin/lib/source-scope.mjs', 'bin/index-tests.mjs']) {
       read(file).split('\n').forEach((line, i) => {
         if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) return;
         // A pathspec glob: a quoted/templated string starting with `*`.

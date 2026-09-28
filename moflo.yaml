@@ -16,6 +16,9 @@ guidance:
 code_map:
   directories:
     - src
+    - bin
+    - scripts
+    - harness
   extensions: [".js", ".ts", ".mjs", ".cjs"]
   exclude: [node_modules, dist, .next, coverage, build, __pycache__, target, .git]
   namespace: code-map

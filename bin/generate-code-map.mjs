@@ -25,7 +25,7 @@
  *   flo-codemap                                              # Via PATH
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, execFileSync, spawn } from 'child_process';
@@ -33,6 +33,7 @@ import { memoryDbPath, MOFLO_DIR, findProjectRoot } from './lib/moflo-paths.mjs'
 import { openBackend } from './lib/get-backend.mjs';
 import { applyIncrementalChunks, schemeTaggedContentHash } from './lib/incremental-write.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
+import { listScopedSourceFiles } from './lib/source-scope.mjs';
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -50,13 +51,10 @@ const HASH_CACHE_PATH = resolve(projectRoot, MOFLO_DIR, 'code-map-hash.txt');
 // delegates here rather than shipping a second, divergent generator.
 // v2: unified scheme — invalidates every pre-#1260 cache (bare hash or the
 // old directory-level `flo memory code-map` output) exactly once on pickup.
-const SCHEME_VERSION = 2;
-
-// Directories to exclude from indexing
-const EXCLUDE_DIRS = [
-  'node_modules', 'dist', 'build', '.next', 'coverage',
-  '.claude', 'template', 'back-office-template',
-];
+// v3: #1497 — enumeration now honours code_map.directories/exclude on the git
+// path and drops test files, so every consumer's code-map rebuilds once and
+// the orphan sweep removes the out-of-scope rows.
+const SCHEME_VERSION = 3;
 
 // Heuristic descriptions for well-known directory names
 const DIR_DESCRIPTIONS = {
@@ -163,53 +161,6 @@ function countMissingEmbeddings(db) {
 // Source file enumeration — git ls-files with filesystem fallback
 // ---------------------------------------------------------------------------
 
-/** Read code_map config from moflo.yaml (directories, extensions, exclude). */
-function readCodeMapConfig() {
-  const defaults = {
-    directories: ['src'],
-    extensions: [
-      '.ts', '.tsx', '.js', '.mjs', '.cjs', '.jsx', // JS/TS
-      '.py', '.pyi',                                  // Python
-      '.go',                                           // Go
-      '.java', '.kt', '.kts',                         // JVM
-      '.cs',                                           // C#
-      '.rs',                                           // Rust
-      '.rb',                                           // Ruby
-      '.swift',                                        // Swift
-      '.php',                                          // PHP
-      '.c', '.h', '.cpp', '.hpp', '.cc',              // C/C++
-    ],
-    exclude: [...EXCLUDE_DIRS],
-  };
-  try {
-    const yamlPath = resolve(projectRoot, 'moflo.yaml');
-    if (!existsSync(yamlPath)) return defaults;
-    const content = readFileSync(yamlPath, 'utf-8');
-    // Simple YAML parsing for code_map block
-    const block = content.match(/code_map:\s*\n((?:\s+\w+:.*\n?|\s+- .*\n?)+)/);
-    if (!block) return defaults;
-    const lines = block[1].split('\n');
-    let currentKey = null;
-    const result = { ...defaults };
-    for (const line of lines) {
-      const keyMatch = line.match(/^\s+(\w+):/);
-      const itemMatch = line.match(/^\s+- (.+)/);
-      if (keyMatch) {
-        currentKey = keyMatch[1];
-        // Inline array: extensions: [".ts", ".tsx"]
-        const inlineArray = line.match(/\[([^\]]+)\]/);
-        if (inlineArray && (currentKey === 'extensions' || currentKey === 'exclude' || currentKey === 'directories')) {
-          result[currentKey] = inlineArray[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
-        }
-      } else if (itemMatch && currentKey) {
-        if (!Array.isArray(result[currentKey])) result[currentKey] = [];
-        result[currentKey].push(itemMatch[1].trim().replace(/^["']|["']$/g, ''));
-      }
-    }
-    return result;
-  } catch { return defaults; }
-}
-
 /**
  * Extension of `p`, lowercased.
  *
@@ -222,75 +173,14 @@ function normExt(p) {
   return extname(p).toLowerCase();
 }
 
-/** Walk a directory tree collecting source files (filesystem fallback). */
-function walkDir(dir, extensions, excludeSet, maxDepth = 8, depth = 0) {
-  if (depth > maxDepth) return [];
-  const results = [];
-  let entries;
-  try {
-    entries = readdirSync(resolve(projectRoot, dir), { withFileTypes: true });
-  } catch { return []; }
-  for (const entry of entries) {
-    if (excludeSet.has(entry.name)) continue;
-    // Use forward slashes for consistent cross-platform paths
-    const rel = dir ? `${dir}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      results.push(...walkDir(rel, extensions, excludeSet, maxDepth, depth + 1));
-    } else if (entry.isFile()) {
-      if (extensions.has(normExt(entry.name))) results.push(rel);
-    }
-  }
-  return results;
-}
-
+/**
+ * In-scope source files (#1497): `code_map.directories` minus `code_map.exclude`,
+ * never gitignored, never a test file — on the git path and the fallback alike.
+ */
 function getSourceFiles() {
-  const config = readCodeMapConfig();
-  // Lowercase the configured list too, so `extensions: [".MJS"]` in a consumer's
-  // moflo.yaml still matches the normalised extension of a scanned file.
-  const extSet = new Set(config.extensions.map(e => e.toLowerCase()));
-  const excludeSet = new Set(config.exclude);
-
-  // Build git glob patterns from configured extensions.
-  // `:(icase)` is required, not cosmetic: git pathspec globs are case-sensitive
-  // regardless of `core.ignorecase` (verified on git 2.43 with the setting both
-  // on and off), so a bare `*.mjs` misses a committed `Foo.MJS` on every
-  // platform. This is the primary enumeration path — normalising `extname()` in
-  // the filesystem fallback alone would leave it broken. (#1337)
-  const gitGlobArgs = config.extensions.map(ext => `:(icase)*${ext}`);
-
-  // Try git ls-files first (fast, respects .gitignore)
-  try {
-    const raw = execFileSync(
-      'git', ['ls-files', '--', ...gitGlobArgs],
-      { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true }
-    ).trim();
-
-    if (raw) {
-      const files = raw.split('\n')
-        .map(f => f.replace(/\\/g, '/'))  // normalize separators
-        .filter(f => {
-          for (const ex of EXCLUDE_DIRS) {
-            if (f.startsWith(ex + '/')) return false;
-          }
-          return true;
-        });
-      if (files.length > 0) return files;
-    }
-  } catch {
-    // git not available or not a git repo — fall through
-  }
-
-  // Fallback: walk configured directories from moflo.yaml
-  log('git ls-files returned no files — falling back to filesystem walk');
-  const files = [];
-
-  for (const dir of config.directories) {
-    if (existsSync(resolve(projectRoot, dir))) {
-      files.push(...walkDir(dir, extSet, excludeSet));
-    }
-  }
-
-  return files;
+  return listScopedSourceFiles(projectRoot, {
+    onFallback: () => log('git ls-files returned no files — falling back to filesystem walk'),
+  });
 }
 
 function isUnchanged(currentHash) {
