@@ -7,7 +7,6 @@
  *   - API route definitions and middleware usage
  *   - Error handling strategies per file
  *   - Export conventions per module
- *   - Test patterns (describe/it structure)
  *   - Configuration patterns
  *
  * Chunk types:
@@ -24,14 +23,15 @@
  *   flo-patterns                                           # Via PATH
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
-import { resolve, dirname, relative, basename, extname } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { memoryDbPath, MOFLO_DIR, findProjectRoot } from './lib/moflo-paths.mjs';
 import { openBackend } from './lib/get-backend.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
+import { listScopedSourceFiles } from './lib/source-scope.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -48,11 +48,7 @@ const statsOnly = args.includes('--stats');
 function log(msg) { console.log(`[index-patterns] ${msg}`); }
 function debug(msg) { if (verbose) console.log(`[index-patterns]   ${msg}`); }
 
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs']);
-const EXCLUDE_DIRS = new Set([
-  'node_modules', 'dist', 'build', '.next', 'coverage',
-  '.claude', '.swarm', '.moflo', '.git', 'template',
-]);
+const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs'];
 
 // ---------------------------------------------------------------------------
 // Database helpers
@@ -113,21 +109,15 @@ function countNamespace(db) {
 // File collection
 // ---------------------------------------------------------------------------
 
-function collectSourceFiles(dir, maxDepth = 8, depth = 0) {
-  if (depth > maxDepth) return [];
-  const files = [];
-  let entries;
-  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return []; }
-  for (const entry of entries) {
-    if (EXCLUDE_DIRS.has(entry.name)) continue;
-    const fullPath = resolve(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectSourceFiles(fullPath, maxDepth, depth + 1));
-    } else if (entry.isFile() && SOURCE_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
-      files.push(fullPath);
-    }
-  }
-  return files;
+/**
+ * Absolute paths of in-scope source files (#1497). Shares code-map's scope —
+ * `code_map.directories` minus `code_map.exclude`, never gitignored, never a
+ * test file — so a raw repo walk can no longer pull in build output such as
+ * `cdk.out/asset.<hash>/index.mjs` or re-index what the tests namespace owns.
+ */
+function collectSourceFiles() {
+  return listScopedSourceFiles(projectRoot, { extensions: SOURCE_EXTENSIONS })
+    .map(rel => resolve(projectRoot, rel));
 }
 
 // ---------------------------------------------------------------------------
@@ -259,14 +249,14 @@ async function main() {
   if (statsOnly) {
     const db = await getDb();
     const count = countNamespace(db);
-    const files = collectSourceFiles(projectRoot);
+    const files = collectSourceFiles();
     log(`${files.length} source files, ${count} chunks in patterns namespace`);
     db.close();
     return;
   }
 
   // Collect files
-  const files = collectSourceFiles(projectRoot);
+  const files = collectSourceFiles();
   log(`Found ${files.length} source files`);
 
   if (files.length === 0) {

@@ -189,6 +189,14 @@ function newestGuidanceMtime(projectRoot) {
   return newest;
 }
 
+function sourceScopeFingerprint(projectRoot) {
+  return {
+    sourceList: gitFileListHash(projectRoot, SOURCE_GLOBS),
+    config: safeMtime(resolve(projectRoot, 'moflo.yaml')),
+    mofloPkg: safeMtime(resolve(projectRoot, 'node_modules/moflo/package.json')),
+  };
+}
+
 /**
  * Per-step fingerprint computers. Each takes `projectRoot` and returns a flat
  * `{ input → value }` object. All MUST be sync, cheap (no sql.js loads), and
@@ -212,9 +220,14 @@ const STEP_FINGERPRINT_COMPUTERS = {
     mofloPkg: safeMtime(resolve(projectRoot, 'node_modules/moflo/package.json')),
   }),
 
-  'code-map':       (projectRoot) => ({ sourceList: gitFileListHash(projectRoot, SOURCE_GLOBS) }),
+  // Source edits, plus the two inputs that change WHICH files are in scope
+  // (#1497): `moflo.yaml` (code_map.directories / exclude) and a moflo upgrade
+  // (the scope rules ship with the package). Without them a scope fix or a
+  // config edit leaves out-of-scope rows in place until some unrelated source
+  // edit happens to invalidate the gate.
+  'code-map':       (projectRoot) => sourceScopeFingerprint(projectRoot),
   'test-index':     (projectRoot) => ({ testList:   gitFileListHash(projectRoot, TEST_GLOBS) }),
-  'patterns-index': (projectRoot) => ({ sourceList: gitFileListHash(projectRoot, SOURCE_GLOBS) }),
+  'patterns-index': (projectRoot) => sourceScopeFingerprint(projectRoot),
 
   // Library-docs grounding (#1184). Re-index when installed dependency versions
   // change — which rewrites the lockfile (npm/yarn/pnpm/bun) — or when the dep
