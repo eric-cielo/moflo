@@ -160,6 +160,14 @@ describe('#1497 source scope (bin/lib/source-scope.mjs)', () => {
     expect(config.exclude).toEqual(['node_modules']);
   });
 
+  it('parses a CRLF moflo.yaml (Windows checkout with autocrlf) the same as LF', async () => {
+    const { readCodeMapConfig } = await loadScope();
+    writeFileSync(join(root, 'moflo.yaml'), SCOPED_YAML.replace(/\n/g, '\r\n'));
+    const config = readCodeMapConfig(root);
+    expect(config.directories).toEqual(['packages', 'infra/cdk']);
+    expect(config.exclude).toEqual(['node_modules', 'dist', 'packages/core/src/generated']);
+  });
+
   it('`.` scopes to the whole repo; bare exclude names match any segment', async () => {
     const { createScopeFilter } = await loadScope();
     const inScope = createScopeFilter({ directories: ['.'], extensions: ['.ts'], exclude: ['generated'] });

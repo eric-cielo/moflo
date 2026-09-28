@@ -70,7 +70,7 @@ export function readCodeMapConfig(projectRoot) {
     // entry does not end it early and drop every entry after it.
     const block = content.match(/code_map:\s*\n((?:\s+\w+:.*\n?|\s+- .*\n?|[ \t]+#.*\n?)+)/);
     if (!block) return defaults;
-    const lines = block[1].split('\n');
+    const lines = block[1].split(/\r?\n/);
     let currentKey = null;
     const result = { ...defaults };
     for (const line of lines) {
@@ -163,7 +163,7 @@ function gitListFiles(projectRoot, extensions) {
     ).trim();
     if (!raw) return null;
     // --cached + --others can list a path twice (e.g. mid-merge); the caller dedupes.
-    return raw.split('\n').map(f => f.replace(/\\/g, '/'));
+    return raw.split(/\r?\n/).map(f => f.replace(/\\/g, '/'));
   } catch {
     return null;
   }
