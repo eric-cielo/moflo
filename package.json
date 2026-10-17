@@ -65,8 +65,8 @@
   },
   "dependencies": {
     "@anush008/tokenizers": "^0.6.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "js-yaml": "^5.2.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "js-yaml": "^5.5.0",
     "lru-cache": "^11.3.5",
     "onnxruntime-node": "^1.27.0",
     "semver": "^7.7.4",
@@ -90,8 +90,8 @@
     "picomatch": ">=2.3.2",
     "protobufjs": ">=7.5.5",
     "adm-zip": ">=0.6.0",
-    "fast-uri": ">=4.1.2",
-    "ip-address": ">=10.4.0"
+    "fast-uri": ">=4.2.2",
+    "ip-address": ">=10.7.4"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",
