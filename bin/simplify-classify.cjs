@@ -345,6 +345,7 @@ function parseDiff(diff) {
   // TRIVIAL/SMALL/NORMAL routing is unchanged) but never to the opus bar.
   let tsjsAdded = 0, tsjsDeleted = 0, tsjsDeclAdded = 0, tsjsDeclRemoved = 0;
   let otherAdded = 0, otherDeleted = 0;
+  let noiseLOC = 0;
   for (const f of files.values()) {
     added += f.added;
     deleted += f.deleted;
@@ -360,6 +361,8 @@ function parseDiff(diff) {
       tsjsDeclAdded += f.declAdded; tsjsDeclRemoved += f.declRemoved;
     } else if (fam === 'othercode') {
       otherAdded += f.added; otherDeleted += f.deleted;
+    } else if (fam === 'noise') {
+      noiseLOC += f.added + f.deleted;
     }
   }
 
@@ -376,6 +379,8 @@ function parseDiff(diff) {
     tsjsDeclAdded,
     otherNetAdded: otherAdded - otherDeleted,
     otherLOC: otherAdded + otherDeleted,
+    // Lockfile/generated churn — kept out of the NORMAL volume trigger.
+    noiseLOC,
     files: [...files.keys()],
   };
 }
@@ -477,7 +482,11 @@ function decideMeasured(stats) {
   // Sonnet — ordinary cross-cutting review is breadth-bound, so 3 Sonnet agents
   // are the right tool; Opus is reserved for the DEEP (architectural) tier above.
   const triggers = [];
-  if (totalChange > 500) triggers.push(`>500 LOC changed (${totalChange})`);
+  // Volume means reviewable lines: a lockfile bump is hundreds of lines no
+  // reviewer reads, so noise (NOISE_FILE: lockfiles, snapshots, generated,
+  // vendored, minified) never buys the 3-agent fan-out on its own.
+  const reviewableChange = totalChange - (stats.noiseLOC || 0);
+  if (reviewableChange > 500) triggers.push(`>500 LOC changed (${reviewableChange}, excluding noise files)`);
   if (stats.fileCount >= 5 && stats.netDecls >= 3) triggers.push(`${stats.fileCount} files with ${stats.netDecls} net new declarations`);
   if (stats.securityHit && stats.netDecls > 0) triggers.push('security-sensitive path with new logic');
   if (stats.newFiles >= 3 && stats.declAdded >= 5) triggers.push(`${stats.newFiles} new files with ${stats.declAdded} new declarations`);
@@ -487,7 +496,7 @@ function decideMeasured(stats) {
   }
 
   // Default: SMALL — single sonnet agent
-  reasoning.push(`small/medium diff: ${totalChange} LOC across ${stats.fileCount} file(s), +${stats.declAdded}/-${stats.declRemoved} decls`);
+  reasoning.push(`small/medium diff: ${reviewableChange} reviewable LOC across ${stats.fileCount} file(s), +${stats.declAdded}/-${stats.declRemoved} decls`);
   return { tier: 'SMALL', model: 'sonnet', agentCount: 1, escalate: noEscalate(), reasoning, stats };
 }
 

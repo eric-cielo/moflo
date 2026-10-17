@@ -116,7 +116,7 @@
         <div class="grid">
           <div class="card"><div class="topo">Same machine</div><h4>Shared durable store</h4><div class="kv"><code>memory.durable_path</code> — worktrees / Conductor workspaces seed + write-through to one durable-only DB.</div></div>
           <div class="card"><div class="topo">One user, many machines</div><h4>Portable artifact</h4><div class="kv"><code>flo memory sync --to/--from</code> — carry a durable SQLite file via a synced folder.</div></div>
-          <div class="card"><div class="topo">A team</div><h4>Git-tracked JSONL</h4><div class="kv"><code>flo memory team-export</code> → commit <code>.moflo/shared/learnings.jsonl</code>; teammates import-merge on pull.</div></div>
+          <div class="card"><div class="topo">A team</div><h4>Git-tracked artifact</h4><div class="kv"><code>flo memory team-export</code> → commit <code>.moflo/shared/learnings/</code>; teammates import-merge on pull.</div></div>
           <div class="card"><div class="topo">Fast cold-start</div><h4>Whole-DB snapshot</h4><div class="kv"><code>flo memory backup/restore</code> + <code>memory.hydrate_from</code> — seed a fresh workspace with the entire DB so it's searchable on its first session, no cold reindex.</div></div>
           <div class="card"><div class="topo">Safety &amp; docs</div><h4>Doctor + guidance</h4><div class="kv"><code>flo doctor -c shared-db</code> warns against <em>live</em> whole-DB sharing; a shipped guidance doc explains it all.</div></div>
         </div>
@@ -159,9 +159,9 @@
         <tr><th>Topology</th><th>Mechanism</th><th>Format</th><th>Embeddings</th><th>Story</th></tr>
         <tr><td>Same machine, many worktrees / Conductor</td><td><code>memory.durable_path</code></td><td>SQLite (live shared store)</td><td>Carried verbatim</td><td><a href="#s1232">#1232</a></td></tr>
         <tr><td>One user, many machines</td><td><code>flo memory sync</code></td><td>SQLite (portable artifact)</td><td>Carried verbatim</td><td><a href="#s1233">#1233</a></td></tr>
-        <tr><td>A team on one repo</td><td>git-tracked artifact</td><td>JSONL (diffable)</td><td>Regenerated on import</td><td><a href="#s1234">#1234</a></td></tr>
+        <tr><td>A team on one repo</td><td>git-tracked artifact</td><td>JSON file per entry (diffable)</td><td>Regenerated on import</td><td><a href="#s1234">#1234</a></td></tr>
       </table>
-      <p class="legend">Why JSONL for teams but SQLite elsewhere: a committed team file must be <strong>diff-reviewable and merge-friendly</strong>; embeddings (384 floats/row) would make every diff unreadable, so they're dropped and regenerated. For the SQLite modes, carrying embeddings verbatim avoids a lossy/expensive re-embed.</p>
+      <p class="legend">Why plain JSON for teams but SQLite elsewhere: a committed team file must be <strong>diff-reviewable and merge-friendly</strong>; embeddings (384 floats/row) would make every diff unreadable, so they're dropped and regenerated. For the SQLite modes, carrying embeddings verbatim avoids a lossy/expensive re-embed.</p>
       <p class="note"><strong>A fourth, complementary mechanism — whole-DB hydration (<a href="#s1244">#1244</a>):</strong> the three rows above share the durable <em>slice</em> continuously. Snapshot hydration is different in kind — it copies the <em>entire</em> DB once to make a brand-new workspace searchable instantly (no cold parse + re-embed). Use it to bootstrap; use the durable-slice modes to stay converged. See the <a href="#s1244">#1244 detail</a>.</p>
     </section>
 
@@ -230,7 +230,7 @@
     <section id="s1234">
       <h2><span class="num">#1234</span>Git-tracked team artifact (JSONL)</h2>
       <p class="lede">A whole team accumulates each other's learnings about a repo. PR <a href="https://github.com/eric-cielo/moflo/pull/1238">#1238</a> · commit <span class="mono-sm">bc9f5ed82</span></p>
-      <p><strong>High level:</strong> <code>flo memory team-export</code> writes <code>.moflo/shared/learnings.jsonl</code> (and makes it git-trackable); a teammate commits it; everyone else's session-start import-merges it after <code>git pull</code>. Diffable, reviewable, merge-friendly.</p>
+      <p><strong>High level:</strong> <code>flo memory team-export</code> writes <code>.moflo/shared/learnings/</code> (and makes it git-trackable); a teammate commits it; everyone else's session-start import-merges it after <code>git pull</code>. Diffable, reviewable, merge-friendly.</p>
       <div class="pillrow">
         <span class="tag">src/cli/services/team-artifact-sync.ts (new)</span>
         <span class="tag">commands: team-export / team-import</span>
@@ -241,6 +241,7 @@
       <div class="det-body">
         <h3>Format &amp; semantics</h3>
         <ul>
+          <li><strong>Superseded (#1506):</strong> the single sorted JSONL below conflicted whenever two PRs added keys that sorted next to each other, because adjacent-line adds form one git hunk. The artifact is now a directory, <code>.moflo/shared/learnings/&lt;namespace&gt;/&lt;sha256&gt;.json</code>, one file per entry, and conflicts are newest-edit-wins. An existing <code>learnings.jsonl</code> migrates on the next export. The original design follows.</li>
           <li><strong>JSONL</strong> — one entry per line, sorted by <code>(namespace, key)</code> → line-local git diffs, conflict-free merges for distinct keys. Embeddings omitted (regenerated on import).</li>
           <li><strong>First-write-wins</strong> both ways via <code>UNIQUE(namespace, key)</code>: re-export never rewrites a teammate's line; import is <code>INSERT OR IGNORE</code>.</li>
           <li><strong>Provenance</strong> — each entry is stamped with git author + hostname, retained in the imported row's metadata.</li>
@@ -396,12 +397,12 @@
       <h3>Config (<code>moflo.yaml</code> · all opt-in, default off)</h3>
       <pre><code>memory:
   # durable_path: ~/.moflo-shared/team-learnings.db   # share durable namespaces across worktrees/Conductor (env: MOFLO_DURABLE_PATH)
-  # team_artifact: .moflo/shared/learnings.jsonl       # git-tracked team JSONL; session-start import-merges (env: MOFLO_TEAM_ARTIFACT)
+  # team_artifact: .moflo/shared/learnings/            # git-tracked, one file per entry; session-start import-merges (env: MOFLO_TEAM_ARTIFACT)
   # hydrate_from: /abs/path/to/moflo-snapshot.db       # seed a fresh/empty workspace from a whole-DB snapshot (env: MOFLO_HYDRATE_FROM)</code></pre>
       <h3>Commands</h3>
       <pre><code>flo memory sync --to   &lt;file&gt;     # export durable slice → portable artifact
 flo memory sync --from &lt;file&gt;     # merge a portable artifact → local
-flo memory team-export            # write .moflo/shared/learnings.jsonl + make it git-trackable
+flo memory team-export            # write .moflo/shared/learnings/ + make it git-trackable
 flo memory team-import            # merge the team artifact (also runs at session-start)
 flo memory backup  --to   &lt;snap&gt;  # whole-DB snapshot (VACUUM INTO + atomic rename)
 flo memory restore --from &lt;snap&gt;  # hydrate an empty workspace from a snapshot (--force to overwrite)
