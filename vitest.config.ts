@@ -54,7 +54,7 @@ export const isolationTests = [
   // fork contention. Behaviour test, not a speed test — isolate it rather than
   // widen a timeout and leave the contention in place.
   'tests/bin/gate-prompt-arming-1447.test.ts',
-  // First-run downloads the 25 MB ONNX model from GCS and runs real ORT
+  // First-run downloads the ~90 MB ONNX model (Hugging Face, else GCS) and runs real ORT
   // inference — competes for CPU/network with parallel benchmarks under
   // maxForks=2 and pushes neighboring tests over their timeouts. Cached
   // runs are <2 s but the cache-cold path is the one CI exercises.
