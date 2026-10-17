@@ -183,10 +183,10 @@ flo memory team-export      # publish the corrections and the retirements
 
 **Import before export.** Export reports any local change it did *not* share because the artifact's copy is newer; importing first resolves that rather than leaving the correction stranded.
 
-Export is a full reconcile, not an append: a COMPRESS rewrite overwrites the artifact's line, and a RETIRE writes a `__moflo_tombstone__` line that archives the entry on every teammate's next import. Both propagate. Commit the artifact in the same change as the rest of the work:
+Export is a full reconcile, not an append: a COMPRESS rewrite overwrites the artifact's entry, and a RETIRE writes a `__moflo_tombstone__` record that archives the entry on every teammate's next import. Both propagate. Commit the artifact — the path `memory.team_artifact` names — in the same change as the rest of the work:
 
 ```bash
-git add .moflo/shared/learnings.jsonl
+git add .moflo/shared/learnings/
 ```
 
 Finally, re-run the **Phase 1 probes verbatim** and compare the top hits.

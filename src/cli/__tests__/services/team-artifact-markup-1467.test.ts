@@ -19,9 +19,9 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 
 import {
   exportTeamArtifact,
@@ -35,6 +35,7 @@ import type { Command, CommandContext } from '../../types.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import { makeMemoryDb, type FixtureDb } from '../_helpers/legacy-memory-db.js';
 import { DatabaseSync } from 'node:sqlite';
+import { writeJsonlArtifact, readArtifactRecords } from '../_helpers/team-artifact.js';
 
 /** The exact shape reported in #1467. */
 const CORRUPT = 'the actual lesson text.",\n    <parameter name="tags">["a","b","source:manual"]';
@@ -73,21 +74,17 @@ function seed(
 
 interface ArtifactLine { namespace: string; key: string; content?: string; deleted?: unknown }
 
+/** Records the artifact holds, read through the store (directory + any unmigrated JSONL). */
 function readLines(artifactPath: string): ArtifactLine[] {
-  if (!existsSync(artifactPath)) return [];
-  return readFileSync(artifactPath, 'utf-8')
-    .split(/\r?\n/)
-    .filter((l) => l.trim())
-    .map((l) => JSON.parse(l) as ArtifactLine);
+  return readArtifactRecords(artifactPath) as ArtifactLine[];
 }
 
+/** Seed the artifact as the old JSONL file — the export under test migrates it (#1506). */
 function writeLines(artifactPath: string, lines: ArtifactLine[]): void {
-  mkdirSync(dirname(artifactPath), { recursive: true });
   const provenance = { author: 'teammate', source: 'other-machine', sharedAt: NOW };
-  writeFileSync(
+  writeJsonlArtifact(
     artifactPath,
-    lines.map((l) => JSON.stringify({ type: 'semantic', updated_at: 1_700_000_000_000, provenance, ...l })).join('\n') + '\n',
-    'utf-8',
+    lines.map((l) => JSON.stringify({ type: 'semantic', updated_at: 1_700_000_000_000, provenance, ...l })),
   );
 }
 

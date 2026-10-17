@@ -10,10 +10,11 @@
  *
  * Seeds the local DB, a shared durable store (`MOFLO_DURABLE_PATH`, set only
  * for these launcher runs), and the team artifact; runs the launcher twice;
- * then runs the installed `flo memory team-export`.
+ * then runs the installed `flo memory team-export`, which also migrates the
+ * seeded single-file artifact into one file per entry (#1506).
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { flo } from './proc.mjs';
@@ -134,8 +135,12 @@ export function runDurableHealCheck(consumerDir, runLauncher) {
 
   const exported = flo(consumerDir, ['memory', 'team-export'], { timeout: 60_000 });
   if (!recordExit('populated:durable-heal-team-export', exported)) return;
-  const lines = existsSync(artifactPath)
-    ? readFileSync(artifactPath, 'utf-8').split(/\r?\n/).filter((l) => l.trim())
+  // The export migrates the seeded JSONL into one file per entry (#1506).
+  const artifactDir = join(consumerDir, MOFLO_DIR, 'shared', 'learnings');
+  const lines = existsSync(artifactDir)
+    ? readdirSync(artifactDir).flatMap((ns) =>
+        readdirSync(join(artifactDir, ns)).map((f) => readFileSync(join(artifactDir, ns, f), 'utf-8')),
+      )
     : [];
   const misfiledLines = lines.filter((l) => {
     try {

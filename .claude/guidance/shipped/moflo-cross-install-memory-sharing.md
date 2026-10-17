@@ -28,7 +28,7 @@ Choose by who needs the learnings, not by what is easiest to wire.
 |----------|-----------|-----|
 | Same machine, many worktrees / Conductor workspaces | **Automatic** (default) | Learnings converge across worktrees at session-start with no config; override the store with `memory.durable_path`, or opt out with `memory.worktree_sharing: false` |
 | One person, many machines | `flo memory sync` | `--to <file>` then `--from <file>` via a synced folder (Dropbox/iCloud) or a hand-copied file |
-| A team sharing one repo | Git-tracked team artifact | `flo memory team-export` writes `.moflo/shared/learnings.jsonl`; teammates' session-start import-merges it after `git pull` |
+| A team sharing one repo | Git-tracked team artifact | `flo memory team-export` writes `.moflo/shared/learnings/`; teammates' session-start import-merges it after `git pull` |
 | A fresh/empty workspace that must be ready FAST | Whole-DB snapshot (`memory.hydrate_from`) | `flo memory backup --to <snap>` once; a new workspace restores the entire DB so search works on session one — no cold reindex |
 
 The first three move the SAME durable slice and reconcile on `UNIQUE(namespace, key)`, so combining them is safe. The snapshot is a different tool — a one-time whole-DB seed that composes with the durable-slice modes (see the next section but one).
@@ -74,14 +74,20 @@ flo memory sync --from ~/Dropbox/moflo/durable.db   # on machine B
 
 ## Share Learnings Across a Team
 
-Commit a git-tracked JSONL artifact so the whole team accumulates each other's learnings about the repo.
+Commit a git-tracked artifact so the whole team accumulates each other's learnings about the repo. Enable it with `memory.team_artifact: .moflo/shared/learnings/`.
 
 ```bash
-flo memory team-export                       # writes .moflo/shared/learnings.jsonl + makes it git-trackable
-git add .moflo/shared/learnings.jsonl && git commit -m "share learnings"
+flo memory team-export                       # writes .moflo/shared/learnings/ + makes it git-trackable
+git add .moflo/shared/learnings/ && git commit -m "share learnings"
 ```
 
-Teammates' session-start import-merges the file after `git pull`. Conflicts resolve by `updated_at` — the more recently edited version wins — and author/host provenance records who wrote each line last. JSONL keeps git diffs reviewable; embeddings are regenerated on import. Enable it with `memory.team_artifact: .moflo/shared/learnings.jsonl`.
+Teammates' session-start import-merges the artifact after `git pull`. Conflicts resolve by `updated_at` — the more recently edited version wins — and author/host provenance records who wrote each entry last. Embeddings are regenerated on import.
+
+**Each entry is its own file** — `.moflo/shared/learnings/<namespace>/<hash>.json`, named by a hash of namespace + key. Two PRs that each add a learning create different files and never conflict, on GitHub or locally; an edit racing a deletion of the same entry still conflicts visibly, in that entry's file.
+
+**An old `learnings.jsonl` artifact migrates itself — never reconfigure.** A `team_artifact` path ending in `.jsonl` names the directory beside it. Session start keeps importing the old file until the next `team-export`, which copies every entry into the directory, deletes the `.jsonl`, and stages both changes when the artifact is git-tracked — so existing pre-commit hooks keep working. A teammate on an older moflo that re-creates the `.jsonl` is folded in again on the next export.
+
+**Resolve an entry file left with conflict markers by hand.** Export never overwrites a file it cannot parse; it reports the entry as not written, and keeps any old `.jsonl` until the conflict is resolved.
 
 **Run `flo memory team-import` before `team-export` when you have been away.** Export reports any local change it did NOT share because the artifact's version is newer; importing first resolves that. Deletions appear in the artifact as `__moflo_tombstone__` lines — moflo versions older than this one ignore them and keep their copy of the entry, so a team mid-upgrade loses nothing.
 

@@ -31,6 +31,7 @@ import {
 } from '../../../bin/lib/moflo-paths.mjs';
 import { MIGRATED_FROM_KNOWLEDGE } from '../../../bin/migrations/lib/markers.mjs';
 import { runDurableHealCheck } from './durable-heal.mjs';
+import { runTeamDirCheck } from './team-dir.mjs';
 
 /**
  * Kill every background process the launcher spawned so row-count assertions
@@ -1082,4 +1083,6 @@ export async function runPopulatedConsumerProfile(consumerDir) {
   // Last, because it turns on durable sharing and writes a team artifact —
   // state none of the assertions above were written against.
   runDurableHealCheck(consumerDir, runLauncher);
+  // Migrates the JSONL artifact the heal check leaves behind.
+  runTeamDirCheck(consumerDir);
 }

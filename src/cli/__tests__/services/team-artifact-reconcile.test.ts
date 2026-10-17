@@ -4,17 +4,19 @@
  * refusal to touch anything the other side never shared.
  *
  * Every conflict is driven in BOTH orderings. The pure matrix lives in
- * `durable-reconcile.test.ts`; this file proves the two real stores (a JSONL
- * file and a SQLite DB) are wired to it correctly in both directions.
+ * `durable-reconcile.test.ts`; this file proves the two real stores (the
+ * per-entry artifact directory and a SQLite DB) are wired to it correctly in
+ * both directions. Artifacts are seeded as the old JSONL file, which also
+ * exercises its migration into the directory on export (#1506).
  *
  * Real node:sqlite DBs + real files in tmp dirs. All paths via path.join /
  * os.tmpdir for cross-platform safety (Rule #1).
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import {
@@ -30,6 +32,13 @@ import { TOMBSTONE_TTL_MS } from '../../services/durable-reconcile.js';
 import { memoryDbPath } from '../../services/moflo-paths.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import { makeMemoryDb, type FixtureDb } from '../_helpers/legacy-memory-db.js';
+import {
+  writeJsonlArtifact as writeArtifact,
+  readArtifactRecords as readArtifact,
+  liveArtifactKeys as liveKeys,
+  tombstonedArtifactKeys as tombstoneKeys,
+  artifactDir,
+} from '../_helpers/team-artifact.js';
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
@@ -136,30 +145,14 @@ function tombstone(key: string, at: number): TeamTombstone {
   };
 }
 
-function writeArtifact(path: string, lines: Array<TeamArtifactEntry | TeamTombstone>): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, lines.map((l) => JSON.stringify(l)).join('\n') + '\n', 'utf-8');
-}
-
-function readArtifact(path: string): Array<TeamArtifactEntry | TeamTombstone> {
-  if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf-8')
-    .split(/\r?\n/)
-    .filter((l) => l.trim())
-    .map((l) => JSON.parse(l));
-}
-
-const liveKeys = (path: string): string[] =>
-  readArtifact(path)
-    .filter((l) => l.namespace !== TOMBSTONE_NAMESPACE)
-    .map((l) => l.key)
+/** Every entry file under the artifact directory, absolute paths, sorted. */
+function entryFiles(path: string): string[] {
+  const dir = artifactDir(path);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .flatMap((ns) => readdirSync(join(dir, ns)).map((f) => join(dir, ns, f)))
     .sort();
-
-const tombstoneKeys = (path: string): string[] =>
-  readArtifact(path)
-    .filter((l): l is TeamTombstone => l.namespace === TOMBSTONE_NAMESPACE)
-    .map((l) => l.deleted.key)
-    .sort();
+}
 
 describe('exportTeamArtifact — deletions become tombstones (#1463)', () => {
   it('replaces a locally archived entry with a tombstone', async () => {
@@ -241,13 +234,16 @@ describe('exportTeamArtifact — housekeeping', () => {
 
     const first = exportTeamArtifact({ projectRoot: root, artifactPath: artifact, sharedAt: NOW_ISO });
     expect(first.wrote).toBe(true);
-    const stamp = statSync(artifact).mtimeMs;
+    const files = entryFiles(artifact);
+    expect(files).toHaveLength(1);
+    const before = files.map((f) => ({ bytes: readFileSync(f, 'utf-8'), mtime: statSync(f).mtimeMs }));
 
     const second = exportTeamArtifact({ projectRoot: root, artifactPath: artifact, sharedAt: NOW_ISO });
     expect(second.wrote).toBe(false);
     expect(second.added).toBe(0);
     expect(second.unchanged).toBe(1);
-    expect(statSync(artifact).mtimeMs).toBe(stamp);
+    expect(entryFiles(artifact)).toEqual(files);
+    expect(files.map((f) => ({ bytes: readFileSync(f, 'utf-8'), mtime: statSync(f).mtimeMs }))).toEqual(before);
   });
 });
 
@@ -475,10 +471,14 @@ describe('backward compatibility with pre-#1463 clients', () => {
 
     // 4.12.11's readArtifact: JSON.parse, then require string namespace + key.
     // 4.12.11's import: isDurableNamespace(namespace) === false -> skippedNonDurable.
-    for (const raw of readFileSync(artifact, 'utf-8').split(/\r?\n/).filter((l) => l.trim())) {
-      const parsed = JSON.parse(raw);
+    // Each record now lives in its own file (#1506); every one must still parse that way.
+    const files = entryFiles(artifact);
+    expect(files).toHaveLength(1);
+    for (const file of files) {
+      const parsed = JSON.parse(readFileSync(file, 'utf-8'));
       expect(typeof parsed.namespace).toBe('string');
       expect(typeof parsed.key).toBe('string');
+      expect(isDurableNamespace(parsed.namespace)).toBe(false);
     }
     const lines = readArtifact(artifact);
     expect(lines).toHaveLength(1);
@@ -564,7 +564,7 @@ describe('ensureSharedArtifactEol — the artifact is git-tracked in someone els
   // Rule #1: moflo always writes the artifact with \n. On a Windows checkout
   // with core.autocrlf, git hands back CRLF — so every export rewrites the
   // whole file, and a merge of two divergent artifacts conflicts on every
-  // line, which is exactly the merge-friendliness JSONL was chosen for.
+  // line. The artifact is a directory (#1506), so the rule pins its contents.
   const readAttrs = (root: string): string => readFileSync(join(root, '.gitattributes'), 'utf-8');
 
   it('creates a .gitattributes pinning the artifact to LF', async () => {
@@ -572,7 +572,7 @@ describe('ensureSharedArtifactEol — the artifact is git-tracked in someone els
     const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
 
     expect(ensureSharedArtifactEol(root, artifact)).toBe('created');
-    expect(readAttrs(root)).toContain('/.moflo/shared/learnings.jsonl text eol=lf');
+    expect(readAttrs(root)).toContain('/.moflo/shared/learnings/** text eol=lf');
   });
 
   it('appends to an existing .gitattributes without disturbing it', async () => {
@@ -583,7 +583,7 @@ describe('ensureSharedArtifactEol — the artifact is git-tracked in someone els
     expect(ensureSharedArtifactEol(root, artifact)).toBe('updated');
     const attrs = readAttrs(root);
     expect(attrs).toContain('*.png binary');
-    expect(attrs).toContain('/.moflo/shared/learnings.jsonl text eol=lf');
+    expect(attrs).toContain('/.moflo/shared/learnings/** text eol=lf');
   });
 
   it('is idempotent', async () => {
@@ -598,7 +598,7 @@ describe('ensureSharedArtifactEol — the artifact is git-tracked in someone els
 
   it("leaves a consumer's own rule for the same path exactly as written", async () => {
     const root = await makeRoot();
-    writeFileSync(join(root, '.gitattributes'), '/.moflo/shared/learnings.jsonl text eol=crlf\n', 'utf-8');
+    writeFileSync(join(root, '.gitattributes'), '/.moflo/shared/learnings/** text eol=crlf\n', 'utf-8');
     const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
 
     expect(ensureSharedArtifactEol(root, artifact)).toBe('unchanged');

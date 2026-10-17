@@ -1,18 +1,20 @@
 ---
 name: memory-team
 description: |
-  Guided setup for sharing moflo's durable learnings through a git-tracked JSONL artifact — for a whole
+  Guided setup for sharing moflo's durable learnings through a git-tracked artifact — for a whole
   TEAM on one repo, OR for one person across several MACHINES (a team of one). Use when the user says
   "share learnings with my team", "commit our moflo memory", "sync memory across my laptop and desktop",
-  "set up memory.team_artifact", or "auto-export learnings on every PR". Installs a pre-commit hook so the
-  artifact rides along in every commit. For many worktrees on ONE machine, use /memory-worktree instead.
+  "set up memory.team_artifact", "auto-export learnings on every PR", or "learnings.jsonl keeps conflicting".
+  Installs a pre-commit hook so the artifact rides along in every commit. An existing learnings.jsonl moves
+  to the conflict-free layout automatically. For many worktrees on ONE machine, use /memory-worktree.
 arguments: "[--solo]"
 ---
 
 # /memory-team — Share Learnings via a Git-Tracked Artifact
 
-Wires up **`memory.team_artifact`**: a diffable JSONL file (`.moflo/shared/learnings.jsonl`) that lives
-**in the repo**, reviewed like any other change. Teammates `git pull` it and their next session
+Wires up **`memory.team_artifact`**: a diffable directory (`.moflo/shared/learnings/`, one JSON file per
+entry) that lives **in the repo**, reviewed like any other change. One file per entry means two PRs that each
+add a learning never conflict — on GitHub or locally. Teammates `git pull` it and their next session
 auto-imports the merged learnings; each entry is stamped with its git author. This skill also installs a
 **pre-commit hook** so the artifact is re-exported and staged on every commit — the learnings ride along
 in each PR with zero effort.
@@ -31,6 +33,7 @@ in each PR with zero effort.
 - "sync memory between my laptop and desktop"
 - "auto-export the learnings on every PR / commit"
 - "set up `team_artifact`"
+- "`learnings.jsonl` conflicts on every PR" → Step 2b (it migrates itself)
 
 For **many worktrees on one machine**, that's a shared local store, not git — use `/memory-worktree`.
 
@@ -54,10 +57,26 @@ Read the project-root `moflo.yaml` and add/merge under `memory:` — **preserve 
 
 ```yaml
 memory:
-  team_artifact: .moflo/shared/learnings.jsonl
+  team_artifact: .moflo/shared/learnings/
 ```
 
-`.moflo/shared/learnings.jsonl` is the default; only override if the user wants a different tracked path.
+An existing `team_artifact: .moflo/shared/learnings.jsonl` line is fine as it is — a `.jsonl` path names
+the directory beside it, so there is nothing to change.
+
+### Step 2b — Existing `learnings.jsonl` setups migrate themselves
+
+**Do nothing.** The old single file conflicted whenever two branches added neighbouring keys, and GitHub
+ignores merge drivers, so `merge=union` never helped on the PR page. The next `team-export` — normally the
+pre-commit hook — moves it:
+
+| Moment | What happens |
+|--------|--------------|
+| Session start before the first export | The old file is still imported, so nothing is lost |
+| Next `team-export` | Every entry is copied into `.moflo/shared/learnings/`, the `.jsonl` is deleted, and both changes are staged |
+| A teammate's older moflo re-creates the `.jsonl` | The next export folds it in and deletes it again |
+
+Existing hooks keep working: when the artifact is git-tracked, `team-export` stages it itself. Refresh an
+old hook block to the one in Step 4 anyway, so it names the directory.
 
 ### Step 3 — First export (creates + tracks the artifact)
 
@@ -65,7 +84,7 @@ memory:
 npx flo memory team-export 2>&1
 ```
 
-This writes the JSONL, and **rewrites `.gitignore`** from a blanket `.moflo/` to `.moflo/*` +
+This writes the artifact, pins it to LF in `.gitattributes`, and **rewrites `.gitignore`** from a blanket `.moflo/` to `.moflo/*` +
 `!/.moflo/shared/` so the shared artifact is tracked while the machine-local DB stays ignored. Surface
 what it reports (entries added, `.gitignore` change). If there are no durable learnings yet, that's fine —
 the artifact is created empty and fills in as learnings accrue.
@@ -81,8 +100,8 @@ Define the managed block (POSIX `sh` — git runs hooks via `sh` on Linux, macOS
 # >>> moflo team-export (managed by /memory-team) >>>
 # Refresh the shared learnings artifact so it rides along in this commit.
 npx --no-install flo memory team-export >/dev/null 2>&1 || true
-if [ -n "$(git status --porcelain -- .moflo/shared/learnings.jsonl 2>/dev/null)" ]; then
-  git add .moflo/shared/learnings.jsonl
+if [ -n "$(git status --porcelain -- .moflo/shared/learnings 2>/dev/null)" ]; then
+  git add -A -- .moflo/shared/learnings
 fi
 # <<< moflo team-export (managed by /memory-team) <<<
 ```
@@ -90,8 +109,9 @@ fi
 Install it:
 
 1. **Husky present** (`.husky/pre-commit` exists) → append the block to that file.
-2. **Existing `.git/hooks/pre-commit`** → if it already contains the `moflo team-export` markers, leave it
-   (idempotent); otherwise append the block after the shebang.
+2. **Existing `.git/hooks/pre-commit`** → if it already contains the `moflo team-export` markers, replace
+   the block between them with the one above (an older block names `learnings.jsonl`); otherwise append the
+   block after the shebang.
 3. **No hook** → create `.git/hooks/pre-commit` with `#!/bin/sh` as the first line, then the block.
 
 On POSIX, make it executable:
@@ -105,17 +125,18 @@ to `chmod` in a cross-platform step.)
 
 - The `|| true` keeps a failed export from ever blocking a commit.
 - The `git status --porcelain` guard means the artifact is only re-staged when it actually changed — no
-  empty-diff churn on unrelated commits.
+  empty-diff churn on unrelated commits. `-A` also stages entry files export removed (expired tombstones).
+- Using a custom `team_artifact` path? Substitute it for `.moflo/shared/learnings` in both lines.
 
 ### Step 5 — Commit and share
 
 ```bash
-git add .moflo/shared/learnings.jsonl .gitignore
+git add .moflo/shared/learnings/ .gitignore .gitattributes
 git commit -m "chore: share moflo learnings"
 git push
 ```
 
-Teammates (or your other machine) run `git pull`; their **next session auto-imports** the merged file —
+Teammates (or your other machine) run `git pull`; their **next session auto-imports** the merged artifact —
 no manual import command. To pull learnings without waiting for a restart:
 
 ```bash
@@ -129,7 +150,7 @@ End with a single-block summary:
 ```
 Team Memory Sharing — configured
 ─────────────────────────────────
-Artifact:    .moflo/shared/learnings.jsonl  (git-tracked, JSONL, author-stamped)
+Artifact:    .moflo/shared/learnings/  (git-tracked, one file per entry, author-stamped)
 Config key:  memory.team_artifact
 PR hook:     .git/hooks/pre-commit  → re-exports + stages on every commit
 Import:      automatic at session start (after git pull)  |  npx flo memory team-import
@@ -150,11 +171,13 @@ Same durable slice, no repo footprint, no review — the trade-off is it's not d
 
 ## Rules
 
-- **Don't** reimplement export/import or the `.gitignore` rewrite — `flo memory team-export/team-import`
-  own all of it (`team-artifact-sync.ts`). This skill sets config, runs them, and installs the hook.
+- **Don't** reimplement export/import/migration or the `.gitignore` rewrite — `flo memory team-export`
+  and `team-import` own all of it. This skill sets config, runs them, and installs the hook.
+- **Don't** add a `merge=union` attribute for the artifact — GitHub ignores it, and the directory layout
+  does not need it.
 - **Don't** overwrite an existing pre-commit hook or husky config — append the marked block only.
 - **Don't** use `chmod` / `mkdir` / `rm` in shell steps — Windows lacks them on PATH; use Node `fs`.
-- Embeddings are intentionally **omitted** from the JSONL (384 floats/row would wreck diffs) — they're
+- Embeddings are intentionally **omitted** from the artifact (384 floats/entry would wreck diffs) — they're
   regenerated on import. Don't try to add them.
 
 ## See Also

@@ -2839,11 +2839,12 @@ const syncCommand: Command = {
   },
 };
 
-// Team-share commands (#1234, epic #1231) — a git-tracked JSONL artifact the
-// team commits. `team-export` writes the local durable slice into it (merge,
-// first-write-wins, provenance-stamped) and makes it git-trackable; session-
-// start (and `team-import`) merge it back into the local DB. Diffable JSONL is
-// what makes this reviewable + merge-friendly, unlike the SQLite artifacts of
+// Team-share commands (#1234, epic #1231) — a git-tracked artifact the team
+// commits, one JSON file per entry since #1506. `team-export` reconciles the
+// local durable slice into it (newest edit wins, provenance-stamped), migrates
+// an old single-file JSONL artifact, and makes it git-trackable; session-start
+// (and `team-import`) merge it back into the local DB. Diffable JSON is what
+// makes this reviewable + merge-friendly, unlike the SQLite artifacts of
 // stories #1232/#1233.
 function resolveTeamArtifact(projectRoot: string, explicit: unknown): Promise<string> {
   return import('../services/team-artifact-sync.js').then(({ resolveTeamArtifactPath, DEFAULT_TEAM_ARTIFACT_REL }) => {
@@ -2856,11 +2857,11 @@ function resolveTeamArtifact(projectRoot: string, explicit: unknown): Promise<st
 
 const teamExportCommand: Command = {
   name: 'team-export',
-  description: 'Write durable learnings into the git-tracked team artifact (JSONL) for sharing',
+  description: 'Write durable learnings into the git-tracked team artifact for sharing',
   options: [
     {
       name: 'to',
-      description: 'Artifact path (default: memory.team_artifact or .moflo/shared/learnings.jsonl)',
+      description: 'Artifact directory (default: memory.team_artifact or .moflo/shared/learnings/)',
       type: 'string',
     },
   ],
@@ -2871,13 +2872,14 @@ const teamExportCommand: Command = {
     const projectRoot = findProjectRoot();
     const artifactPath = await resolveTeamArtifact(projectRoot, ctx.flags.to);
     try {
-      const { exportTeamArtifact, ensureSharedArtifactTracked, ensureSharedArtifactEol } =
+      const { exportTeamArtifact, ensureSharedArtifactTracked, ensureSharedArtifactEol, stageTeamArtifact } =
         await import('../services/team-artifact-sync.js');
       const report = exportTeamArtifact({ projectRoot, artifactPath, sharedAt: new Date().toISOString() });
       const gitignore = ensureSharedArtifactTracked(projectRoot, artifactPath);
       const gitattributes = ensureSharedArtifactEol(projectRoot, artifactPath);
+      const staged = report.wrote && stageTeamArtifact(projectRoot, artifactPath);
 
-      const rel = pathModule.relative(projectRoot, artifactPath) || artifactPath;
+      const rel = pathModule.relative(projectRoot, report.artifactPath) || report.artifactPath;
       output.printSuccess(`Shared ${report.added} new durable entr${report.added === 1 ? 'y' : 'ies'} → ${rel}`);
       // Report every category, not just the appends (#1463). The old summary
       // named only `added`, which read as "everything was shared" while 32
@@ -2888,6 +2890,17 @@ const teamExportCommand: Command = {
       if (report.resurrected > 0) changes.push(`${report.resurrected} restored`);
       if (report.droppedMisfiled > 0) changes.push(`${report.droppedMisfiled} verify record${report.droppedMisfiled === 1 ? '' : 's'} removed (not learnings, #1495)`);
       if (changes.length > 0) output.printInfo(`Also propagated: ${changes.join(', ')}.`);
+      if (report.migratedFrom) {
+        const relLegacy = pathModule.relative(projectRoot, report.migratedFrom) || report.migratedFrom;
+        output.printInfo(
+          `Migrated ${report.migrated} entr${report.migrated === 1 ? 'y' : 'ies'} from ${relLegacy} into one file per entry, and removed ${relLegacy} — concurrent PRs no longer conflict on it.`,
+        );
+      }
+      if (report.blocked > 0) {
+        output.printWarning(
+          `${report.blocked} entr${report.blocked === 1 ? 'y' : 'ies'} NOT written — the file will not parse (unresolved merge conflict?). Resolve it, then export again.`,
+        );
+      }
       if (report.keptRemote > 0) {
         output.printWarning(
           `${report.keptRemote} local change${report.keptRemote === 1 ? '' : 's'} NOT shared — the artifact's version is newer. Run \`flo memory team-import\` first.`,
@@ -2913,7 +2926,11 @@ const teamExportCommand: Command = {
       if (gitattributes !== 'unchanged') {
         output.printInfo(`.gitattributes ${gitattributes} to pin the artifact to LF — without it a Windows checkout conflicts on every line when two teammates' artifacts merge.`);
       }
-      output.printInfo(`Commit it to share: git add ${rel} && git commit -m "share learnings"`);
+      output.printInfo(
+        staged
+          ? `Staged ${rel} — it rides along in your next commit.`
+          : `Commit it to share: git add ${rel} && git commit -m "share learnings"`,
+      );
       return { success: true, data: report };
     } catch (error) {
       output.printError(`team-export failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -2924,11 +2941,11 @@ const teamExportCommand: Command = {
 
 const teamImportCommand: Command = {
   name: 'team-import',
-  description: 'Merge the git-tracked team artifact (JSONL) into the local learnings',
+  description: 'Merge the git-tracked team artifact into the local learnings',
   options: [
     {
       name: 'from',
-      description: 'Artifact path (default: memory.team_artifact or .moflo/shared/learnings.jsonl)',
+      description: 'Artifact directory (default: memory.team_artifact or .moflo/shared/learnings/)',
       type: 'string',
     },
   ],
@@ -2938,7 +2955,8 @@ const teamImportCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const projectRoot = findProjectRoot();
     const artifactPath = await resolveTeamArtifact(projectRoot, ctx.flags.from);
-    if (!fs.existsSync(artifactPath)) {
+    const { teamArtifactExists } = await import('../services/team-artifact-store.js');
+    if (!teamArtifactExists(artifactPath)) {
       output.printError(`Team artifact not found: ${artifactPath}`);
       output.printInfo('A teammate runs `flo memory team-export` + commits it first.');
       return { success: false, exitCode: 1 };
@@ -3115,7 +3133,7 @@ export const memoryCommand: Command = {
       `${output.highlight('refresh')}         - Reindex all content, rebuild embeddings, cleanup, and vacuum`,
       `${output.highlight('restore-learnings')} - Cherry-pick learnings/knowledge from a legacy DB`,
       `${output.highlight('sync')}             - Export/import durable learnings to a portable artifact (multi-machine)`,
-      `${output.highlight('team-export')}      - Write durable learnings to the git-tracked team artifact (JSONL)`,
+      `${output.highlight('team-export')}      - Write durable learnings to the git-tracked team artifact`,
       `${output.highlight('team-import')}      - Merge the team artifact into local learnings`
     ]);
 

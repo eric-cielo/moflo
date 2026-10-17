@@ -2628,9 +2628,10 @@ function runMigrationsAndAnnounce(runnerPath) {
 
 // ── 3e-1234. Import the git-tracked team learnings artifact BEFORE daemon spawn ─
 // Opt-in (#1234, epic #1231): when memory.team_artifact (or MOFLO_TEAM_ARTIFACT)
-// points at a committed JSONL file, merge it into the local durable namespaces
-// so teammates' learnings (pulled via git) are present when the daemon builds
-// its HNSW index in section 4. INSERT OR IGNORE → idempotent + first-write-wins.
+// points at a committed artifact — a JSONL file, or a one-file-per-entry
+// directory (#1506) — merge it into the local durable namespaces so teammates'
+// learnings (pulled via git) are present when the daemon builds its HNSW index
+// in section 4. Reconciling, newest edit wins (#1463); idempotent.
 // Fully guarded: a disabled/absent artifact is a silent no-op, and any failure
 // is non-fatal (the next session-start retries). Runs every session (teammates
 // pull frequently without a moflo version bump), unlike the upgrade-gated
@@ -2641,9 +2642,12 @@ try {
   // override is set, the default artifact already exists, or moflo.yaml has an
   // UNcommented `team_artifact:` line (the generated config ships a commented
   // example, which this regex deliberately ignores). Only then import the service.
-  const defaultArtifact = resolve(projectRoot, '.moflo', 'shared', 'learnings.jsonl');
+  const sharedDir = resolve(projectRoot, '.moflo', 'shared');
   const yamlPath = resolve(projectRoot, 'moflo.yaml');
-  let teamEnabled = Boolean(process.env.MOFLO_TEAM_ARTIFACT) || existsSync(defaultArtifact);
+  let teamEnabled =
+    Boolean(process.env.MOFLO_TEAM_ARTIFACT) ||
+    existsSync(resolve(sharedDir, 'learnings')) ||
+    existsSync(resolve(sharedDir, 'learnings.jsonl'));
   if (!teamEnabled && existsSync(yamlPath)) {
     try {
       teamEnabled = /^[ \t]*team_artifact[ \t]*:/m.test(readFileSync(yamlPath, 'utf-8'));
@@ -2660,7 +2664,10 @@ try {
     const mod = await import(pathToFileURL(teamSyncPath).href);
     if (typeof mod.resolveTeamArtifactPath === 'function' && typeof mod.importTeamArtifact === 'function') {
       const artifactPath = mod.resolveTeamArtifactPath(projectRoot);
-      if (artifactPath && existsSync(artifactPath)) {
+      // The directory, or an old JSONL file the next export migrates (#1506).
+      const present =
+        typeof mod.teamArtifactExists === 'function' ? mod.teamArtifactExists(artifactPath ?? '') : existsSync(artifactPath ?? '');
+      if (artifactPath && present) {
         const report = mod.importTeamArtifact({ projectRoot, artifactPath });
         // Corrections and deletions are changes the user needs told about just
         // as much as inserts (#1463) — reporting only `imported` is what let
