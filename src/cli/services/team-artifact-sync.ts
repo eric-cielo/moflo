@@ -3,9 +3,9 @@
  *
  * Story 1 (#1232) shared a durable SQLite store between worktrees; Story 2
  * (#1233) carried a durable SQLite artifact between one user's machines. This
- * story shares durable learnings across a *team*: a **git-tracked JSONL file**
- * (default `.moflo/shared/learnings.jsonl`, explicitly NOT gitignored) that the
- * team commits. Each teammate's session-start import-merges it into their local
+ * story shares durable learnings across a *team*: a **git-tracked directory**
+ * (default `.moflo/shared/learnings/`, one JSON file per entry, explicitly NOT
+ * gitignored) that the team commits. Each teammate's session-start import-merges it into their local
  * DB, so the whole team accumulates each other's learnings about the same repo.
  *
  * Why JSONL (not the SQLite artifact from #1233): a committed team file must be
