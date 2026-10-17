@@ -31,6 +31,7 @@ import {
 } from '../../../bin/lib/moflo-paths.mjs';
 import { MIGRATED_FROM_KNOWLEDGE } from '../../../bin/migrations/lib/markers.mjs';
 import { runDurableHealCheck } from './durable-heal.mjs';
+import { killDaemonByLockFile } from './checks.mjs';
 import { runTeamDirCheck } from './team-dir.mjs';
 
 /**
@@ -398,39 +399,57 @@ function runLauncher(consumerDir, { env, label = 'populated:launcher-exit' } = {
   // see a main-file snapshot inconsistent with the WAL ("2nd reference
   // to page N" + "Rowid out of order" in PRAGMA integrity_check — the
   // Linux signature, #1067).
-  flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
-  quiesceLauncherBackground(consumerDir);
-  // Belt-and-suspenders for #1136: even after `flo daemon stop` returns,
-  // verify the daemon actually released its lock before moving on. The CLI
-  // path (commands/daemon.ts:killBackgroundDaemon) now polls liveness after
-  // SIGKILL, but a torn write from the previous version's narrow kill window
-  // would corrupt `.moflo/moflo.db` and the resulting integrity_check failure
-  // is exactly what triggered #1136. Wait up to 5s for `.moflo/daemon.lock`
-  // to disappear — if it sticks, surface a warning rather than continuing
-  // to inspect a DB that may still be racing the daemon.
-  waitForDaemonStopped(consumerDir);
+  stopConsumerProcesses(consumerDir);
   return r;
 }
 
 /**
- * Block until the launcher daemon has fully released its lockfile, or warn
- * and fall through on timeout. Pairs with the post-SIGKILL verification in
- * `killBackgroundDaemon` to close the kill-window race that produced #1136.
+ * Quiesce the consumer: background tasks first, then the daemon, then prove
+ * the daemon STAYS down before anyone reads `.moflo/moflo.db`.
+ *
+ * Order matters. Every `flo` invocation auto-starts a daemon when none is
+ * running (src/cli/index.ts), and the launcher's background chain runs `flo`
+ * commands. Stopping the daemon first and the background tasks second left a
+ * window where a straggler task respawned a fresh, detached daemon — its own
+ * process group, so killing the task didn't take it down — and the post-state
+ * inspect read the DB mid-write ("Page N: never used" in integrity_check,
+ * release-smoke run 39076398925, with `.moflo/daemon.lock` still present).
+ *
+ * #1136 belt-and-suspenders: `flo daemon stop` polls liveness after SIGKILL,
+ * but we still wait for the lock to clear, then re-check after a settle window
+ * so a daemon that was mid-startup when we looked is caught and stopped too.
+ * If it never stays down, warn rather than silently inspecting a racing DB.
  */
-function waitForDaemonStopped(consumerDir, maxWaitMs = 5000) {
+function stopConsumerProcesses(consumerDir, { rounds = 3, settleMs = 1500 } = {}) {
   const lockFile = join(consumerDir, MOFLO_DIR, 'daemon.lock');
-  const deadline = Date.now() + maxWaitMs;
-  const sleepBuf = new Int32Array(new SharedArrayBuffer(4));
-  while (Date.now() < deadline) {
+  for (let round = 0; round < rounds; round++) {
+    // Re-sweep every round: a task that survived the previous sweep can
+    // still issue a `flo` call and respawn the daemon.
+    quiesceLauncherBackground(consumerDir);
+    flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
+    // Last round: kill the lock holder by PID in case `daemon stop` cannot
+    // reach it (same fallback the harness teardown uses).
+    if (round === rounds - 1 && existsSync(lockFile)) killDaemonByLockFile(consumerDir);
+    if (!waitForPathGone(lockFile, 5000)) continue;
+    sleepMs(settleMs);
     if (!existsSync(lockFile)) return true;
-    Atomics.wait(sleepBuf, 0, 0, 100);
   }
-  if (existsSync(lockFile)) {
-    record('populated:daemon-stopped', 'warn',
-      `.moflo/daemon.lock still present after ${maxWaitMs}ms — inspect may race the daemon (#1136)`);
-    return false;
+  record('populated:daemon-stopped', 'warn',
+    `.moflo/daemon.lock still present after ${rounds} stop rounds — inspect may race the daemon (#1136)`);
+  return false;
+}
+
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function waitForPathGone(path, maxWaitMs) {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    if (!existsSync(path)) return true;
+    sleepMs(100);
   }
-  return true;
+  return !existsSync(path);
 }
 
 function inspectPostStateDb(consumerDir) {
@@ -863,8 +882,7 @@ async function runMcpClobberCheck(consumerDir, seedRows) {
   // `cleanupWorkDir` uses in checks.mjs for the same OS-quirk class (#1018).
   // 5 retries × 500ms linear backoff = ~7.5s total budget, more than enough
   // for taskkill to actually reap the indexer/embeddings children.
-  flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
-  quiesceLauncherBackground(consumerDir);
+  stopConsumerProcesses(consumerDir);
 
   rmSync(join(consumerDir, MOFLO_DIR), { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
   rmSync(legacyMemoryDbPath(consumerDir), { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
@@ -936,8 +954,7 @@ try {
   // `.moflo/background-pids.json`. This is best-effort — the assertion below
   // reads LOGICAL content, not raw bytes, so a straggler indexer that rewrites
   // SQLite pages (or appends embeddings) cannot flip the verdict.
-  flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
-  quiesceLauncherBackground(consumerDir);
+  stopConsumerProcesses(consumerDir);
 
   const mofloDb = memoryDbPath(consumerDir);
 
