@@ -95,14 +95,14 @@
   },
   "devDependencies": {
     "@types/node": "^24.12.2",
-    "@typescript-eslint/eslint-plugin": "^8.65.0",
-    "@typescript-eslint/parser": "^8.65.0",
-    "eslint": "^10.8.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.2",
+    "@typescript-eslint/parser": "^8.71.2",
+    "eslint": "^10.13.0",
     "glob": "^11.1.0",
     "moflo": "^4.13.5",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.0"
+    "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=22.0.0"
