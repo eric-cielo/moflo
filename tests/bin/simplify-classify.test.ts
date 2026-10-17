@@ -507,6 +507,13 @@ describe('simplify-classify: opus escalation (DEEP + handoff)', () => {
     expect(d.stats.otherNetAdded).toBe(0);
   });
 
+  it('a lockfile bump does not buy the 3-agent NORMAL fan-out on volume alone', () => {
+    const d = classifyDiff(lockfileBumpDiff());
+    expect(d.tier).toBe('SMALL');
+    expect(d.agentCount).toBe(1);
+    expect(d.stats.noiseLOC).toBeGreaterThan(500);
+  });
+
   it('an 1,800-line reformat with zero net-new declarations never reaches opus', () => {
     const d = classifyDiff(reformatSweepDiff());
     expect(d.tier).not.toBe('DEEP');
