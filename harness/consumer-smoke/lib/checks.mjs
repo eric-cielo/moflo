@@ -1869,7 +1869,7 @@ export async function killConsumerBackgroundProcesses(consumerDir) {
 // index.ts and daemon-readiness.ts register, so a launcher-descended daemon is
 // absent from the registry while an auto-started one is present. The lock file
 // is the only dependable handle.
-function killDaemonByLockFile(consumerDir) {
+export function killDaemonByLockFile(consumerDir) {
   const lockFile = join(consumerDir, '.moflo', 'daemon.lock');
   if (!existsSync(lockFile)) return 0;
   let pid = null;
