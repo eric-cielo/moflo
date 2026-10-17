@@ -63,7 +63,7 @@ memory:
   namespace: default              # Default namespace for memory operations
   # worktree_sharing: false                            # opt-OUT: automatic durable-learning sharing across git worktrees is ON by default (derived at <git-common-dir>/moflo/durable.db, active only when worktrees exist; a single checkout is untouched). Set false to disable.
   # durable_path: ~/.moflo-shared/team-learnings.db   # opt-in: OVERRIDE the auto worktree store — a custom durable-only path for learnings/knowledge, or to converge separate clones. Point at a DEDICATED store, never a full moflo.db. Env override: MOFLO_DURABLE_PATH.
-  # team_artifact: .moflo/shared/learnings.jsonl       # opt-in: git-tracked JSONL the team commits; session-start import-merges it. Env override: MOFLO_TEAM_ARTIFACT. See moflo-cross-install-memory-sharing.md.
+  # team_artifact: .moflo/shared/learnings/            # opt-in: git-tracked artifact the team commits; session-start import-merges it. One JSON file per entry (conflict-free merges); an old learnings.jsonl path migrates itself on the next team-export. Env override: MOFLO_TEAM_ARTIFACT. See moflo-cross-install-memory-sharing.md.
   # hydrate_from: /abs/path/to/moflo-snapshot.db       # opt-in: whole-DB snapshot to seed a fresh/empty workspace on session-start (skips the cold reindex). No-op once the local DB has content. Take one with "flo memory backup --to <path>". Env override: MOFLO_HYDRATE_FROM.
 
 # Hook toggles (all on by default — disable to slim down)

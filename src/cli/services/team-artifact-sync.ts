@@ -17,6 +17,13 @@
  * normal index pass (or `flo memory rebuild-index`), exactly as any other
  * unembedded row.
  *
+ * Sorted lines still conflicted whenever two branches added keys that sort next
+ * to each other, and GitHub ignores merge drivers when it judges a PR
+ * mergeable. So the artifact is now a directory of one file per entry (#1506),
+ * and a configured `.jsonl` path migrates to it on the next export — see
+ * `team-artifact-store.ts`, which owns the on-disk format. Everything below
+ * operates on the parsed `Map<id, line>`.
+ *
  * ## Conflict policy: last-writer-wins on `updated_at` (#1463)
  *
  * This **replaces** the original first-write-wins policy, which was the #1463
@@ -72,10 +79,7 @@ import { loadMofloConfig, type MofloConfig } from '../config/moflo-config.js';
 import { isDurableNamespace } from './cherry-pick-learnings.js';
 import {
   planReconcile,
-  reconcileId,
-  splitReconcileId,
   isPrunableTombstone,
-  recordStamp,
   TOMBSTONE_TTL_MS,
   type ReconcileRecord,
 } from './durable-reconcile.js';
@@ -85,7 +89,30 @@ import {
   type DurablePayload,
 } from './durable-store-io.js';
 import { detectToolCallMarkup } from '../memory/tool-call-markup.js';
-import { isMisfiledDurable } from './durable-key-rules.js';
+import {
+  TOMBSTONE_NAMESPACE,
+  isTombstoneLine,
+  lineToRecord,
+  readArtifact,
+  writeArtifact,
+  teamArtifactPaths,
+  type TeamProvenance,
+  type TeamArtifactEntry,
+  type TeamTombstone,
+} from './team-artifact-store.js';
+
+// The line shapes moved to the storage module with #1506; re-exported so every
+// existing importer of this module keeps compiling.
+export {
+  TOMBSTONE_NAMESPACE,
+  isTombstoneLine,
+  teamArtifactPaths,
+  teamArtifactExists,
+  type TeamProvenance,
+  type TeamArtifactEntry,
+  type TeamTombstone,
+  type TeamArtifactLine,
+} from './team-artifact-store.js';
 
 /** Allowed `type` values — the schema CHECK set. An out-of-set value would make
  *  INSERT OR IGNORE silently drop a hand-edited artifact row, so we coerce. */
@@ -98,63 +125,11 @@ const VALID_TYPES: ReadonlySet<string> = new Set([
 ]);
 const coerceType = (t: string | undefined): string => (t && VALID_TYPES.has(t) ? t : 'semantic');
 
-/** Default artifact path, relative to the project root. POSIX-joined parts. */
-export const DEFAULT_TEAM_ARTIFACT_REL = path.join('.moflo', 'shared', 'learnings.jsonl');
-
 /**
- * Namespace marker on a tombstone line. MUST stay outside
- * {@link isDurableNamespace} — that is the entire backward-compatibility
- * mechanism (old clients skip it as non-durable). Renaming it silently breaks
- * deletion propagation for every client that hasn't upgraded, which is why
- * `imports a tombstone-bearing artifact the way 4.12.11 does` pins it.
+ * Default artifact directory, relative to the project root. The pre-#1506
+ * default `learnings.jsonl` beside it is migrated by the next export.
  */
-export const TOMBSTONE_NAMESPACE = '__moflo_tombstone__';
-
-/** Provenance stamped onto each shared entry so its origin survives review. */
-export interface TeamProvenance {
-  /** `git config user.name <user.email>`, or the OS user as a fallback. */
-  author: string;
-  /** Hostname of the machine that first shared the entry. */
-  source: string;
-  /** ISO timestamp the entry was last written to the artifact. */
-  sharedAt: string;
-}
-
-/** One durable learning as a single JSONL line. Embeddings are intentionally omitted. */
-export interface TeamArtifactEntry {
-  namespace: string;
-  key: string;
-  content: string;
-  type: string;
-  tags?: string[];
-  /** Epoch-ms creation time (the `created_at` column is INTEGER NOT NULL). */
-  created_at?: number;
-  /**
-   * Epoch-ms of the last edit — the basis for last-writer-wins (#1463). Absent
-   * on lines written before #1463; those are treated as timestamp 0 so they can
-   * still seed a store that lacks the key but can never overwrite one that has
-   * it. Export backfills the field on any such line this machine also holds
-   * (timestamp only — provenance stays with the original author), so the
-   * ambiguity retires after one export per line rather than persisting.
-   */
-  updated_at?: number;
-  provenance: TeamProvenance;
-}
-
-/** A deletion, carried as a line so it can propagate. See the module header. */
-export interface TeamTombstone {
-  namespace: string;
-  key: string;
-  deleted: { namespace: string; key: string; at: number };
-  provenance: TeamProvenance;
-}
-
-export type TeamArtifactLine = TeamArtifactEntry | TeamTombstone;
-
-/** True when a parsed line is a tombstone rather than a live entry. */
-export function isTombstoneLine(line: TeamArtifactLine): line is TeamTombstone {
-  return line.namespace === TOMBSTONE_NAMESPACE;
-}
+export const DEFAULT_TEAM_ARTIFACT_REL = path.join('.moflo', 'shared', 'learnings');
 
 export interface ExportReport {
   artifactPath: string;
@@ -174,7 +149,19 @@ export interface ExportReport {
   prunedTombstones: number;
   /** Pre-#1463 lines given an `updated_at` this run, so they stop stamping 0. */
   backfilled: number;
-  /** Malformed JSONL lines skipped while reading the artifact. */
+  /**
+   * Entries copied in from the old single-file JSONL artifact this run (#1506).
+   * Counted only when the file was then removed — see {@link migratedFrom}.
+   */
+  migrated: number;
+  /** The old JSONL file this export migrated and deleted, or null. */
+  migratedFrom: string | null;
+  /**
+   * Entries NOT written because their file will not parse — almost always
+   * unresolved git conflict markers. Resolve the conflict and export again.
+   */
+  blocked: number;
+  /** Malformed entry files or JSONL lines skipped while reading the artifact. */
   skippedMalformed: number;
   /**
    * Local entries NOT shared because their value carries captured tool-call
@@ -211,7 +198,7 @@ export interface ImportReport {
   keptLocal: number;
   /** Durable records read from the artifact (live entries + tombstones). */
   considered: number;
-  /** Malformed JSONL lines skipped (bad JSON or missing namespace/key). */
+  /** Malformed entry files or JSONL lines skipped (bad JSON or missing namespace/key). */
   skippedMalformed: number;
   /** Well-formed lines skipped for being outside the durable namespaces. */
   skippedNonDurable: number;
@@ -271,128 +258,6 @@ function resolveSource(): string {
   } catch {
     return 'unknown-host';
   }
-}
-
-/** The (namespace, key) a line is *about* — its inner target for a tombstone. */
-function lineId(line: TeamArtifactLine): string {
-  return isTombstoneLine(line)
-    ? reconcileId(line.deleted.namespace, line.deleted.key)
-    : reconcileId(line.namespace, line.key);
-}
-
-/** A parsed line as the merge rule sees it. See {@link TeamArtifactEntry.updated_at}. */
-function lineToRecord(line: TeamArtifactLine): ReconcileRecord {
-  if (isTombstoneLine(line)) {
-    return {
-      namespace: line.deleted.namespace,
-      key: line.deleted.key,
-      updatedAt: 0,
-      deletedAt: line.deleted.at,
-    };
-  }
-  return {
-    namespace: line.namespace,
-    key: line.key,
-    updatedAt: typeof line.updated_at === 'number' ? line.updated_at : 0,
-    content: line.content ?? '',
-  };
-}
-
-/** Parse one JSONL line, or `null` when it is malformed. */
-function parseLine(trimmed: string): TeamArtifactLine | null {
-  let obj: Record<string, unknown> | null = null;
-  try {
-    obj = JSON.parse(trimmed) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-  if (!obj || typeof obj.namespace !== 'string' || typeof obj.key !== 'string') return null;
-
-  if (obj.namespace === TOMBSTONE_NAMESPACE) {
-    const deleted = obj.deleted as { namespace?: unknown; key?: unknown; at?: unknown } | undefined;
-    // A marker line whose payload is unusable is malformed, NOT a silent
-    // no-op: swallowing it would drop a deletion with no diagnostic.
-    if (
-      !deleted ||
-      typeof deleted.namespace !== 'string' ||
-      typeof deleted.key !== 'string' ||
-      typeof deleted.at !== 'number'
-    ) {
-      return null;
-    }
-    return obj as unknown as TeamTombstone;
-  }
-  return obj as unknown as TeamArtifactEntry;
-}
-
-/**
- * Read + parse an existing artifact, keyed by the (namespace, key) each line is
- * *about* — so a tombstone and the entry it retires occupy one slot and cannot
- * both survive. Missing file → empty.
- *
- * Duplicates within one file are settled by timestamp, newest wins, ties keep
- * the first. That is not hypothetical: an old client re-appends a live line for
- * a key we tombstoned (it keys tombstones under the marker namespace, so the
- * live key looks absent to it). Those re-appended lines carry no `updated_at`,
- * so they stamp 0 and the tombstone stands — while a genuine re-creation from
- * an upgraded client carries a real timestamp and wins.
- */
-function readArtifact(artifactPath: string): {
-  lines: Map<string, TeamArtifactLine>;
-  records: Map<string, ReconcileRecord>;
-  malformed: number;
-  /** Lines about a misfiled row (#1495), dropped here so no caller ever sees one. */
-  misfiled: number;
-  existed: boolean;
-} {
-  const lines = new Map<string, TeamArtifactLine>();
-  const records = new Map<string, ReconcileRecord>();
-  let malformed = 0;
-  let misfiled = 0;
-  if (!fs.existsSync(artifactPath)) return { lines, records, malformed, misfiled, existed: false };
-  const raw = fs.readFileSync(artifactPath, 'utf-8');
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const parsed = parseLine(trimmed);
-    if (!parsed) {
-      malformed++;
-      continue;
-    }
-    const id = lineId(parsed);
-    const record = lineToRecord(parsed);
-    // Dropped at the read both directions share, so import never applies one
-    // and export rewrites the file without it — the artifact shrinks instead of
-    // re-seeding every teammate's `learnings` on their next session (#1495).
-    if (isMisfiledDurable(record.namespace, record.key)) {
-      misfiled++;
-      continue;
-    }
-    const existing = records.get(id);
-    // Newest wins, ties keep the first. Built on the merge rule's own
-    // comparison basis so the two cannot disagree about which of a live line
-    // and a tombstone is later.
-    if (existing && recordStamp(existing) >= recordStamp(record)) continue;
-    lines.set(id, parsed);
-    records.set(id, record);
-  }
-  return { lines, records, malformed, misfiled, existed: true };
-}
-
-/**
- * Serialise lines to JSONL, sorted by the (namespace, key) each line is about —
- * so a tombstone sorts exactly where the entry it retires used to sit, keeping
- * the git diff line-local and reviewable.
- */
-function serializeArtifact(lines: Iterable<[string, TeamArtifactLine]>): string {
-  const sorted = [...lines].sort((a, b) => {
-    const left = splitReconcileId(a[0]);
-    const right = splitReconcileId(b[0]);
-    return left.namespace === right.namespace
-      ? left.key.localeCompare(right.key)
-      : left.namespace.localeCompare(right.namespace);
-  });
-  return sorted.map(([, line]) => JSON.stringify(line)).join('\n') + (sorted.length ? '\n' : '');
 }
 
 /** Parse the DB's JSON-encoded tags column back to the artifact's array form. */
@@ -494,7 +359,8 @@ export function exportTeamArtifact(opts: {
   const now = opts.now ?? (Number.isNaN(parsedSharedAt) ? Date.now() : parsedSharedAt);
   const ttlMs = opts.tombstoneTtlMs ?? TOMBSTONE_TTL_MS;
 
-  const { lines, records: target, malformed, misfiled, existed } = readArtifact(opts.artifactPath);
+  const artifact = readArtifact(opts.artifactPath);
+  const { lines, records: target, malformed, misfiled, existed } = artifact;
   const provenance: TeamProvenance = {
     author: resolveAuthor(projectRoot),
     source: resolveSource(),
@@ -581,17 +447,22 @@ export function exportTeamArtifact(opts: {
     else live++;
   }
 
-  // Skip the write when the merge changed nothing AND the file already exists:
-  // a git-tracked artifact should not show up as modified after a no-op run.
-  const changed = actions.length > 0 || prunedTombstones > 0 || backfilled > 0 || misfiled > 0;
+  // Skip the write when the merge changed nothing AND the artifact already
+  // exists: a git-tracked artifact should not show up as modified after a
+  // no-op run. A write also rewrites only the entry files that moved. An old
+  // JSONL file still present always forces one, so it is migrated and removed.
+  const changed =
+    actions.length > 0 ||
+    prunedTombstones > 0 ||
+    backfilled > 0 ||
+    misfiled > 0 ||
+    artifact.misplaced > 0 ||
+    artifact.legacyPath !== null;
   const wrote = changed || !existed;
-  if (wrote) {
-    fs.mkdirSync(path.dirname(opts.artifactPath), { recursive: true });
-    atomicWriteFileSync(opts.artifactPath, serializeArtifact(lines));
-  }
+  const written = wrote ? writeArtifact(lines, artifact) : null;
 
   return {
-    artifactPath: opts.artifactPath,
+    artifactPath: artifact.dir,
     added: summary.inserted,
     updated: summary.updated,
     deleted: summary.deleted,
@@ -600,6 +471,9 @@ export function exportTeamArtifact(opts: {
     keptRemote: summary.keptTargetNewer,
     prunedTombstones,
     backfilled,
+    migrated: written?.removedLegacy ? artifact.fromLegacy : 0,
+    migratedFrom: written?.removedLegacy ?? null,
+    blocked: written?.blocked ?? 0,
     skippedMalformed: malformed,
     skippedCorrupt,
     droppedMisfiled: misfiled,
@@ -715,9 +589,12 @@ function detectEol(raw: string): '\r\n' | '\n' {
  * files the user never named. Glob metacharacters are escaped first; the result
  * is then C-quoted if it contains whitespace, which doubles the backslashes the
  * escape pass added — that is correct, since git un-quotes before globbing.
+ *
+ * `suffix` is appended unescaped — it is how a directory artifact gets its
+ * `/**` (a bare directory pattern does not apply to the files inside it).
  */
-function gitattributesPattern(rel: string): string {
-  const pattern = `/${rel.replace(/([\\*?[\]])/g, '\\$1')}`;
+function gitattributesPattern(rel: string, suffix = ''): string {
+  const pattern = `/${rel.replace(/([\\*?[\]])/g, '\\$1')}${suffix}`;
   if (!/[\s"]/.test(pattern)) return pattern;
   return `"${pattern.replace(/(["\\])/g, '\\$1')}"`;
 }
@@ -822,13 +699,16 @@ export function ensureSharedArtifactEol(
   projectRoot: string,
   artifactAbsPath: string,
 ): 'created' | 'updated' | 'unchanged' {
-  const rel = path.relative(projectRoot, artifactAbsPath).split(path.sep).join('/');
+  const rel = path.relative(projectRoot, teamArtifactPaths(artifactAbsPath).dir).split(path.sep).join('/');
   // Outside the project entirely (an absolute artifact on a shared drive) —
   // there is no repo of ours to annotate.
   if (rel.startsWith('..') || path.isAbsolute(rel)) return 'unchanged';
 
   const attributesPath = path.join(projectRoot, '.gitattributes');
-  const pattern = gitattributesPattern(rel);
+  // The artifact is a directory (#1506): pin its contents, not its own name —
+  // a bare directory pattern does not apply to the files inside it.
+  const suffix = '/**';
+  const pattern = gitattributesPattern(rel, suffix);
   const existed = fs.existsSync(attributesPath);
   const raw = existed ? fs.readFileSync(attributesPath, 'utf-8') : '';
   const eol = existed ? detectEol(raw) : '\n';
@@ -841,7 +721,7 @@ export function ensureSharedArtifactEol(
   // only where the filesystem actually folds (Rule #1).
   const caseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
   const fold = (v: string): string => (caseInsensitive ? v.toLowerCase() : v);
-  const candidates = [fold(pattern), fold(`/${rel}`), fold(rel)];
+  const candidates = [fold(pattern), fold(`/${rel}${suffix}`), fold(`${rel}${suffix}`)];
 
   // Any existing rule naming this path wins, whatever it says.
   const alreadyRuled = lines.some((line) => {
@@ -861,4 +741,39 @@ export function ensureSharedArtifactEol(
   const content = next.join(eol).replace(/(\r?\n)+$/, '') + eol;
   atomicWriteFileSync(attributesPath, content);
   return existed ? 'updated' : 'created';
+}
+
+/**
+ * Stage the artifact in git when the team already tracks it, so a commit
+ * carries the export it triggered.
+ *
+ * Pre-commit hooks written for the single-file artifact stage only
+ * `learnings.jsonl`. After the migration (#1506) deletes that file they would
+ * stage the deletion and miss the directory that replaced it — and after that,
+ * nothing at all. Staging here keeps every existing hook working with no
+ * reconfiguration. Only moflo's own artifact paths are touched, and only when
+ * git already tracks one of them: an untracked artifact stays the user's call.
+ *
+ * Returns true when something was staged. Never throws.
+ */
+export function stageTeamArtifact(projectRoot: string, artifactPath: string): boolean {
+  const { dir, legacy } = teamArtifactPaths(artifactPath);
+  const git = (args: string[]): { ok: boolean; out: string } => {
+    try {
+      // spawnSync without a shell — paths are passed as argv, never interpolated (Rule #1).
+      const r = spawnSync('git', args, { cwd: projectRoot, encoding: 'utf-8', timeout: 10_000 });
+      return { ok: r.status === 0, out: (r.stdout || '').trim() };
+    } catch {
+      return { ok: false, out: '' };
+    }
+  };
+  const tracked = (p: string): boolean => {
+    const r = git(['ls-files', '--', p]);
+    return r.ok && r.out.length > 0;
+  };
+  // A tracked legacy path is staged too, so its deletion lands in the same commit.
+  const paths = [dir, legacy].filter(tracked);
+  if (paths.length === 0) return false;
+  if (!paths.includes(dir) && fs.existsSync(dir)) paths.push(dir);
+  return git(['add', '-A', '--', ...paths]).ok;
 }

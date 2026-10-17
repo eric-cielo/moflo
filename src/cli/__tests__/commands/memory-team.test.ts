@@ -2,9 +2,10 @@
  * Integration tests for `flo memory team-export` / `team-import` (#1234).
  *
  * Drives the command actions directly with a mocked `findProjectRoot` pinned to
- * a tmp root, exercising default-path resolution (`.moflo/shared/learnings.jsonl`),
- * the `.gitignore` track side-effect, and the export→import round-trip through
- * the real services. Cross-platform paths via path.join / os.tmpdir (Rule #1).
+ * a tmp root, exercising default-path resolution (the `.moflo/shared/learnings/`
+ * directory, #1506), migration of an old `learnings.jsonl` beside it, the
+ * `.gitignore` track side-effect, and the export→import round-trip through the
+ * real services. Cross-platform paths via path.join / os.tmpdir (Rule #1).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -22,6 +23,7 @@ import { memoryCommand } from '../../commands/memory.js';
 import { memoryDbPath } from '../../services/moflo-paths.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import { makeMemoryDb, type FixtureDb } from '../_helpers/legacy-memory-db.js';
+import { writeJsonlArtifact, liveArtifactKeys } from '../_helpers/team-artifact.js';
 import type { CommandContext, CommandResult, Command } from '../../types.js';
 
 const teamExport = memoryCommand.subcommands!.find((c) => c.name === 'team-export') as Command;
@@ -113,8 +115,10 @@ describe('flo memory team-export', () => {
     expect(res.success).toBe(true);
     expect((res.data as { added: number }).added).toBe(1); // durable only
 
-    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
-    expect(existsSync(artifact)).toBe(true);
+    const artifact = join(root, '.moflo', 'shared', 'learnings');
+    expect(liveArtifactKeys(artifact)).toEqual(['l1']);
+    // The directory is the artifact now (#1506) — no JSONL file is ever written.
+    expect(existsSync(join(root, '.moflo', 'shared', 'learnings.jsonl'))).toBe(false);
 
     // gitignore was created so the shared subtree is tracked.
     const gitignore = readFileSync(join(root, '.gitignore'), 'utf-8');
@@ -159,7 +163,7 @@ describe('the team-export / team-import summaries report every category (#1463)'
   // rendering is the part that failed, so the rendering is what gets asserted.
   it('names corrections and retirements, not just appends', async () => {
     const root = await makeRoot();
-    const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
+    const artifact = join(root, '.moflo', 'shared', 'learnings');
     await seedLearnings(root, [
       { key: 'corrected', namespace: 'learnings', content: 'v1', updatedAt: Date.now() - 5_000 },
       { key: 'retired', namespace: 'learnings', content: 'v1', updatedAt: Date.now() - 5_000 },
@@ -183,20 +187,16 @@ describe('the team-export / team-import summaries report every category (#1463)'
     const root = await makeRoot();
     const artifact = join(root, '.moflo', 'shared', 'learnings.jsonl');
     await seedLearnings(root, [{ key: 'k', namespace: 'learnings', content: 'local', updatedAt: 1_000 }]);
-    const { writeFileSync, mkdirSync } = await import('node:fs');
-    mkdirSync(join(root, '.moflo', 'shared'), { recursive: true });
-    writeFileSync(
-      artifact,
-      JSON.stringify({
+    writeJsonlArtifact(artifact, [
+      {
         namespace: 'learnings',
         key: 'k',
         content: 'newer from a teammate',
         type: 'semantic',
         updated_at: Date.now(),
         provenance: { author: 'A', source: 'h', sharedAt: 'x' },
-      }) + '\n',
-      'utf-8',
-    );
+      },
+    ]);
 
     const { printed } = await captureRun(teamExport, root);
     expect(printed).toMatch(/NOT shared/);
@@ -210,8 +210,31 @@ describe('the team-export / team-import summaries report every category (#1463)'
     await seedLearnings(rootB, [{ key: 'k', namespace: 'learnings', content: 'v1', updatedAt: 1_000 }]);
     await run(teamExport, rootA);
 
-    const artifact = join(rootA, '.moflo', 'shared', 'learnings.jsonl');
+    const artifact = join(rootA, '.moflo', 'shared', 'learnings');
     const { printed } = await captureRun(teamImport, rootB, { from: artifact });
     expect(printed).toMatch(/1 corrected/);
+  });
+});
+
+describe('team-export migrates an old JSONL artifact (#1506)', () => {
+  it('folds the default learnings.jsonl into the directory and removes it', async () => {
+    const root = await makeRoot();
+    const jsonl = join(root, '.moflo', 'shared', 'learnings.jsonl');
+    const provenance = { author: 'A', source: 'h', sharedAt: '2026-01-01T00:00:00.000Z' };
+    writeJsonlArtifact(jsonl, [
+      { namespace: 'learnings', key: 'from-teammate', content: 'shared earlier', type: 'semantic', updated_at: 1_000, provenance },
+      { namespace: 'knowledge', key: 'kb-teammate', content: 'kb', type: 'semantic', updated_at: 1_000, provenance },
+    ]);
+    await seedLearnings(root, [{ key: 'mine', namespace: 'learnings' }]);
+
+    const { result, printed } = await captureRun(teamExport, root);
+
+    expect(result.success).toBe(true);
+    expect(printed).toMatch(/Migrated \d+ entr/);
+    expect(existsSync(jsonl)).toBe(false);
+    const dir = join(root, '.moflo', 'shared', 'learnings');
+    expect(existsSync(dir)).toBe(true);
+    expect(liveArtifactKeys(dir)).toEqual(['from-teammate', 'kb-teammate', 'mine']);
+    expect(readFileSync(join(root, '.gitattributes'), 'utf-8')).toContain('/.moflo/shared/learnings/** text eol=lf');
   });
 });

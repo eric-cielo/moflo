@@ -4,8 +4,8 @@
  * Covers:
  *   - resolveTeamArtifactPath: off by default, env > config precedence, relative.
  *   - exportTeamArtifact: only durable namespaces, no embeddings in the file,
- *     provenance stamped, first-write-wins (existing lines preserved), sorted.
- *   - importTeamArtifact: JSONL → local DB INSERT OR IGNORE, provenance retained
+ *     provenance stamped, last-writer-wins, one file per entry (#1506).
+ *   - importTeamArtifact: artifact → local DB INSERT OR IGNORE, provenance retained
  *     in metadata, idempotent re-import, malformed lines skipped.
  *   - round-trip A→B (the #1234 repro at the service layer).
  *   - ensureSharedArtifactTracked: rewrites a bare `.moflo/` ignore to
@@ -16,9 +16,10 @@
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 import {
   resolveTeamArtifactPath,
@@ -33,6 +34,7 @@ import { memoryDbPath } from '../../services/moflo-paths.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import { makeMemoryDb, type FixtureDb } from '../_helpers/legacy-memory-db.js';
 import { DatabaseSync } from 'node:sqlite';
+import { writeJsonlArtifact, readArtifactRecords, artifactDir } from '../_helpers/team-artifact.js';
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
@@ -103,12 +105,9 @@ function makeDbWith(dbPath: string, rows: FixtureRow[]): Promise<void> {
   });
 }
 
+/** Live entries the artifact holds, read through the store (directory + any JSONL). */
 function readArtifactLines(artifactPath: string): TeamArtifactEntry[] {
-  if (!existsSync(artifactPath)) return [];
-  return readFileSync(artifactPath, 'utf-8')
-    .split(/\r?\n/)
-    .filter((l) => l.trim())
-    .map((l) => JSON.parse(l) as TeamArtifactEntry);
+  return readArtifactRecords(artifactPath) as TeamArtifactEntry[];
 }
 
 function readDbRows(dbPath: string): Array<{ namespace: string; key: string; embedding: string | null; metadata: string | null }> {
@@ -171,7 +170,7 @@ describe('exportTeamArtifact (#1234)', () => {
     expect(lesson.provenance.sharedAt).toBe(NOW);
   });
 
-  it('is sorted by (namespace, key) for deterministic diffs', async () => {
+  it('writes each entry to its own deterministically named, pretty-printed file (#1506)', async () => {
     const root = await makeRoot();
     const artifact = join(root, 'team.jsonl');
     await makeDbWith(memoryDbPath(root), [
@@ -179,15 +178,34 @@ describe('exportTeamArtifact (#1234)', () => {
       { key: 'alpha', namespace: 'learnings' },
       { key: 'mid', namespace: 'knowledge' },
     ]);
-    exportTeamArtifact({ projectRoot: root, artifactPath: artifact, sharedAt: NOW });
-    const keys = readArtifactLines(artifact).map((l) => `${l.namespace}/${l.key}`);
-    expect(keys).toEqual(['knowledge/mid', 'learnings/alpha', 'learnings/zeta']);
+    const report = exportTeamArtifact({ projectRoot: root, artifactPath: artifact, sharedAt: NOW });
+    const dir = artifactDir(artifact);
+    expect(report.artifactPath).toBe(dir);
+    expect(dir).toBe(join(root, 'team'));
+    // JSONL is never written any more.
+    expect(existsSync(artifact)).toBe(false);
+
+    expect(readdirSync(dir).sort()).toEqual(['knowledge', 'learnings']);
+    for (const [ns, key] of [
+      ['knowledge', 'mid'],
+      ['learnings', 'alpha'],
+      ['learnings', 'zeta'],
+    ]) {
+      const name = `${createHash('sha256').update(`${ns}\u0000${key}`).digest('hex')}.json`;
+      expect(name).toMatch(/^[0-9a-f]{64}\.json$/);
+      const raw = readFileSync(join(dir, ns, name), 'utf-8');
+      const parsed = JSON.parse(raw) as TeamArtifactEntry;
+      expect(parsed).toMatchObject({ namespace: ns, key });
+      // Byte-stable: two-space pretty JSON with a trailing newline, so diffs are line-local.
+      expect(raw).toBe(`${JSON.stringify(parsed, null, 2)}\n`);
+    }
+    expect(readdirSync(join(dir, 'learnings'))).toHaveLength(2);
+    expect(readdirSync(join(dir, 'knowledge'))).toHaveLength(1);
   });
 
   it('last-writer-wins: a locally corrected entry overwrites its stale artifact line (#1463)', async () => {
     const root = await makeRoot();
     const artifact = join(root, 'team.jsonl');
-    mkdirSync(dirname(artifact), { recursive: true });
     // A teammate shared lesson-1 before #1463, so the line carries no
     // updated_at — the exact shape of the 32 entries measured stale in the wild.
     const original: TeamArtifactEntry = {
@@ -197,7 +215,7 @@ describe('exportTeamArtifact (#1234)', () => {
       type: 'semantic',
       provenance: { author: 'Teammate A', source: 'host-a', sharedAt: '2020-01-01T00:00:00.000Z' },
     };
-    writeFileSync(artifact, JSON.stringify(original) + '\n', 'utf-8');
+    writeJsonlArtifact(artifact, [original]);
 
     // Locally we corrected lesson-1 and wrote a brand-new lesson-2.
     await makeDbWith(memoryDbPath(root), [
@@ -228,7 +246,7 @@ describe('exportTeamArtifact (#1234)', () => {
       updated_at: 1_000,
       provenance: { author: 'Teammate A', source: 'host-a', sharedAt: '2020-01-01T00:00:00.000Z' },
     };
-    writeFileSync(artifact, JSON.stringify(theirs) + '\n', 'utf-8');
+    writeJsonlArtifact(artifact, [theirs]);
     await makeDbWith(memoryDbPath(root), [{ key: 'mine', namespace: 'learnings' }]);
 
     exportTeamArtifact({ projectRoot: root, artifactPath: artifact, sharedAt: NOW });
@@ -250,7 +268,7 @@ describe('importTeamArtifact (#1234)', () => {
       tags: ['team'],
       provenance: { author: 'Dev A', source: 'laptop-a', sharedAt: NOW },
     };
-    writeFileSync(artifact, JSON.stringify(entry) + '\n', 'utf-8');
+    writeJsonlArtifact(artifact, [entry]);
 
     const report = importTeamArtifact({ projectRoot: root, artifactPath: artifact });
     expect(report.imported).toBe(1);
@@ -272,7 +290,7 @@ describe('importTeamArtifact (#1234)', () => {
       type: 'semantic',
       provenance: { author: 'A', source: 'h', sharedAt: NOW },
     };
-    writeFileSync(artifact, JSON.stringify(entry) + '\n', 'utf-8');
+    writeJsonlArtifact(artifact, [entry]);
 
     const first = importTeamArtifact({ projectRoot: root, artifactPath: artifact });
     expect(first.imported).toBe(1);
@@ -291,7 +309,7 @@ describe('importTeamArtifact (#1234)', () => {
       type: 'totally-invalid-type',
       provenance: { author: 'A', source: 'h', sharedAt: NOW },
     };
-    writeFileSync(artifact, JSON.stringify(entry) + '\n', 'utf-8');
+    writeJsonlArtifact(artifact, [entry]);
 
     const report = importTeamArtifact({ projectRoot: root, artifactPath: artifact });
     expect(report.imported).toBe(1); // imported, not dropped
@@ -311,7 +329,7 @@ describe('importTeamArtifact (#1234)', () => {
       { namespace: 'learnings', key: 'keep', content: 'c', type: 'semantic', provenance: { author: 'A', source: 'h', sharedAt: NOW } },
       { namespace: 'code-map', key: 'drop', content: 'c', type: 'semantic', provenance: { author: 'A', source: 'h', sharedAt: NOW } },
     ];
-    writeFileSync(artifact, rows.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf-8');
+    writeJsonlArtifact(artifact, rows);
 
     const report = importTeamArtifact({ projectRoot: root, artifactPath: artifact });
     expect(report.imported).toBe(1);
@@ -330,7 +348,7 @@ describe('importTeamArtifact (#1234)', () => {
       type: 'semantic',
       provenance: { author: 'A', source: 'h', sharedAt: NOW },
     };
-    writeFileSync(artifact, `${JSON.stringify(good)}\n{not valid json\n{"missing":"keys"}\n`, 'utf-8');
+    writeJsonlArtifact(artifact, [good, '{not valid json', '{"missing":"keys"}']);
 
     const report = importTeamArtifact({ projectRoot: root, artifactPath: artifact });
     expect(report.imported).toBe(1);
@@ -424,7 +442,14 @@ describe('ensureSharedArtifactTracked (#1234)', () => {
     expect(readFileSync(gitignore, 'utf-8')).toBe(before);
   });
 
-  it('default artifact rel path is .moflo/shared/learnings.jsonl', () => {
-    expect(DEFAULT_TEAM_ARTIFACT_REL).toBe(join('.moflo', 'shared', 'learnings.jsonl'));
+  it('default artifact rel path is the .moflo/shared/learnings directory (#1506)', () => {
+    expect(DEFAULT_TEAM_ARTIFACT_REL).toBe(join('.moflo', 'shared', 'learnings'));
+  });
+
+  it('tracks the default directory artifact under the same .moflo/shared/ negation', async () => {
+    const root = await makeRoot();
+    const action = ensureSharedArtifactTracked(root, join(root, DEFAULT_TEAM_ARTIFACT_REL));
+    expect(action).toBe('created');
+    expect(readFileSync(join(root, '.gitignore'), 'utf-8').split('\n')).toContain('!/.moflo/shared/');
   });
 });

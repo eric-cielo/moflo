@@ -28,6 +28,7 @@ import { openDaemonDatabase } from '../../memory/daemon-backend.js';
 import { memoryDbPath } from '../../services/moflo-paths.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import { makeMemoryDb, type FixtureDb } from '../_helpers/legacy-memory-db.js';
+import { writeJsonlArtifact, readArtifactRecords } from '../_helpers/team-artifact.js';
 
 const tmpDirs: string[] = [];
 const savedDurable = process.env.MOFLO_DURABLE_PATH;
@@ -94,12 +95,9 @@ function rows(dbPath: string): Array<{ key: string; namespace: string; status: s
 
 const misfiledIn = (dbPath: string) => rows(dbPath).filter((r) => isMisfiledDurable(r.namespace, r.key));
 
+/** Records the artifact holds, read through the store (directory + any unmigrated JSONL). */
 function artifactLines(artifactPath: string): Array<Record<string, any>> {
-  return fs
-    .readFileSync(artifactPath, 'utf-8')
-    .split(/\r?\n/)
-    .filter((l) => l.trim())
-    .map((l) => JSON.parse(l));
+  return readArtifactRecords(artifactPath) as unknown as Array<Record<string, any>>;
 }
 
 const provenance = { author: 'a', source: 'h', sharedAt: '2026-01-01T00:00:00.000Z' };
@@ -121,17 +119,11 @@ describe('#1495 misfiled rows converge across local, shared store, and team arti
 
     await seedDb(memoryDbPath(root), [{ key: 'verify:1' }, { key: 'real-lesson' }]);
     await seedDb(sharedPath, [{ key: 'verify:1' }, { key: 'verify:2' }, { key: 'real-lesson' }]);
-    fs.mkdirSync(join(artifactPath, '..'), { recursive: true });
-    fs.writeFileSync(
-      artifactPath,
-      [
-        { namespace: 'learnings', key: 'real-lesson', content: 'content-real-lesson', type: 'semantic', updated_at: T(1_000), provenance },
-        { namespace: 'learnings', key: 'verify:3', content: 'v3', type: 'semantic', updated_at: T(2_000), provenance },
-        { namespace: '__moflo_tombstone__', key: 'verify:1', deleted: { namespace: 'learnings', key: 'verify:1', at: T(5_000) }, provenance },
-      ]
-        .map((l) => JSON.stringify(l))
-        .join('\n') + '\n',
-    );
+    writeJsonlArtifact(artifactPath, [
+      { namespace: 'learnings', key: 'real-lesson', content: 'content-real-lesson', type: 'semantic', updated_at: T(1_000), provenance },
+      { namespace: 'learnings', key: 'verify:3', content: 'v3', type: 'semantic', updated_at: T(2_000), provenance },
+      { namespace: '__moflo_tombstone__', key: 'verify:1', deleted: { namespace: 'learnings', key: 'verify:1', at: T(5_000) }, provenance },
+    ]);
 
     const first = await sessionStart(root, artifactPath);
     expect(first.purge.relocated).toBe(1);
@@ -227,15 +219,10 @@ describe('#1495 misfiled rows converge across local, shared store, and team arti
     await seedDb(memoryDbPath(root), []);
     const authored = T(10);
     const edited = T(20);
-    fs.writeFileSync(
-      artifactPath,
-      [
-        { namespace: 'learnings', key: 'with-created', content: 'a', type: 'semantic', created_at: authored, updated_at: edited, provenance },
-        { namespace: 'learnings', key: 'no-created', content: 'b', type: 'semantic', updated_at: edited, provenance },
-      ]
-        .map((l) => JSON.stringify(l))
-        .join('\n') + '\n',
-    );
+    writeJsonlArtifact(artifactPath, [
+      { namespace: 'learnings', key: 'with-created', content: 'a', type: 'semantic', created_at: authored, updated_at: edited, provenance },
+      { namespace: 'learnings', key: 'no-created', content: 'b', type: 'semantic', updated_at: edited, provenance },
+    ]);
     importTeamArtifact({ projectRoot: root, artifactPath });
     const byKey = new Map(rows(memoryDbPath(root)).map((r) => [r.key, Number(r.created_at)]));
     expect(byKey.get('with-created')).toBe(authored);

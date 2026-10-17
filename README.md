@@ -276,7 +276,7 @@ Pick the mechanism by topology:
 |---------------------------|-----|-----|
 | Git worktrees / Conductor workspaces (same machine) | **Automatic** — nothing to set | Learnings converge across worktrees at session-start (stored at `<git-common-dir>/moflo/durable.db`). Override with `memory.durable_path`; opt out with `memory.worktree_sharing: false` |
 | Your own laptop + desktop + CI | `flo memory sync --to/--from <file>` | Export to a synced folder (Dropbox/iCloud) or a copied file, import on the other machine |
-| A whole team on one repo | `flo memory team-export` → commit `.moflo/shared/learnings.jsonl` | Teammates' session-start import-merges it after `git pull` (first-write-wins; author provenance retained) |
+| A whole team on one repo | `flo memory team-export` → commit `.moflo/shared/learnings/` | Teammates' session-start import-merges it after `git pull` (newest edit wins; one file per entry so concurrent PRs don't conflict; author provenance retained) |
 | A fresh workspace that must be ready fast | `flo memory backup/restore` or `memory.hydrate_from` | Seed a new workspace from a **whole-DB snapshot** so it's searchable on session one — no cold reindex. Safe because each workspace owns its own copy (a one-time restore, not live sharing) |
 
 Verify your setup with `flo doctor -c shared-db` (it warns if you've accidentally pointed at a full `moflo.db` for *live* sharing). Full guide: [`moflo-cross-install-memory-sharing.md`](.claude/guidance/shipped/moflo-cross-install-memory-sharing.md).

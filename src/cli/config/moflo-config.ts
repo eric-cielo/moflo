@@ -125,8 +125,9 @@ export interface MofloConfig {
      */
     worktree_sharing?: boolean;
     /**
-     * Optional path to a **git-tracked** team learnings artifact (JSONL),
-     * default `.moflo/shared/learnings.jsonl` (#1234, epic #1231). When set,
+     * Optional path to a **git-tracked** team learnings artifact (#1234, epic
+     * #1231): a directory of one file per entry (#1506). A `.jsonl` value names
+     * the directory beside it and is migrated by the next export. When set,
      * session-start import-merges it into the local durable namespaces so a team
      * accumulates each other's learnings about the same repo. Undefined = off
      * (solo default). `MOFLO_TEAM_ARTIFACT` overrides. Relative → project root.
@@ -831,7 +832,7 @@ memory:
   #   git worktrees / Conductor workspaces of this project share one learnings DB.
   #   Structural namespaces (code-map, guidance, tests) stay local per checkout.
   #   Absolute path recommended; overridable per-process via MOFLO_DURABLE_PATH.
-  # team_artifact: .moflo/shared/learnings.jsonl  # opt-in (#1234): git-track this JSONL to share learnings across a team. Session-start import-merges it; "flo memory team-export" writes it. Leave unset for solo use.
+  # team_artifact: .moflo/shared/learnings/  # opt-in: git-track this to share learnings across a team (one file per entry, so concurrent PRs never conflict). Session-start import-merges it; "flo memory team-export" writes it. Leave unset for solo use.
   # hydrate_from: /abs/path/to/moflo-snapshot.db
   #   Optional whole-DB snapshot (#1244) to seed a fresh/empty workspace from on
   #   session-start, skipping the cold full reindex (structural + durable +
