@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Postinstall native-binary pruner for consumer moflo installs.
+ * Install-time native-binary pruner for consumer moflo installs (runs as
+ * both `preinstall` and `postinstall` — see plantCudaStub for why).
  *
  * Trims `onnxruntime-node`'s multi-platform binary bundle under
  * `bin/napi-v<N>/<platform>/<arch>/` down to just the current combination,
@@ -320,10 +321,19 @@ const LINUX_X64_GPU_STUBS = [
 
 /**
  * Plant zero-byte stubs for every GPU-provider file `onnxruntime-node`'s
- * postinstall expects on `linux/x64`. ORT's install runs after moflo's
- * (npm orders file:-tarball roots before their deps) and exits early when
+ * postinstall expects on `linux/x64`. ORT's install exits early when
  * `existsSync` returns true for ALL manifest entries — so leaving any
  * single file unstubbed re-triggers the full ~350 MB CUDA EP download.
+ *
+ * The stubs must exist BEFORE ORT's postinstall runs, which is why this
+ * script is wired as moflo's `preinstall` too (#1516). npm runs each
+ * lifecycle event as a phase across every package (@npmcli/arborist
+ * rebuild.js #build: all preinstalls, then all installs, then all
+ * postinstalls), and runs a phase's scripts concurrently. Hoisted moflo and
+ * onnxruntime-node are siblings, so two postinstalls race; a preinstall
+ * always wins. The postinstall run stays as the second pass for package
+ * managers that run each package's whole lifecycle in dependency order
+ * (pnpm, yarn): there ORT has already downloaded, and the prune removes it.
  *
  * No-op outside linux/x64, when the user opts in to CUDA via
  * `ONNXRUNTIME_NODE_INSTALL_CUDA=true`, or when stubs already exist.
@@ -429,8 +439,8 @@ export function pruneOrtPackage(ortDir, {
         if (a.name === keepArch) {
           const archDir = join(pDir, a.name);
           bytes += pruneGpuProviders(archDir, { rm, measure });
-          // Plant stub AFTER prune so the upstream ORT postinstall (which
-          // runs later on linux/x64) sees the CUDA file and skips the fetch.
+          // Plant stub AFTER prune so the upstream ORT postinstall sees every
+          // manifest file and skips the fetch (see plantCudaStub, #1516).
           plantCudaStub(archDir, { keepPlatform, keepArch, env });
           continue;
         }
