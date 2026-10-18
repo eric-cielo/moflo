@@ -140,8 +140,11 @@ jobs:
           path: ~/.cache/fastembed
           key: ${{ steps.cache-fastembed.outputs.cache-primary-key }}
 
+      # success() only (#1516): a failed run may have left a broken tree (e.g. a
+      # 346 MB ORT with the CUDA EP downloaded). Saving it pins the failure to
+      # every later run on this ref, because an exact-key hit skips reinstall.
       - name: Save consumer-install node_modules
-        if: always() && steps.cache-consumer-warm.outputs.cache-hit != 'true'
+        if: success() && steps.cache-consumer-warm.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v6
         with:

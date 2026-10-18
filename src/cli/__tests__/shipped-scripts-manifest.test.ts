@@ -87,6 +87,16 @@ describe('shipped-scripts manifest (#1191)', () => {
     expect(pkg.scripts.postinstall).toContain('post-install-bootstrap.mjs');
   });
 
+  // #1516: npm runs every package's preinstall before any postinstall, but a
+  // phase's scripts run concurrently, so moflo's and onnxruntime-node's
+  // postinstalls race. Only a preinstall plants the CUDA stubs before ORT's
+  // install checks for them; drop it and ~300 MB of CUDA EP comes back.
+  it('package.json preinstall runs the native-binary prune (#1516)', () => {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8'));
+    expect(pkg.scripts.preinstall).toContain('prune-native-binaries.mjs');
+    expect(pkg.files).toContain('scripts/prune-native-binaries.mjs');
+  });
+
   it('package.json files[] ships the bootstrap script and the manifest', () => {
     const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8'));
     expect(pkg.files).toContain('scripts/post-install-bootstrap.mjs');

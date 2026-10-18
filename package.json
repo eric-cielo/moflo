@@ -50,6 +50,7 @@
     "prebuild": "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
     "build": "tsc",
     "prepublishOnly": "npm run build",
+    "preinstall": "node scripts/prune-native-binaries.mjs",
     "postinstall": "node scripts/prune-native-binaries.mjs && node scripts/post-install-notice.mjs && node scripts/post-install-bootstrap.mjs",
     "test": "node scripts/test-runner.mjs",
     "test:ui": "vitest --ui",
