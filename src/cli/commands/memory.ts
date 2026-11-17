@@ -2874,7 +2874,7 @@ const teamExportCommand: Command = {
     try {
       const { exportTeamArtifact, ensureSharedArtifactTracked, ensureSharedArtifactEol, stageTeamArtifact } =
         await import('../services/team-artifact-sync.js');
-      const report = exportTeamArtifact({ projectRoot, artifactPath, sharedAt: new Date().toISOString() });
+      const report = exportTeamArtifact({ projectRoot, artifactPath });
       const gitignore = ensureSharedArtifactTracked(projectRoot, artifactPath);
       const gitattributes = ensureSharedArtifactEol(projectRoot, artifactPath);
       const staged = report.wrote && stageTeamArtifact(projectRoot, artifactPath);

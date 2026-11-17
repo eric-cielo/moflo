@@ -59,7 +59,12 @@ export interface TeamProvenance {
   author: string;
   /** Hostname of the machine that first shared the entry. */
   source: string;
-  /** ISO timestamp the entry was last written to the artifact. */
+  /**
+   * ISO form of the entry's `updated_at` (a tombstone's `deleted.at`). Never
+   * the export time: the file's bytes must depend only on the entry, or the
+   * same learning exported on two branches conflicts (#1526). Lines written
+   * before #1526 carry the time they were exported instead.
+   */
   sharedAt: string;
 }
 

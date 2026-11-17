@@ -271,8 +271,49 @@ function parseTags(raw: string | null): string[] | undefined {
   }
 }
 
-/** Build the artifact line for a local row that is winning the merge. */
-function entryFromPayload(payload: DurablePayload, provenance: TeamProvenance): TeamArtifactEntry {
+/** Who is exporting: the provenance this machine stamps on a line it authored. */
+type Exporter = Omit<TeamProvenance, 'sharedAt'>;
+
+/**
+ * An entry's own epoch-ms as ISO. A value `Date` cannot represent falls back to
+ * the epoch rather than throwing — one bad row must not abort the export.
+ */
+function isoTime(ms: number | undefined): string {
+  const d = new Date(Number.isFinite(ms) ? (ms as number) : 0);
+  return Number.isNaN(d.getTime()) ? new Date(0).toISOString() : d.toISOString();
+}
+
+/**
+ * The provenance an imported row carries in its metadata, but only while the
+ * row is still the version that line described — `sharedAt` is that line's
+ * `updated_at` (#1526), so a local edit since the import no longer matches and
+ * the editor is credited instead.
+ */
+function importedProvenance(metadata: string | null, sharedAt: string): TeamProvenance | null {
+  if (!metadata) return null;
+  try {
+    const meta = JSON.parse(metadata) as { sharedFrom?: unknown; provenance?: Partial<TeamProvenance> };
+    const p = meta?.provenance;
+    if (meta?.sharedFrom !== 'team-artifact' || !p || p.sharedAt !== sharedAt) return null;
+    if (typeof p.author !== 'string' || typeof p.source !== 'string') return null;
+    // Rebuilt in the writer's key order, so the bytes match the original file.
+    return { author: p.author, source: p.source, sharedAt };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build the artifact line for a local row that is winning the merge.
+ *
+ * Nothing comes from the export itself (#1526). Every branch the authoring
+ * machine exports a learning on, and every machine that imported it, writes
+ * the same file, and git merges identical adds without a conflict. So
+ * `sharedAt` is the entry's own edit time, and a row imported from the artifact
+ * keeps the provenance it arrived with.
+ */
+function entryFromPayload(payload: DurablePayload, exporter: Exporter): TeamArtifactEntry {
+  const sharedAt = isoTime(payload.updatedAt);
   return {
     namespace: payload.namespace,
     key: payload.key,
@@ -281,19 +322,20 @@ function entryFromPayload(payload: DurablePayload, provenance: TeamProvenance): 
     tags: parseTags(payload.tags),
     created_at: payload.createdAt,
     updated_at: payload.updatedAt,
-    provenance,
+    provenance: importedProvenance(payload.metadata, sharedAt) ?? { ...exporter, sharedAt },
   };
 }
 
-/** Build the tombstone line for a locally archived row. */
-function tombstoneFromRecord(record: ReconcileRecord, provenance: TeamProvenance): TeamTombstone {
+/** Build the tombstone line for a locally archived row. Stamped with the deletion time (#1526). */
+function tombstoneFromRecord(record: ReconcileRecord, exporter: Exporter): TeamTombstone {
+  const at = record.deletedAt as number;
   return {
     namespace: TOMBSTONE_NAMESPACE,
     // Informational for old clients, which key this line under the marker
     // namespace and skip it; the authoritative target is `deleted`.
     key: record.key,
-    deleted: { namespace: record.namespace, key: record.key, at: record.deletedAt as number },
-    provenance,
+    deleted: { namespace: record.namespace, key: record.key, at },
+    provenance: { ...exporter, sharedAt: isoTime(at) },
   };
 }
 
@@ -346,7 +388,12 @@ function payloadFromLine(id: string, line: TeamArtifactEntry): DurablePayload {
 export function exportTeamArtifact(opts: {
   projectRoot?: string;
   artifactPath: string;
-  sharedAt: string;
+  /**
+   * When this export ran. Only the tombstone-pruning clock — it is never
+   * written into an entry file, or every export would make the same learning
+   * byte-different on every branch (#1526).
+   */
+  sharedAt?: string;
   config?: MofloConfig;
   /** Epoch-ms used for tombstone pruning. Defaults to `sharedAt`, then now. */
   now?: number;
@@ -355,17 +402,13 @@ export function exportTeamArtifact(opts: {
 }): ExportReport {
   const projectRoot = opts.projectRoot ?? findProjectRoot();
   const localDbPath = memoryDbPath(projectRoot);
-  const parsedSharedAt = Date.parse(opts.sharedAt);
+  const parsedSharedAt = Date.parse(opts.sharedAt ?? '');
   const now = opts.now ?? (Number.isNaN(parsedSharedAt) ? Date.now() : parsedSharedAt);
   const ttlMs = opts.tombstoneTtlMs ?? TOMBSTONE_TTL_MS;
 
   const artifact = readArtifact(opts.artifactPath);
   const { lines, records: target, malformed, misfiled, existed } = artifact;
-  const provenance: TeamProvenance = {
-    author: resolveAuthor(projectRoot),
-    source: resolveSource(),
-    sharedAt: opts.sharedAt,
-  };
+  const exporter: Exporter = { author: resolveAuthor(projectRoot), source: resolveSource() };
 
   // Local DB is the source, the artifact the target.
   let records = new Map<string, ReconcileRecord>();
@@ -413,11 +456,11 @@ export function exportTeamArtifact(opts: {
   const { actions, summary } = planReconcile(records, target);
   for (const action of actions) {
     if (action.op === 'delete') {
-      lines.set(action.id, tombstoneFromRecord(action.record, provenance));
+      lines.set(action.id, tombstoneFromRecord(action.record, exporter));
       continue;
     }
     const payload = payloads.get(action.id);
-    if (payload) lines.set(action.id, entryFromPayload(payload, provenance));
+    if (payload) lines.set(action.id, entryFromPayload(payload, exporter));
   }
 
   // Backfill the timestamp on lines this machine holds but that predate #1463.

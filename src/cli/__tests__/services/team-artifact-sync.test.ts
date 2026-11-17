@@ -167,7 +167,8 @@ describe('exportTeamArtifact (#1234)', () => {
     expect(lesson.tags).toEqual(['t']);
     expect(lesson.provenance.author).toBeTruthy();
     expect(lesson.provenance.source).toBeTruthy();
-    expect(lesson.provenance.sharedAt).toBe(NOW);
+    // The entry's own edit time, never the export's (#1526).
+    expect(lesson.provenance.sharedAt).toBe(new Date(lesson.updated_at!).toISOString());
   });
 
   it('writes each entry to its own deterministically named, pretty-printed file (#1506)', async () => {
