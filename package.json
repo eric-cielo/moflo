@@ -91,7 +91,7 @@
     "picomatch": ">=2.3.2",
     "protobufjs": ">=7.5.5",
     "adm-zip": ">=0.6.0",
-    "fast-uri": ">=4.2.2",
+    "fast-uri": ">=4.2.3",
     "ip-address": ">=10.7.4"
   },
   "devDependencies": {
