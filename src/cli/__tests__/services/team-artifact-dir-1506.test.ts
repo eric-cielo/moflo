@@ -16,7 +16,6 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, utimesSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 
@@ -36,13 +35,12 @@ import {
   entryFilePath,
   readArtifact,
   writeArtifact,
-  lineId,
 } from '../../services/team-artifact-store.js';
 import { reconcileId } from '../../services/durable-reconcile.js';
 import { memoryDbPath } from '../../services/moflo-paths.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import { makeMemoryDb, type FixtureDb } from '../_helpers/legacy-memory-db.js';
-import { writeJsonlArtifact } from '../_helpers/team-artifact.js';
+import { writeJsonlArtifact, writeDir, git, hasGit } from '../_helpers/team-artifact.js';
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
@@ -106,13 +104,6 @@ function tombstone(key: string, at: number): TeamTombstone {
   return { namespace: TOMBSTONE_NAMESPACE, key, deleted: { namespace: 'learnings', key, at }, provenance };
 }
 
-/** Write records straight into a directory artifact through the store. */
-function writeDir(dir: string, lines: TeamArtifactLine[]): void {
-  const prior = readArtifact(dir);
-  const merged = new Map(prior.lines);
-  for (const line of lines) merged.set(lineId(line), line);
-  writeArtifact(merged, prior);
-}
 
 /** Every entry file under a directory artifact, as `<namespace-dir>/<file>`. */
 function listEntryFiles(dir: string): string[] {
@@ -378,21 +369,6 @@ describe('ensureSharedArtifactEol — directory artifact', () => {
   });
 });
 
-/**
- * Real git, no merge driver and no .gitattributes: what GitHub's mergeability
- * check sees. Identity is passed per call so a developer's global config
- * cannot change the outcome.
- */
-function git(repo: string, ...args: string[]): { status: number; out: string } {
-  const r = spawnSync(
-    'git',
-    ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', ...args],
-    { cwd: repo, encoding: 'utf-8' },
-  );
-  return { status: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
-}
-
-const hasGit = spawnSync('git', ['--version']).status === 0;
 
 async function makeRepo(): Promise<string> {
   const repo = await makeRoot('moflo-team-git-');

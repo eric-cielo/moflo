@@ -8,10 +8,13 @@
  * either path shape to the same records.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname } from 'node:path';
 
 import {
   readArtifact,
+  writeArtifact,
+  lineId,
   teamArtifactPaths,
   TOMBSTONE_NAMESPACE,
   type TeamArtifactLine,
@@ -53,3 +56,27 @@ export function tombstonedArtifactKeys(path: string): string[] {
 export function artifactDir(path: string): string {
   return teamArtifactPaths(path).dir;
 }
+
+/** Write records straight into a directory artifact through the store. */
+export function writeDir(dir: string, lines: TeamArtifactLine[]): void {
+  const prior = readArtifact(dir);
+  const merged = new Map(prior.lines);
+  for (const line of lines) merged.set(lineId(line), line);
+  writeArtifact(merged, prior);
+}
+
+/**
+ * Real git, no merge driver and no .gitattributes: what GitHub's mergeability
+ * check sees. Identity is passed per call so a developer's global config
+ * cannot change the outcome.
+ */
+export function git(repo: string, ...args: string[]): { status: number; out: string } {
+  const r = spawnSync(
+    'git',
+    ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', ...args],
+    { cwd: repo, encoding: 'utf-8' },
+  );
+  return { status: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+export const hasGit = spawnSync('git', ['--version']).status === 0;
